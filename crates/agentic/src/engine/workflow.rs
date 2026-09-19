@@ -1,44 +1,15 @@
-//! The agent loop, as a Temporal workflow. Deterministic: no I/O here, only activity calls.
+//! One run: one message in, one reply out, then the workflow ends.
 
-use super::activities::{AgentActivities, StepInput, ToolCallInput};
-use crate::{Agent, Content, Message, Role, StopReason, ToolSpec};
+use super::conversation::{AgentSpec, Conversation, HasConversation, turn};
+use crate::Message;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
-use temporalio_common::RetryPolicy;
 use temporalio_macros::{workflow, workflow_methods};
-use temporalio_sdk::{ActivityOptions, WorkflowContext, WorkflowResult};
+use temporalio_sdk::{WorkflowContext, WorkflowContextView, WorkflowResult};
 
 /// The generated marker type for the `run` method, nameable from the rest of the engine.
 pub(crate) type RunWorkflowType = agent_run_workflow::Run;
 
 pub(crate) const RUN_ID_PREFIX: &str = "agentic-run-";
-
-/// The serializable part of an [`Agent`]. Model and tool implementations stay in the worker.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct AgentSpec {
-    pub name: String,
-    pub instructions: String,
-    pub tools: Vec<ToolSpec>,
-}
-
-pub(crate) fn agent_spec(agent: &Agent) -> AgentSpec {
-    let mut tools: Vec<ToolSpec> = agent
-        .tools
-        .iter()
-        .map(|t| ToolSpec {
-            name: t.name().to_owned(),
-            description: t.description().to_owned(),
-            input_schema: t.schema(),
-            idempotent: t.idempotent(),
-        })
-        .collect();
-    tools.sort_by(|a, b| a.name.cmp(&b.name));
-    AgentSpec {
-        name: agent.name.clone(),
-        instructions: agent.instructions.clone(),
-        tools,
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RunInput {
@@ -53,89 +24,29 @@ pub(crate) struct RunOutput {
 }
 
 #[workflow]
-#[derive(Default)]
-pub(crate) struct AgentRunWorkflow;
+pub(crate) struct AgentRunWorkflow {
+    conversation: Conversation,
+}
+
+impl HasConversation for AgentRunWorkflow {
+    fn conversation(&mut self) -> &mut Conversation {
+        &mut self.conversation
+    }
+}
 
 #[workflow_methods]
 impl AgentRunWorkflow {
+    #[init]
+    fn new(_ctx: &WorkflowContextView, input: RunInput) -> Self {
+        let mut conversation = Conversation::new(input.agent);
+        conversation.pending.push(input.input);
+        Self { conversation }
+    }
+
     #[run(name = "agentic.run")]
-    pub(crate) async fn run(
-        ctx: &mut WorkflowContext<Self>,
-        input: RunInput,
-    ) -> WorkflowResult<RunOutput> {
-        let RunInput { agent, input } = input;
-        let mut messages = vec![input];
-
-        let mut turn = 0u32;
-        loop {
-            let response = ctx
-                .execute_activity(
-                    AgentActivities::model_step,
-                    StepInput {
-                        agent: agent.name.clone(),
-                        messages: messages.clone(),
-                    },
-                    ActivityOptions::with_start_to_close_timeout(Duration::from_secs(300))
-                        .retry_policy(RetryPolicy::builder().maximum_attempts(5).build())
-                        .summary(format!("turn {}", turn + 1))
-                        .build(),
-                )
-                .await?;
-
-            let assistant = Message::assistant(response.content);
-            let calls: Vec<(String, String, serde_json::Value)> = assistant
-                .tool_uses()
-                .map(|(id, name, args)| (id.to_owned(), name.to_owned(), args.clone()))
-                .collect();
-            messages.push(assistant);
-
-            if response.stop_reason == StopReason::EndTurn || calls.is_empty() {
-                let text = messages
-                    .iter()
-                    .rev()
-                    .find(|m| m.role == Role::Assistant)
-                    .map(Message::text)
-                    .unwrap_or_default();
-                return Ok(RunOutput { text, messages });
-            }
-
-            let mut results = Vec::with_capacity(calls.len());
-            for (index, (id, name, args)) in calls.into_iter().enumerate() {
-                // Deterministic and readable: derived from loop counters, not the model's ids.
-                let idempotency_key = format!("{}/t{turn}/c{index}", ctx.workflow_id());
-                // A non-idempotent tool must never run twice, so it gets exactly one attempt.
-                let idempotent = agent
-                    .tools
-                    .iter()
-                    .find(|t| t.name == name)
-                    .is_none_or(|t| t.idempotent);
-                let attempts = if idempotent { 3 } else { 1 };
-                let result = ctx
-                    .execute_activity(
-                        AgentActivities::call_tool,
-                        ToolCallInput {
-                            agent: agent.name.clone(),
-                            idempotency_key,
-                            name: name.clone(),
-                            args,
-                        },
-                        ActivityOptions::with_start_to_close_timeout(Duration::from_secs(120))
-                            .retry_policy(RetryPolicy::builder().maximum_attempts(attempts).build())
-                            .summary(name)
-                            .build(),
-                    )
-                    .await?;
-                results.push(Content::ToolResult {
-                    tool_use_id: id,
-                    content: result.content,
-                    is_error: result.is_error,
-                });
-            }
-            messages.push(Message {
-                role: Role::User,
-                content: results,
-            });
-            turn += 1;
-        }
+    pub(crate) async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<RunOutput> {
+        let text = turn(ctx).await?;
+        let messages = ctx.state(|w| w.conversation.messages.clone());
+        Ok(RunOutput { text, messages })
     }
 }

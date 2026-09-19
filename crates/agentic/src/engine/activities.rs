@@ -80,7 +80,7 @@ impl AgentActivities {
         let request = ModelRequest {
             instructions: agent.instructions.clone(),
             messages: input.messages,
-            tools: super::workflow::agent_spec(&agent).tools,
+            tools: super::conversation::agent_spec(&agent).tools,
         };
         let mut response = agent.model.complete(request).await.map_err(|e| {
             let failure = if e.retryable {

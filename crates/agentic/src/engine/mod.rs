@@ -1,6 +1,7 @@
 //! Everything that knows about Temporal lives here. Nothing in this module is public.
 
 mod activities;
+mod conversation;
 mod workflow;
 
 use crate::{Agent, Error, Message, RunId};
@@ -23,7 +24,8 @@ type ShutdownFn = Box<dyn Fn() + Send + Sync>;
 pub(crate) struct EngineOptions {
     pub check_idempotency: bool,
 }
-use workflow::{AgentRunWorkflow, RunInput, RunOutput, RunWorkflowType, agent_spec};
+use conversation::agent_spec;
+use workflow::{AgentRunWorkflow, RunInput, RunOutput, RunWorkflowType};
 
 pub(crate) use workflow::RUN_ID_PREFIX;
 
