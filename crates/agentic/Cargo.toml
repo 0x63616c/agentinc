@@ -1,0 +1,28 @@
+[package]
+name = "agentic"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Durable AI agents in Rust"
+
+[dependencies]
+agentic-macros.workspace = true
+
+anyhow.workspace = true
+futures.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+temporalio-sdk.workspace = true
+temporalio-client.workspace = true
+temporalio-common.workspace = true
+temporalio-macros.workspace = true
+temporalio-workflow.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
