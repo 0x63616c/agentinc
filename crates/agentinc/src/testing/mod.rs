@@ -11,10 +11,12 @@
 //! ```
 
 mod gate;
+mod script;
 mod scripted;
 mod transcript;
 
 pub use gate::Gate;
+pub use script::{ModelCall, Script, ScriptModel, ScriptTool, ToolCall};
 pub use scripted::{ScriptedModel, text, tool_call};
 pub use transcript::TranscriptAssert;
 
