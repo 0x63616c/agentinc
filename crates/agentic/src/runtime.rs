@@ -1,5 +1,5 @@
 use crate::{
-    Agent, Error, Message, Run,
+    Agent, Error, Message, Run, Session, SessionId,
     engine::{Engine, EngineOptions},
 };
 
@@ -43,6 +43,18 @@ impl Agentic {
     /// Start a run and wait for the final answer.
     pub async fn run(&self, agent: &Agent, input: impl Into<Message>) -> Result<String, Error> {
         self.start(agent, input).await?.result().await
+    }
+
+    /// Open a session: a conversation that stays open across many messages.
+    pub async fn session(&self, agent: &Agent) -> Result<Session, Error> {
+        let (id, handle) = self.engine.start_session(agent).await?;
+        Ok(Session { id, handle })
+    }
+
+    /// Attach to a session opened earlier, possibly by another process.
+    pub fn session_by_id(&self, agent: &Agent, id: SessionId) -> Session {
+        let handle = self.engine.session_handle(agent, &id);
+        Session { id, handle }
     }
 
     /// Stop the runtime. Also happens on drop.

@@ -50,9 +50,12 @@ agent → run it".
 
 ## How the engine works
 
-One run is one workflow (`engine/workflow.rs`). The agent loop lives there and is the
-only workflow code in the project. Model calls and tool calls are activities
-(`engine/activities.rs`), which is the only place user code (models, tools) runs.
+The agent loop is `turn()` in `engine/conversation.rs`, over a `Conversation` (agent
+spec, history, pending messages). Two workflows call it: a run (`engine/workflow.rs`)
+takes one turn and ends; a session (`engine/session.rs`) waits for a message, takes a
+turn, and repeats forever. Messages sent mid-turn are seen at the next model call.
+Model calls and tool calls are activities (`engine/activities.rs`), which is the only
+place user code (models, tools) runs.
 
 Workflow code must be deterministic: no I/O, no clocks, no randomness, no iteration over
 `HashMap`. Anything that touches the outside world goes in an activity. Users never write

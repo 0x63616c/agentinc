@@ -21,6 +21,7 @@ mod message;
 mod model;
 mod run;
 mod runtime;
+mod session;
 pub mod testing;
 mod tool;
 
@@ -31,6 +32,7 @@ pub use message::{Content, Message, Role};
 pub use model::{Model, ModelError, ModelRequest, ModelResponse, StopReason, ToolSpec};
 pub use run::{Run, RunId};
 pub use runtime::Agentic;
+pub use session::{Session, SessionId};
 pub use tool::{Tool, ToolCtx, ToolError, ToolSet};
 
 /// Re-exports used by generated code. Not part of the public API.

@@ -2,14 +2,16 @@
 
 mod activities;
 mod conversation;
+mod session;
 mod workflow;
 
-use crate::{Agent, Error, Message, RunId};
+use crate::{Agent, Error, Message, RunId, SessionId};
 use activities::{AgentActivities, Registry};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use temporalio_client::{
-    Client, ClientOptions, ConnectionOptions, WorkflowGetResultOptions, WorkflowHandle,
+    Client, ClientOptions, ConnectionOptions, WorkflowExecuteUpdateOptions,
+    WorkflowGetResultOptions, WorkflowHandle, WorkflowQueryOptions, WorkflowSignalOptions,
     WorkflowStartOptions, errors::WorkflowGetResultError,
 };
 use temporalio_sdk::{
@@ -25,8 +27,10 @@ pub(crate) struct EngineOptions {
     pub check_idempotency: bool,
 }
 use conversation::agent_spec;
+use session::{SessionInput, SessionWorkflow, SessionWorkflowType};
 use workflow::{AgentRunWorkflow, RunInput, RunOutput, RunWorkflowType};
 
+pub(crate) use session::SESSION_ID_PREFIX;
 pub(crate) use workflow::RUN_ID_PREFIX;
 
 pub(crate) struct Engine {
@@ -147,6 +151,43 @@ impl Engine {
         ))
     }
 
+    pub(crate) async fn start_session(
+        &self,
+        agent: &Agent,
+    ) -> Result<(SessionId, SessionHandle), Error> {
+        self.registry.register(agent);
+        let id = SessionId(format!("{SESSION_ID_PREFIX}{}", uuid::Uuid::new_v4()));
+        let handle = self
+            .client
+            .start_workflow(
+                SessionWorkflow::run,
+                SessionInput {
+                    agent: agent_spec(agent),
+                },
+                WorkflowStartOptions::new(self.task_queue.clone(), id.0.clone()).build(),
+            )
+            .await
+            .map_err(|e| Error::Other(e.into()))?;
+        Ok((
+            id,
+            SessionHandle {
+                inner: Arc::new(handle),
+            },
+        ))
+    }
+
+    /// Attach to an existing session. The agent must be registered here so its model and
+    /// tools can be resolved when a turn runs on this worker.
+    pub(crate) fn session_handle(&self, agent: &Agent, id: &SessionId) -> SessionHandle {
+        self.registry.register(agent);
+        SessionHandle {
+            inner: Arc::new(
+                self.client
+                    .get_workflow_handle::<SessionWorkflowType>(id.0.clone()),
+            ),
+        }
+    }
+
     pub(crate) async fn shutdown(mut self) -> Result<(), Error> {
         self.stop_worker().await;
         if let Some(env) = self.local.take() {
@@ -182,6 +223,8 @@ fn build_worker(
     let options = WorkerOptions::new(task_queue)
         .register_workflow::<AgentRunWorkflow>()
         .map_err(|e| e.to_string())?
+        .register_workflow::<SessionWorkflow>()
+        .map_err(|e| e.to_string())?
         .register_activities(AgentActivities {
             registry,
             check_idempotency: options.check_idempotency,
@@ -207,6 +250,49 @@ impl RunHandle {
                 WorkflowGetResultError::Cancelled { .. } => Error::Cancelled,
                 other => Error::RunFailed(root_message(&other)),
             })
+    }
+}
+
+type SessionWorkflowHandle = WorkflowHandle<Client, SessionWorkflowType>;
+
+/// Handle to one session workflow. Cloneable, cheap.
+#[derive(Clone)]
+pub(crate) struct SessionHandle {
+    inner: Arc<SessionWorkflowHandle>,
+}
+
+impl SessionHandle {
+    pub(crate) async fn send(&self, message: Message) -> Result<(), Error> {
+        self.inner
+            .signal(
+                SessionWorkflow::send,
+                message,
+                WorkflowSignalOptions::default(),
+            )
+            .await
+            .map_err(|e| Error::Other(e.into()))
+    }
+
+    pub(crate) async fn clear_pending(&self) -> Result<Vec<Message>, Error> {
+        self.inner
+            .execute_update(
+                SessionWorkflow::clear_pending,
+                (),
+                WorkflowExecuteUpdateOptions::default(),
+            )
+            .await
+            .map_err(|e| Error::Other(e.into()))
+    }
+
+    pub(crate) async fn transcript(&self) -> Result<Vec<Message>, Error> {
+        self.inner
+            .query(
+                SessionWorkflow::transcript,
+                (),
+                WorkflowQueryOptions::default(),
+            )
+            .await
+            .map_err(|e| Error::Other(e.into()))
     }
 }
 
