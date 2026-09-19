@@ -8,9 +8,6 @@ pub enum Error {
     /// The run was cancelled.
     #[error("run cancelled")]
     Cancelled,
-    /// The agent hit its turn limit before producing an answer.
-    #[error("run exceeded {0} turns")]
-    TurnLimit(u32),
     /// Could not reach or start the runtime.
     #[error("connection error: {0}")]
     Connection(String),

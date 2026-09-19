@@ -8,7 +8,6 @@ pub struct Agent {
     pub(crate) model: Arc<dyn Model>,
     pub(crate) instructions: String,
     pub(crate) tools: ToolSet,
-    pub(crate) max_turns: u32,
 }
 
 impl Agent {
@@ -18,7 +17,6 @@ impl Agent {
             model: None,
             instructions: String::new(),
             tools: ToolSet::default(),
-            max_turns: 20,
         }
     }
 
@@ -37,7 +35,6 @@ impl std::fmt::Debug for Agent {
             .field("name", &self.name)
             .field("model", &self.model.id())
             .field("tools", &self.tools)
-            .field("max_turns", &self.max_turns)
             .finish()
     }
 }
@@ -48,7 +45,6 @@ pub struct AgentBuilder {
     model: Option<Arc<dyn Model>>,
     instructions: String,
     tools: ToolSet,
-    max_turns: u32,
 }
 
 impl AgentBuilder {
@@ -67,12 +63,6 @@ impl AgentBuilder {
         self
     }
 
-    /// Stop the run with an error after this many model calls. Default 20.
-    pub fn max_turns(mut self, max_turns: u32) -> Self {
-        self.max_turns = max_turns;
-        self
-    }
-
     /// # Panics
     /// If no model was set.
     pub fn build(self) -> Agent {
@@ -83,7 +73,6 @@ impl AgentBuilder {
                 .expect("Agent::builder(..).model(..) is required"),
             instructions: self.instructions,
             tools: self.tools,
-            max_turns: self.max_turns,
         }
     }
 }

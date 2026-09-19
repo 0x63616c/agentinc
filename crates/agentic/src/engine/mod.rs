@@ -132,7 +132,6 @@ impl Engine {
                 RunInput {
                     agent: agent_spec(agent),
                     input,
-                    max_turns: agent.max_turns,
                 },
                 WorkflowStartOptions::new(self.task_queue.clone(), run_id.0.clone()).build(),
             )

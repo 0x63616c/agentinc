@@ -111,24 +111,6 @@ async fn unscripted_message_fails_loudly() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn turn_limit_stops_runaway_loops() -> anyhow::Result<()> {
-    let model = ScriptedModel::new().otherwise(tool_call("get_weather", json!({ "city": "x" })));
-    let agent = Agent::builder("bot")
-        .model(model)
-        .tool(get_weather)
-        .max_turns(3)
-        .build();
-
-    let err = agentic::testing::run(&agent, "go").await.unwrap_err();
-
-    assert!(
-        matches!(err, agentic::Error::RunFailed(ref m) if m.contains("3 turns")),
-        "{err}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
 async fn runs_are_independent_on_one_runtime() -> anyhow::Result<()> {
     let model = ScriptedModel::new()
         .on_user("one", text("1"))

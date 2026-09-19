@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use temporalio_common::RetryPolicy;
 use temporalio_macros::{workflow, workflow_methods};
-use temporalio_sdk::{ActivityOptions, ApplicationFailure, WorkflowContext, WorkflowResult};
+use temporalio_sdk::{ActivityOptions, WorkflowContext, WorkflowResult};
 
 /// The generated marker type for the `run` method, nameable from the rest of the engine.
 pub(crate) type RunWorkflowType = agent_run_workflow::Run;
@@ -44,7 +44,6 @@ pub(crate) fn agent_spec(agent: &Agent) -> AgentSpec {
 pub(crate) struct RunInput {
     pub agent: AgentSpec,
     pub input: Message,
-    pub max_turns: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,14 +63,11 @@ impl AgentRunWorkflow {
         ctx: &mut WorkflowContext<Self>,
         input: RunInput,
     ) -> WorkflowResult<RunOutput> {
-        let RunInput {
-            agent,
-            input,
-            max_turns,
-        } = input;
+        let RunInput { agent, input } = input;
         let mut messages = vec![input];
 
-        for turn in 0..max_turns {
+        let mut turn = 0u32;
+        loop {
             let response = ctx
                 .execute_activity(
                     AgentActivities::model_step,
@@ -139,8 +135,7 @@ impl AgentRunWorkflow {
                 role: Role::User,
                 content: results,
             });
+            turn += 1;
         }
-
-        Err(ApplicationFailure::non_retryable(format!("run exceeded {max_turns} turns")).into())
     }
 }
