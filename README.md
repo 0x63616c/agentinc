@@ -1,11 +1,12 @@
 # agentinc
 
-**Write the agent. Not the state machine.**
+**Write durable, observable and testable agents, powered by
+[Temporal](https://temporal.io).**
 
-Durable AI agents in Rust — ordinary async code that survives crashes, restarts
-and flaky tools. Define an agent, start a run, get a result.
-
-Powered by [Temporal](https://temporal.io), so you never write a workflow.
+A Rust SDK for building AI agents. You define an agent — model, instructions,
+tools — start a run, and get a result. It's plain async Rust: no state machine,
+no orchestration code. Runs survive crashes and restarts, failed steps are
+retried, and every run keeps a full history you can read back.
 
 ```rust
 use agentinc::{Agent, Agentinc, tool};
