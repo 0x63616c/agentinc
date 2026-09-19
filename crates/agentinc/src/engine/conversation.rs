@@ -96,7 +96,6 @@ pub(crate) async fn turn<W: HasConversation>(ctx: &WorkflowContext<W>) -> Workfl
                     messages,
                 },
                 ActivityOptions::with_start_to_close_timeout(Duration::from_secs(300))
-                    .retry_policy(RetryPolicy::builder().maximum_attempts(5).build())
                     .summary(format!("step {}", step + 1))
                     .build(),
             )
@@ -125,20 +124,24 @@ pub(crate) async fn turn<W: HasConversation>(ctx: &WorkflowContext<W>) -> Workfl
                 .iter()
                 .find(|t| t.name == name)
                 .is_none_or(|t| t.idempotent);
-            let attempts = if idempotent { 3 } else { 1 };
+            let base = ActivityOptions::with_start_to_close_timeout(Duration::from_secs(120))
+                .summary(name.clone());
+            let options = if idempotent {
+                base.build()
+            } else {
+                base.retry_policy(RetryPolicy::builder().maximum_attempts(1).build())
+                    .build()
+            };
             let result = ctx
                 .execute_activity(
                     AgentActivities::call_tool,
                     ToolCallInput {
                         agent: agent.name.clone(),
                         idempotency_key,
-                        name: name.clone(),
+                        name,
                         args,
                     },
-                    ActivityOptions::with_start_to_close_timeout(Duration::from_secs(120))
-                        .retry_policy(RetryPolicy::builder().maximum_attempts(attempts).build())
-                        .summary(name)
-                        .build(),
+                    options,
                 )
                 .await?;
             results.push(Content::ToolResult {

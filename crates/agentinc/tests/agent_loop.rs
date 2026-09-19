@@ -9,8 +9,8 @@ async fn get_weather(city: String) -> anyhow::Result<String> {
     Ok(format!("{city}: 22°C, sunny"))
 }
 
-/// Always fails.
-#[tool]
+/// Always fails, and must not be retried.
+#[tool(idempotent = false)]
 async fn broken() -> anyhow::Result<String> {
     anyhow::bail!("boom")
 }
@@ -83,7 +83,7 @@ async fn bad_arguments_are_fed_back_to_the_model() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn failing_tool_fails_the_run() -> anyhow::Result<()> {
+async fn failing_non_idempotent_tool_fails_the_run() -> anyhow::Result<()> {
     let model = ScriptedModel::new().otherwise(tool_call("broken", json!({})));
     let agent = Agent::builder("bot").model(model).tool(broken).build();
 
