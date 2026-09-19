@@ -25,7 +25,7 @@ async fn key(ctx: &ToolCtx, label: String) -> anyhow::Result<String> {
 }
 
 fn ctx() -> ToolCtx {
-    ToolCtx::new(RunId::new("run-1"), "call-1")
+    ToolCtx::new(RunId::new("run-1"), "run-1/t0/c0")
 }
 
 #[tokio::test]
@@ -62,6 +62,6 @@ async fn idempotent_flag_and_ctx_param() {
     assert_eq!(key.schema()["required"], json!(["label"]));
     assert_eq!(
         key.call(ctx(), json!({"label": "x"})).await.unwrap(),
-        json!("x:call-1")
+        json!("x:run-1/t0/c0")
     );
 }

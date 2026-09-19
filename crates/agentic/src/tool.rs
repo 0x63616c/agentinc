@@ -7,14 +7,14 @@ use std::{collections::HashMap, sync::Arc};
 #[derive(Debug, Clone)]
 pub struct ToolCtx {
     run_id: RunId,
-    call_id: String,
+    idempotency_key: String,
 }
 
 impl ToolCtx {
-    pub fn new(run_id: RunId, call_id: impl Into<String>) -> Self {
+    pub fn new(run_id: RunId, idempotency_key: impl Into<String>) -> Self {
         Self {
             run_id,
-            call_id: call_id.into(),
+            idempotency_key: idempotency_key.into(),
         }
     }
 
@@ -23,10 +23,12 @@ impl ToolCtx {
         &self.run_id
     }
 
-    /// Stable across retries of the same call. Pass it to external systems (Stripe, email
-    /// providers) so a retried call cannot double-apply.
+    /// Unique per tool call, identical on every retry of that call. Pass it to external
+    /// systems (Stripe, email providers) so a retried call cannot double-apply.
+    ///
+    /// Shaped like `<run id>/t<turn>/c<index>`. Chosen by the engine, never by the model.
     pub fn idempotency_key(&self) -> &str {
-        &self.call_id
+        &self.idempotency_key
     }
 }
 

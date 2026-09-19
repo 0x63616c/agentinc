@@ -50,7 +50,8 @@ pub(crate) struct StepInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ToolCallInput {
     pub agent: String,
-    pub call_id: String,
+    /// Engine-generated. See [`ToolCtx::idempotency_key`].
+    pub idempotency_key: String,
     pub name: String,
     pub args: Value,
 }
@@ -109,7 +110,7 @@ impl AgentActivities {
         };
         let tool_ctx = ToolCtx::new(
             RunId::new(ctx.info().workflow_id.clone().unwrap_or_default()),
-            &input.call_id,
+            &input.idempotency_key,
         );
         let first = tool.call(tool_ctx.clone(), input.args.clone()).await;
 
@@ -143,7 +144,8 @@ impl AgentActivities {
     }
 }
 
-/// Models (and scripts) may leave tool-use ids empty. Give every call a stable id.
+/// Providers may leave tool-use ids empty. Every call needs one so its result can be
+/// correlated back to it in the conversation. (Idempotency keys are separate; see the workflow.)
 fn assign_tool_use_ids(response: &mut ModelResponse) {
     for (i, block) in response.content.iter_mut().enumerate() {
         if let crate::Content::ToolUse { id, .. } = block

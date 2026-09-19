@@ -1,7 +1,8 @@
 use crate::{Error, Message, engine::RunHandle};
 use serde::{Deserialize, Serialize};
 
-/// Identifies a run. Stable across restarts.
+/// Identifies an agent run. Stable for the run's whole life, including across restarts and
+/// retries. (Not to be confused with Temporal's per-attempt run id, which is never exposed.)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RunId(pub(crate) String);
 

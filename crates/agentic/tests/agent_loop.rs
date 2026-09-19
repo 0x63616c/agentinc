@@ -206,5 +206,11 @@ async fn idempotency_key_is_stable_across_the_double_call() -> anyhow::Result<()
 
     assert_eq!(run.output, "paid");
     run.assert_transcript().tool_call("charge").tool_result();
+    let result = &run.transcript[2].content[0];
+    let agentic::Content::ToolResult { content, .. } = result else {
+        panic!("{result:?}")
+    };
+    let expected = format!("charged 5 (key {}/t0/c0)", run.run.id());
+    assert_eq!(content, &serde_json::Value::String(expected));
     Ok(())
 }

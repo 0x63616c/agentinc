@@ -104,7 +104,9 @@ impl AgentRunWorkflow {
             }
 
             let mut results = Vec::with_capacity(calls.len());
-            for (id, name, args) in calls {
+            for (index, (id, name, args)) in calls.into_iter().enumerate() {
+                // Deterministic and readable: derived from loop counters, not the model's ids.
+                let idempotency_key = format!("{}/t{turn}/c{index}", ctx.workflow_id());
                 // A non-idempotent tool must never run twice, so it gets exactly one attempt.
                 let idempotent = agent
                     .tools
@@ -117,7 +119,7 @@ impl AgentRunWorkflow {
                         AgentActivities::call_tool,
                         ToolCallInput {
                             agent: agent.name.clone(),
-                            call_id: id.clone(),
+                            idempotency_key,
                             name: name.clone(),
                             args,
                         },
