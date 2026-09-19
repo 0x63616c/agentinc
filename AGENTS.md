@@ -55,6 +55,12 @@ if it has to, the public API has leaked.
 
 Verify with `cargo test` and `cargo clippy --all-targets`. Both should be clean.
 
+## Committing
+
+Commit proactively. Every coherent step that builds and passes tests gets its own
+commit, without waiting to be asked. Small commits with a clear message beat one large
+one at the end.
+
 ## Decisions already made
 
 These were argued out and settled. Revisit with a reason, not by accident.

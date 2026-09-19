@@ -26,3 +26,5 @@ temporalio-client = "1.0"
 temporalio-common = "1.0"
 temporalio-macros = "1.0"
 temporalio-workflow = "1.0"
+# Only to turn TLS on for the SDK's dev-server download; not imported anywhere.
+temporalio-sdk-core = { version = "0.9", default-features = false, features = ["tls-ring"] }

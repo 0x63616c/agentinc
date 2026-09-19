@@ -23,6 +23,7 @@ temporalio-client.workspace = true
 temporalio-common.workspace = true
 temporalio-macros.workspace = true
 temporalio-workflow.workspace = true
+temporalio-sdk-core.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

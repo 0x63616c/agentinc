@@ -13,7 +13,7 @@ use temporalio_client::{
 };
 use temporalio_sdk::{
     Runtime, Worker, WorkerOptions,
-    testing::{EphemeralExe, LocalServer, LocalWorkflowEnvironmentOptions, WorkflowEnvironment},
+    testing::{LocalServer, LocalWorkflowEnvironmentOptions, WorkflowEnvironment},
 };
 
 type ShutdownFn = Box<dyn Fn() + Send + Sync>;
@@ -32,14 +32,8 @@ pub(crate) struct Engine {
 
 impl Engine {
     pub(crate) async fn local() -> Result<Self, Error> {
-        let exe = match which_temporal() {
-            Some(path) => EphemeralExe::ExistingPath(path),
-            None => EphemeralExe::default(),
-        };
-        let options = LocalWorkflowEnvironmentOptions::builder()
-            .server_executable(exe)
-            .build();
-        let env = WorkflowEnvironment::start_local(options)
+        // SDK default: download the pinned Temporal CLI once, cache it in the OS temp dir.
+        let env = WorkflowEnvironment::start_local(LocalWorkflowEnvironmentOptions::default())
             .await
             .map_err(|e| Error::Connection(e.to_string()))?;
         let client = env.client().clone();
@@ -206,12 +200,4 @@ fn root_message(err: &dyn std::error::Error) -> String {
         cur = next;
     }
     cur.to_string()
-}
-
-fn which_temporal() -> Option<String> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|p| p.join("temporal"))
-        .find(|p| p.is_file())
-        .and_then(|p| p.to_str().map(str::to_owned))
 }
