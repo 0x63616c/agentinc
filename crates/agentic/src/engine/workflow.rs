@@ -29,6 +29,7 @@ pub(crate) fn agent_spec(agent: &Agent) -> AgentSpec {
             name: t.name().to_owned(),
             description: t.description().to_owned(),
             input_schema: t.schema(),
+            idempotent: t.idempotent(),
         })
         .collect();
     tools.sort_by(|a, b| a.name.cmp(&b.name));
@@ -104,16 +105,24 @@ impl AgentRunWorkflow {
 
             let mut results = Vec::with_capacity(calls.len());
             for (id, name, args) in calls {
+                // A non-idempotent tool must never run twice, so it gets exactly one attempt.
+                let idempotent = agent
+                    .tools
+                    .iter()
+                    .find(|t| t.name == name)
+                    .is_none_or(|t| t.idempotent);
+                let attempts = if idempotent { 3 } else { 1 };
                 let result = ctx
                     .execute_activity(
                         AgentActivities::call_tool,
                         ToolCallInput {
                             agent: agent.name.clone(),
+                            call_id: id.clone(),
                             name: name.clone(),
                             args,
                         },
                         ActivityOptions::with_start_to_close_timeout(Duration::from_secs(120))
-                            .retry_policy(RetryPolicy::builder().maximum_attempts(3).build())
+                            .retry_policy(RetryPolicy::builder().maximum_attempts(attempts).build())
                             .summary(name)
                             .build(),
                     )

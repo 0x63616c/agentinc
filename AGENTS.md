@@ -50,6 +50,11 @@ deterministic replies, `testing::run()` to execute an agent end to end,
 `assert_transcript()` for ordered assertions. Tests run against a real local Temporal
 dev server, so they exercise the real workflow and real activities.
 
+`Agentic::test()` also calls every idempotent tool twice and fails the run if the results
+differ. Tools that must not repeat are marked `#[tool(idempotent = false)]`; the engine
+gives those exactly one attempt. Tools receive an idempotency key through `ToolCtx` so
+they can make external side effects safe to retry.
+
 Add a test for every behaviour change in the loop. The test should not mention Temporal;
 if it has to, the public API has leaked.
 

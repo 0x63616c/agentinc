@@ -1,4 +1,7 @@
-use crate::{Agent, Error, Message, Run, engine::Engine};
+use crate::{
+    Agent, Error, Message, Run,
+    engine::{Engine, EngineOptions},
+};
 
 /// The runtime. Owns the connection and runs agents.
 pub struct Agentic {
@@ -9,7 +12,7 @@ impl Agentic {
     /// Start an embedded local runtime. Good for development and examples.
     pub async fn local() -> Result<Self, Error> {
         Ok(Self {
-            engine: Engine::local().await?,
+            engine: Engine::local(EngineOptions::default()).await?,
         })
     }
 
@@ -17,6 +20,17 @@ impl Agentic {
     pub async fn connect(url: &str) -> Result<Self, Error> {
         Ok(Self {
             engine: Engine::connect(url).await?,
+        })
+    }
+
+    /// An isolated runtime for tests. Like [`Agentic::local`], plus checks that would be too
+    /// expensive in production: every idempotent tool is called twice and must agree.
+    pub async fn test() -> Result<Self, Error> {
+        Ok(Self {
+            engine: Engine::local(EngineOptions {
+                check_idempotency: true,
+            })
+            .await?,
         })
     }
 

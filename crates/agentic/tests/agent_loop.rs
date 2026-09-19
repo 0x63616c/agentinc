@@ -1,6 +1,7 @@
 use agentic::testing::{ScriptedModel, text, tool_call};
-use agentic::{Agent, Agentic, tool};
+use agentic::{Agent, Agentic, ToolCtx, tool};
 use serde_json::json;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Get the current weather for a city.
 #[tool]
@@ -141,5 +142,69 @@ async fn runs_are_independent_on_one_runtime() -> anyhow::Result<()> {
     assert_eq!(a.result().await?, "1");
     assert_eq!(b.result().await?, "2");
     agentic.shutdown().await?;
+    Ok(())
+}
+
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// Returns how many times it has been called. Not idempotent, and not marked as such.
+#[tool]
+async fn count() -> anyhow::Result<usize> {
+    Ok(COUNTER.fetch_add(1, Ordering::SeqCst) + 1)
+}
+
+static SENT: AtomicUsize = AtomicUsize::new(0);
+
+/// Same behaviour, but honest about it.
+#[tool(idempotent = false)]
+async fn send() -> anyhow::Result<usize> {
+    Ok(SENT.fetch_add(1, Ordering::SeqCst) + 1)
+}
+
+/// Idempotent the right way: keyed on the call.
+#[tool]
+async fn charge(ctx: &ToolCtx, amount: u32) -> anyhow::Result<String> {
+    Ok(format!("charged {amount} (key {})", ctx.idempotency_key()))
+}
+
+#[tokio::test]
+async fn test_runtime_catches_non_idempotent_tools() -> anyhow::Result<()> {
+    let model = ScriptedModel::new().otherwise(tool_call("count", json!({})));
+    let agent = Agent::builder("bot").model(model).tool(count).build();
+
+    let err = agentic::testing::run(&agent, "go").await.unwrap_err();
+
+    assert!(
+        matches!(err, agentic::Error::RunFailed(ref m) if m.contains("\"count\" is not idempotent")),
+        "{err}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn tools_marked_non_idempotent_run_exactly_once() -> anyhow::Result<()> {
+    let model = ScriptedModel::new()
+        .on_user("go", tool_call("send", json!({})))
+        .on_tool_result("send", text("done"));
+    let agent = Agent::builder("bot").model(model).tool(send).build();
+
+    let run = agentic::testing::run(&agent, "go").await?;
+
+    assert_eq!(run.output, "done");
+    assert_eq!(SENT.load(Ordering::SeqCst), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn idempotency_key_is_stable_across_the_double_call() -> anyhow::Result<()> {
+    let model = ScriptedModel::new()
+        .on_user("pay", tool_call("charge", json!({ "amount": 5 })))
+        .on_tool_result("charge", text("paid"));
+    let agent = Agent::builder("bot").model(model).tool(charge).build();
+
+    let run = agentic::testing::run(&agent, "pay").await?;
+
+    assert_eq!(run.output, "paid");
+    run.assert_transcript().tool_call("charge").tool_result();
     Ok(())
 }

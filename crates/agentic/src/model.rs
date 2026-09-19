@@ -11,6 +11,13 @@ pub struct ToolSpec {
     pub name: String,
     pub description: String,
     pub input_schema: Value,
+    /// See [`crate::Tool::idempotent`].
+    #[serde(default = "default_true")]
+    pub idempotent: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// One request to a model.

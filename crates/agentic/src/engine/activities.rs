@@ -1,6 +1,6 @@
 //! Side effects: model calls and tool calls. The only place user code runs.
 
-use crate::{Agent, Message, ModelRequest, ModelResponse, ToolError};
+use crate::{Agent, Message, ModelRequest, ModelResponse, RunId, ToolCtx, ToolError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -50,6 +50,7 @@ pub(crate) struct StepInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ToolCallInput {
     pub agent: String,
+    pub call_id: String,
     pub name: String,
     pub args: Value,
 }
@@ -62,6 +63,8 @@ pub(crate) struct ToolCallOutput {
 
 pub(crate) struct AgentActivities {
     pub registry: Registry,
+    /// Test mode: call every idempotent tool twice and require identical results.
+    pub check_idempotency: bool,
 }
 
 #[activities]
@@ -93,7 +96,7 @@ impl AgentActivities {
     #[activity(name = "agentic.call_tool")]
     pub(crate) async fn call_tool(
         self: Arc<Self>,
-        _ctx: ActivityContext,
+        ctx: ActivityContext,
         input: ToolCallInput,
     ) -> Result<ToolCallOutput, ActivityError> {
         let agent = self.registry.get(&input.agent)?;
@@ -104,7 +107,25 @@ impl AgentActivities {
                 is_error: true,
             });
         };
-        match tool.call(input.args).await {
+        let tool_ctx = ToolCtx::new(
+            RunId::new(ctx.info().workflow_id.clone().unwrap_or_default()),
+            &input.call_id,
+        );
+        let first = tool.call(tool_ctx.clone(), input.args.clone()).await;
+
+        if self.check_idempotency && tool.idempotent() && first.is_ok() {
+            let second = tool.call(tool_ctx, input.args).await;
+            if !matches!(&second, Ok(v) if Some(v) == first.as_ref().ok()) {
+                return Err(ActivityError::application(
+                    ApplicationFailure::non_retryable(format!(
+                        "tool {:?} is not idempotent: calling it twice with the same arguments gave\n  first:  {:?}\n  second: {:?}\nEither make it idempotent (use ctx.idempotency_key()) or mark it #[tool(idempotent = false)].",
+                        input.name, first, second
+                    )),
+                ));
+            }
+        }
+
+        match first {
             Ok(content) => Ok(ToolCallOutput {
                 content,
                 is_error: false,

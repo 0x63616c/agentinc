@@ -18,14 +18,6 @@ pub use transcript::TranscriptAssert;
 
 use crate::{Agent, Agentic, Error, Message, Run};
 
-impl Agentic {
-    /// An isolated runtime for tests. Same as [`Agentic::local`] today; kept separate so tests
-    /// don't change when local gains conveniences (UI, persistence) that tests shouldn't have.
-    pub async fn test() -> Result<Self, Error> {
-        Self::local().await
-    }
-}
-
 /// A finished run plus its transcript, for asserting on.
 #[derive(Debug)]
 pub struct TestRun {

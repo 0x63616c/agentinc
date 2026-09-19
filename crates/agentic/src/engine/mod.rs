@@ -17,6 +17,12 @@ use temporalio_sdk::{
 };
 
 type ShutdownFn = Box<dyn Fn() + Send + Sync>;
+
+/// Engine behaviour switches. Internal; surfaced through `Agentic::local()` / `Agentic::test()`.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct EngineOptions {
+    pub check_idempotency: bool,
+}
 use workflow::{AgentRunWorkflow, RunInput, RunOutput, RunWorkflowType, agent_spec};
 
 pub(crate) use workflow::RUN_ID_PREFIX;
@@ -31,13 +37,13 @@ pub(crate) struct Engine {
 }
 
 impl Engine {
-    pub(crate) async fn local() -> Result<Self, Error> {
+    pub(crate) async fn local(options: EngineOptions) -> Result<Self, Error> {
         // SDK default: download the pinned Temporal CLI once, cache it in the OS temp dir.
         let env = WorkflowEnvironment::start_local(LocalWorkflowEnvironmentOptions::default())
             .await
             .map_err(|e| Error::Connection(e.to_string()))?;
         let client = env.client().clone();
-        Self::with_client(client, Some(env)).await
+        Self::with_client(client, Some(env), options).await
     }
 
     pub(crate) async fn connect(url: &str) -> Result<Self, Error> {
@@ -50,12 +56,13 @@ impl Engine {
         )
         .await
         .map_err(|e| Error::Connection(e.to_string()))?;
-        Self::with_client(client, None).await
+        Self::with_client(client, None, EngineOptions::default()).await
     }
 
     async fn with_client(
         client: Client,
         local: Option<WorkflowEnvironment<LocalServer>>,
+        options: EngineOptions,
     ) -> Result<Self, Error> {
         let task_queue = format!("agentic-{}", uuid::Uuid::new_v4());
         let registry = Registry::default();
@@ -79,7 +86,8 @@ impl Engine {
                     }
                 };
                 rt.block_on(async move {
-                    let worker = build_worker(worker_client, worker_queue, worker_registry);
+                    let worker =
+                        build_worker(worker_client, worker_queue, worker_registry, options);
                     let mut worker = match worker {
                         Ok(w) => w,
                         Err(e) => {
@@ -163,12 +171,20 @@ impl Drop for Engine {
     }
 }
 
-fn build_worker(client: Client, task_queue: String, registry: Registry) -> Result<Worker, String> {
+fn build_worker(
+    client: Client,
+    task_queue: String,
+    registry: Registry,
+    options: EngineOptions,
+) -> Result<Worker, String> {
     let runtime = Runtime::from_current_tokio(Default::default()).map_err(|e| e.to_string())?;
     let options = WorkerOptions::new(task_queue)
         .register_workflow::<AgentRunWorkflow>()
         .map_err(|e| e.to_string())?
-        .register_activities(AgentActivities { registry })
+        .register_activities(AgentActivities {
+            registry,
+            check_idempotency: options.check_idempotency,
+        })
         .build();
     Worker::new(&runtime, client, options).map_err(|e| e.to_string())
 }
