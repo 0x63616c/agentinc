@@ -16,6 +16,15 @@ in agent vocabulary first: `Run`, `Event`, `Session`, `Tool`, `Model`.
 The test for this rule: `crates/agentinc/src/engine/` is the only place `temporalio_*`
 is imported. Keep it that way.
 
+## How to build
+
+Tracer bullets. Build the thinnest real end-to-end path that meets the ask, then let the
+next concrete need (usually the next test) pull in the next piece. Do not add fields,
+options, parameters, limits, or defaults nobody asked for; mention them in a line instead.
+Past examples of getting this wrong: retry caps, `max_turns`, `run_id` on `ToolCtx`.
+
+No sleeps or timers in tests. Coordinate on state or explicit gates.
+
 ## Layout
 
 Flat: every crate lives directly under `crates/`. No nesting; related crates share a
@@ -78,9 +87,8 @@ differ. Tools that must not repeat are marked `#[tool(idempotent = false)]`; the
 gives those exactly one attempt. Tools receive an idempotency key through `ToolCtx` so
 they can make external side effects safe to retry.
 
-No sleeps or timers in tests. To hold a turn open, give the agent a `testing::Gate` tool
-and release it when ready. To wait for a session to finish a turn, read `session.events()`
-until `Event::TurnEnded`.
+To hold a turn open, give the agent a `testing::Gate` tool and release it when ready. To
+wait for a session to finish a turn, read `session.events()` until `Event::TurnEnded`.
 
 Add a test for every behaviour change in the loop. The test should not mention Temporal;
 if it has to, the public API has leaked.
