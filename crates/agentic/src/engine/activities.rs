@@ -1,6 +1,6 @@
 //! Side effects: model calls and tool calls. The only place user code runs.
 
-use crate::{Agent, Message, ModelRequest, ModelResponse, RunId, ToolCtx, ToolError};
+use crate::{Agent, Message, ModelRequest, ModelResponse, ToolCtx, ToolError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -97,7 +97,7 @@ impl AgentActivities {
     #[activity(name = "agentic.call_tool")]
     pub(crate) async fn call_tool(
         self: Arc<Self>,
-        ctx: ActivityContext,
+        _ctx: ActivityContext,
         input: ToolCallInput,
     ) -> Result<ToolCallOutput, ActivityError> {
         let agent = self.registry.get(&input.agent)?;
@@ -108,10 +108,7 @@ impl AgentActivities {
                 is_error: true,
             });
         };
-        let tool_ctx = ToolCtx::new(
-            RunId::new(ctx.info().workflow_id.clone().unwrap_or_default()),
-            &input.idempotency_key,
-        );
+        let tool_ctx = ToolCtx::new(&input.idempotency_key);
         let first = tool.call(tool_ctx.clone(), input.args.clone()).await;
 
         if self.check_idempotency && tool.idempotent() && first.is_ok() {

@@ -1,4 +1,3 @@
-use crate::RunId;
 use futures::future::BoxFuture;
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
@@ -6,21 +5,14 @@ use std::{collections::HashMap, sync::Arc};
 /// Context handed to every tool call.
 #[derive(Debug, Clone)]
 pub struct ToolCtx {
-    run_id: RunId,
     idempotency_key: String,
 }
 
 impl ToolCtx {
-    pub fn new(run_id: RunId, idempotency_key: impl Into<String>) -> Self {
+    pub fn new(idempotency_key: impl Into<String>) -> Self {
         Self {
-            run_id,
             idempotency_key: idempotency_key.into(),
         }
-    }
-
-    /// The run this call belongs to.
-    pub fn run_id(&self) -> &RunId {
-        &self.run_id
     }
 
     /// Unique per tool call, identical on every retry of that call. Pass it to external

@@ -1,4 +1,4 @@
-use agentic::{RunId, Tool, ToolCtx, tool};
+use agentic::{Tool, ToolCtx, tool};
 use serde_json::json;
 
 /// Adds two numbers.
@@ -25,7 +25,7 @@ async fn key(ctx: &ToolCtx, label: String) -> anyhow::Result<String> {
 }
 
 fn ctx() -> ToolCtx {
-    ToolCtx::new(RunId::new("run-1"), "run-1/t0/c0")
+    ToolCtx::new("run-1/t0/c0")
 }
 
 #[tokio::test]
