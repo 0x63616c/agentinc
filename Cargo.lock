@@ -40,6 +40,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentinc-os"
+version = "0.1.0"
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3120,16 +3124,6 @@ dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
  "semver",
-]
-
-[[package]]
-name = "weather"
-version = "0.1.0"
-dependencies = [
- "agentic",
- "anyhow",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

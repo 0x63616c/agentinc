@@ -18,16 +18,35 @@ is imported. Keep it that way.
 
 ## Layout
 
+Flat: every crate lives directly under `crates/`. No nesting; related crates share a
+prefix instead (`crates/os-tickets`, never `crates/agentinc-os/tickets`).
+
 - `crates/agentic` — the SDK. Public modules at `src/*.rs`. The private engine at
   `src/engine/`. Test helpers at `src/testing/`.
 - `crates/agentic-macros` — the `#[tool]` attribute. Re-exported from `agentic`; users
   never depend on it directly.
-- `examples/` — runnable apps, one crate each. Every public feature should appear in at
-  least one example.
+- `crates/agentinc-os` — the OS app (see below). It is the SDK's example: every public
+  SDK feature should be used there.
 
-Expected to grow: `crates/agentic-<provider>` for model providers (Anthropic first),
-more examples, and possibly `crates/agentic-core` if the engine ever needs to become its
-own crate.
+Expected to grow: `crates/agentic-<provider>` for model providers (Anthropic first), and
+possibly `crates/agentic-core` if the engine ever needs to become its own crate.
+
+## Three names, three layers
+
+- **`agentic`** is the SDK. It runs *one agent* durably. Boundary test: does this make
+  sense with a single agent and no UI? If yes, it belongs in the SDK.
+- **agentinc** is the umbrella name and the future framework. There is no framework yet.
+  Extract one from the OS later, once the generic parts are obvious. Do not start it early.
+- **Agentinc OS** is a personal life-OS app at `crates/agentinc-os`. Rule: anything a
+  human can do in its UI, an agent can do through the same tools.
+
+OS constructs (settled, seven): Agents (data, created at runtime), Conversations (map to
+SDK sessions), Tickets (shared human/agent, assignable to an agent, comments are the work
+log), Knowledge (later), Inbox (human view over an event stream), Automations (trigger +
+agent + prompt), Connections (external accounts contributing tools).
+
+OS MVP: tickets, a minimal agents registry, and one automation: "ticket assigned to an
+agent → run it".
 
 ## How the engine works
 
