@@ -21,7 +21,7 @@ use temporalio_sdk::{
 
 type ShutdownFn = Box<dyn Fn() + Send + Sync>;
 
-/// Engine behaviour switches. Internal; surfaced through `Agentic::local()` / `Agentic::test()`.
+/// Engine behaviour switches. Internal; surfaced through `Agentinc::local()` / `Agentinc::test()`.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct EngineOptions {
     pub check_idempotency: bool,
@@ -57,7 +57,7 @@ impl Engine {
             .parse()
             .map_err(|e| Error::Connection(format!("bad url {url}: {e}")))?;
         let client = Client::connect(
-            ConnectionOptions::new(target).identity("agentic").build(),
+            ConnectionOptions::new(target).identity("agentinc").build(),
             ClientOptions::new("default").build(),
         )
         .await
@@ -70,7 +70,7 @@ impl Engine {
         local: Option<WorkflowEnvironment<LocalServer>>,
         options: EngineOptions,
     ) -> Result<Self, Error> {
-        let task_queue = format!("agentic-{}", uuid::Uuid::new_v4());
+        let task_queue = format!("agentinc-{}", uuid::Uuid::new_v4());
         let registry = Registry::default();
 
         // The worker future is !Send, so it gets its own thread and single-threaded runtime.
@@ -79,7 +79,7 @@ impl Engine {
         let worker_queue = task_queue.clone();
         let worker_registry = registry.clone();
         let worker_thread = std::thread::Builder::new()
-            .name("agentic-worker".into())
+            .name("agentinc-worker".into())
             .spawn(move || {
                 let rt = match tokio::runtime::Builder::new_current_thread()
                     .enable_all()
@@ -104,7 +104,7 @@ impl Engine {
                     let shutdown = worker.shutdown_handle();
                     let _ = ready_tx.send(Ok(Box::new(shutdown) as ShutdownFn));
                     if let Err(e) = worker.run().await {
-                        tracing::error!("agentic worker stopped: {e}");
+                        tracing::error!("agentinc worker stopped: {e}");
                     }
                 });
             })

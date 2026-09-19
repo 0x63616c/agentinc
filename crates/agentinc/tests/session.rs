@@ -1,5 +1,5 @@
-use agentic::testing::{ScriptedModel, text, tool_call};
-use agentic::{Agent, Agentic, Message, Role, Session, tool};
+use agentinc::testing::{ScriptedModel, text, tool_call};
+use agentinc::{Agent, Agentinc, Message, Role, Session, tool};
 use serde_json::json;
 use std::time::Duration;
 
@@ -31,9 +31,9 @@ async fn turns_share_history() -> anyhow::Result<()> {
         .on_user("hello", text("hi"))
         .on_user("again", text("hi again"));
     let agent = Agent::builder("bot").model(model).build();
-    let agentic = Agentic::test().await?;
+    let agentinc = Agentinc::test().await?;
 
-    let session = agentic.session(&agent).await?;
+    let session = agentinc.session(&agent).await?;
     session.send("hello").await?;
     wait_for_reply(&session, "hi").await?;
     session.send("again").await?;
@@ -41,7 +41,7 @@ async fn turns_share_history() -> anyhow::Result<()> {
 
     let texts: Vec<String> = transcript.iter().map(Message::text).collect();
     assert_eq!(texts, ["hello", "hi", "again", "hi again"]);
-    agentic.shutdown().await?;
+    agentinc.shutdown().await?;
     Ok(())
 }
 
@@ -52,9 +52,9 @@ async fn message_sent_mid_turn_is_seen_at_the_next_step() -> anyhow::Result<()> 
         .on_user("actually", text("changed course"))
         .on_tool_result("slow", text("finished"));
     let agent = Agent::builder("bot").model(model).tool(slow).build();
-    let agentic = Agentic::test().await?;
+    let agentinc = Agentinc::test().await?;
 
-    let session = agentic.session(&agent).await?;
+    let session = agentinc.session(&agent).await?;
     session.send("start").await?;
     tokio::time::sleep(Duration::from_millis(100)).await;
     session.send("actually").await?;
@@ -62,7 +62,7 @@ async fn message_sent_mid_turn_is_seen_at_the_next_step() -> anyhow::Result<()> 
 
     let texts: Vec<String> = transcript.iter().map(Message::text).collect();
     assert_eq!(texts, ["start", "", "", "actually", "changed course"]);
-    agentic.shutdown().await?;
+    agentinc.shutdown().await?;
     Ok(())
 }
 
@@ -72,9 +72,9 @@ async fn clear_pending_returns_unseen_messages() -> anyhow::Result<()> {
         .on_user("start", tool_call("slow", json!({})))
         .on_tool_result("slow", text("finished"));
     let agent = Agent::builder("bot").model(model).tool(slow).build();
-    let agentic = Agentic::test().await?;
+    let agentinc = Agentinc::test().await?;
 
-    let session = agentic.session(&agent).await?;
+    let session = agentinc.session(&agent).await?;
     session.send("start").await?;
     tokio::time::sleep(Duration::from_millis(100)).await;
     session.send("one").await?;
@@ -85,7 +85,7 @@ async fn clear_pending_returns_unseen_messages() -> anyhow::Result<()> {
     let cleared: Vec<String> = cleared.iter().map(Message::text).collect();
     assert_eq!(cleared, ["one", "two"]);
     assert!(!transcript.iter().any(|m| m.text() == "one"));
-    agentic.shutdown().await?;
+    agentinc.shutdown().await?;
     Ok(())
 }
 
@@ -93,13 +93,13 @@ async fn clear_pending_returns_unseen_messages() -> anyhow::Result<()> {
 async fn session_by_id_reattaches() -> anyhow::Result<()> {
     let model = ScriptedModel::new().on_user("hello", text("hi"));
     let agent = Agent::builder("bot").model(model).build();
-    let agentic = Agentic::test().await?;
+    let agentinc = Agentinc::test().await?;
 
-    let id = agentic.session(&agent).await?.id().clone();
-    let session = agentic.session_by_id(&agent, id);
+    let id = agentinc.session(&agent).await?.id().clone();
+    let session = agentinc.session_by_id(&agent, id);
     session.send("hello").await?;
     wait_for_reply(&session, "hi").await?;
 
-    agentic.shutdown().await?;
+    agentinc.shutdown().await?;
     Ok(())
 }

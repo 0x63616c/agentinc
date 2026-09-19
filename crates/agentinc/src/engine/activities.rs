@@ -70,7 +70,7 @@ pub(crate) struct AgentActivities {
 
 #[activities]
 impl AgentActivities {
-    #[activity(name = "agentic.model_step")]
+    #[activity(name = "agentinc.model_step")]
     pub(crate) async fn model_step(
         self: Arc<Self>,
         _ctx: ActivityContext,
@@ -94,7 +94,7 @@ impl AgentActivities {
         Ok(response)
     }
 
-    #[activity(name = "agentic.call_tool")]
+    #[activity(name = "agentinc.call_tool")]
     pub(crate) async fn call_tool(
         self: Arc<Self>,
         _ctx: ActivityContext,

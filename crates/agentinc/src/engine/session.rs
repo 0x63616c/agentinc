@@ -9,7 +9,7 @@ use temporalio_sdk::{SyncWorkflowContext, WorkflowContext, WorkflowContextView, 
 /// The generated marker type for the `run` method, nameable from the rest of the engine.
 pub(crate) type SessionWorkflowType = session_workflow::Run;
 
-pub(crate) const SESSION_ID_PREFIX: &str = "agentic-session-";
+pub(crate) const SESSION_ID_PREFIX: &str = "agentinc-session-";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SessionInput {
@@ -36,7 +36,7 @@ impl SessionWorkflow {
         }
     }
 
-    #[run(name = "agentic.session")]
+    #[run(name = "agentinc.session")]
     pub(crate) async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<()> {
         loop {
             ctx.wait_condition(|w| !w.conversation.pending.is_empty())

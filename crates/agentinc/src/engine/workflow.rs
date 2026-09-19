@@ -9,7 +9,7 @@ use temporalio_sdk::{WorkflowContext, WorkflowContextView, WorkflowResult};
 /// The generated marker type for the `run` method, nameable from the rest of the engine.
 pub(crate) type RunWorkflowType = agent_run_workflow::Run;
 
-pub(crate) const RUN_ID_PREFIX: &str = "agentic-run-";
+pub(crate) const RUN_ID_PREFIX: &str = "agentinc-run-";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RunInput {
@@ -43,7 +43,7 @@ impl AgentRunWorkflow {
         Self { conversation }
     }
 
-    #[run(name = "agentic.run")]
+    #[run(name = "agentinc.run")]
     pub(crate) async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<RunOutput> {
         let text = turn(ctx).await?;
         let messages = ctx.state(|w| w.conversation.messages.clone());

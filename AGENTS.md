@@ -1,4 +1,4 @@
-# agentic
+# agentinc
 
 A Rust SDK for building AI agents. You define an agent (model, instructions, tools),
 start a run, and get a result. Every run is durable: it survives crashes and restarts
@@ -9,11 +9,11 @@ Durability comes from Temporal. That is an implementation detail and stays one.
 ## The one rule
 
 **Nothing Temporal leaks into the public API.** No workflow, activity, signal, task queue,
-or `temporalio_*` type is visible to a user. A user's code and tests read as if agentic
+or `temporalio_*` type is visible to a user. A user's code and tests read as if agentinc
 were an ordinary async library. If you find yourself exposing a Temporal concept, wrap it
 in agent vocabulary first: `Run`, `Event`, `Session`, `Tool`, `Model`.
 
-The test for this rule: `crates/agentic/src/engine/` is the only place `temporalio_*`
+The test for this rule: `crates/agentinc/src/engine/` is the only place `temporalio_*`
 is imported. Keep it that way.
 
 ## Layout
@@ -21,24 +21,25 @@ is imported. Keep it that way.
 Flat: every crate lives directly under `crates/`. No nesting; related crates share a
 prefix instead (`crates/os-tickets`, never `crates/agentinc-os/tickets`).
 
-- `crates/agentic` — the SDK. Public modules at `src/*.rs`. The private engine at
+- `crates/agentinc` — the SDK. Public modules at `src/*.rs`. The private engine at
   `src/engine/`. Test helpers at `src/testing/`.
-- `crates/agentic-macros` — the `#[tool]` attribute. Re-exported from `agentic`; users
+- `crates/agentinc-macros` — the `#[tool]` attribute. Re-exported from `agentinc`; users
   never depend on it directly.
 - `crates/agentinc-os` — the OS app (see below). It is the SDK's example: every public
   SDK feature should be used there.
 
-Expected to grow: `crates/agentic-<provider>` for model providers (Anthropic first), and
-possibly `crates/agentic-core` if the engine ever needs to become its own crate.
+Expected to grow: `crates/agentinc-<provider>` for model providers (Anthropic first), and
+possibly `crates/agentinc-core` if the engine ever needs to become its own crate.
 
-## Three names, three layers
+## Two names, two layers
 
-- **`agentic`** is the SDK. It runs *one agent* durably. Boundary test: does this make
+- **`agentinc`** is the SDK. It runs *one agent* durably. Boundary test: does this make
   sense with a single agent and no UI? If yes, it belongs in the SDK.
-- **agentinc** is the umbrella name and the future framework. There is no framework yet.
-  Extract one from the OS later, once the generic parts are obvious. Do not start it early.
 - **Agentinc OS** is a personal life-OS app at `crates/agentinc-os`. Rule: anything a
   human can do in its UI, an agent can do through the same tools.
+
+There is no framework layer yet. Extract one from the OS later, once the generic parts
+are obvious. Do not start it early.
 
 OS constructs (settled, seven): Agents (data, created at runtime), Conversations (map to
 SDK sessions), Tickets (shared human/agent, assignable to an agent, comments are the work
@@ -67,12 +68,12 @@ objects from a registry keyed by agent name.
 
 ## Testing
 
-Tests never call a real model provider. Use `agentic::testing`: `ScriptedModel` for
+Tests never call a real model provider. Use `agentinc::testing`: `ScriptedModel` for
 deterministic replies, `testing::run()` to execute an agent end to end,
 `assert_transcript()` for ordered assertions. Tests run against a real local Temporal
 dev server, so they exercise the real workflow and real activities.
 
-`Agentic::test()` also calls every idempotent tool twice and fails the run if the results
+`Agentinc::test()` also calls every idempotent tool twice and fails the run if the results
 differ. Tools that must not repeat are marked `#[tool(idempotent = false)]`; the engine
 gives those exactly one attempt. Tools receive an idempotency key through `ToolCtx` so
 they can make external side effects safe to retry.
@@ -97,7 +98,7 @@ These were argued out and settled. Revisit with a reason, not by accident.
   and variants, not by reshaping existing types.
 - **Streaming will use Temporal's Workflow Streams protocol** (signals to publish,
   updates to long-poll, a query for the offset) so existing Python/TS subscribers can
-  read agentic runs. The public surface will be `run.events()` returning a `Stream`.
+  read agentinc runs. The public surface will be `run.events()` returning a `Stream`.
 - **Events should serialize to AG-UI** so existing agent frontends work unchanged.
 - **Conversation size is handled with a claim-check payload codec**, added later and
   invisibly. Not by passing conversation references through the workflow.

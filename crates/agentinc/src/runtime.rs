@@ -4,11 +4,11 @@ use crate::{
 };
 
 /// The runtime. Owns the connection and runs agents.
-pub struct Agentic {
+pub struct Agentinc {
     engine: Engine,
 }
 
-impl Agentic {
+impl Agentinc {
     /// Start an embedded local runtime. Good for development and examples.
     pub async fn local() -> Result<Self, Error> {
         Ok(Self {
@@ -23,7 +23,7 @@ impl Agentic {
         })
     }
 
-    /// An isolated runtime for tests. Like [`Agentic::local`], plus checks that would be too
+    /// An isolated runtime for tests. Like [`Agentinc::local`], plus checks that would be too
     /// expensive in production: every idempotent tool is called twice and must agree.
     pub async fn test() -> Result<Self, Error> {
         Ok(Self {
