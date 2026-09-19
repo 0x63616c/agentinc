@@ -1,4 +1,4 @@
-use agentinc::testing::{Gate, ScriptedModel, text, tool_call};
+use agentinc::testing::{Script, ScriptedModel, text, tool_call};
 use agentinc::{Agent, Agentinc, Content, Event, Message, Role, SessionId, ToolCtx, tool};
 use futures::StreamExt;
 use futures::stream::BoxStream;
@@ -97,23 +97,26 @@ async fn late_subscriber_replays_history_then_continues() -> anyhow::Result<()> 
 
 #[tokio::test]
 async fn message_sent_mid_turn_is_seen_at_the_next_step() -> anyhow::Result<()> {
-    let gate = Gate::new("wait");
-    let model = ScriptedModel::new()
-        .on_user("start", tool_call("wait", json!({})))
-        .on_user("actually", text("changed course"))
-        .on_tool_result("wait", text("finished"));
+    let script = Script::new();
     let agent = Agent::builder("bot")
-        .model(model)
-        .tool(gate.clone())
+        .model(script.model())
+        .tool(script.tool("wait"))
         .build();
     let agentinc = Agentinc::test().await?;
 
     let session = agentinc.session(&agent).await?;
     let mut events = session.events();
     session.send("start").await?;
-    gate.entered().await;
+    script
+        .next_model_call()
+        .await
+        .reply(tool_call("wait", json!({})));
+    let call = script.next_tool_call().await;
     session.send("actually").await?;
-    gate.release();
+    call.succeed(json!("released"));
+    let step = script.next_model_call().await;
+    assert_eq!(step.request().messages.last().unwrap().text(), "actually");
+    step.reply(text("changed course"));
     let turn = next_turn(&mut events).await?;
 
     assert_eq!(
@@ -126,32 +129,34 @@ async fn message_sent_mid_turn_is_seen_at_the_next_step() -> anyhow::Result<()> 
 
 #[tokio::test]
 async fn events_arrive_while_a_turn_is_still_running() -> anyhow::Result<()> {
-    let gate = Gate::new("wait");
-    let model = ScriptedModel::new()
-        .on_user("start", tool_call("wait", json!({})))
-        .on_tool_result("wait", text("finished"));
+    let script = Script::new();
     let agent = Agent::builder("bot")
-        .model(model)
-        .tool(gate.clone())
+        .model(script.model())
+        .tool(script.tool("wait"))
         .build();
     let agentinc = Agentinc::test().await?;
 
     let session = agentinc.session(&agent).await?;
     let mut events = session.events();
     session.send("start").await?;
-    gate.entered().await;
+    script
+        .next_model_call()
+        .await
+        .reply(tool_call("wait", json!({})));
+    let call = script.next_tool_call().await;
 
     // The turn is blocked in the tool, yet the user message and the tool call are already out.
     let Event::Message(user) = events.next().await.unwrap()? else {
         panic!("expected a message");
     };
-    let Event::Message(call) = events.next().await.unwrap()? else {
+    let Event::Message(asked) = events.next().await.unwrap()? else {
         panic!("expected a message");
     };
     assert_eq!(user.text(), "start");
-    assert!(call.tool_call("wait").is_some());
+    assert!(asked.tool_call("wait").is_some());
 
-    gate.release();
+    call.succeed(json!("released"));
+    script.next_model_call().await.reply(text("finished"));
     assert_eq!(texts(&next_turn(&mut events).await?), ["", "finished"]);
     agentinc.shutdown().await?;
     Ok(())
@@ -159,24 +164,26 @@ async fn events_arrive_while_a_turn_is_still_running() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn clear_pending_returns_unseen_messages() -> anyhow::Result<()> {
-    let gate = Gate::new("wait");
-    let model = ScriptedModel::new()
-        .on_user("start", tool_call("wait", json!({})))
-        .on_tool_result("wait", text("finished"));
+    let script = Script::new();
     let agent = Agent::builder("bot")
-        .model(model)
-        .tool(gate.clone())
+        .model(script.model())
+        .tool(script.tool("wait"))
         .build();
     let agentinc = Agentinc::test().await?;
 
     let session = agentinc.session(&agent).await?;
     let mut events = session.events();
     session.send("start").await?;
-    gate.entered().await;
+    script
+        .next_model_call()
+        .await
+        .reply(tool_call("wait", json!({})));
+    let call = script.next_tool_call().await;
     session.send("one").await?;
     session.send("two").await?;
     let cleared = session.clear_pending().await?;
-    gate.release();
+    call.succeed(json!("released"));
+    script.next_model_call().await.reply(text("finished"));
     let turn = next_turn(&mut events).await?;
 
     assert_eq!(texts(&cleared), ["one", "two"]);

@@ -78,8 +78,8 @@ objects from a registry keyed by agent name.
 ## Testing
 
 Tests never call a real model provider. Use `agentinc::testing`: `ScriptedModel` for
-deterministic replies, `testing::run()` to execute an agent end to end,
-`assert_transcript()` for ordered assertions. Tests run against a real local Temporal
+rule-based replies, `Script` for call-by-call control, `testing::run()` to execute an
+agent end to end, `assert_transcript()` for ordered assertions. Tests run against a real local Temporal
 dev server, so they exercise the real workflow and real activities.
 
 `Agentinc::test()` also calls every idempotent tool twice and fails the run if the results
@@ -87,8 +87,10 @@ differ. Tools that must not repeat are marked `#[tool(idempotent = false)]`; the
 gives those exactly one attempt. Tools receive an idempotency key through `ToolCtx` so
 they can make external side effects safe to retry.
 
-To hold a turn open, give the agent a `testing::Gate` tool and release it when ready. To
-wait for a session to finish a turn, read `session.events()` until `Event::TurnEnded`.
+For control over ordering and mid-turn behaviour use `testing::Script`: the test answers
+every model call and tool call itself, so a turn stays open exactly as long as the test
+wants. To wait for a session to finish a turn, read `session.events()` until
+`Event::TurnEnded`.
 
 Add a test for every behaviour change in the loop. The test should not mention Temporal;
 if it has to, the public API has leaked.
