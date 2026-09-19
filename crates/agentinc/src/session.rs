@@ -45,6 +45,11 @@ impl Session {
         self.handle.clear_pending().await
     }
 
+    /// Wait until the agent has nothing left to do: no turn running, nothing pending.
+    pub async fn wait_idle(&self) -> Result<(), Error> {
+        self.handle.wait_idle().await
+    }
+
     /// Everything the model has seen so far.
     pub async fn transcript(&self) -> Result<Vec<Message>, Error> {
         self.handle.transcript().await

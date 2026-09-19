@@ -284,6 +284,17 @@ impl SessionHandle {
             .map_err(|e| Error::Other(e.into()))
     }
 
+    pub(crate) async fn wait_idle(&self) -> Result<(), Error> {
+        self.inner
+            .execute_update(
+                SessionWorkflow::wait_idle,
+                (),
+                WorkflowExecuteUpdateOptions::default(),
+            )
+            .await
+            .map_err(|e| Error::Other(e.into()))
+    }
+
     pub(crate) async fn transcript(&self) -> Result<Vec<Message>, Error> {
         self.inner
             .query(

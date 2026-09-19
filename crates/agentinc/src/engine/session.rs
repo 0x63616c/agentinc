@@ -19,6 +19,8 @@ pub(crate) struct SessionInput {
 #[workflow]
 pub(crate) struct SessionWorkflow {
     conversation: Conversation,
+    /// A turn is in flight.
+    busy: bool,
 }
 
 impl HasConversation for SessionWorkflow {
@@ -33,6 +35,7 @@ impl SessionWorkflow {
     fn new(_ctx: &WorkflowContextView, input: SessionInput) -> Self {
         Self {
             conversation: Conversation::new(input.agent),
+            busy: false,
         }
     }
 
@@ -41,7 +44,9 @@ impl SessionWorkflow {
         loop {
             ctx.wait_condition(|w| !w.conversation.pending.is_empty())
                 .await?;
+            ctx.state_mut(|w| w.busy = true);
             turn(ctx).await?;
+            ctx.state_mut(|w| w.busy = false);
         }
     }
 
@@ -57,6 +62,15 @@ impl SessionWorkflow {
         _input: (),
     ) -> Vec<Message> {
         std::mem::take(&mut self.conversation.pending)
+    }
+
+    /// Resolves once no turn is running and nothing is pending.
+    #[update]
+    pub(crate) async fn wait_idle(ctx: &mut WorkflowContext<Self>, _input: ()) {
+        // Only fails if the workflow is cancelled, and then there is nothing left to wait for.
+        let _ = ctx
+            .wait_condition(|w| !w.busy && w.conversation.pending.is_empty())
+            .await;
     }
 
     #[query]

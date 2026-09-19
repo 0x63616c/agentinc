@@ -10,9 +10,11 @@
 //! run.assert_transcript().user("Weather in Lisbon?").tool_call("get_weather").tool_result().assistant_contains("sunny");
 //! ```
 
+mod gate;
 mod scripted;
 mod transcript;
 
+pub use gate::Gate;
 pub use scripted::{ScriptedModel, text, tool_call};
 pub use transcript::TranscriptAssert;
 
