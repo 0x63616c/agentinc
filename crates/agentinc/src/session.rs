@@ -1,4 +1,5 @@
-use crate::{Error, Message, engine::SessionHandle};
+use crate::{Error, Event, Message, engine::SessionHandle};
+use futures::{StreamExt, stream, stream::BoxStream};
 use serde::{Deserialize, Serialize};
 
 /// Identifies a session. Stable for its whole life, including across restarts.
@@ -45,14 +46,25 @@ impl Session {
         self.handle.clear_pending().await
     }
 
-    /// Wait until the agent has nothing left to do: no turn running, nothing pending.
-    pub async fn wait_idle(&self) -> Result<(), Error> {
-        self.handle.wait_idle().await
-    }
-
-    /// Everything the model has seen so far.
-    pub async fn transcript(&self) -> Result<Vec<Message>, Error> {
-        self.handle.transcript().await
+    /// Everything that has happened in this session, then everything that happens next.
+    ///
+    /// Starts from the beginning, so a fresh subscriber catches up on history first. Never
+    /// ends on its own; stop reading when you have what you need.
+    pub fn events(&self) -> BoxStream<'static, Result<Event, Error>> {
+        let handle = self.handle.clone();
+        stream::unfold(Some((handle, 0usize)), |state| async move {
+            let (handle, offset) = state?;
+            match handle.events_after(offset).await {
+                Ok(events) => {
+                    let next = offset + events.len();
+                    let batch: Vec<Result<Event, Error>> = events.into_iter().map(Ok).collect();
+                    Some((stream::iter(batch), Some((handle, next))))
+                }
+                Err(e) => Some((stream::iter(vec![Err(e)]), None)),
+            }
+        })
+        .flatten()
+        .boxed()
     }
 }
 

@@ -1,7 +1,7 @@
 //! The agent loop, shared by every workflow. Deterministic: no I/O here, only activity calls.
 
 use super::activities::{AgentActivities, StepInput, ToolCallInput};
-use crate::{Agent, Content, Message, Role, StopReason, ToolSpec};
+use crate::{Agent, Content, Event, Message, Role, StopReason, ToolSpec};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use temporalio_common::RetryPolicy;
@@ -42,6 +42,8 @@ pub(crate) struct Conversation {
     pub messages: Vec<Message>,
     /// Sent, but not yet shown to the model. Drained before every model call.
     pub pending: Vec<Message>,
+    /// Everything that happened, in order. What `events()` streams.
+    pub log: Vec<Event>,
     /// Model calls so far. Never resets; part of every idempotency key.
     steps: u32,
 }
@@ -52,8 +54,15 @@ impl Conversation {
             agent,
             messages: Vec::new(),
             pending: Vec::new(),
+            log: Vec::new(),
             steps: 0,
         }
+    }
+
+    /// Show a message to the model from now on, and record it.
+    fn append(&mut self, message: Message) {
+        self.messages.push(message.clone());
+        self.log.push(Event::Message(message));
     }
 }
 
@@ -71,8 +80,9 @@ pub(crate) async fn turn<W: HasConversation>(ctx: &WorkflowContext<W>) -> Workfl
     loop {
         let (agent, messages, step) = ctx.state_mut(|w| {
             let c = w.conversation();
-            let pending = std::mem::take(&mut c.pending);
-            c.messages.extend(pending);
+            for m in std::mem::take(&mut c.pending) {
+                c.append(m);
+            }
             let step = c.steps;
             c.steps += 1;
             (c.agent.clone(), c.messages.clone(), step)
@@ -98,9 +108,10 @@ pub(crate) async fn turn<W: HasConversation>(ctx: &WorkflowContext<W>) -> Workfl
             .map(|(id, name, args)| (id.to_owned(), name.to_owned(), args.clone()))
             .collect();
         let text = assistant.text();
-        ctx.state_mut(|w| w.conversation().messages.push(assistant));
+        ctx.state_mut(|w| w.conversation().append(assistant));
 
         if response.stop_reason == StopReason::EndTurn || calls.is_empty() {
+            ctx.state_mut(|w| w.conversation().log.push(Event::TurnEnded));
             return Ok(text);
         }
 
@@ -137,7 +148,7 @@ pub(crate) async fn turn<W: HasConversation>(ctx: &WorkflowContext<W>) -> Workfl
             });
         }
         ctx.state_mut(|w| {
-            w.conversation().messages.push(Message {
+            w.conversation().append(Message {
                 role: Role::User,
                 content: results,
             })

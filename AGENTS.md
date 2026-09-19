@@ -79,7 +79,8 @@ gives those exactly one attempt. Tools receive an idempotency key through `ToolC
 they can make external side effects safe to retry.
 
 No sleeps or timers in tests. To hold a turn open, give the agent a `testing::Gate` tool
-and release it when ready. To wait for a session to finish, use `session.wait_idle()`.
+and release it when ready. To wait for a session to finish a turn, read `session.events()`
+until `Event::TurnEnded`.
 
 Add a test for every behaviour change in the loop. The test should not mention Temporal;
 if it has to, the public API has leaked.

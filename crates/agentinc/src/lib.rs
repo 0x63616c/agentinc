@@ -17,6 +17,7 @@
 mod agent;
 mod engine;
 mod error;
+mod event;
 mod message;
 mod model;
 mod run;
@@ -28,6 +29,7 @@ mod tool;
 pub use agent::{Agent, AgentBuilder};
 pub use agentinc_macros::tool;
 pub use error::Error;
+pub use event::Event;
 pub use message::{Content, Message, Role};
 pub use model::{Model, ModelError, ModelRequest, ModelResponse, StopReason, ToolSpec};
 pub use run::{Run, RunId};

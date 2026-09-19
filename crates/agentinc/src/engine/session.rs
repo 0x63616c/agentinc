@@ -1,7 +1,7 @@
 //! One session: a conversation that stays open and takes a turn whenever a message arrives.
 
 use super::conversation::{AgentSpec, Conversation, HasConversation, turn};
-use crate::Message;
+use crate::{Event, Message};
 use serde::{Deserialize, Serialize};
 use temporalio_macros::{workflow, workflow_methods};
 use temporalio_sdk::{SyncWorkflowContext, WorkflowContext, WorkflowContextView, WorkflowResult};
@@ -19,8 +19,6 @@ pub(crate) struct SessionInput {
 #[workflow]
 pub(crate) struct SessionWorkflow {
     conversation: Conversation,
-    /// A turn is in flight.
-    busy: bool,
 }
 
 impl HasConversation for SessionWorkflow {
@@ -35,7 +33,6 @@ impl SessionWorkflow {
     fn new(_ctx: &WorkflowContextView, input: SessionInput) -> Self {
         Self {
             conversation: Conversation::new(input.agent),
-            busy: false,
         }
     }
 
@@ -44,9 +41,7 @@ impl SessionWorkflow {
         loop {
             ctx.wait_condition(|w| !w.conversation.pending.is_empty())
                 .await?;
-            ctx.state_mut(|w| w.busy = true);
             turn(ctx).await?;
-            ctx.state_mut(|w| w.busy = false);
         }
     }
 
@@ -64,17 +59,19 @@ impl SessionWorkflow {
         std::mem::take(&mut self.conversation.pending)
     }
 
-    /// Resolves once no turn is running and nothing is pending.
+    /// Long poll: resolves with every event after `offset` as soon as there is at least one.
     #[update]
-    pub(crate) async fn wait_idle(ctx: &mut WorkflowContext<Self>, _input: ()) {
-        // Only fails if the workflow is cancelled, and then there is nothing left to wait for.
+    pub(crate) async fn events_after(ctx: &mut WorkflowContext<Self>, offset: usize) -> Vec<Event> {
+        // Only fails if the workflow is cancelled, and then there is nothing more to deliver.
         let _ = ctx
-            .wait_condition(|w| !w.busy && w.conversation.pending.is_empty())
+            .wait_condition(|w| w.conversation.log.len() > offset)
             .await;
-    }
-
-    #[query]
-    pub(crate) fn transcript(&self, _ctx: &WorkflowContextView) -> Vec<Message> {
-        self.conversation.messages.clone()
+        ctx.state(|w| {
+            w.conversation
+                .log
+                .get(offset..)
+                .unwrap_or_default()
+                .to_vec()
+        })
     }
 }

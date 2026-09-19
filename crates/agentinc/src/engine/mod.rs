@@ -5,14 +5,14 @@ mod conversation;
 mod session;
 mod workflow;
 
-use crate::{Agent, Error, Message, RunId, SessionId};
+use crate::{Agent, Error, Event, Message, RunId, SessionId};
 use activities::{AgentActivities, Registry};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use temporalio_client::{
     Client, ClientOptions, ConnectionOptions, WorkflowExecuteUpdateOptions,
-    WorkflowGetResultOptions, WorkflowHandle, WorkflowQueryOptions, WorkflowSignalOptions,
-    WorkflowStartOptions, errors::WorkflowGetResultError,
+    WorkflowGetResultOptions, WorkflowHandle, WorkflowSignalOptions, WorkflowStartOptions,
+    errors::WorkflowGetResultError,
 };
 use temporalio_sdk::{
     Runtime, Worker, WorkerOptions,
@@ -284,23 +284,12 @@ impl SessionHandle {
             .map_err(|e| Error::Other(e.into()))
     }
 
-    pub(crate) async fn wait_idle(&self) -> Result<(), Error> {
+    pub(crate) async fn events_after(&self, offset: usize) -> Result<Vec<Event>, Error> {
         self.inner
             .execute_update(
-                SessionWorkflow::wait_idle,
-                (),
+                SessionWorkflow::events_after,
+                offset,
                 WorkflowExecuteUpdateOptions::default(),
-            )
-            .await
-            .map_err(|e| Error::Other(e.into()))
-    }
-
-    pub(crate) async fn transcript(&self) -> Result<Vec<Message>, Error> {
-        self.inner
-            .query(
-                SessionWorkflow::transcript,
-                (),
-                WorkflowQueryOptions::default(),
             )
             .await
             .map_err(|e| Error::Other(e.into()))
