@@ -36,7 +36,7 @@ impl Space {
             Self::Calendar => "Calendar",
             Self::Library => "Library",
             Self::Apps => "My apps",
-            Self::Evee => "Evee",
+            Self::Evee => "Assistant",
             Self::Settings => "Settings",
         }
     }

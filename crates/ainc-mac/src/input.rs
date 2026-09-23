@@ -60,11 +60,20 @@ fn word_boundary(text: &str, offset: usize, forward: bool) -> usize {
             .unwrap_or(0)
     }
 }
+fn line_boundary(text: &str, offset: usize, forward: bool) -> usize {
+    if forward {
+        text[offset..].find('\n').map_or(text.len(), |i| offset + i)
+    } else {
+        text[..offset].rfind('\n').map_or(0, |i| i + 1)
+    }
+}
 pub struct Submit;
 impl EventEmitter<Submit> for TextInput {}
 
 pub struct TextInput {
     secret: bool,
+    multiline: bool,
+    multiline_layout: Vec<(usize, ShapedLine, Bounds<Pixels>)>,
     submit: bool,
     scroll_x: Pixels,
     focus_handle: FocusHandle,
@@ -115,13 +124,7 @@ impl TextInput {
     ) {
         let offset = match action.boundary {
             Boundary::Word => word_boundary(&self.content, self.cursor_offset(), action.forward),
-            Boundary::Line => {
-                if action.forward {
-                    self.content.len()
-                } else {
-                    0
-                }
-            }
+            Boundary::Line => line_boundary(&self.content, self.cursor_offset(), action.forward),
         };
         if action.delete {
             if self.selected_range.is_empty() {
@@ -164,11 +167,14 @@ impl TextInput {
     }
 
     fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(0, cx);
+        self.move_to(
+            line_boundary(&self.content, self.cursor_offset(), false),
+            cx,
+        );
     }
 
     fn end(&mut self, _: &End, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(self.content.len(), cx);
+        self.move_to(line_boundary(&self.content, self.cursor_offset(), true), cx);
     }
 
     fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
@@ -234,7 +240,7 @@ impl TextInput {
 
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-            self.replace_text_in_range(None, &text.replace("\n", " "), window, cx);
+            self.replace_text_in_range(None, &text, window, cx);
         }
     }
 
@@ -275,6 +281,17 @@ impl TextInput {
             return 0;
         }
 
+        if self.multiline {
+            if let Some((offset, line, bounds)) = self
+                .multiline_layout
+                .iter()
+                .find(|(_, _, b)| position.y < b.bottom())
+                .or(self.multiline_layout.last())
+            {
+                return offset + line.closest_index_for_x(position.x - bounds.left());
+            }
+            return 0;
+        }
         let (Some(bounds), Some(line)) = (self.last_bounds.as_ref(), self.last_layout.as_ref())
         else {
             return 0;
@@ -363,6 +380,11 @@ impl TextInput {
         input.submit = true;
         input
     }
+    pub fn composer(cx: &mut Context<Self>) -> Self {
+        let mut input = Self::field("Ask Evee…", false, cx);
+        input.multiline = true;
+        input
+    }
     pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
         self.reset();
         self.content = text.to_owned().into();
@@ -435,7 +457,11 @@ impl EntityInputHandler for TextInput {
         if (self.secret && !new_text.is_ascii()) || self.content.len() + new_text.len() > 65536 {
             return;
         }
-        let single_line = new_text.replace(['\n', '\r'], " ");
+        let single_line = if self.multiline {
+            new_text.replace("\r\n", "\n").replace('\r', "\n")
+        } else {
+            new_text.replace(['\n', '\r'], " ")
+        };
         let new_text = single_line.as_str();
         let range = range_utf16
             .as_ref()
@@ -467,7 +493,11 @@ impl EntityInputHandler for TextInput {
         if (self.secret && !new_text.is_ascii()) || self.content.len() + new_text.len() > 65536 {
             return;
         }
-        let single_line = new_text.replace(['\n', '\r'], " ");
+        let single_line = if self.multiline {
+            new_text.replace("\r\n", "\n").replace('\r', "\n")
+        } else {
+            new_text.replace(['\n', '\r'], " ")
+        };
         let new_text = single_line.as_str();
         let range = range_utf16
             .as_ref()
@@ -499,8 +529,22 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
-        let last_layout = self.last_layout.as_ref()?;
         let range = self.range_from_utf16(&range_utf16);
+        if self.multiline {
+            let (offset, line, bounds) = self
+                .multiline_layout
+                .iter()
+                .rev()
+                .find(|(offset, _, _)| *offset <= range.start)?;
+            return Some(Bounds::new(
+                point(
+                    bounds.left() + line.x_for_index(range.start - offset),
+                    bounds.top(),
+                ),
+                size(px(2.), bounds.size.height),
+            ));
+        }
+        let last_layout = self.last_layout.as_ref()?;
         Some(Bounds::from_corners(
             point(
                 bounds.left() + last_layout.x_for_index(range.start),
@@ -519,6 +563,9 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<usize> {
+        if self.multiline {
+            return Some(self.offset_to_utf16(self.index_for_mouse_position(point)));
+        }
         let line_point = self.last_bounds?.localize(&point)?;
         let last_layout = self.last_layout.as_ref()?;
 
@@ -532,6 +579,8 @@ struct TextElement {
 }
 
 struct PrepaintState {
+    multiline: Vec<(usize, ShapedLine, Bounds<Pixels>)>,
+    selections: Vec<PaintQuad>,
     line: Option<ShapedLine>,
     scroll_x: Pixels,
     cursor: Option<PaintQuad>,
@@ -567,7 +616,13 @@ impl Element for TextElement {
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut style = Style::default();
         style.size.width = relative(1.).into();
-        style.size.height = window.line_height().into();
+        let input = self.input.read(cx);
+        let lines = if input.multiline {
+            input.content.split('\n').count().clamp(2, 5)
+        } else {
+            1
+        };
+        style.size.height = (window.line_height() * lines as f32).into();
         (window.request_layout(style, [], cx), ())
     }
 
@@ -585,6 +640,95 @@ impl Element for TextElement {
         let selected_range = input.selected_range.clone();
         let cursor = input.cursor_offset();
         let style = window.text_style();
+        if input.multiline {
+            let text = if content.is_empty() {
+                input.placeholder.clone()
+            } else {
+                content.clone()
+            };
+            let height = window.line_height();
+            let cursor_row = content[..cursor].bytes().filter(|c| *c == b'\n').count();
+            let first_row = cursor_row.saturating_sub(4);
+            let mut offset = 0;
+            let mut lines = Vec::new();
+            let mut selections = Vec::new();
+            let mut caret = None;
+            let cursor_start = content[..cursor].rfind('\n').map_or(0, |i| i + 1);
+            let cursor_text: SharedString = content[cursor_start..cursor].to_owned().into();
+            let font_size = style.font_size.to_pixels(window.rem_size());
+            let color = if content.is_empty() {
+                rgb(0x888888).into()
+            } else {
+                style.color
+            };
+            let run = TextRun {
+                len: cursor_text.len(),
+                font: style.font(),
+                color,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            };
+            let cursor_width = window
+                .text_system()
+                .shape_line(cursor_text, font_size, &[run], None)
+                .width;
+            let scroll_x = (cursor_width - bounds.size.width + px(3.)).max(px(0.));
+            for (row, text) in text.split('\n').enumerate() {
+                let run = TextRun {
+                    len: text.len(),
+                    font: style.font(),
+                    color,
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                };
+                let line = window.text_system().shape_line(
+                    text.to_owned().into(),
+                    font_size,
+                    &[run],
+                    None,
+                );
+                let origin = point(
+                    bounds.left() - scroll_x,
+                    bounds.top() + height * (row as f32 - first_row as f32),
+                );
+                let line_bounds = Bounds::new(origin, size(bounds.size.width, height));
+                if row == cursor_row {
+                    caret = Some(fill(
+                        Bounds::new(
+                            point(origin.x + line.x_for_index(cursor - offset), origin.y),
+                            size(px(2.), height),
+                        ),
+                        rgb(0xb5cabe),
+                    ));
+                }
+                let start = selected_range.start.max(offset);
+                let end = selected_range.end.min(offset + text.len());
+                if start < end {
+                    selections.push(fill(
+                        Bounds::new(
+                            point(origin.x + line.x_for_index(start - offset), origin.y),
+                            size(
+                                line.x_for_index(end - offset) - line.x_for_index(start - offset),
+                                height,
+                            ),
+                        ),
+                        rgba(0x34453bff),
+                    ));
+                }
+                lines.push((offset, line, line_bounds));
+                offset += text.len() + 1;
+            }
+            return PrepaintState {
+                multiline: lines,
+                selections,
+                line: None,
+                scroll_x,
+                cursor: caret,
+                selection: None,
+            };
+        }
 
         let (display_text, text_color) = if content.is_empty() {
             (input.placeholder.clone(), rgb(0x888888).into())
@@ -672,6 +816,8 @@ impl Element for TextElement {
             )
         };
         PrepaintState {
+            multiline: vec![],
+            selections: vec![],
             scroll_x,
             line: Some(line),
             cursor,
@@ -695,6 +841,24 @@ impl Element for TextElement {
             ElementInputHandler::new(bounds, self.input.clone()),
             cx,
         );
+        if self.input.read(cx).multiline {
+            for selection in prepaint.selections.drain(..) {
+                window.paint_quad(selection);
+            }
+            for (_, line, line_bounds) in &prepaint.multiline {
+                let _ = line.paint(line_bounds.origin, window.line_height(), window, cx);
+            }
+            if focus_handle.is_focused(window)
+                && let Some(cursor) = prepaint.cursor.take()
+            {
+                window.paint_quad(cursor);
+            }
+            self.input.update(cx, |input, _| {
+                input.multiline_layout = std::mem::take(&mut prepaint.multiline);
+                input.last_bounds = Some(bounds);
+            });
+            return;
+        }
         if let Some(selection) = prepaint.selection.take() {
             window.paint_quad(selection)
         }
@@ -726,11 +890,47 @@ impl Render for TextInput {
             .flex()
             .key_context("TextInput")
             .track_focus(&self.focus_handle(cx))
+            .overflow_hidden()
             .cursor(CursorStyle::IBeam)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if this.multiline
+                    && this.marked_range.is_none()
+                    && matches!(event.keystroke.key.as_str(), "up" | "down")
+                {
+                    let offset = this.cursor_offset();
+                    if let Some((start, line, bounds)) = this
+                        .multiline_layout
+                        .iter()
+                        .rev()
+                        .find(|(start, _, _)| *start <= offset)
+                    {
+                        let position = point(
+                            bounds.left() + line.x_for_index(offset - *start),
+                            bounds.top()
+                                + bounds.size.height
+                                    * if event.keystroke.key == "up" {
+                                        -0.5
+                                    } else {
+                                        1.5
+                                    },
+                        );
+                        let target = this.index_for_mouse_position(position);
+                        if event.keystroke.modifiers.shift {
+                            this.select_to(target, cx)
+                        } else {
+                            this.move_to(target, cx)
+                        }
+                    }
+                    cx.stop_propagation();
+                    return;
+                }
                 if this.submit && event.keystroke.key == "enter" && this.marked_range.is_none() {
                     cx.stop_propagation();
-                    cx.emit(Submit);
+                    if this.multiline && event.keystroke.modifiers.shift {
+                        this.replace_text_in_range(None, "\n", window, cx);
+                    } else {
+                        cx.emit(Submit);
+                    }
                 }
             }))
             .on_action(cx.listener(Self::boundary_edit))
@@ -772,6 +972,8 @@ impl TextInput {
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
             secret: false,
+            multiline: false,
+            multiline_layout: vec![],
             submit: false,
             scroll_x: px(0.),
             focus_handle: cx.focus_handle(),
@@ -845,7 +1047,15 @@ pub fn bind_keys(cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use super::word_boundary;
+    use super::{line_boundary, word_boundary};
+    #[test]
+    fn multiline_boundaries_preserve_other_lines() {
+        let text = "one\ncafé\nthree";
+        assert_eq!(line_boundary(text, 7, false), 4);
+        assert_eq!(line_boundary(text, 7, true), 9);
+        assert_eq!(line_boundary(text, 4, false), 4);
+        assert_eq!(line_boundary(text, text.len(), true), text.len());
+    }
     #[test]
     fn word_navigation_respects_unicode_and_punctuation() {
         let text = "hello, café world";

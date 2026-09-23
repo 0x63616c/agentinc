@@ -1,6 +1,6 @@
 # Agentinc OS
 
-A native macOS workspace built with Rust and GPUI, following the approved Control design. It includes a single tab, navigation, search, panel controls, a saved local session, SQLite-backed Tasks and an OpenAI-backed Evee chat panel. Agents, home, calendar, library and apps remain intentional placeholders.
+A native macOS workspace built with Rust and GPUI, following the approved Control design. It includes a single tab, navigation, search, panel controls, a saved local session, SQLite-backed Tasks and a Codex subscription-backed Evee chat panel and an Assistant conversation library. Agents, home, calendar, library and apps remain intentional placeholders.
 
 ## Build and run
 
@@ -22,9 +22,11 @@ codesign --verify --deep --strict --verbose=2 'dist/Agentinc OS.app'
 
 ## Evee and Tasks
 
-Evee → Setup accepts an OpenAI API key and stores it in macOS Keychain. The default model is `gpt-5-mini`; the setup field can select another Responses-compatible model. Send with Return or **Send**. Failures remain retryable and chat history persists locally. An existing `OPENAI_API_KEY` environment variable takes precedence; normal Finder launches should use in-app setup.
+Install the official [Codex CLI](https://developers.openai.com/codex/cli), then open **Settings → Accounts & connections → Sign in with ChatGPT** and complete Codex’s browser sign-in. Evee uses your ChatGPT/Codex subscription; there is no API-key setup. Codex manages credentials in an app-specific profile. Settings shows the real connection status, sign out, and model choices returned by Codex.
 
-Tasks supports create, complete/reopen and delete. Chat and tasks save to `~/Library/Application Support/Agentinc OS/assistant.sqlite3`; credentials are never stored there. See the [assistant handoff and verification](docs/EVEE_ASSISTANT_HANDOFF.md) for limits and the explicit live-credential verification gap.
+Open **Assistant** in the sidebar to start, reopen, rename or delete conversations. Existing single-chat history migrates into “Previous conversation”. Send with Return or the composer’s arrow; Shift+Return inserts a newline. Failed replies remain retryable and conversations persist locally.
+
+Tasks supports create, complete/reopen and delete. Chat and tasks save to `~/Library/Application Support/Agentinc OS/assistant.sqlite3`; credentials are never stored there. See the [assistant handoff and verification](docs/EVEE_ASSISTANT_HANDOFF.md) for the supported interface, limits and native/live verification evidence.
 
 ## Using the shell
 
@@ -34,7 +36,7 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | --- | --- |
 | Cmd+K | Search spaces |
 | Cmd+Option+Left / Right | Back / forward |
-| Cmd+1…7 | Today, Tasks, Agents, Home, Calendar, Library, My apps |
+| Cmd+1…8 | Today, Tasks, Agents, Home, Calendar, Library, My apps, Assistant |
 | Cmd+B | Toggle sidebar |
 | Cmd+Shift+E | Toggle Evee |
 | Escape | Dismiss Search, task dialogs or notifications |
@@ -49,6 +51,7 @@ For an isolated session without changing the regular app's state:
 mkdir -p .local
 AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
   AGENTINC_DATABASE_PATH="$PWD/.local/test-assistant.sqlite3" \
+  AGENTINC_CODEX_HOME="$PWD/.local/test-codex" \
   AGENTINC_WINDOW_TITLE='Agentinc QA' \
   'dist/Agentinc OS.app/Contents/MacOS/agentinc-os'
 ```

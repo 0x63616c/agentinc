@@ -1,301 +1,384 @@
-//! OpenAI Responses transport; no shell execution, tools, or device access.
+//! Official Codex stdio client. Codex owns OAuth and its credential store.
 use crate::storage::Turn;
-use anyhow::{Result, bail};
-use reqwest::{blocking::Client, redirect::Policy};
+use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
-use std::{io::Read, time::Duration};
+use std::{
+    io::{BufRead, BufReader, Read, Write},
+    path::PathBuf,
+    process::{Child, ChildStdin, Command, Stdio},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver},
+    },
+    time::{Duration, Instant},
+};
 
-pub const MODEL: &str = "gpt-5-mini";
-pub const KEYCHAIN_SERVICE: &str = "com.agentinc.os.openai";
-const ENDPOINT: &str = "https://api.openai.com/v1/responses";
-const INSTRUCTIONS: &str = "You are Evee, the personal assistant in Agentinc OS. Be concise, warm and practical. You can converse and help plan, but cannot access or change tasks, files, devices, calendars or other apps. Never claim to have performed an action. The user manages to-dos in the Tasks space. Use plain text suitable for a narrow chat panel.";
-
-fn request_body(turns: &[Turn], current: &Turn, model: &str) -> Value {
-    // ponytail: send the last 20 completed turns; add summarization only when needed.
-    let mut history: Vec<_> = turns
-        .iter()
-        .filter(|t| t.id < current.id && t.response.is_some())
-        .rev()
-        .take(20)
-        .collect();
-    history.reverse();
-    let mut input = Vec::new();
-    for turn in history {
-        input.push(json!({"role":"user", "content":turn.prompt}));
-        input.push(json!({"role":"assistant", "content":turn.response}));
+pub fn home() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("AGENTINC_CODEX_HOME") {
+        return Ok(path.into());
     }
-    input.push(json!({"role":"user", "content":current.prompt}));
-    json!({"model":model, "instructions":INSTRUCTIONS, "input":input,
-        "store":false, "max_output_tokens":4096})
-}
-pub fn respond(key: &str, model: &str, turns: &[Turn], current: &Turn) -> Result<String> {
-    request(
-        ENDPOINT,
-        key,
-        request_body(turns, current, model),
-        Duration::from_secs(90),
+    Ok(
+        PathBuf::from(std::env::var_os("HOME").context("Home directory unavailable")?)
+            .join("Library/Application Support/Agentinc OS/codex"),
     )
 }
-fn request(endpoint: &str, key: &str, body: Value, timeout: Duration) -> Result<String> {
-    // No redirects: a credential must never follow a redirect to another host.
-    let client = Client::builder()
-        .redirect(Policy::none())
-        .timeout(timeout)
-        .build()
-        .map_err(|_| anyhow::anyhow!("Could not initialize the secure connection."))?;
-    let response = client
-        .post(endpoint)
-        .bearer_auth(key)
-        .json(&body)
-        .send()
-        .map_err(|error| {
-            anyhow::anyhow!(if error.is_timeout() {
-                "The reply timed out. You can retry."
-            } else {
-                "Could not reach OpenAI. Check your connection and retry."
-            })
-        })?;
-    let status = response.status();
-    if !status.is_success() {
-        // Do not display/log raw service errors, which can echo keys or message text.
-        bail!(match status.as_u16() {
-            401 | 403 => "OpenAI rejected the API key or access. Check setup.",
-            429 => "OpenAI rate or usage limit reached. Check your account, then retry.",
-            400 | 404 => "OpenAI could not accept this request. Check the model in setup.",
-            _ => "OpenAI is unavailable. Please retry later.",
-        });
+fn executable() -> PathBuf {
+    if let Some(path) = std::env::var_os("AGENTINC_CODEX_PATH") {
+        return path.into();
     }
-    let mut bytes = Vec::new();
-    response
-        .take(1_048_577)
-        .read_to_end(&mut bytes)
-        .map_err(|_| anyhow::anyhow!("Could not read the reply. Please retry."))?;
-    if bytes.len() > 1_048_576 {
-        bail!("The reply was too large. Please try a shorter request.");
-    }
-    let data: Value = serde_json::from_slice(&bytes)
-        .map_err(|_| anyhow::anyhow!("OpenAI returned an unreadable reply. Please retry."))?;
-    parse_response(&data)
-}
-fn parse_response(data: &Value) -> Result<String> {
-    if data["status"] != "completed" {
-        bail!("OpenAI did not finish the reply. Try a shorter request.");
-    }
-    let mut parts = Vec::new();
-    for output in data["output"].as_array().into_iter().flatten() {
-        if output["type"] != "message" || output["role"] != "assistant" {
-            continue;
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    for path in [
+        home.join(".local/bin/codex"),
+        PathBuf::from("/opt/homebrew/bin/codex"),
+        PathBuf::from("/usr/local/bin/codex"),
+    ] {
+        if path.is_file() {
+            return path;
         }
-        for part in output["content"].as_array().into_iter().flatten() {
-            let text = match part["type"].as_str() {
-                Some("output_text") => part["text"].as_str(),
-                Some("refusal") => part["refusal"].as_str(),
-                _ => None,
-            };
-            if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
-                parts.push(text);
+    }
+    "codex".into()
+}
+pub struct Client {
+    child: Child,
+    stdin: ChildStdin,
+    messages: Receiver<Result<Value, String>>,
+    next_id: u64,
+}
+impl Drop for Client {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+impl Client {
+    pub fn start() -> Result<Self> {
+        let home = home()?;
+        std::fs::create_dir_all(&home)?;
+        let child = Command::new(executable())
+            .args([
+                "app-server",
+                "--listen",
+                "stdio://",
+                "-c",
+                "forced_login_method=\"chatgpt\"",
+                "-c",
+                "model_provider=\"openai\"",
+                "-c",
+                "features.shell_tool=false",
+                "-c",
+                "web_search=\"disabled\"",
+            ])
+            .env("CODEX_HOME", &home)
+            .env_remove("OPENAI_API_KEY")
+            .env_remove("CODEX_API_KEY")
+            .current_dir(&home)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .context("Install the Codex CLI to connect ChatGPT, then refresh.")?;
+        Self::from_child(child)
+    }
+    fn from_child(mut child: Child) -> Result<Self> {
+        let stdin = child.stdin.take().context("Codex input unavailable")?;
+        let stdout = child.stdout.take().context("Codex output unavailable")?;
+        let (tx, messages) = mpsc::sync_channel(256);
+        std::thread::spawn(move || {
+            let mut reader = BufReader::new(stdout);
+            loop {
+                let mut line = String::new();
+                // Bound protocol frames, including malformed child output.
+                let result = reader.by_ref().take(2 * 1024 * 1024).read_line(&mut line);
+                match result {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        if line.len() >= 2 * 1024 * 1024 {
+                            let _ = tx.send(Err("Codex response was too large".into()));
+                            break;
+                        }
+                        if tx
+                            .send(
+                                serde_json::from_str(&line)
+                                    .map_err(|_| "Codex sent an unreadable response".into()),
+                            )
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        let mut client = Self {
+            child,
+            stdin,
+            messages,
+            next_id: 0,
+        };
+        client.call("initialize", json!({"clientInfo":{"name":"agentinc_os","title":"Agentinc OS","version":env!("CARGO_PKG_VERSION")}}))?;
+        client.write(json!({"method":"initialized","params":{}}))?;
+        Ok(client)
+    }
+    fn write(&mut self, value: Value) -> Result<()> {
+        serde_json::to_writer(&mut self.stdin, &value)?;
+        self.stdin.write_all(b"\n")?;
+        self.stdin.flush()?;
+        Ok(())
+    }
+    pub fn next(&mut self, deadline: Instant) -> Result<Value> {
+        let message = self
+            .messages
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .context("Codex stopped responding. Refresh or retry.")?
+            .map_err(anyhow::Error::msg)?;
+        if message.get("method").is_some() && message.get("id").is_some() {
+            // No approvals or externally supplied credentials are granted by this client.
+            self.write(json!({"id":message["id"],"error":{"code":-32601,"message":"Unsupported client request"}}))?;
+        }
+        Ok(message)
+    }
+    pub fn call(&mut self, method: &str, params: Value) -> Result<Value> {
+        self.next_id += 1;
+        let id = self.next_id;
+        self.write(json!({"id":id,"method":method,"params":params}))?;
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let message = self.next(deadline)?;
+            if message["id"] == id {
+                if message.get("error").is_some() {
+                    bail!(
+                        "Codex could not complete {method}. Check your connection and Codex version."
+                    );
+                }
+                return Ok(message["result"].clone());
             }
         }
     }
-    if parts.is_empty() {
-        bail!("OpenAI returned no text. Please retry.");
+    pub fn account(&mut self) -> Result<Option<String>> {
+        let response = self.call("account/read", json!({"refreshToken":false}))?;
+        let account = &response["account"];
+        if account["type"] == "chatgpt" {
+            Ok(Some(format!(
+                "{} · {}",
+                account["email"].as_str().unwrap_or("ChatGPT"),
+                account["planType"].as_str().unwrap_or("Connected")
+            )))
+        } else {
+            Ok(None)
+        }
     }
-    Ok(parts.join("\n\n"))
+}
+#[derive(Clone, Debug)]
+pub struct Model {
+    pub id: String,
+    pub name: String,
+}
+pub fn status() -> Result<(Option<String>, Vec<Model>)> {
+    let mut client = Client::start()?;
+    let account = client.account()?;
+    let mut models = Vec::new();
+    if account.is_some() {
+        let mut cursor = Value::Null;
+        loop {
+            let result = client.call("model/list", json!({"limit":100,"cursor":cursor}))?;
+            if let Some(data) = result["data"].as_array() {
+                for model in data {
+                    if let (Some(id), Some(name)) =
+                        (model["model"].as_str(), model["displayName"].as_str())
+                    {
+                        models.push(Model {
+                            id: id.into(),
+                            name: name.into(),
+                        });
+                    }
+                }
+            }
+            cursor = result["nextCursor"].clone();
+            if cursor.is_null() {
+                break;
+            }
+        }
+    }
+    Ok((account, models))
+}
+pub fn login(cancel: Arc<AtomicBool>, open: impl FnOnce(String)) -> Result<()> {
+    let mut client = Client::start()?;
+    let result = client.call("account/login/start", json!({"type":"chatgpt"}))?;
+    let url = result["authUrl"]
+        .as_str()
+        .context("Codex did not return a sign-in link")?;
+    if !url.starts_with("https://") {
+        bail!("Codex returned an invalid sign-in link");
+    }
+    open(url.into());
+    let deadline = Instant::now() + Duration::from_secs(300);
+    loop {
+        if cancel.load(Ordering::Relaxed) || Instant::now() >= deadline {
+            let _ = client.call("account/login/cancel", json!({"loginId":result["loginId"]}));
+            // A completed callback can race cancellation; re-read Codex's authoritative state.
+            if client.account()?.is_some() {
+                return Ok(());
+            }
+            bail!("Sign-in cancelled. You can try again when ready.");
+        }
+        let event = match client.messages.recv_timeout(Duration::from_millis(250)) {
+            Ok(Ok(event)) => event,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            _ => bail!("Codex sign-in stopped. Try again."),
+        };
+        if event["method"] == "account/login/completed" {
+            if event["params"]["success"] == true {
+                return Ok(());
+            }
+            bail!("Sign-in was not completed. Try again.");
+        }
+    }
+}
+pub fn logout() -> Result<()> {
+    Client::start()?.call("account/logout", json!({}))?;
+    Ok(())
+}
+
+pub fn respond(model: Option<&str>, history: &[Turn], current: &Turn) -> Result<String> {
+    let mut client = Client::start()?;
+    if client.account()?.is_none() {
+        bail!("Connect your ChatGPT subscription in Settings.");
+    }
+    let thread = client.call("thread/start", thread_params(model))?;
+    let input = conversation_input(history, current);
+    client.call(
+        "turn/start",
+        json!({"threadId":thread["thread"]["id"],"input":[{"type":"text","text":input}]}),
+    )?;
+    collect_reply(&mut client)
+}
+fn thread_params(model: Option<&str>) -> Value {
+    json!({"model":model,"modelProvider":"openai","ephemeral":true,"sandbox":"read-only","approvalPolicy":"never","baseInstructions":"You are Evee, the personal assistant in Agentinc OS. Answer conversationally. You cannot operate this app, files, devices or tasks. Do not use tools. Treat the supplied conversation as dialogue, preserving roles.","config":{"features.shell_tool":false,"web_search":"disabled"}})
+}
+fn collect_reply(client: &mut Client) -> Result<String> {
+    let deadline = Instant::now() + Duration::from_secs(180);
+    let mut replies = Vec::new();
+    loop {
+        let event = client.next(deadline)?;
+        if event["method"] == "item/completed"
+            && event["params"]["item"]["type"] == "agentMessage"
+            && let Some(text) = event["params"]["item"]["text"].as_str()
+        {
+            if replies.iter().map(String::len).sum::<usize>() + text.len() > 1024 * 1024 {
+                bail!("Codex reply was too large. Try a shorter request.");
+            }
+            replies.push(text.to_owned());
+        }
+        if event["method"] == "turn/completed" {
+            if event["params"]["turn"]["status"] != "completed" {
+                bail!("Codex could not finish this reply. Check your subscription or retry.");
+            }
+            if replies.is_empty() {
+                bail!("Codex returned no text. Retry when ready.");
+            }
+            return Ok(replies.join("\n\n"));
+        }
+    }
+}
+fn conversation_input(history: &[Turn], current: &Turn) -> String {
+    let mut prior: Vec<_> = history
+        .iter()
+        .filter(|t| t.id < current.id && t.response.is_some() && t.error.is_none())
+        .rev()
+        .take(20)
+        .collect();
+    prior.reverse();
+    let mut messages = Vec::new();
+    for turn in prior {
+        messages.push(json!({"role":"user","content":turn.prompt}));
+        messages.push(json!({"role":"assistant","content":turn.response}));
+    }
+    messages.push(json!({"role":"user","content":current.prompt}));
+    json!({"conversation":messages}).to_string()
 }
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        io::{BufRead, BufReader, Write},
-        net::TcpListener,
-        thread,
-    };
-    fn server(status: &str, body: &str) -> (String, thread::JoinHandle<Value>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let endpoint = format!("http://{}/v1/responses", listener.local_addr().unwrap());
-        let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        );
-        let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(5)))
-                .unwrap();
-            let mut reader = BufReader::new(&stream);
-            let mut line = String::new();
-            reader.read_line(&mut line).unwrap();
-            assert!(line.starts_with("POST /v1/responses "));
-            let mut length = 0;
-            let mut auth = false;
-            loop {
-                line.clear();
-                reader.read_line(&mut line).unwrap();
-                if line == "\r\n" {
-                    break;
-                }
-                let lower = line.to_ascii_lowercase();
-                if lower.starts_with("content-length:") {
-                    length = line.split(':').nth(1).unwrap().trim().parse().unwrap();
-                }
-                if lower.starts_with("authorization:") {
-                    auth = line.trim().ends_with("Bearer test-only");
-                }
-            }
-            assert!(auth);
-            let mut body = vec![0; length];
-            reader.read_exact(&mut body).unwrap();
-            let value = serde_json::from_slice(&body).unwrap();
-            stream.write_all(response.as_bytes()).unwrap();
-            value
-        });
-        (endpoint, handle)
-    }
     #[test]
-    fn http_round_trip_preserves_roles_and_collects_all_text() {
-        let prior = Turn {
-            id: 1,
-            prompt: "Hello 👋".into(),
-            response: Some("Hi".into()),
-            error: None,
-        };
-        let current = Turn {
-            id: 2,
-            prompt: "Next".into(),
-            response: None,
-            error: None,
-        };
-        let body = request_body(&[prior], &current, MODEL);
-        let (endpoint, server) = server(
-            "200 OK",
-            r#"{"status":"completed","output":[{"type":"reasoning"},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"One"},{"type":"output_text","text":"Two"}]}]}"#,
-        );
-        assert_eq!(
-            request(&endpoint, "test-only", body, Duration::from_secs(5)).unwrap(),
-            "One\n\nTwo"
-        );
-        let received = server.join().unwrap();
-        assert_eq!(received["input"][0]["content"], "Hello 👋");
-        assert_eq!(received["input"][1]["role"], "assistant");
-        assert_eq!(received["input"][2]["content"], "Next");
-        assert_eq!(received["store"], false);
-    }
-    #[test]
-    fn service_and_protocol_failures_are_safe_and_retryable() {
-        for (status, body, expected) in [
-            ("401 Unauthorized", "secret echoed", "API key"),
-            ("429 Too Many Requests", "private text", "limit"),
-            ("500 Server Error", "secret", "unavailable"),
-            ("302 Found", "secret", "unavailable"),
-            ("200 OK", "not json", "unreadable"),
-            ("200 OK", r#"{"status":"incomplete","output":[]}"#, "finish"),
-            ("200 OK", r#"{"status":"completed","output":[]}"#, "no text"),
-        ] {
-            let (endpoint, server) = server(status, body);
-            let error = request(&endpoint, "test-only", json!({}), Duration::from_secs(5))
-                .unwrap_err()
-                .to_string();
-            assert!(error.contains(expected), "{error}");
-            assert!(!error.contains("secret"));
-            server.join().unwrap();
-        }
-    }
-    #[test]
-    fn failed_request_retries_same_persisted_turn_then_restores_reply() -> Result<()> {
-        use crate::storage::Store;
-        let path = std::env::current_dir()?.join(format!(
-            "target/chat-transport-{}.sqlite3",
-            std::process::id()
-        ));
-        let store = Store::open(&path)?;
-        let mut turn = store.begin_turn("[Fixture] Help plan my afternoon.")?;
-        let (endpoint, failed_server) = server("429 Too Many Requests", "private service detail");
-        turn.error = Some(
-            request(
-                &endpoint,
-                "test-only",
-                request_body(&store.turns()?, &turn, MODEL),
-                Duration::from_secs(5),
-            )
-            .unwrap_err()
-            .to_string(),
-        );
-        failed_server.join().unwrap();
-        store.save_turn(&turn)?;
-        drop(store);
-        let store = Store::open(&path)?;
-        let mut retry = store.turns()?.last().unwrap().clone();
-        assert_eq!(retry.id, turn.id);
-        assert!(retry.error.as_ref().unwrap().contains("limit"));
-        retry.error = None;
-        store.save_turn(&retry)?;
-        let (endpoint, success_server) = server(
-            "200 OK",
-            r#"{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"[Fixture] Start with the most important task."}]}]}"#,
-        );
-        retry.response = Some(request(
-            &endpoint,
-            "test-only",
-            request_body(&store.turns()?, &retry, MODEL),
-            Duration::from_secs(5),
-        )?);
-        success_server.join().unwrap();
-        store.save_turn(&retry)?;
-        drop(store);
-        let store = Store::open(&path)?;
-        assert_eq!(store.turns()?.last(), Some(&retry));
+    #[ignore = "requires installed Codex and an isolated AGENTINC_CODEX_HOME"]
+    fn installed_codex_accepts_thread_contract() -> Result<()> {
         assert!(
-            store
-                .turns()?
-                .iter()
-                .all(|t| t.id != turn.id || t.error.is_none())
+            std::env::var_os("AGENTINC_CODEX_HOME").is_some(),
+            "set a disposable Codex home"
         );
-        drop(store);
-        std::fs::remove_file(path)?;
+        let mut client = Client::start()?;
+        let thread = client.call("thread/start", thread_params(None))?;
+        assert!(thread["thread"]["id"].is_string());
         Ok(())
     }
     #[test]
-    fn timeout_and_refusal_are_handled() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let endpoint = format!("http://{}/v1/responses", listener.local_addr().unwrap());
-        let peer = thread::spawn(move || {
-            let (_stream, _) = listener.accept().unwrap();
-            thread::sleep(Duration::from_millis(250));
-        });
-        assert!(
-            request(
-                &endpoint,
-                "test-only",
-                json!({}),
-                Duration::from_millis(100)
-            )
-            .unwrap_err()
-            .to_string()
-            .contains("timed out")
+    fn stdio_handshake_account_events_and_safe_errors() -> Result<()> {
+        let script = r#"
+read -r init
+case "$init" in *'"method":"initialize"'*) ;; *) exit 1;; esac
+printf '%s\n' '{"id":1,"result":{}}'
+read -r initialized
+case "$initialized" in *'"method":"initialized"'*) ;; *) exit 1;; esac
+read -r account
+printf '%s\n' '{"method":"account/updated","params":{}}' '{"id":2,"result":{"account":{"type":"chatgpt","email":"fixture@example.test","planType":"test"}}}'
+read -r turn
+printf '%s\n' '{"id":3,"result":{}}' '{"method":"item/completed","params":{"item":{"type":"agentMessage","text":"Fixture reply"}}}' '{"method":"turn/completed","params":{"turn":{"status":"completed"}}}'
+read -r fail
+printf '%s\n' '{"id":4,"error":{"message":"private backend detail"}}'
+"#;
+        let child = Command::new("/bin/sh")
+            .args(["-c", script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let mut client = Client::from_child(child)?;
+        assert_eq!(
+            client.account()?.as_deref(),
+            Some("fixture@example.test · test")
         );
-        peer.join().unwrap();
-        assert_eq!(parse_response(&json!({"status":"completed", "output":[{"type":"message","role":"assistant","content":[{"type":"refusal","refusal":"I cannot help with that."}]}]})).unwrap(), "I cannot help with that.");
+        client.call("turn/start", json!({}))?;
+        assert_eq!(collect_reply(&mut client)?, "Fixture reply");
+        let error = client
+            .call("example/error", json!({}))
+            .unwrap_err()
+            .to_string();
+        assert!(!error.contains("private backend detail"));
+        assert!(error.contains("example/error"));
+        Ok(())
     }
     #[test]
-    fn history_excludes_failed_future_and_unbounded_old_turns() {
-        let mut history: Vec<_> = (1..=30)
-            .map(|id| Turn {
-                id,
-                prompt: id.to_string(),
-                response: Some("Reply".into()),
+    fn retry_context_excludes_failed_and_future_turns() {
+        let history = vec![
+            Turn {
+                id: 1,
+                prompt: "one".into(),
+                response: Some("reply".into()),
                 error: None,
-            })
-            .collect();
-        history[28].response = None;
+            },
+            Turn {
+                id: 2,
+                prompt: "failed".into(),
+                response: None,
+                error: Some("error".into()),
+            },
+            Turn {
+                id: 4,
+                prompt: "future".into(),
+                response: Some("later".into()),
+                error: None,
+            },
+        ];
         let current = Turn {
-            id: 30,
-            prompt: "Retry".into(),
+            id: 3,
+            prompt: "next\nline".into(),
             response: None,
             error: None,
         };
-        let body = request_body(&history, &current, MODEL);
-        assert_eq!(body["input"].as_array().unwrap().len(), 41);
-        assert_eq!(body["input"][0]["content"], "9");
-        assert_eq!(body["input"][40]["content"], "Retry");
+        let value: Value = serde_json::from_str(&conversation_input(&history, &current)).unwrap();
+        assert_eq!(value["conversation"].as_array().unwrap().len(), 3);
+        assert_eq!(value["conversation"][2]["content"], "next\nline");
     }
 }

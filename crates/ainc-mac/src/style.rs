@@ -73,6 +73,7 @@ impl AssetSource for Assets {
             });
         }
         let data: &'static [u8] = match path {
+            "send.svg" => include_bytes!("../assets/send.svg"),
             "agents.svg" => include_bytes!("../assets/agents.svg"),
             "arrowRight.svg" => include_bytes!("../assets/arrowRight.svg"),
             "arrowUpRight.svg" => include_bytes!("../assets/arrowUpRight.svg"),

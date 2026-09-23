@@ -38,7 +38,6 @@ enum Control {
     Notifications,
     MarkAllRead,
     Dismiss,
-    AssistantSetup,
     Font(FontChoice),
 }
 pub struct Shell {
@@ -46,6 +45,7 @@ pub struct Shell {
     assistant: Entity<crate::evee::Evee>,
     tasks: Entity<crate::tasks::Tasks>,
     _tasks_subscription: Subscription,
+    _assistant_subscriptions: Vec<Subscription>,
     profile: crate::profile::Profile,
     path: PathBuf,
     focus: FocusHandle,
@@ -91,6 +91,23 @@ impl Shell {
         };
         let assistant =
             cx.new(|cx| crate::evee::Evee::new(store.clone(), storage_error.clone(), cx));
+        let assistant_subscriptions = vec![
+            cx.observe(&assistant, |_, _, cx| cx.notify()),
+            cx.subscribe(
+                &assistant,
+                |this, _, event: &crate::evee::Navigation, cx| {
+                    match event {
+                        crate::evee::Navigation::Settings => this.session.navigate(Space::Settings),
+                        crate::evee::Navigation::Chat => {
+                            this.session.evee = true;
+                            this.evee_animation = Some((Instant::now(), this.evee_progress, 1.));
+                        }
+                    }
+                    this.save(cx);
+                    cx.notify();
+                },
+            ),
+        ];
         let tasks = cx.new(|cx| crate::tasks::Tasks::new(store, storage_error, cx));
         let tasks_subscription = cx.observe(&tasks, |_, _, cx| cx.notify());
         let input = cx.new(TextInput::new);
@@ -108,6 +125,7 @@ impl Shell {
             assistant,
             tasks,
             _tasks_subscription: tasks_subscription,
+            _assistant_subscriptions: assistant_subscriptions,
             profile: crate::profile::Profile::local(),
             sidebar_width,
             evee_progress,
@@ -212,12 +230,6 @@ impl Shell {
                     self.evee_progress,
                     if self.session.evee { 1. } else { 0. },
                 ));
-            }
-            Control::AssistantSetup => {
-                self.session.evee = true;
-                self.evee_animation = Some((Instant::now(), self.evee_progress, 1.));
-                self.assistant
-                    .update(cx, |assistant, cx| assistant.open_setup(cx));
             }
             Control::Font(font) => self.session.font = font,
             Control::Notifications => self.notifications = !self.notifications,
@@ -402,7 +414,7 @@ impl Shell {
     }
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut nav = column().gap(px(2.));
-        for (index, space) in Space::ALL[..7].iter().copied().enumerate() {
+        for (index, space) in Space::ALL[..8].iter().copied().enumerate() {
             if index == 3 {
                 nav = nav.child(
                     div()
@@ -836,28 +848,12 @@ impl Shell {
                             .font_weight(FontWeight::MEDIUM)
                             .child("Accounts & connections"),
                     )
-                    .child(
-                        self.button("setup-evee", "OpenAI setup", Control::AssistantSetup, cx)
-                            .p(px(12.))
-                            .border_1()
-                            .border_color(rgb(BORDER))
-                            .child("OpenAI connection")
-                            .child(div().flex_1())
-                            .child("Set up →"),
-                    ),
+                    .child(self.assistant.update(cx, |this, cx| this.settings_view(cx))),
             );
         } else if space == Space::Evee {
             page = page.child(
-                column()
-                    .gap(px(16.))
-                    .child("Your conversation is in the Evee panel.")
-                    .child(
-                        self.button("open-evee-chat", "Open Evee", Control::AssistantSetup, cx)
-                            .p(px(12.))
-                            .border_1()
-                            .border_color(rgb(BORDER))
-                            .child("Open Evee setup"),
-                    ),
+                self.assistant
+                    .update(cx, |this, cx| this.conversations_view(cx)),
             );
         } else if space != Space::Today {
             page = page.child(
@@ -1080,7 +1076,7 @@ impl Render for Shell {
                 cx.notify();
             }))
             .on_action(cx.listener(|this, action: &NavigateSpace, w, cx| {
-                if let Some(space) = Space::ALL[..7].get(action.0) {
+                if let Some(space) = Space::ALL[..8].get(action.0) {
                     this.dispatch(Control::Navigate(*space), w, cx);
                 }
             }))
@@ -1249,7 +1245,7 @@ impl Render for Shell {
 }
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys(
-        (1..=7)
+        (1..=8)
             .map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateSpace(n - 1), Some("Control"))),
     );
     cx.bind_keys([

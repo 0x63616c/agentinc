@@ -1,23 +1,35 @@
 use crate::{
     assistant,
     input::{Submit, TextInput},
-    storage::{Store, Turn},
+    storage::{Conversation, Store, Turn},
     style::*,
 };
 use gpui::{prelude::*, *};
-use std::{rc::Rc, time::Instant};
+use std::{
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
+};
 
 pub struct Evee {
     store: Option<Rc<Store>>,
     turns: Vec<Turn>,
     input: Entity<TextInput>,
-    key_input: Entity<TextInput>,
-    model_input: Entity<TextInput>,
-    key: Option<String>,
-    model: String,
-    environment_key: bool,
-    setup: bool,
+    conversations: Vec<Conversation>,
+    conversation: Option<i64>,
+    rename_input: Entity<TextInput>,
+    menu: Option<i64>,
+    renaming: Option<i64>,
+    deleting: Option<i64>,
+    account: Option<String>,
+    models: Vec<assistant::Model>,
+    model: Option<String>,
     credentials_busy: bool,
+    login_cancel: Option<Arc<AtomicBool>>,
+    connection_error: Option<String>,
     active: Option<i64>,
     error: Option<String>,
     unsaved: Option<i64>,
@@ -27,210 +39,601 @@ pub struct Evee {
     hover: HoverFade,
     _subscriptions: Vec<Subscription>,
 }
+pub enum Navigation {
+    Settings,
+    Chat,
+}
+impl EventEmitter<Navigation> for Evee {}
 impl Evee {
     pub fn new(
         mut store: Option<Rc<Store>>,
         storage_error: Option<String>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input = cx.new(|cx| TextInput::field("Ask Evee…", false, cx));
-        let key_input = cx.new(|cx| TextInput::field("Paste API key", true, cx));
-        let model = std::env::var("OPENAI_MODEL")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| assistant::MODEL.into());
-        let model_input = cx.new(|cx| {
-            let mut field = TextInput::field("Model", false, cx);
-            field.set_text(&model, cx);
-            field
-        });
+        let input = cx.new(TextInput::composer);
+        let rename_input = cx.new(|cx| TextInput::field("Conversation title", false, cx));
         let subscriptions = vec![
             cx.subscribe(&input, |this, _, _: &Submit, cx| this.send(cx)),
             cx.observe(&input, |_, _, cx| cx.notify()),
-            cx.subscribe(&key_input, |this, _, _: &Submit, cx| {
-                this.save_credentials(cx)
-            }),
-            cx.subscribe(&model_input, |this, _, _: &Submit, cx| {
-                this.save_credentials(cx)
-            }),
+            cx.subscribe(&rename_input, |this, _, _: &Submit, cx| this.rename(cx)),
         ];
-        let key = std::env::var("OPENAI_API_KEY")
-            .ok()
-            .map(|s| s.trim().to_owned())
-            .filter(|s| !s.is_empty());
-        let environment_key = key.is_some();
         let loaded = store
             .as_ref()
-            .map(|db| db.recover_interrupted().and_then(|_| db.turns()))
+            .map(|db| db.recover_interrupted().and_then(|_| db.conversations()))
             .transpose();
-        let (turns, error) = match loaded {
-            Ok(turns) => (turns.unwrap_or_default(), storage_error),
+        let (conversations, error) = match loaded {
+            Ok(items) => (items.unwrap_or_default(), storage_error),
             Err(_) => {
                 store = None;
                 (
                     vec![],
-                    Some(
-                        "Could not load chat history. Restart after checking database access."
-                            .into(),
-                    ),
+                    Some("Could not load conversations. Check database access and restart.".into()),
                 )
             }
         };
-        if !environment_key {
-            let read = cx.read_credentials(assistant::KEYCHAIN_SERVICE);
-            cx.spawn(async move |this, cx| {
-                let result = read.await;
-                let _ = this.update(cx, |this, cx| {
-                    this.credentials_busy = false;
-                    match result {
-                        Ok(Some((model, bytes))) => match String::from_utf8(bytes) {
-                            Ok(key) if !key.trim().is_empty() => {
-                                this.key = Some(key);
-                                this.scroll.scroll_to_bottom();
-                                if std::env::var("OPENAI_MODEL").is_err() && !model.is_empty() {
-                                    this.model = model;
-                                    this.model_input
-                                        .update(cx, |input, cx| input.set_text(&this.model, cx));
-                                }
-                            }
-                            _ => {
-                                this.error = Some(
-                                    "The saved API key is invalid. Replace it in setup.".into(),
-                                )
-                            }
-                        },
-                        Ok(None) => this.open_setup(cx),
-                        Err(_) => {
-                            this.setup = true;
-                            this.error = Some(
-                                "Keychain could not be read. Unlock it or save your key again."
-                                    .into(),
-                            );
-                        }
-                    }
-                    cx.notify();
-                });
-            })
-            .detach();
-        }
-        let scroll = ScrollHandle::new();
-        if environment_key {
-            scroll.scroll_to_bottom();
-        }
+        let conversation = conversations.first().map(|c| c.id);
+        let turns = conversation
+            .and_then(|id| store.as_ref().map(|db| db.turns(id)))
+            .transpose();
+        let (turns, error) = match turns {
+            Ok(t) => (t.unwrap_or_default(), error),
+            Err(e) => (vec![], Some(e.to_string())),
+        };
+        let model = store
+            .as_ref()
+            .and_then(|db| db.setting("model").ok().flatten().filter(|s| !s.is_empty()));
+        let request = cx
+            .background_executor()
+            .spawn(async { assistant::status() });
+        cx.spawn(async move |this, cx| {
+            let result = request.await;
+            let _ = this.update(cx, |this, cx| {
+                this.apply_status(result);
+                cx.notify();
+            });
+        })
+        .detach();
         Self {
             store,
             turns,
             input,
-            key_input,
-            model_input,
-            key,
+            conversations,
+            conversation,
+            rename_input,
+            menu: None,
+            renaming: None,
+            deleting: None,
+            account: None,
+            models: vec![],
             model,
-            environment_key,
-            setup: false,
-            credentials_busy: !environment_key,
+            credentials_busy: true,
+            login_cancel: None,
+            connection_error: None,
             active: None,
             error,
             unsaved: None,
-            scroll,
+            scroll: ScrollHandle::new(),
             appearance: None,
             reduced_motion: reduced_motion(),
             hover: HoverFade::default(),
             _subscriptions: subscriptions,
         }
     }
-    pub fn open_setup(&mut self, cx: &mut Context<Self>) {
-        self.setup = true;
-        self.scroll.set_offset(point(px(0.), px(0.)));
-        cx.notify();
+    fn apply_status(&mut self, result: anyhow::Result<(Option<String>, Vec<assistant::Model>)>) {
+        self.credentials_busy = false;
+        self.login_cancel = None;
+        match result {
+            Ok((account, models)) => {
+                self.account = account;
+                self.models = models;
+                self.connection_error = None;
+            }
+            Err(e) => {
+                self.account = None;
+                self.connection_error = Some(e.to_string());
+            }
+        }
     }
-    fn save_credentials(&mut self, cx: &mut Context<Self>) {
-        if self.credentials_busy || self.environment_key || self.active.is_some() {
-            return;
-        }
-        let entered = self.key_input.read(cx).content.trim().to_owned();
-        let key = if entered.is_empty() {
-            self.key.clone().unwrap_or_default()
-        } else {
-            entered
-        };
-        let model = self.model_input.read(cx).content.trim().to_owned();
-        if key.is_empty()
-            || key.len() > 512
-            || !key.is_ascii()
-            || key.chars().any(char::is_whitespace)
-        {
-            self.error = Some("Enter a valid API key.".into());
-            cx.notify();
-            return;
-        }
-        if model.is_empty()
-            || model.len() > 128
-            || !model
-                .bytes()
-                .all(|c| c.is_ascii_alphanumeric() || b"-._:".contains(&c))
-        {
-            self.error = Some("Enter a valid model name.".into());
-            cx.notify();
+    fn refresh_connection(&mut self, cx: &mut Context<Self>) {
+        if self.credentials_busy || self.active.is_some() {
             return;
         }
         self.credentials_busy = true;
-        let write = cx.write_credentials(assistant::KEYCHAIN_SERVICE, &model, key.as_bytes());
+        let request = cx
+            .background_executor()
+            .spawn(async { assistant::status() });
         cx.spawn(async move |this, cx| {
-            let result = write.await;
+            let result = request.await;
             let _ = this.update(cx, |this, cx| {
-                this.credentials_busy = false;
-                if result.is_ok() {
-                    this.key = Some(key);
-                    this.model = model;
-                    this.setup = false;
-                    this.error = None;
-                    this.key_input.update(cx, |input, cx| {
-                        input.reset();
-                        cx.notify();
-                    });
-                } else {
-                    this.error =
-                        Some("Could not save to Keychain. Your previous key is unchanged.".into());
-                }
+                this.apply_status(result);
                 cx.notify();
             });
         })
         .detach();
         cx.notify();
     }
-    fn forget_key(&mut self, cx: &mut Context<Self>) {
-        if self.credentials_busy || self.environment_key || self.active.is_some() {
+    fn connect(&mut self, cx: &mut Context<Self>) {
+        if self.credentials_busy || self.active.is_some() {
             return;
         }
         self.credentials_busy = true;
-        let delete = cx.delete_credentials(assistant::KEYCHAIN_SERVICE);
+        self.connection_error = None;
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.login_cancel = Some(cancel.clone());
+        let request = cx.background_executor().spawn(async move {
+            assistant::login(cancel, |url| {
+                let _ = std::process::Command::new("/usr/bin/open").arg(url).spawn();
+            })
+            .and_then(|_| assistant::status())
+        });
         cx.spawn(async move |this, cx| {
-            let result = delete.await;
+            let result = request.await;
             let _ = this.update(cx, |this, cx| {
-                this.credentials_busy = false;
-                if result.is_ok() {
-                    this.key = None;
-                    this.setup = true;
-                    this.error = None;
-                    this.key_input.update(cx, |input, cx| {
-                        input.reset();
-                        cx.notify();
-                    });
-                } else {
-                    this.error = Some("Could not remove the key from Keychain.".into());
-                }
+                this.apply_status(result);
                 cx.notify();
             });
         })
         .detach();
         cx.notify();
+    }
+    fn disconnect(&mut self, cx: &mut Context<Self>) {
+        if self.credentials_busy || self.active.is_some() {
+            return;
+        }
+        self.credentials_busy = true;
+        let request = cx
+            .background_executor()
+            .spawn(async { assistant::logout().and_then(|_| assistant::status()) });
+        cx.spawn(async move |this, cx| {
+            let result = request.await;
+            let _ = this.update(cx, |this, cx| {
+                this.apply_status(result);
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+    pub fn settings_view(&self, cx: &mut Context<Self>) -> Div {
+        let enabled = !self.credentials_busy && self.active.is_none();
+        column().gap(px(14.)).child(
+            column()
+                .gap(px(12.))
+                .p(px(16.))
+                .rounded(px(8.))
+                .border_1()
+                .border_color(rgb(BORDER))
+                .child(
+                    row()
+                        .gap(px(10.))
+                        .child(icon("spark", 18.))
+                        .child("Codex / ChatGPT"),
+                )
+                .child(div().text_size(px(12.)).text_color(rgb(MUTED)).child(
+                    if self.credentials_busy {
+                        if self.login_cancel.is_some() {
+                            "Complete sign-in in your browser.".to_owned()
+                        } else {
+                            "Checking connection…".to_owned()
+                        }
+                    } else {
+                        self.account.clone().unwrap_or("Not connected".into())
+                    },
+                ))
+                .child(
+                    div().text_size(px(11.)).text_color(rgb(MUTED)).child(
+                        "Use your ChatGPT subscription. Codex manages sign-in for this app.",
+                    ),
+                )
+                .when_some(self.connection_error.clone(), |s, e| {
+                    s.child(div().text_size(px(11.)).text_color(rgb(0xe6acac)).child(e))
+                })
+                .child(
+                    row()
+                        .gap(px(8.))
+                        .child(
+                            self.action(
+                                "codex-sign-in",
+                                if self.account.is_some() {
+                                    "Sign out"
+                                } else {
+                                    "Sign in with ChatGPT"
+                                },
+                                enabled,
+                                |this, cx| {
+                                    if this.account.is_some() {
+                                        this.disconnect(cx)
+                                    } else {
+                                        this.connect(cx)
+                                    }
+                                },
+                                cx,
+                            )
+                            .border_1()
+                            .border_color(rgb(BORDER)),
+                        )
+                        .child(self.action(
+                            "codex-refresh",
+                            "Refresh",
+                            enabled,
+                            Self::refresh_connection,
+                            cx,
+                        )),
+                )
+                .when(self.login_cancel.is_some(), |s| {
+                    s.child(self.action(
+                        "cancel-sign-in",
+                        "Cancel sign-in",
+                        true,
+                        |this, cx| {
+                            if let Some(cancel) = &this.login_cancel {
+                                cancel.store(true, Ordering::Relaxed);
+                            }
+                            cx.notify();
+                        },
+                        cx,
+                    ))
+                })
+                .when(self.account.is_some(), |s| {
+                    s.child(
+                        column()
+                            .gap(px(6.))
+                            .child(
+                                div()
+                                    .mt(px(8.))
+                                    .text_size(px(11.))
+                                    .text_color(rgb(MUTED))
+                                    .child("Model"),
+                            )
+                            .child(self.action(
+                                "model-default",
+                                if self.model.is_none() {
+                                    "✓ Codex default"
+                                } else {
+                                    "Codex default"
+                                },
+                                enabled,
+                                |this, cx| this.select_model(None, cx),
+                                cx,
+                            ))
+                            .children(self.models.iter().enumerate().map(|(index, model)| {
+                                let id = model.id.clone();
+                                let label = format!(
+                                    "{}{}",
+                                    if self.model.as_ref() == Some(&id) {
+                                        "✓ "
+                                    } else {
+                                        ""
+                                    },
+                                    model.name
+                                );
+                                self.action(
+                                    ("codex-model", index),
+                                    &label,
+                                    enabled,
+                                    move |this, cx| this.select_model(Some(id.clone()), cx),
+                                    cx,
+                                )
+                            })),
+                    )
+                }),
+        )
+    }
+    fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
+        if let Some(db) = &self.store {
+            match db.set_setting("model", model.as_deref().unwrap_or("")) {
+                Ok(()) => self.model = model,
+                Err(e) => self.connection_error = Some(e.to_string()),
+            }
+        }
+        cx.notify();
+    }
+    fn reload_conversations(&mut self) {
+        if let Some(db) = &self.store {
+            match db.conversations() {
+                Ok(c) => self.conversations = c,
+                Err(e) => self.error = Some(e.to_string()),
+            }
+        }
+    }
+    fn open_conversation(&mut self, id: i64, cx: &mut Context<Self>) {
+        if self.active.is_some() || self.unsaved.is_some() {
+            return;
+        }
+        if let Some(db) = &self.store {
+            match db.turns(id) {
+                Ok(turns) => {
+                    self.turns = turns;
+                    self.conversation = Some(id);
+                    self.error = None;
+                    self.menu = None;
+                    self.input.update(cx, |i, cx| {
+                        i.reset();
+                        cx.notify();
+                    });
+                    self.scroll.scroll_to_bottom();
+                    cx.emit(Navigation::Chat);
+                }
+                Err(e) => self.error = Some(e.to_string()),
+            }
+        }
+        cx.notify();
+    }
+    fn new_conversation(&mut self, cx: &mut Context<Self>) {
+        if self.active.is_some() || self.unsaved.is_some() {
+            return;
+        }
+        if let Some(db) = &self.store {
+            match db.new_conversation() {
+                Ok(id) => {
+                    self.reload_conversations();
+                    self.open_conversation(id, cx);
+                }
+                Err(e) => self.error = Some(e.to_string()),
+            }
+        }
+        cx.notify();
+    }
+    fn rename(&mut self, cx: &mut Context<Self>) {
+        if let (Some(db), Some(id)) = (&self.store, self.renaming) {
+            match db.rename_conversation(id, &self.rename_input.read(cx).content) {
+                Ok(()) => {
+                    self.renaming = None;
+                    self.reload_conversations();
+                }
+                Err(e) => self.error = Some(e.to_string()),
+            }
+        }
+        cx.notify();
+    }
+    fn delete(&mut self, cx: &mut Context<Self>) {
+        if self.active.is_some() || self.unsaved.is_some() {
+            return;
+        }
+        if let (Some(db), Some(id)) = (&self.store, self.deleting) {
+            match db.delete_conversation(id) {
+                Ok(()) => {
+                    self.deleting = None;
+                    if self.conversation == Some(id) {
+                        self.conversation = None;
+                        self.turns.clear();
+                    }
+                    self.reload_conversations();
+                }
+                Err(e) => self.error = Some(e.to_string()),
+            }
+        }
+        cx.notify();
+    }
+    pub fn conversations_view(&self, cx: &mut Context<Self>) -> Div {
+        let enabled = self.active.is_none() && self.unsaved.is_none() && self.store.is_some();
+        column()
+            .gap(px(16.))
+            .child(
+                row().child(div().flex_1()).child(
+                    self.action(
+                        "new-chat",
+                        "New conversation",
+                        enabled,
+                        Self::new_conversation,
+                        cx,
+                    )
+                    .border_1()
+                    .border_color(rgb(BORDER)),
+                ),
+            )
+            .when_some(self.error.clone(), |s, e| {
+                s.child(div().text_size(px(12.)).text_color(rgb(0xe6acac)).child(e))
+            })
+            .when(self.conversations.is_empty(), |s| {
+                s.child(
+                    div()
+                        .py(px(28.))
+                        .text_color(rgb(MUTED))
+                        .child("Your conversations will appear here."),
+                )
+            })
+            .when(self.renaming.is_some(), |s| {
+                s.child(
+                    column()
+                        .gap(px(10.))
+                        .p(px(14.))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(rgb(BORDER))
+                        .child("Rename conversation")
+                        .child(
+                            div()
+                                .p(px(9.))
+                                .rounded(px(6.))
+                                .bg(rgb(0x181818))
+                                .border_1()
+                                .border_color(rgb(BORDER))
+                                .child(self.rename_input.clone()),
+                        )
+                        .child(
+                            row()
+                                .gap(px(8.))
+                                .child(self.action(
+                                    "rename-save",
+                                    "Save",
+                                    enabled,
+                                    Self::rename,
+                                    cx,
+                                ))
+                                .child(self.action(
+                                    "rename-cancel",
+                                    "Cancel",
+                                    true,
+                                    |this, cx| {
+                                        this.renaming = None;
+                                        cx.notify();
+                                    },
+                                    cx,
+                                )),
+                        ),
+                )
+            })
+            .when(self.deleting.is_some(), |s| {
+                s.child(
+                    column()
+                        .gap(px(10.))
+                        .p(px(14.))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(rgb(BORDER))
+                        .child(format!(
+                            "Delete “{}”?",
+                            self.conversations
+                                .iter()
+                                .find(|c| Some(c.id) == self.deleting)
+                                .map_or("conversation", |c| c.title.as_str())
+                        ))
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(rgb(MUTED))
+                                .child("This permanently removes its messages from this Mac."),
+                        )
+                        .child(
+                            row()
+                                .gap(px(8.))
+                                .child(
+                                    self.action(
+                                        "delete-confirm",
+                                        "Delete conversation",
+                                        enabled,
+                                        Self::delete,
+                                        cx,
+                                    )
+                                    .text_color(rgb(0xdaa7a7)),
+                                )
+                                .child(self.action(
+                                    "delete-cancel",
+                                    "Cancel",
+                                    true,
+                                    |this, cx| {
+                                        this.deleting = None;
+                                        cx.notify();
+                                    },
+                                    cx,
+                                )),
+                        ),
+                )
+            })
+            .children(self.conversations.iter().map(|conversation| {
+                let id = conversation.id;
+                column()
+                    .gap(px(8.))
+                    .pb(px(14.))
+                    .border_b_1()
+                    .border_color(rgb(BORDER))
+                    .child(
+                        row()
+                            .gap(px(12.))
+                            .child(
+                                self.action(
+                                    ("conversation", id as u64),
+                                    "",
+                                    enabled,
+                                    move |this, cx| this.open_conversation(id, cx),
+                                    cx,
+                                )
+                                .flex_1()
+                                .justify_start()
+                                .child(
+                                    column()
+                                        .gap(px(6.))
+                                        .flex_1()
+                                        .overflow_hidden()
+                                        .child(
+                                            div()
+                                                .text_size(px(13.))
+                                                .text_color(rgb(TEXT))
+                                                .child(conversation.title.clone()),
+                                        )
+                                        .child(
+                                            div().text_size(px(12.)).text_color(rgb(MUTED)).child(
+                                                conversation
+                                                    .snippet
+                                                    .split_whitespace()
+                                                    .collect::<Vec<_>>()
+                                                    .join(" ")
+                                                    .chars()
+                                                    .take(110)
+                                                    .collect::<String>(),
+                                            ),
+                                        ),
+                                ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.))
+                                    .text_color(rgb(MUTED))
+                                    .child(conversation.updated.clone()),
+                            )
+                            .child(self.action(
+                                ("chat-menu", id as u64),
+                                "…",
+                                enabled,
+                                move |this, cx| {
+                                    this.menu = if this.menu == Some(id) {
+                                        None
+                                    } else {
+                                        Some(id)
+                                    };
+                                    cx.notify();
+                                },
+                                cx,
+                            )),
+                    )
+                    .when(self.menu == Some(id), |s| {
+                        s.child(
+                            row()
+                                .justify_end()
+                                .gap(px(8.))
+                                .child(self.action(
+                                    ("rename-chat", id as u64),
+                                    "Rename",
+                                    enabled,
+                                    move |this, cx| {
+                                        this.renaming = Some(id);
+                                        this.menu = None;
+                                        if let Some(c) =
+                                            this.conversations.iter().find(|c| c.id == id)
+                                        {
+                                            this.rename_input.update(cx, |input, cx| {
+                                                input.set_text(&c.title, cx)
+                                            });
+                                        }
+                                        cx.notify();
+                                    },
+                                    cx,
+                                ))
+                                .child(
+                                    self.action(
+                                        ("delete-chat", id as u64),
+                                        "Delete",
+                                        enabled,
+                                        move |this, cx| {
+                                            this.deleting = Some(id);
+                                            this.menu = None;
+                                            cx.notify();
+                                        },
+                                        cx,
+                                    )
+                                    .text_color(rgb(0xdaa7a7)),
+                                ),
+                        )
+                    })
+            }))
     }
     fn send(&mut self, cx: &mut Context<Self>) {
         if self.active.is_some() || self.unsaved.is_some() || self.credentials_busy {
             return;
         }
-        if self.key.is_none() {
-            self.open_setup(cx);
+        if self.account.is_none() {
+            cx.emit(Navigation::Settings);
             return;
         }
         let Some(store) = self.store.as_ref() else {
@@ -240,13 +643,28 @@ impl Evee {
         if prompt.is_empty() {
             return;
         }
-        match store.begin_turn(&prompt) {
+        let conversation = match self.conversation {
+            Some(id) => id,
+            None => match store.new_conversation() {
+                Ok(id) => {
+                    self.conversation = Some(id);
+                    id
+                }
+                Err(e) => {
+                    self.error = Some(e.to_string());
+                    cx.notify();
+                    return;
+                }
+            },
+        };
+        match store.begin_turn(conversation, &prompt) {
             Ok(turn) => {
                 self.input.update(cx, |input, cx| {
                     input.reset();
                     cx.notify();
                 });
                 self.turns.push(turn.clone());
+                self.reload_conversations();
                 self.run(turn, cx);
             }
             Err(error) => {
@@ -259,8 +677,8 @@ impl Evee {
         if self.active.is_some() || self.unsaved.is_some() || self.credentials_busy {
             return;
         }
-        if self.key.is_none() {
-            self.open_setup(cx);
+        if self.account.is_none() {
+            cx.emit(Navigation::Settings);
             return;
         }
         let Some(turn) = self.turns.iter_mut().find(|t| t.id == id) else {
@@ -280,9 +698,6 @@ impl Evee {
         self.run(pending, cx);
     }
     fn run(&mut self, current: Turn, cx: &mut Context<Self>) {
-        let Some(key) = self.key.clone() else {
-            return;
-        };
         let id = current.id;
         self.active = Some(id);
         self.error = None;
@@ -292,7 +707,7 @@ impl Evee {
         let model = self.model.clone();
         let request = cx
             .background_executor()
-            .spawn(async move { assistant::respond(&key, &model, &history, &current) });
+            .spawn(async move { assistant::respond(model.as_deref(), &history, &current) });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
@@ -304,7 +719,7 @@ impl Evee {
                         this.error = Some("Reply is in this window but could not be saved. Retry saving before closing.".into());
                     }
                 }
-                this.appearance = Some(Instant::now()); this.scroll.scroll_to_bottom(); cx.notify();
+                this.reload_conversations(); this.appearance = Some(Instant::now()); this.scroll.scroll_to_bottom(); cx.notify();
             });
         }).detach();
         cx.notify();
@@ -319,6 +734,7 @@ impl Evee {
         {
             self.unsaved = None;
             self.error = None;
+            self.reload_conversations();
         }
         cx.notify();
     }
@@ -366,21 +782,8 @@ impl Evee {
             }))
             .child(label.to_owned())
     }
-    fn setup_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let enabled = !self.credentials_busy && self.active.is_none();
-        column().flex_shrink_0().gap(px(12.)).p(px(12.)).rounded(px(8.)).bg(rgb(0x111111))
-            .child("OpenAI setup")
-            .when(self.environment_key, |s| s.child(div().text_size(px(11.)).text_color(rgb(MUTED)).child("Using OPENAI_API_KEY from the environment. Restart without it to use Keychain.")))
-            .when(!self.environment_key, |s| s
-                .child(column().gap(px(6.)).child(div().text_size(px(11.)).child("API key"))
-                    .child(div().p(px(9.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).child(self.key_input.clone())))
-                .child(column().gap(px(6.)).child(div().text_size(px(11.)).child("Model"))
-                    .child(div().p(px(9.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).child(self.model_input.clone())))
-                .child(div().text_size(px(11.)).text_color(rgb(MUTED)).child("Save your key to macOS Keychain. Messages are sent to OpenAI when you send."))
-                .child(self.action("save-key", if self.credentials_busy {"Saving…"} else {"Save connection"}, enabled, Self::save_credentials, cx).border_1().border_color(rgb(BORDER)))
-                .when(self.key.is_some(), |s| s.child(self.action("forget-key", "Remove saved key", enabled, Self::forget_key,cx))))
-    }
 }
+
 impl Render for Evee {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
@@ -412,28 +815,39 @@ impl Render for Evee {
                     .gap(px(8.))
                     .text_size(px(11.))
                     .text_color(rgb(MUTED))
-                    .flex_shrink_0()
-                    .child(div().flex_1().child(if self.credentials_busy {
-                        "Reading Keychain…"
-                    } else if self.key.is_some() {
-                        "Key configured"
-                    } else {
-                        "Connect to start"
-                    }))
+                    .child(
+                        div().flex_1().child(
+                            self.conversations
+                                .iter()
+                                .find(|c| Some(c.id) == self.conversation)
+                                .map(|c| c.title.clone())
+                                .unwrap_or("New conversation".into()),
+                        ),
+                    )
                     .child(self.action(
-                        "setup",
-                        if self.setup { "Done" } else { "Setup" },
-                        !self.credentials_busy,
-                        |this, cx| {
-                            this.setup = !this.setup;
-                            if this.setup {
-                                this.scroll.set_offset(point(px(0.), px(0.)));
-                            }
-                            cx.notify();
-                        },
+                        "panel-new",
+                        "+",
+                        self.active.is_none() && self.unsaved.is_none(),
+                        Self::new_conversation,
                         cx,
                     )),
             )
+            .when(self.account.is_none(), |s| {
+                s.child(
+                    column()
+                        .gap(px(5.))
+                        .text_size(px(11.))
+                        .text_color(rgb(MUTED))
+                        .child("Connect ChatGPT to talk with Evee.")
+                        .child(self.action(
+                            "open-settings",
+                            "Open Settings",
+                            true,
+                            |_, cx| cx.emit(Navigation::Settings),
+                            cx,
+                        )),
+                )
+            })
             .when(self.store.is_none(), |s| {
                 s.child(
                     div()
@@ -461,7 +875,6 @@ impl Render for Evee {
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .gap(px(16.))
-                    .when(self.setup, |s| s.child(self.setup_view(cx)))
                     .when(self.turns.is_empty(), |s| {
                         s.child(
                             column()
@@ -570,19 +983,13 @@ impl Render for Evee {
                     .bg(rgb(0x181818))
                     .child(self.input.clone())
                     .child(
-                        row()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .text_size(px(10.))
-                                    .text_color(rgb(MUTED))
-                                    .child("Return to send"),
-                            )
-                            .child(
-                                self.action("send", "Send", send_enabled, Self::send, cx)
-                                    .border_1()
-                                    .border_color(rgb(0x555555)),
-                            ),
+                        row().justify_end().child(
+                            self.action("send", "", send_enabled, Self::send, cx)
+                                .size(px(30.))
+                                .p(px(0.))
+                                .bg(rgb(0x2a2a2a))
+                                .child(icon("send", 16.).text_color(rgb(TEXT))),
+                        ),
                     ),
             )
     }
