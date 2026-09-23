@@ -13,12 +13,11 @@ open 'dist/Agentinc OS.app'
 
 The script builds and ad hoc signs a normal `.app` bundle. It is intended for local use, not notarized distribution. Use `scripts/bundle.sh release` for an optimized build. The verified build is the default debug bundle.
 
-```sh
-cargo fmt --check
-cargo test --locked
-cargo clippy --locked --all-targets -- -D warnings
-codesign --verify --deep --strict --verbose=2 'dist/Agentinc OS.app'
-```
+Verify a built bundle with `codesign --verify --deep --strict --verbose=2 'dist/Agentinc OS.app'`.
+
+## Development setup
+
+On macOS, run `brew install prek && prek install` once per clone. The pre-commit hook checks Rust formatting; the pre-push hooks run Clippy and tests. CI runs the same hooks on pull requests and pushes to main.
 
 ## Evee and Tasks
 
