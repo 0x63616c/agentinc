@@ -1,61 +1,66 @@
 # Agentinc OS
 
-A design prototype for Calum’s personal Mac app. Evee is the assistant.
+A native macOS workspace built with Rust and GPUI, following the approved Control design. This first increment implements the application shell: tabs, navigation, search, panel controls and a saved local session. Tasks, agents, home, calendar, library, apps and Evee have intentional placeholder pages; no external services are connected.
 
-**Current direction:** Control, a black, minimal workspace with Today at its center and Evee alongside. Selected during visual review. Quiet and Focus remain available as comparison layouts. Product implementation and integration choices are still open.
+## Build and run
 
-## Open the prototype
-
-Open `.lavish/agentinc-os.html` in a browser. All assets are local; no install or build is needed. `.lavish/agentinc-os-standalone.html` is an exported single-file copy for portability; regenerate it with `lavish-axi export .lavish/agentinc-os.html --out .lavish/agentinc-os-standalone.html` after editing the source.
-
-For the collaborative review surface:
+Requires macOS, Xcode command-line tools and Rust installed through rustup. `rust-toolchain.toml` selects Rust 1.94.0. GPUI is pinned to 0.2.2 and `Cargo.lock` fixes the dependency graph. Its `font-kit` and `runtime_shaders` features provide macOS text and Metal shaders.
 
 ```sh
-lavish-axi .lavish/agentinc-os.html
+scripts/bundle.sh
+open 'dist/Agentinc OS.app'
 ```
 
-Or serve the files locally:
+The script builds and ad hoc signs a normal `.app` bundle. It is intended for local use, not notarized distribution. Use `scripts/bundle.sh release` for an optimized build. The verified build is the default debug bundle.
 
 ```sh
-python3 -m http.server 8080 --directory .lavish
+cargo fmt --check
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+codesign --verify --deep --strict --verbose=2 'dist/Agentinc OS.app'
 ```
 
-Visit `http://localhost:8080/agentinc-os.html`.
+## Using the shell
 
-## What you can try
+Sidebar destinations replace the current tab. The plus button opens a focused, searchable blank tab. Choosing an already-open destination in the picker or Search activates it and removes the unused blank. Tabs scroll when space runs out; closing the active tab selects a neighbor, and the last tab cannot be closed.
 
-- Switch Quiet / Control / Focus without losing sample state.
-- Add and complete tasks, filter completed tasks, and find them again after reload.
-- Inspect sample coding/life agents, mark a review complete, pause a run, and create draft agent instructions.
-- Change home scenes, room switches and brightness; preview music playback/track controls.
-- Open Evee and try scripted conversations, with links back into the workspace.
-- Browse the calendar by week or month; add, edit, or delete sample events in a modal. Changes also appear in Today.
-- Open a new tab with the searchable space picker; open and close spaces as workspace tabs; toggle the sidebar and preview a notification from the bell.
-- Search the illustrative photo-library tiles.
-- Press Cmd+K or Ctrl+K to jump between spaces.
-- Queue a direction and notes through Lavish, or copy the prepared feedback when running standalone.
+| Shortcut | Action |
+| --- | --- |
+| Cmd+N / Cmd+T | New tab / space picker |
+| Cmd+K | Search spaces |
+| Cmd+W | Close current tab, keeping at least one |
+| Cmd+[ / Cmd+] | Previous / next tab |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
+| Cmd+Option+Left / Right | Back / forward within this tab |
+| Cmd+1…7 | Today, Tasks, Agents, Home, Calendar, Library, My apps |
+| Cmd+B | Toggle sidebar |
+| Cmd+Shift+E | Toggle Evee |
+| Escape | Dismiss Search or notifications |
 
-This is not a connected product: all names, times, tasks, runs, checks, and device states are illustrative. No devices are actuated, no music is played, and no AI or integration service is called. State is stored only in this browser’s local storage; the reset control restores the sample data. Library tiles explore layout, not actual photo retrieval.
+Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag Evee's left divider to resize it. The profile opens Settings, including working panel visibility controls. The notification bell describes its unconnected state.
 
-## Files
+Sessions save to `~/Library/Application Support/Agentinc OS/session.json`: destination tabs, active tab, per-tab history, panel visibility and Evee width. Blank tabs are discarded on restore; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
 
-- `PRODUCT.md`: confirmed product brief and review decisions.
-- `DESIGN.md`: implemented design language, recorded after review.
-- `.lavish/agentinc-os.{html,css,js}`: portable prototype.
-- `.impeccable/surfaces/lavish-agentinc-os-html.md`: direction and refinement record.
-- `tests/preview-smoke.js`: browser interaction checks.
-
-## Verify
+For an isolated session without changing the regular app's state:
 
 ```sh
-node --check .lavish/agentinc-os.js
-chrome-devtools-axi open http://localhost:8080/agentinc-os.html
-chrome-devtools-axi emulate --viewport '1440x1100x1'
-chrome-devtools-axi run < tests/preview-smoke.js
-chrome-devtools-axi emulate --viewport '390x844x1,mobile,touch'
-chrome-devtools-axi run < tests/preview-smoke.js
+mkdir -p .local
+AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
+  AGENTINC_WINDOW_TITLE='Agentinc QA' \
+  'dist/Agentinc OS.app/Contents/MacOS/agentinc-os'
 ```
 
-The smoke check resets sample data, exercises 26 task/agent/home/event/search/chat/tab checks (including invalid event times, editing, and agent reset), verifies rendered navigation and document overflow across all 21 page/direction pairs, then restores the sample data. Run it in a separate preview browser, not while someone is reviewing unsaved sample edits.
+## Source and verification
 
-References: [Vercel/Geist](https://vercel.com/geist/introduction), [Apple/macOS](https://developer.apple.com/design/human-interface-guidelines/designing-for-macos), [shadcn/ui](https://ui.shadcn.com/blocks), [Linear navigation](https://linear.app/now/how-we-redesigned-the-linear-ui), [Impeccable](https://github.com/pbakaus/impeccable).
+- [Native acceptance report and screenshots](docs/verification/STATUS.md)
+- [Scope and handoff](docs/CONTROL_BUILD_HANDOFF.md), [implementation plan](docs/CONTROL_IMPLEMENTATION_PLAN.md)
+- `src/model.rs`: navigation and persistence, independent of the UI.
+- `src/shell.rs`, `src/style.rs`: GPUI shell, shared styling and interactions.
+- `src/input.rs`: native text input adapted from the official GPUI example.
+- [Third-party sources](THIRD_PARTY.md), [resolved text-rendering diagnosis](docs/verification/BLOCKER.md).
+
+## Original design study
+
+The portable browser prototype remains in `.lavish/agentinc-os-standalone.html`; open it directly in a browser. Editable sources are `.lavish/agentinc-os.{html,css,js}`. `PRODUCT.md`, `DESIGN.md`, `.impeccable/design.json` and `docs/control-reference/` record its product and visual direction.
+
+The browser's sample tasks, agents, controls, events and conversations are illustrative. Its concept selector and review toolbar are excluded from the native app. Browser interaction checks remain in `tests/preview-smoke.js`.

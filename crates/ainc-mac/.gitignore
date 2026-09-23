@@ -1,3 +1,7 @@
 .DS_Store
 .impeccable/review/*.png
 .impeccable/config.local.json
+/target/
+/dist/
+/.local/
+/.local-*.log
