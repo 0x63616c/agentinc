@@ -60,7 +60,13 @@ fn word_boundary(text: &str, offset: usize, forward: bool) -> usize {
             .unwrap_or(0)
     }
 }
+pub struct Submit;
+impl EventEmitter<Submit> for TextInput {}
+
 pub struct TextInput {
+    secret: bool,
+    submit: bool,
+    scroll_x: Pixels,
     focus_handle: FocusHandle,
     pub content: SharedString,
     placeholder: SharedString,
@@ -233,7 +239,7 @@ impl TextInput {
     }
 
     fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.selected_range.is_empty() {
+        if !self.secret && !self.selected_range.is_empty() {
             cx.write_to_clipboard(ClipboardItem::new_string(
                 self.content[self.selected_range.clone()].to_string(),
             ));
@@ -241,9 +247,11 @@ impl TextInput {
     }
     fn cut(&mut self, _: &Cut, window: &mut Window, cx: &mut Context<Self>) {
         if !self.selected_range.is_empty() {
-            cx.write_to_clipboard(ClipboardItem::new_string(
-                self.content[self.selected_range.clone()].to_string(),
-            ));
+            if !self.secret {
+                cx.write_to_clipboard(ClipboardItem::new_string(
+                    self.content[self.selected_range.clone()].to_string(),
+                ));
+            }
             self.replace_text_in_range(None, "", window, cx)
         }
     }
@@ -277,7 +285,9 @@ impl TextInput {
         if position.y > bounds.bottom() {
             return self.content.len();
         }
-        line.closest_index_for_x(position.x - bounds.left())
+        let index = line.closest_index_for_x(position.x - bounds.left());
+        self.content
+            .floor_char_boundary(index.min(self.content.len()))
     }
 
     fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
@@ -346,7 +356,21 @@ impl TextInput {
             .unwrap_or(self.content.len())
     }
 
+    pub fn field(placeholder: &str, secret: bool, cx: &mut Context<Self>) -> Self {
+        let mut input = Self::new(cx);
+        input.placeholder = placeholder.to_owned().into();
+        input.secret = secret;
+        input.submit = true;
+        input
+    }
+    pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.reset();
+        self.content = text.to_owned().into();
+        self.selected_range = text.len()..text.len();
+        cx.notify();
+    }
     pub fn reset(&mut self) {
+        self.scroll_x = px(0.);
         self.content = "".into();
         self.selected_range = 0..0;
         self.selection_reversed = false;
@@ -367,6 +391,9 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<String> {
+        if self.secret {
+            return None;
+        }
         let range = self.range_from_utf16(&range_utf16);
         actual_range.replace(self.range_to_utf16(&range));
         Some(self.content[range].to_string())
@@ -405,6 +432,11 @@ impl EntityInputHandler for TextInput {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if (self.secret && !new_text.is_ascii()) || self.content.len() + new_text.len() > 65536 {
+            return;
+        }
+        let single_line = new_text.replace(['\n', '\r'], " ");
+        let new_text = single_line.as_str();
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -432,6 +464,11 @@ impl EntityInputHandler for TextInput {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if (self.secret && !new_text.is_ascii()) || self.content.len() + new_text.len() > 65536 {
+            return;
+        }
+        let single_line = new_text.replace(['\n', '\r'], " ");
+        let new_text = single_line.as_str();
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -496,6 +533,7 @@ struct TextElement {
 
 struct PrepaintState {
     line: Option<ShapedLine>,
+    scroll_x: Pixels,
     cursor: Option<PaintQuad>,
     selection: Option<PaintQuad>,
 }
@@ -550,6 +588,8 @@ impl Element for TextElement {
 
         let (display_text, text_color) = if content.is_empty() {
             (input.placeholder.clone(), rgb(0x888888).into())
+        } else if input.secret {
+            ("*".repeat(content.len()).into(), style.color)
         } else {
             (content, style.color)
         };
@@ -595,6 +635,13 @@ impl Element for TextElement {
             .shape_line(display_text, font_size, &runs, None);
 
         let cursor_pos = line.x_for_index(cursor);
+        let available = (bounds.size.width - px(3.)).max(px(0.));
+        let scroll_x = input
+            .scroll_x
+            .min(cursor_pos)
+            .max(cursor_pos - available)
+            .max(px(0.));
+        let bounds = Bounds::new(bounds.origin - point(scroll_x, px(0.)), bounds.size);
         let (selection, cursor) = if selected_range.is_empty() {
             (
                 None,
@@ -625,6 +672,7 @@ impl Element for TextElement {
             )
         };
         PrepaintState {
+            scroll_x,
             line: Some(line),
             cursor,
             selection,
@@ -651,7 +699,11 @@ impl Element for TextElement {
             window.paint_quad(selection)
         }
         let line = prepaint.line.take().unwrap();
-        line.paint(bounds.origin, window.line_height(), window, cx)
+        let text_bounds = Bounds::new(
+            bounds.origin - point(prepaint.scroll_x, px(0.)),
+            bounds.size,
+        );
+        line.paint(text_bounds.origin, window.line_height(), window, cx)
             .unwrap();
 
         if focus_handle.is_focused(window)
@@ -662,7 +714,8 @@ impl Element for TextElement {
 
         self.input.update(cx, |input, _cx| {
             input.last_layout = Some(line);
-            input.last_bounds = Some(bounds);
+            input.last_bounds = Some(text_bounds);
+            input.scroll_x = prepaint.scroll_x;
         });
     }
 }
@@ -674,6 +727,12 @@ impl Render for TextInput {
             .key_context("TextInput")
             .track_focus(&self.focus_handle(cx))
             .cursor(CursorStyle::IBeam)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if this.submit && event.keystroke.key == "enter" && this.marked_range.is_none() {
+                    cx.stop_propagation();
+                    cx.emit(Submit);
+                }
+            }))
             .on_action(cx.listener(Self::boundary_edit))
             .on_action(cx.listener(Self::undo))
             .on_action(cx.listener(Self::redo))
@@ -712,6 +771,9 @@ impl Focusable for TextInput {
 impl TextInput {
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
+            secret: false,
+            submit: false,
+            scroll_x: px(0.),
             focus_handle: cx.focus_handle(),
             content: "".into(),
             placeholder: "Find a space…".into(),

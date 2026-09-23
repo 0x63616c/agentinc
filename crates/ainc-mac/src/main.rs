@@ -1,8 +1,12 @@
+mod assistant;
+mod evee;
 mod input;
 mod model;
 mod profile;
 mod shell;
+mod storage;
 mod style;
+mod tasks;
 use gpui::*;
 use shell::*;
 struct DiagnosticLog;

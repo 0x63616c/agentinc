@@ -1,6 +1,6 @@
 # Agentinc OS
 
-A native macOS workspace built with Rust and GPUI, following the approved Control design. This first increment implements the application shell: tabs, navigation, search, panel controls and a saved local session. Tasks, agents, home, calendar, library, apps and Evee have intentional placeholder pages; no external services are connected.
+A native macOS workspace built with Rust and GPUI, following the approved Control design. It includes tabs, navigation, search, panel controls, a saved local session, SQLite-backed Tasks and an OpenAI-backed Evee chat panel. Agents, home, calendar, library and apps remain intentional placeholders.
 
 ## Build and run
 
@@ -19,6 +19,12 @@ cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
 codesign --verify --deep --strict --verbose=2 'dist/Agentinc OS.app'
 ```
+
+## Evee and Tasks
+
+Evee → Setup accepts an OpenAI API key and stores it in macOS Keychain. The default model is `gpt-5-mini`; the setup field can select another Responses-compatible model. Send with Return or **Send**. Failures remain retryable and chat history persists locally. An existing `OPENAI_API_KEY` environment variable takes precedence; normal Finder launches should use in-app setup.
+
+Tasks supports create, complete/reopen and delete. Chat and tasks save to `~/Library/Application Support/Agentinc OS/assistant.sqlite3`; credentials are never stored there. See the [assistant handoff and verification](docs/EVEE_ASSISTANT_HANDOFF.md) for limits and the explicit live-credential verification gap.
 
 ## Using the shell
 
@@ -46,6 +52,7 @@ For an isolated session without changing the regular app's state:
 ```sh
 mkdir -p .local
 AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
+  AGENTINC_DATABASE_PATH="$PWD/.local/test-assistant.sqlite3" \
   AGENTINC_WINDOW_TITLE='Agentinc QA' \
   'dist/Agentinc OS.app/Contents/MacOS/agentinc-os'
 ```

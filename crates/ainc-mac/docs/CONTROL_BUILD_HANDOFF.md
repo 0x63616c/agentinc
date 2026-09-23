@@ -62,3 +62,7 @@ Keep the Rust project small, with shared style tokens/components and a testable 
 - Finish with the app ready for Calum to open, a concise shipped-feature summary, and source checkpoint/PR/release links where the established Firstmate workflow supports them. There is no remote currently configured; resolve repository setup through the existing fleet conventions and do not invent a remote URL.
 
 After this shell is delivered, tasks, agents, smart home, media, calendar, photo search, and live Evee can be added in separate increments. Do not claim those integrations shipped with this shell.
+
+## Delivered follow-on increment
+
+Evee chat, Keychain connection setup and SQLite-backed Tasks are described in [EVEE_ASSISTANT_HANDOFF.md](EVEE_ASSISTANT_HANDOFF.md), including local acceptance evidence and the live-credential verification gap. The shell-only scope above records the preceding milestone.

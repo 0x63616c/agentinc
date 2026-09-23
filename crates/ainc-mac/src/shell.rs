@@ -44,9 +44,13 @@ enum Control {
     Evee,
     Notifications,
     Dismiss,
+    AssistantSetup,
 }
 pub struct Shell {
     session: Session,
+    assistant: Entity<crate::evee::Evee>,
+    tasks: Entity<crate::tasks::Tasks>,
+    _tasks_subscription: Subscription,
     profile: crate::profile::Profile,
     path: PathBuf,
     focus: FocusHandle,
@@ -83,6 +87,14 @@ impl Shell {
                     .unwrap_or_default()
                     .join("Library/Application Support/Agentinc OS/session.json")
             });
+        let (store, storage_error) = match crate::storage::Store::default_path().and_then(|path| crate::storage::Store::open(&path)) {
+            Ok(store) => (Some(std::rc::Rc::new(store)), None),
+            Err(_) => (None, Some("Local storage is unavailable. Check Application Support permissions and restart.".to_owned())),
+        };
+        let assistant =
+            cx.new(|cx| crate::evee::Evee::new(store.clone(), storage_error.clone(), cx));
+        let tasks = cx.new(|cx| crate::tasks::Tasks::new(store, storage_error, cx));
+        let tasks_subscription = cx.observe(&tasks, |_, _, cx| cx.notify());
         let input = cx.new(TextInput::new);
         let subscription = cx.observe(&input, |this, _, cx| {
             this.selected = 0;
@@ -95,6 +107,9 @@ impl Shell {
         let sidebar_width = if session.sidebar { SIDEBAR } else { 0. };
         Self {
             session,
+            assistant,
+            tasks,
+            _tasks_subscription: tasks_subscription,
             profile: crate::profile::Profile::local(),
             sidebar_width,
             evee_progress,
@@ -225,6 +240,12 @@ impl Shell {
                     self.evee_progress,
                     if self.session.evee { 1. } else { 0. },
                 ));
+            }
+            Control::AssistantSetup => {
+                self.session.evee = true;
+                self.evee_animation = Some((Instant::now(), self.evee_progress, 1.));
+                self.assistant
+                    .update(cx, |assistant, cx| assistant.open_setup(cx));
             }
             Control::Notifications => self.notifications = !self.notifications,
             Control::Dismiss => {
@@ -746,7 +767,15 @@ impl Shell {
                 .into_iter()
                 .enumerate()
             {
-                let (title, detail) = destination.empty();
+                let (empty_title, empty_detail) = destination.empty();
+                let (title, detail) = if destination == Space::Tasks {
+                    (
+                        self.tasks.read(cx).summary(),
+                        "Open Tasks to add or complete a to-do.".to_owned(),
+                    )
+                } else {
+                    (empty_title.to_owned(), empty_detail.to_owned())
+                };
                 page = page.child(
                     column()
                         .gap(px(14.))
@@ -784,7 +813,7 @@ impl Shell {
                         ),
                 );
             }
-        } else {
+        } else if !matches!(space, Space::Settings | Space::Evee) {
             page = page.child(
                 column()
                     .mt(px(28.))
@@ -803,7 +832,17 @@ impl Shell {
             page = page.child(
                 column()
                     .gap(px(12.))
-                    .child("Appearance")
+                    .child("Evee")
+                    .child(
+                        self.button("setup-evee", "OpenAI setup", Control::AssistantSetup, cx)
+                            .p(px(12.))
+                            .border_1()
+                            .border_color(rgb(BORDER))
+                            .child("OpenAI connection")
+                            .child(div().flex_1())
+                            .child("Set up →"),
+                    )
+                    .child(div().mt(px(12.)).child("Appearance"))
                     .child(
                         self.button("settings-sidebar", "Toggle sidebar", Control::Sidebar, cx)
                             .p(px(12.))
@@ -831,6 +870,19 @@ impl Shell {
                             .text_size(px(12.))
                             .text_color(rgb(MUTED))
                             .child("Your tabs and layout are saved on this Mac."),
+                    ),
+            );
+        } else if space == Space::Evee {
+            page = page.child(
+                column()
+                    .gap(px(16.))
+                    .child("Your conversation is in the Evee panel.")
+                    .child(
+                        self.button("open-evee-chat", "Open Evee", Control::AssistantSetup, cx)
+                            .p(px(12.))
+                            .border_1()
+                            .border_color(rgb(BORDER))
+                            .child("Open Evee setup"),
                     ),
             );
         } else if space != Space::Today {
@@ -944,40 +996,9 @@ impl Shell {
                         cx,
                     )),
             )
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(rgb(MUTED))
-                    .child("Not connected yet."),
-            )
-            .child(
-                div()
-                    .mt(px(22.))
-                    .text_size(px(11.))
-                    .text_color(rgb(0x888888))
-                    .child("Recent"),
-            )
-            .child(
-                div()
-                    .mt(px(18.))
-                    .text_size(px(12.))
-                    .text_color(rgb(MUTED))
-                    .child("No conversations yet."),
-            )
-            .child(div().flex_1())
-            .child(
-                row()
-                    .h(px(44.))
-                    .px(px(12.))
-                    .rounded(px(10.))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .bg(rgb(SHELL))
-                    .text_size(px(11.))
-                    .text_color(rgb(0x888888))
-                    .child("Assistant coming soon"),
-            )
+            .child(div().flex_1().min_h_0().child(self.assistant.clone()))
     }
+
     fn keys(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.command || self.session.current().is_none() {
             let matches = Space::matching(&self.input.read(cx).content);
@@ -1004,6 +1025,19 @@ impl Shell {
 }
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if reduced_motion() {
+            if let Some((_, _, to)) = self.grip_animation.take() {
+                self.grip_opacity = to;
+            }
+            if let Some((_, _, to)) = self.sidebar_animation.take() {
+                self.sidebar_width = to;
+            }
+            if let Some((_, _, to)) = self.evee_animation.take() {
+                self.evee_progress = to;
+            }
+            self.content_transition = None;
+            self.palette_transition = None;
+        }
         if let Some((start, from, to)) = self.grip_animation {
             let t = (start.elapsed().as_secs_f32() / 0.14).min(1.);
             self.grip_opacity = from + (to - from) * t;
@@ -1072,7 +1106,9 @@ impl Render for Shell {
         };
         let content_progress = progress(&mut self.content_transition);
         let palette_progress = progress(&mut self.palette_transition);
-        let content = if let Some(space) = self.session.current() {
+        let content = if self.session.current() == Some(Space::Tasks) {
+            self.tasks.clone().into_any_element()
+        } else if let Some(space) = self.session.current() {
             self.empty_page(space, cx).into_any_element()
         } else {
             row()
