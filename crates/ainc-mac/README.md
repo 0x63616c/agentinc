@@ -1,6 +1,6 @@
 # Agentinc OS
 
-A native macOS workspace built with Rust and GPUI, following the approved Control design. It includes tabs, navigation, search, panel controls, a saved local session, SQLite-backed Tasks and an OpenAI-backed Evee chat panel. Agents, home, calendar, library and apps remain intentional placeholders.
+A native macOS workspace built with Rust and GPUI, following the approved Control design. It includes a single tab, navigation, search, panel controls, a saved local session, SQLite-backed Tasks and an OpenAI-backed Evee chat panel. Agents, home, calendar, library and apps remain intentional placeholders.
 
 ## Build and run
 
@@ -28,24 +28,20 @@ Tasks supports create, complete/reopen and delete. Chat and tasks save to `~/Lib
 
 ## Using the shell
 
-Sidebar destinations replace the current tab. The plus button opens a focused, searchable blank tab. Choosing an already-open destination in the picker or Search activates it and removes the unused blank. Tabs scroll when space runs out; closing the active tab selects a neighbor, and the last tab cannot be closed.
+Sidebar destinations and Search replace the destination in the single tab. Back and Forward navigate its history.
 
 | Shortcut | Action |
 | --- | --- |
-| Cmd+N / Cmd+T | New tab / space picker |
 | Cmd+K | Search spaces |
-| Cmd+W | Close current tab, keeping at least one |
-| Cmd+[ / Cmd+] | Previous / next tab |
-| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
-| Cmd+Option+Left / Right | Back / forward within this tab |
+| Cmd+Option+Left / Right | Back / forward |
 | Cmd+1…7 | Today, Tasks, Agents, Home, Calendar, Library, My apps |
 | Cmd+B | Toggle sidebar |
 | Cmd+Shift+E | Toggle Evee |
-| Escape | Dismiss Search or notifications |
+| Escape | Dismiss Search, task dialogs or notifications |
 
-Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag Evee's left divider to resize it. The profile opens Settings, including working panel visibility controls. The notification bell describes its unconnected state.
+Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag Evee's left divider to resize it. The profile opens Settings, including a persisted font choice between System (SF Pro) and Helvetica Neue. The notification bell opens an empty notification panel until notifications are connected.
 
-Sessions save to `~/Library/Application Support/Agentinc OS/session.json`: destination tabs, active tab, per-tab history, panel visibility and Evee width. Blank tabs are discarded on restore; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
+Sessions save to `~/Library/Application Support/Agentinc OS/session.json`: the single destination, its history, font choice, panel visibility and Evee width. Older multi-tab sessions restore the active destination into one tab; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
 
 For an isolated session without changing the regular app's state:
 

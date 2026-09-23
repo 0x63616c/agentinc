@@ -4,15 +4,22 @@ use crate::{
     style::*,
 };
 use gpui::{prelude::*, *};
-use std::{rc::Rc, time::Instant};
+use std::rc::Rc;
+
+#[derive(Clone)]
+enum Dialog {
+    Add,
+    Confirm(Todo),
+}
 
 pub struct Tasks {
     store: Option<Rc<Store>>,
     todos: Vec<Todo>,
     input: Entity<TextInput>,
     error: Option<String>,
-    appearance: Option<Instant>,
-    reduced_motion: bool,
+    dialog: Option<Dialog>,
+    menu: Option<i64>,
+    hovered_row: Option<i64>,
     hover: HoverFade,
     _subscriptions: Vec<Subscription>,
 }
@@ -22,7 +29,7 @@ impl Tasks {
         storage_error: Option<String>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input = cx.new(|cx| TextInput::field("Add a task…", false, cx));
+        let input = cx.new(|cx| TextInput::field("Task title", false, cx));
         let subscriptions = vec![
             cx.subscribe(&input, |this, _, _: &Submit, cx| this.add(cx)),
             cx.observe(&input, |_, _, cx| cx.notify()),
@@ -32,8 +39,9 @@ impl Tasks {
             todos: vec![],
             input,
             error: storage_error,
-            appearance: None,
-            reduced_motion: reduced_motion(),
+            dialog: None,
+            menu: None,
+            hovered_row: None,
             hover: HoverFade::default(),
             _subscriptions: subscriptions,
         };
@@ -47,20 +55,40 @@ impl Tasks {
                 Err(_) => {
                     self.store = None;
                     self.error =
-                        Some("Could not read tasks. Check database access and restart.".into())
+                        Some("Could not read tasks. Check database access and restart.".into());
                 }
             }
         }
     }
     pub fn summary(&self) -> String {
-        let open = self.todos.iter().filter(|t| !t.completed).count();
-        if open == 0 {
-            "All caught up".into()
+        if self.todos.iter().any(|todo| !todo.completed) {
+            "Tasks to do".into()
         } else {
-            format!("{open} task{} to do", if open == 1 { "" } else { "s" })
+            "All caught up".into()
         }
     }
+    fn open_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.menu = None;
+        self.hovered_row = None;
+        self.dialog = Some(Dialog::Add);
+        self.input.update(cx, |input, cx| {
+            input.reset();
+            cx.notify();
+        });
+        window.focus(&self.input.focus_handle(cx));
+        cx.notify();
+    }
+    pub fn dismiss(&mut self, cx: &mut Context<Self>) -> bool {
+        let open = self.dialog.take().is_some() || self.menu.take().is_some();
+        if open {
+            cx.notify();
+        }
+        open
+    }
     fn add(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.dialog, Some(Dialog::Add)) {
+            return;
+        }
         let Some(store) = &self.store else {
             return;
         };
@@ -70,12 +98,8 @@ impl Tasks {
         }
         match store.add_todo(&title) {
             Ok(()) => {
-                self.input.update(cx, |input, cx| {
-                    input.reset();
-                    cx.notify();
-                });
+                self.dialog = None;
                 self.error = None;
-                self.appearance = Some(Instant::now());
                 self.reload();
             }
             Err(error) => self.error = Some(format!("Task was not saved: {error}")),
@@ -92,6 +116,8 @@ impl Tasks {
         };
         match result {
             Ok(()) => {
+                self.dialog = None;
+                self.menu = None;
                 self.error = None;
                 self.reload();
             }
@@ -102,7 +128,7 @@ impl Tasks {
     fn button(
         &self,
         id: impl Into<ElementId>,
-        f: impl Fn(&mut Self, &mut Context<Self>) + Clone + 'static,
+        f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + Clone + 'static,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let key = f.clone();
@@ -122,68 +148,140 @@ impl Tasks {
                 this.hover.set(hover_id.clone(), *over);
                 cx.notify();
             }))
-            .focus(|s| s.bg(rgb(0x1d2520)))
-            .on_click(cx.listener(move |this, _, _, cx| {
+            .focus(|s| s.bg(rgb(0x252525)))
+            .on_click(cx.listener(move |this, _, window, cx| {
                 cx.stop_propagation();
-                f(this, cx);
+                f(this, window, cx);
             }))
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.key == "enter" || event.keystroke.key == "space" {
                     cx.stop_propagation();
-                    key(this, cx);
+                    key(this, window, cx);
                 }
             }))
+    }
+    pub fn overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let dialog = self.dialog.clone()?;
+        let is_add = matches!(dialog, Dialog::Add);
+        let title = match &dialog {
+            Dialog::Add => "Add task".to_owned(),
+            Dialog::Confirm(todo) => format!("Delete “{}”?", todo.title),
+        };
+        let target = match dialog {
+            Dialog::Confirm(todo) => Some(todo.id),
+            Dialog::Add => None,
+        };
+        Some(
+            div()
+                .id("task-dialog-backdrop")
+                .absolute()
+                .inset_0()
+                .cursor_default()
+                .bg(rgba(0x000000aa))
+                .flex()
+                .items_center()
+                .justify_center()
+                .on_mouse_move(|_, _, cx| cx.stop_propagation())
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(|this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.dismiss(cx);
+                }))
+                .child(
+                    panel()
+                        .id("task-dialog")
+                        .w(px(440.))
+                        .p(px(24.))
+                        .gap(px(20.))
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(|_, _, cx| cx.stop_propagation())
+                        .child(
+                            div()
+                                .text_size(px(18.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(title),
+                        )
+                        .when(is_add, |s| {
+                            s.child(
+                                row()
+                                    .h(px(42.))
+                                    .px(px(12.))
+                                    .border_1()
+                                    .border_color(rgb(BORDER))
+                                    .rounded(px(7.))
+                                    .child(self.input.clone()),
+                            )
+                        })
+                        .when(!is_add, |s| {
+                            s.child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(rgb(MUTED))
+                                    .child("This task will be permanently removed."),
+                            )
+                        })
+                        .child(
+                            row()
+                                .justify_end()
+                                .gap(px(8.))
+                                .child(
+                                    self.button(
+                                        "task-cancel",
+                                        |this, _, cx| {
+                                            this.dismiss(cx);
+                                        },
+                                        cx,
+                                    )
+                                    .border_1()
+                                    .border_color(rgb(BORDER))
+                                    .child("Cancel"),
+                                )
+                                .child(
+                                    self.button(
+                                        "task-submit",
+                                        move |this, _, cx| {
+                                            if let Some(id) = target {
+                                                this.change(id, None, cx);
+                                            } else {
+                                                this.add(cx);
+                                            }
+                                        },
+                                        cx,
+                                    )
+                                    .bg(rgb(if is_add { 0xe8e8e8 } else { 0x5b2b2b }))
+                                    .text_color(rgb(if is_add { 0x141414 } else { TEXT }))
+                                    .child(if is_add {
+                                        "Create"
+                                    } else {
+                                        "Delete task"
+                                    }),
+                                ),
+                        ),
+                )
+                .into_any_element(),
+        )
     }
 }
 impl Render for Tasks {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
-        let progress = if self.reduced_motion {
-            1.
-        } else if let Some(start) = self.appearance {
-            let t = (start.elapsed().as_secs_f32() / 0.22).min(1.);
-            if t < 1. {
-                window.request_animation_frame();
-            } else {
-                self.appearance = None;
-            }
-            1. - (1. - t).powi(3)
-        } else {
-            1.
-        };
         column()
+            .id("tasks-page")
             .gap(px(24.))
+            .on_click(cx.listener(|this, _, _, cx| {
+                if this.menu.take().is_some() {
+                    cx.notify();
+                }
+            }))
             .child(
-                row()
-                    .child(
-                        div()
-                            .text_size(px(26.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Tasks"),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(rgb(MUTED))
-                            .child(self.summary()),
-                    ),
-            )
-            .child(
-                row()
-                    .gap(px(12.))
-                    .p(px(10.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .child(div().flex_1().min_w_0().child(self.input.clone()))
-                    .child(
-                        self.button("add-task", Self::add, cx)
-                            .border_1()
-                            .border_color(rgb(0x555555))
-                            .text_size(px(12.))
-                            .child("Add task"),
-                    ),
+                row().child(div().flex_1()).child(
+                    self.button("add-task", Self::open_add, cx)
+                        .border_1()
+                        .border_color(rgb(0x555555))
+                        .text_size(px(12.))
+                        .child("Add task"),
+                ),
             )
             .when_some(self.error.clone(), |s, error| {
                 s.child(
@@ -218,24 +316,29 @@ impl Render for Tasks {
                                 self.todos
                                     .iter()
                                     .filter(move |todo| todo.completed == completed)
-                                    .enumerate()
-                                    .map(|(index, todo)| {
+                                    .map(|todo| {
                                         let id = todo.id;
+                                        let menu_open = self.menu == Some(id);
                                         row()
+                                            .id(("task-row", id as u64))
+                                            .on_hover(cx.listener(move |this, hovered, _, cx| {
+                                                if *hovered {
+                                                    this.hovered_row = Some(id);
+                                                } else if this.hovered_row == Some(id) {
+                                                    this.hovered_row = None;
+                                                }
+                                                cx.notify();
+                                            }))
+                                            .relative()
                                             .gap(px(12.))
                                             .min_h(px(52.))
                                             .py(px(8.))
                                             .border_b_1()
                                             .border_color(rgb(0x1a1a1a))
-                                            .when(!completed && index == 0, |s| {
-                                                s.relative()
-                                                    .top(px(3. * (1. - progress)))
-                                                    .opacity(0.4 + 0.6 * progress)
-                                            })
                                             .child(
                                                 self.button(
                                                     ("complete", id as u64),
-                                                    move |this, cx| {
+                                                    move |this, _, cx| {
                                                         this.change(id, Some(!completed), cx)
                                                     },
                                                     cx,
@@ -272,14 +375,61 @@ impl Render for Tasks {
                                             )
                                             .child(
                                                 self.button(
-                                                    ("delete", id as u64),
-                                                    move |this, cx| this.change(id, None, cx),
+                                                    ("more", id as u64),
+                                                    move |this, _, cx| {
+                                                        this.menu = if this.menu == Some(id) {
+                                                            None
+                                                        } else {
+                                                            Some(id)
+                                                        };
+                                                        cx.notify();
+                                                    },
                                                     cx,
                                                 )
-                                                .text_size(px(11.))
-                                                .text_color(rgb(0xdaa7a7))
-                                                .child("Delete"),
+                                                .w(px(32.))
+                                                .px_0()
+                                                .opacity(
+                                                    if menu_open || self.hovered_row == Some(id) {
+                                                        1.
+                                                    } else {
+                                                        0.
+                                                    },
+                                                )
+                                                .focus(|s| s.opacity(1.))
+                                                .text_size(px(18.))
+                                                .child("···"),
                                             )
+                                            .when(menu_open, |s| {
+                                                s.child(
+                                                    panel()
+                                                        .absolute()
+                                                        .right(px(4.))
+                                                        .top(px(42.))
+                                                        .w(px(140.))
+                                                        .p(px(4.))
+                                                        .child(
+                                                            self.button(
+                                                                ("delete", id as u64),
+                                                                move |this, _, cx| {
+                                                                    this.menu = None;
+                                                                    this.dialog = this
+                                                                        .todos
+                                                                        .iter()
+                                                                        .find(|t| t.id == id)
+                                                                        .cloned()
+                                                                        .map(Dialog::Confirm);
+                                                                    cx.notify();
+                                                                },
+                                                                cx,
+                                                            )
+                                                            .w_full()
+                                                            .justify_start()
+                                                            .text_size(px(12.))
+                                                            .text_color(rgb(0xdaa7a7))
+                                                            .child("Delete"),
+                                                        ),
+                                                )
+                                            })
                                     }),
                             )
                     }),

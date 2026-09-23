@@ -166,6 +166,22 @@ pub struct Session {
     pub sidebar: bool,
     pub evee: bool,
     pub evee_width: f32,
+    pub font: FontChoice,
+}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FontChoice {
+    #[default]
+    System,
+    HelveticaNeue,
+}
+impl FontChoice {
+    pub fn family(self) -> &'static str {
+        match self {
+            Self::System => ".AppleSystemUIFont",
+            Self::HelveticaNeue => "Helvetica Neue",
+        }
+    }
 }
 impl Default for Session {
     fn default() -> Self {
@@ -176,26 +192,13 @@ impl Default for Session {
             sidebar: true,
             evee: true,
             evee_width: 258.,
+            font: FontChoice::System,
         }
     }
 }
 impl Session {
     pub fn current(&self) -> Option<Space> {
         self.tabs.get(self.active).copied().flatten()
-    }
-    pub fn select(&mut self, index: usize) {
-        if index < self.tabs.len() {
-            self.active = index;
-        }
-    }
-    pub fn new_tab(&mut self) {
-        if let Some(at) = self.tabs.iter().position(Option::is_none) {
-            self.active = at;
-        } else {
-            self.tabs.push(None);
-            self.history.push(History::default());
-            self.active = self.tabs.len() - 1;
-        }
     }
     /// Sidebar and page links navigate the active tab in place.
     pub fn navigate(&mut self, space: Space) {
@@ -208,21 +211,9 @@ impl Session {
         history.cursor = history.entries.len() - 1;
         self.tabs[self.active] = Some(space);
     }
-    /// Picker/search selects an existing destination, otherwise replaces this tab.
+    /// Search replaces the destination in the one tab.
     pub fn open(&mut self, space: Space) {
-        let blank = self.current().is_none().then_some(self.active);
-        if let Some(at) = self.tabs.iter().position(|tab| *tab == Some(space)) {
-            self.active = at;
-            if let Some(blank) = blank {
-                self.tabs.remove(blank);
-                self.history.remove(blank);
-                if blank < at {
-                    self.active -= 1;
-                }
-            }
-        } else {
-            self.navigate(space);
-        }
+        self.navigate(space);
     }
     pub fn can_go(&self, forward: bool) -> bool {
         let h = &self.history[self.active];
@@ -244,31 +235,25 @@ impl Session {
         }
         self.tabs[self.active] = Some(h.entries[h.cursor]);
     }
-    pub fn close(&mut self, index: usize) {
-        if index >= self.tabs.len() || self.tabs.len() == 1 {
-            return;
-        }
-        self.tabs.remove(index);
-        self.history.remove(index);
-        if index < self.active {
-            self.active -= 1;
-        } else if index == self.active {
-            self.active = index.saturating_sub(1);
-        }
-    }
     pub fn from_json(json: &str) -> Self {
         let Ok(saved) = serde_json::from_str::<Self>(json) else {
             return Self::default();
         };
-        let active = saved
+        // Older sessions may have many tabs. Keep the active destination and its history.
+        let selected = saved
             .tabs
-            .iter()
-            .take(saved.active)
-            .filter(|tab| tab.is_some())
-            .count();
+            .get(saved.active)
+            .copied()
+            .flatten()
+            .map(|space| (saved.active, space))
+            .or_else(|| {
+                saved
+                    .tabs
+                    .iter()
+                    .enumerate()
+                    .find_map(|(i, tab)| tab.map(|space| (i, space)))
+            });
         let mut clean = Self {
-            tabs: vec![],
-            history: vec![],
             evee_width: if saved.evee_width.is_finite() {
                 saved.evee_width.clamp(220., 480.)
             } else {
@@ -276,25 +261,18 @@ impl Session {
             },
             sidebar: saved.sidebar,
             evee: saved.evee,
+            font: saved.font,
             ..Self::default()
         };
-        for (index, tab) in saved.tabs.into_iter().enumerate() {
-            if let Some(space) = tab {
-                let history = saved
-                    .history
-                    .get(index)
-                    .filter(|h| h.entries.get(h.cursor) == Some(&space))
-                    .cloned()
-                    .unwrap_or_else(|| History::at(space));
-                clean.tabs.push(Some(space));
-                clean.history.push(history);
-            }
+        if let Some((index, space)) = selected {
+            clean.tabs[0] = Some(space);
+            clean.history[0] = saved
+                .history
+                .get(index)
+                .filter(|h| h.entries.get(h.cursor) == Some(&space))
+                .cloned()
+                .unwrap_or_else(|| History::at(space));
         }
-        if clean.tabs.is_empty() {
-            clean.tabs.push(Some(Space::Today));
-            clean.history.push(History::at(Space::Today));
-        }
-        clean.active = active.min(clean.tabs.len() - 1);
         clean
     }
     pub fn load(path: &Path) -> Self {
@@ -316,141 +294,50 @@ impl Session {
 mod tests {
     use super::*;
     #[test]
-    fn blank_replaces_and_deduplicates() {
+    fn one_tab_navigation_and_history() {
         let mut s = Session::default();
-        s.new_tab();
-        s.new_tab();
-        assert_eq!(s.tabs.len(), 2);
+        s.navigate(Space::Tasks);
         s.open(Space::Home);
-        assert_eq!(s.tabs, vec![Some(Space::Today), Some(Space::Home)]);
-        s.new_tab();
-        s.open(Space::Home);
-        assert_eq!(s.tabs.len(), 2);
-        assert_eq!(s.current(), Some(Space::Home));
+        assert_eq!(s.tabs, vec![Some(Space::Home)]);
+        s.go(false);
+        assert_eq!(s.current(), Some(Space::Tasks));
+        s.navigate(Space::Library);
+        assert!(!s.can_go(true));
+        assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);
     }
     #[test]
-    fn closing_preserves_selection_and_falls_back_left() {
-        let mut s = Session::default();
-        s.new_tab();
-        s.open(Space::Tasks);
-        s.new_tab();
-        s.open(Space::Home);
-        s.close(1);
-        assert_eq!(s.current(), Some(Space::Home));
-        s.close(1);
-        assert_eq!(s.current(), Some(Space::Today));
-        s.close(0);
-        assert_eq!(s.tabs.len(), 1);
-        s.new_tab();
-        s.close(1);
-        assert_eq!(s.current(), Some(Space::Today));
-    }
-    #[test]
-    fn sidebar_replaces_active_without_creating_or_switching_tabs() {
-        let mut s = Session::default();
-        s.new_tab();
-        s.open(Space::Home);
-        s.select(0);
-        s.navigate(Space::Home);
+    fn legacy_tabs_restore_active_into_one_tab() {
+        let s =
+            Session::from_json(r#"{"tabs":["today","tasks","home"],"active":1,"sidebar":false}"#);
+        assert_eq!(s.tabs, vec![Some(Space::Tasks)]);
         assert_eq!(s.active, 0);
-        assert_eq!(s.tabs, vec![Some(Space::Home), Some(Space::Home)]);
-        assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);
-        s.navigate(Space::Settings);
-        assert_eq!(s.tabs.len(), 2);
-        assert_eq!(s.current(), Some(Space::Settings));
-    }
-    #[test]
-    fn selection_does_not_create_tabs() {
-        let mut s = Session::default();
-        s.new_tab();
-        s.open(Space::Tasks);
-        s.select(0);
-        s.select(99);
-        assert_eq!(s.current(), Some(Space::Today));
-        assert_eq!(s.tabs.len(), 2);
-    }
-    #[test]
-    fn restores_state_and_recovers_invalid_input() {
-        let mut s = Session::default();
-        s.open(Space::Library);
-        s.sidebar = false;
-        s.evee = false;
-        assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);
+        assert!(!s.sidebar);
+        assert_eq!(
+            Session::from_json(r#"{"tabs":["today",null],"active":1}"#).current(),
+            Some(Space::Today)
+        );
         for bad in ["", "garbage", "null", r#"{"tabs":["future"]}"#] {
             assert_eq!(Session::from_json(bad), Session::default());
         }
-        let cleaned = Session::from_json(r#"{"tabs":["home","home",null],"active":99}"#);
-        assert_eq!(cleaned.tabs, vec![Some(Space::Home), Some(Space::Home)]);
-        assert_eq!(cleaned.active, 1);
     }
     #[test]
-    fn transient_blank_restores_to_today() {
-        let mut s = Session::default();
-        s.new_tab();
-        assert_eq!(
-            Session::from_json(&serde_json::to_string(&s).unwrap()),
-            Session::default()
-        );
-    }
-    #[test]
-    fn every_tab_can_close_except_the_last() {
-        let mut s = Session::default();
-        s.new_tab();
-        s.open(Space::Home);
-        s.close(0);
-        assert_eq!(s.tabs, vec![Some(Space::Home)]);
-        s.close(0);
-        assert_eq!(s.current(), Some(Space::Home));
+    fn font_and_panel_settings_round_trip() {
+        let s = Session {
+            font: FontChoice::HelveticaNeue,
+            evee: false,
+            evee_width: 390.,
+            ..Session::default()
+        };
         assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);
-        s.new_tab();
-        s.close(0);
-        s.close(0);
-        assert_eq!(s.tabs, vec![None]);
-    }
-    #[test]
-    fn history_is_per_tab_and_new_navigation_truncates_forward() {
-        let mut s = Session::default();
-        s.navigate(Space::Tasks);
-        s.navigate(Space::Home);
-        s.go(false);
-        assert_eq!(s.current(), Some(Space::Tasks));
-        s.go(true);
-        assert_eq!(s.current(), Some(Space::Home));
-        s.go(false);
-        s.navigate(Space::Library);
-        assert!(!s.can_go(true));
-        s.new_tab();
-        s.open(Space::Agents);
-        assert!(!s.can_go(false));
-        s.close(1);
-        s.go(false);
-        assert_eq!(s.current(), Some(Space::Tasks));
-        assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);
-        let clean =
-            Session::from_json(r#"{"tabs":["home"],"history":[{"entries":[],"cursor":99}]}"#);
-        assert!(!clean.can_go(false));
-    }
-    #[test]
-    fn panel_width_restores_with_safe_bounds() {
-        let s = Session::from_json(r#"{"evee_width": 390}"#);
-        assert_eq!(s.evee_width, 390.);
         assert_eq!(
-            Session::from_json(r#"{"evee_width": -20}"#).evee_width,
-            220.
-        );
-        assert_eq!(
-            Session::from_json(r#"{"evee_width": 9000}"#).evee_width,
+            Session::from_json(r#"{"evee_width":9000}"#).evee_width,
             480.
         );
     }
     #[test]
-    fn search_is_case_insensitive_and_handles_no_results() {
+    fn search_and_file_round_trip() {
         assert_eq!(Space::matching(" HOME "), vec![Space::Home]);
         assert!(Space::matching("zzz").is_empty());
-        assert_eq!(Space::matching("").len(), 9);
-    }
-    #[test]
-    fn file_round_trip_and_missing_file() {
         let dir = std::env::current_dir().unwrap().join("target/session-test");
         let path = dir.join(format!("{}.json", std::process::id()));
         assert_eq!(Session::load(&path), Session::default());

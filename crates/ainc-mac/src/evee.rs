@@ -483,9 +483,7 @@ impl Render for Evee {
                             .gap(px(12.))
                             .flex_shrink_0()
                             .when(latest == Some(turn.id), |s| {
-                                s.relative()
-                                    .top(px(3. * (1. - progress)))
-                                    .opacity(0.4 + 0.6 * progress)
+                                s.relative().opacity(0.4 + 0.6 * progress)
                             })
                             .child(
                                 column()

@@ -37,11 +37,7 @@ fn main() {
             },
             Menu {
                 name: "File".into(),
-                items: vec![
-                    MenuItem::action("New Tab", NewTab),
-                    MenuItem::action("Search Spaces…", Search),
-                    MenuItem::action("Close Tab", CloseTab),
-                ],
+                items: vec![MenuItem::action("Search Spaces…", Search)],
             },
             Menu {
                 name: "View".into(),
@@ -50,8 +46,6 @@ fn main() {
                     MenuItem::action("Toggle Evee", ToggleEvee),
                     MenuItem::action("Back", GoBack),
                     MenuItem::action("Forward", GoForward),
-                    MenuItem::action("Next Tab", NextTab),
-                    MenuItem::action("Previous Tab", PreviousTab),
                 ],
             },
         ]);

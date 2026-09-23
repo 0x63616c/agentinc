@@ -6,4 +6,4 @@ Outline icon paths in `assets/` are taken from this repository's approved `.lavi
 
 `examples/gpui_text_probe.rs` derives from the same official GPUI 0.2.2 `examples/hello_world.rs` (Apache-2.0), with font comparison rows added for diagnosis.
 
-`assets/AppIcon.png` and `.icns` place the same Evee artwork inside the approved padded, black rounded-square macOS icon. They are bundled locally; the user's profile photo is read at runtime and is not an app asset.
+`assets/AppIcon.png` and `.icns` retain the same Evee artwork on an opaque black canvas, allowing macOS to apply the rounded icon mask without exposing a light backing at the edge. They are bundled locally; the user's profile photo is read at runtime and is not an app asset.

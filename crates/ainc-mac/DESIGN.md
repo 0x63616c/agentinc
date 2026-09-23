@@ -362,6 +362,14 @@ Transient action feedback also appears at the bottom left, but uses a fixed view
 
 Page headings render only the title and any action. Empty states report the state directly, for example “All caught up.”, “No completed tasks.”, or “No matches.” App entries omit redundant descriptions.
 
+## Native interaction principles
+
+- Show a page name once, in the connected tab. Start page content with its action or substance, without repeating the tab name in a breadcrumb or heading.
+- Open create and edit forms in a centred modal instead of inline fields. Escape and outside click dismiss them.
+- Put destructive row actions behind a three-dot menu and confirm them before applying them.
+- Omit filler count lines. Prefer icons to text labels for familiar compact actions, such as send.
+- Keep list selection neutral grey with one active row, and avoid slide-in entrance motion.
+
 ## Do's and Don'ts
 
 ### Do:

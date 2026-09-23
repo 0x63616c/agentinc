@@ -1,6 +1,6 @@
 use crate::{
     input::TextInput,
-    model::{Session, Space},
+    model::{FontChoice, Session, Space},
     style::*,
 };
 use gpui::{prelude::*, *};
@@ -8,13 +8,9 @@ use std::{path::PathBuf, time::Instant};
 actions!(
     control,
     [
-        NewTab,
         Search,
-        CloseTab,
         GoBack,
         GoForward,
-        NextTab,
-        PreviousTab,
         ToggleSidebar,
         ToggleEvee,
         Escape,
@@ -36,15 +32,14 @@ enum Control {
     Navigate(Space),
     Back,
     Forward,
-    Select(usize),
-    Close(usize),
-    New,
     Search,
     Sidebar,
     Evee,
     Notifications,
+    MarkAllRead,
     Dismiss,
     AssistantSetup,
+    Font(FontChoice),
 }
 pub struct Shell {
     session: Session,
@@ -60,22 +55,25 @@ pub struct Shell {
     _input_subscription: Subscription,
     command: bool,
     command_held: bool,
-    content_transition: Option<Instant>,
     palette_transition: Option<Instant>,
     selected: usize,
     notifications: bool,
+    notification_items: Vec<Notification>,
     save_error: bool,
-    tabs_scroll: ScrollHandle,
     resizing_evee: bool,
     grip_opacity: f32,
     grip_animation: Option<(Instant, f32, f32)>,
     sidebar_width: f32,
     evee_progress: f32,
     evee_animation: Option<(Instant, f32, f32)>,
-    reveal_tab: bool,
-    hovered_tab: Option<usize>,
-    last_tabs_width: f32,
     sidebar_animation: Option<(Instant, f32, f32)>,
+}
+struct Notification {
+    icon: &'static str,
+    title: String,
+    body: String,
+    relative_time: String,
+    unread: bool,
 }
 impl Shell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -114,9 +112,6 @@ impl Shell {
             sidebar_width,
             evee_progress,
             evee_animation: None,
-            reveal_tab: true,
-            hovered_tab: None,
-            last_tabs_width: 0.,
             sidebar_animation: None,
             path,
             focus,
@@ -126,12 +121,11 @@ impl Shell {
             _input_subscription: subscription,
             command: false,
             command_held: false,
-            content_transition: None,
             palette_transition: None,
             selected: 0,
             notifications: false,
+            notification_items: Vec::new(),
             save_error: false,
-            tabs_scroll: ScrollHandle::new(),
             resizing_evee: false,
             grip_opacity: 0.,
             grip_animation: None,
@@ -153,7 +147,7 @@ impl Shell {
         window.focus(&self.input.focus_handle(cx));
     }
     fn cycle_focus(&self, backwards: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.command && self.session.current().is_some() {
+        if !self.command {
             if backwards {
                 window.focus_prev();
             } else {
@@ -197,28 +191,6 @@ impl Shell {
                 self.notifications = false;
                 window.focus(&self.focus);
             }
-            Control::Select(index) => {
-                self.session.select(index);
-                self.command = false;
-                if self.session.current().is_none() {
-                    self.focus_picker(window, cx);
-                } else {
-                    window.focus(&self.focus);
-                }
-            }
-            Control::Close(index) => {
-                self.session.close(index);
-                if self.session.current().is_some() {
-                    window.focus(&self.focus);
-                } else {
-                    self.focus_picker(window, cx);
-                }
-            }
-            Control::New => {
-                self.session.new_tab();
-                self.command = false;
-                self.focus_picker(window, cx);
-            }
             Control::Search => {
                 self.command = true;
                 self.palette_transition = Some(Instant::now());
@@ -247,7 +219,13 @@ impl Shell {
                 self.assistant
                     .update(cx, |assistant, cx| assistant.open_setup(cx));
             }
+            Control::Font(font) => self.session.font = font,
             Control::Notifications => self.notifications = !self.notifications,
+            Control::MarkAllRead => {
+                for item in &mut self.notification_items {
+                    item.unread = false;
+                }
+            }
             Control::Dismiss => {
                 self.command = false;
                 self.notifications = false;
@@ -255,9 +233,10 @@ impl Shell {
             }
         }
         if before != (self.session.active, self.session.current()) {
-            self.content_transition = Some(Instant::now());
+            self.tasks.update(cx, |tasks, cx| {
+                tasks.dismiss(cx);
+            });
         }
-        self.reveal_tab = true;
         self.save(cx);
         window.refresh();
     }
@@ -268,7 +247,6 @@ impl Shell {
         control: Control,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        let tab_part = matches!(control, Control::Select(_) | Control::Close(_));
         row()
             .id(id)
             .tab_index(0)
@@ -276,14 +254,19 @@ impl Shell {
             .rounded(px(6.))
             .gap(px(8.))
             .hover(move |s| {
-                s.bg(if tab_part {
-                    gpui::transparent_black()
+                if matches!(control, Control::Open(_)) {
+                    s.text_color(rgb(TEXT))
                 } else {
-                    rgb(0x191919).into()
-                })
-                .text_color(rgb(TEXT))
+                    s.bg(rgb(0x191919)).text_color(rgb(TEXT))
+                }
             })
-            .focus(|s| s.bg(rgb(0x1d2520)).border_color(rgb(FOCUS)))
+            .focus(move |s| {
+                if matches!(control, Control::Open(_)) {
+                    s.border_color(rgb(0x555555))
+                } else {
+                    s.bg(rgb(0x1d2520)).border_color(rgb(FOCUS))
+                }
+            })
             .on_click(cx.listener(move |this, _, window, cx| {
                 cx.stop_propagation();
                 this.dispatch(control, window, cx);
@@ -308,64 +291,8 @@ impl Shell {
             .justify_center()
             .child(icon(name, 16.))
     }
-    fn header(&self, max_tabs_width: f32, cx: &mut Context<Self>) -> impl IntoElement {
-        // Paint the selected contour last on both sides, without changing tab positions.
-        let mut order = self.session.tabs.iter().enumerate().collect::<Vec<_>>();
-        order.sort_by_key(|(index, _)| *index == self.session.active);
-        let tabs = order
-            .into_iter()
-            .map(|(index, space)| {
-                let active = self.session.active == index;
-                let title = space.map(Space::label).unwrap_or("New tab");
-                let name = space.map(Space::icon).unwrap_or("plus");
-                row()
-                    .id(("tab-container", index))
-                    .on_hover(cx.listener(move |this, hovered, _, cx| {
-                        if *hovered {
-                            this.hovered_tab = Some(index);
-                        } else if this.hovered_tab == Some(index) {
-                            this.hovered_tab = None;
-                        }
-                        cx.notify();
-                    }))
-                    .absolute()
-                    .left(px(26. + index as f32 * 150.))
-                    .bottom_0()
-                    .flex_shrink_0()
-                    .w(px(142.))
-                    .h(px(40.))
-                    .rounded_t(px(10.))
-                    .when(active || self.hovered_tab == Some(index), |s| {
-                        s.child(tab_contour(active))
-                    })
-                    .child(
-                        self.button(("tab", index), title, Control::Select(index), cx)
-                            .h_full()
-                            .flex_1()
-                            .rounded_t(px(10.))
-                            .rounded_b(px(0.))
-                            .pl(px(14.))
-                            .gap(px(7.))
-                            .text_size(px(12.))
-                            .child(div().mt(px(1.)).child(icon(name, 14.)))
-                            .child(title),
-                    )
-                    .when(self.session.tabs.len() > 1, |s| {
-                        s.child(
-                            self.button(
-                                ("close", index),
-                                format!("Close {title}"),
-                                Control::Close(index),
-                                cx,
-                            )
-                            .size(px(22.))
-                            .mr(px(9.))
-                            .justify_center()
-                            .child(icon("close", 11.)),
-                        )
-                    })
-            })
-            .collect::<Vec<_>>();
+    fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let space = self.session.current().unwrap_or(Space::Today);
         row()
             .h(px(48.))
             .flex_shrink_0()
@@ -415,31 +342,25 @@ impl Shell {
                     })),
             )
             .child(
-                row()
-                    .id("tabs")
-                    .max_w(px(max_tabs_width))
-                    .flex_shrink_0()
-                    .mb(px(-2.))
-                    .min_w_0()
-                    .h(px(42.))
-                    .items_end()
-                    .overflow_x_scroll()
-                    .track_scroll(&self.tabs_scroll)
-                    .child(
-                        div()
-                            .relative()
-                            .w(px(self.session.tabs.len() as f32 * 150. + 44.))
-                            .h(px(42.))
-                            .flex_shrink_0()
-                            .children(tabs),
-                    ),
-            )
-            .child(
-                div()
-                    .mb(px(9.))
-                    .ml(px(2.))
-                    .mr(px(12.))
-                    .child(self.icon_button("new", "New tab · ⌘ T", "plus", Control::New, cx)),
+                row().relative().mb(px(-2.)).w(px(170.)).h(px(42.)).child(
+                    row()
+                        .absolute()
+                        .left(px(14.))
+                        .bottom_0()
+                        .w(px(142.))
+                        .h(px(40.))
+                        .rounded_t(px(10.))
+                        .child(tab_contour(true))
+                        .child(
+                            row()
+                                .h_full()
+                                .pl(px(14.))
+                                .gap(px(7.))
+                                .text_size(px(12.))
+                                .child(div().mt(px(1.)).child(icon(space.icon(), 14.)))
+                                .child(space.label()),
+                        ),
+                ),
             )
             .child(
                 div()
@@ -463,18 +384,7 @@ impl Shell {
                     .child(icon("search", 14.))
                     .child("Search")
                     .child(div().flex_1())
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .bg(rgb(0x141414))
-                            .rounded(px(4.))
-                            .h(px(20.))
-                            .w(px(36.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child("⌘ K"),
-                    ),
+                    .child(shortcut_badge("⌘ K").w(px(36.))),
             )
             .child(
                 div()
@@ -555,16 +465,16 @@ impl Shell {
             .child(nav)
             .child(div().flex_1())
             .child(
-                row().h(px(46.)).flex_shrink_0().gap(px(4.)).child(
+                row().h(px(50.)).flex_shrink_0().gap(px(4.)).child(
                     self.button(
                         "profile",
                         "Settings",
                         Control::Navigate(Space::Settings),
                         cx,
                     )
-                    .h(px(32.))
+                    .h(px(40.))
                     .flex_1()
-                    .px(px(6.))
+                    .px(px(10.))
                     .gap(px(8.))
                     .child(match &self.profile.photo {
                         Some(photo) => img(photo.clone())
@@ -587,24 +497,13 @@ impl Shell {
         row()
             .h(px(50.))
             .flex_shrink_0()
-            .pl(px(27.))
+            .pl(px(26.))
             .pr(px(9.))
             .gap(px(12.))
             .border_b_1()
             .border_color(rgb(0x1a1a1a))
             .text_size(px(11.))
             .text_color(rgb(MUTED))
-            .child(icon("grid", 14.))
-            .child("My space")
-            .child(div().mx(px(2.)).text_color(rgb(0x666666)).child("/"))
-            .child(
-                div().text_color(rgb(TEXT)).child(
-                    self.session
-                        .current()
-                        .map(Space::label)
-                        .unwrap_or("New tab"),
-                ),
-            )
             .child(div().flex_1())
             .child(self.icon_button(
                 "toggle-evee",
@@ -613,54 +512,6 @@ impl Shell {
                 Control::Evee,
                 cx,
             ))
-    }
-    fn picker(&self, modal: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let matches = Space::matching(&self.input.read(cx).content);
-        column()
-            .w_full()
-            .max_w(px(420.))
-            .when(!modal, |s| s.mt(px(65.)).mb(px(40.)))
-            .child(
-                div()
-                    .text_size(px(24.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .mb(px(24.))
-                    .child(if modal {
-                        "Search spaces"
-                    } else {
-                        "Open a space"
-                    }),
-            )
-            .child(
-                row()
-                    .gap(px(10.))
-                    .py(px(12.))
-                    .mb(px(18.))
-                    .border_b_1()
-                    .border_color(rgb(FOCUS))
-                    .child(icon("search", 17.))
-                    .child(self.input.clone()),
-            )
-            .when(matches.is_empty(), |s| {
-                s.child(
-                    div()
-                        .py(px(24.))
-                        .text_color(rgb(MUTED))
-                        .child("No matching spaces."),
-                )
-            })
-            .children(matches.iter().copied().enumerate().map(|(index, space)| {
-                self.button(("result", index), space.label(), Control::Open(space), cx)
-                    .track_focus(&self.picker_result_focus[index])
-                    .h(px(44.))
-                    .px(px(10.))
-                    .gap(px(12.))
-                    .when(index == self.selected, |s| s.bg(rgb(0x111111)))
-                    .child(icon(space.icon(), 17.))
-                    .child(space.label())
-                    .child(div().flex_1())
-                    .child(icon("arrowRight", 13.))
-            }))
     }
     fn command_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let matches = Space::matching(&self.input.read(cx).content);
@@ -710,7 +561,6 @@ impl Shell {
                         )
                     })
                     .children(matches.iter().copied().enumerate().map(|(index, space)| {
-                        let existing = self.session.tabs.contains(&Some(space));
                         self.button(
                             ("command-result", index),
                             space.label(),
@@ -718,6 +568,12 @@ impl Shell {
                             cx,
                         )
                         .track_focus(&self.picker_result_focus[index])
+                        .on_hover(cx.listener(move |this, hovered, _, cx| {
+                            if *hovered {
+                                this.selected = index;
+                                cx.notify();
+                            }
+                        }))
                         .h(px(40.))
                         .px(px(10.))
                         .gap(px(12.))
@@ -725,12 +581,6 @@ impl Shell {
                         .child(icon(space.icon(), 17.))
                         .child(space.label())
                         .child(div().flex_1())
-                        .child(
-                            div()
-                                .text_size(px(11.))
-                                .text_color(rgb(0x777777))
-                                .child(if existing { "Open tab" } else { "Space" }),
-                        )
                         .child(
                             div()
                                 .w(px(24.))
@@ -754,14 +604,106 @@ impl Shell {
                     .child("Open space"),
             )
     }
+    fn notification_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        panel()
+            .absolute()
+            .top(px(56.))
+            .right(px(16.))
+            .w(px(350.))
+            .overflow_hidden()
+            .child(
+                row()
+                    .h(px(52.))
+                    .px(px(16.))
+                    .gap(px(12.))
+                    .border_b_1()
+                    .border_color(rgb(BORDER))
+                    .child(div().font_weight(FontWeight::MEDIUM).child("Notifications"))
+                    .child(div().flex_1())
+                    .child(
+                        self.button("mark-all-read", "Mark all read", Control::MarkAllRead, cx)
+                            .text_size(px(11.))
+                            .text_color(rgb(MUTED))
+                            .when(self.notification_items.is_empty(), |s| s.opacity(0.35))
+                            .child("Mark all read"),
+                    )
+                    .child(
+                        self.button(
+                            "dismiss-notifications",
+                            "Close notifications",
+                            Control::Dismiss,
+                            cx,
+                        )
+                        .size(px(24.))
+                        .justify_center()
+                        .child(icon("close", 12.)),
+                    ),
+            )
+            .when(self.notification_items.is_empty(), |s| {
+                s.child(
+                    column()
+                        .py(px(36.))
+                        .px(px(16.))
+                        .items_center()
+                        .gap(px(8.))
+                        .child(icon("bell", 22.))
+                        .child(div().font_weight(FontWeight::MEDIUM).child("All caught up"))
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(rgb(MUTED))
+                                .child("New notifications will appear here."),
+                        ),
+                )
+            })
+            .children(
+                self.notification_items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| {
+                        row()
+                            .gap(px(12.))
+                            .px(px(16.))
+                            .py(px(14.))
+                            .when(index > 0, |s| s.border_t_1().border_color(rgb(BORDER)))
+                            .child(icon(item.icon, 17.))
+                            .child(
+                                column()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .gap(px(3.))
+                                    .child(
+                                        row()
+                                            .gap(px(6.))
+                                            .child(
+                                                div()
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .child(item.title.clone()),
+                                            )
+                                            .child(div().flex_1())
+                                            .child(
+                                                div()
+                                                    .text_size(px(11.))
+                                                    .text_color(rgb(MUTED))
+                                                    .child(item.relative_time.clone()),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(12.))
+                                            .text_color(rgb(MUTED))
+                                            .child(item.body.clone()),
+                                    ),
+                            )
+                            .when(item.unread, |s| {
+                                s.child(div().size(px(5.)).rounded_full().bg(rgb(FOCUS)))
+                            })
+                    }),
+            )
+    }
     fn empty_page(&self, space: Space, cx: &mut Context<Self>) -> impl IntoElement {
         let (title, detail) = space.empty();
-        let mut page = column().gap(px(28.)).child(
-            div()
-                .text_size(px(26.))
-                .font_weight(FontWeight::MEDIUM)
-                .child(space.label()),
-        );
+        let mut page = column().gap(px(28.));
         if space == Space::Today {
             for (index, destination) in [Space::Tasks, Space::Agents, Space::Calendar, Space::Home]
                 .into_iter()
@@ -832,7 +774,68 @@ impl Shell {
             page = page.child(
                 column()
                     .gap(px(12.))
-                    .child("Evee")
+                    .child(
+                        div()
+                            .text_size(px(16.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child("Appearance"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(MUTED))
+                            .child("Font"),
+                    )
+                    .child(
+                        row()
+                            .gap(px(8.))
+                            .child(
+                                self.button(
+                                    "font-system",
+                                    "System font",
+                                    Control::Font(FontChoice::System),
+                                    cx,
+                                )
+                                .h(px(36.))
+                                .px(px(12.))
+                                .border_1()
+                                .border_color(rgb(if self.session.font == FontChoice::System {
+                                    FOCUS
+                                } else {
+                                    BORDER
+                                }))
+                                .child("System · SF Pro"),
+                            )
+                            .child(
+                                self.button(
+                                    "font-helvetica",
+                                    "Helvetica Neue",
+                                    Control::Font(FontChoice::HelveticaNeue),
+                                    cx,
+                                )
+                                .h(px(36.))
+                                .px(px(12.))
+                                .border_1()
+                                .border_color(rgb(
+                                    if self.session.font == FontChoice::HelveticaNeue {
+                                        FOCUS
+                                    } else {
+                                        BORDER
+                                    },
+                                ))
+                                .child("Helvetica Neue"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .mt(px(28.))
+                            .pt(px(24.))
+                            .border_t_1()
+                            .border_color(rgb(BORDER))
+                            .text_size(px(16.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child("Accounts & connections"),
+                    )
                     .child(
                         self.button("setup-evee", "OpenAI setup", Control::AssistantSetup, cx)
                             .p(px(12.))
@@ -841,35 +844,6 @@ impl Shell {
                             .child("OpenAI connection")
                             .child(div().flex_1())
                             .child("Set up →"),
-                    )
-                    .child(div().mt(px(12.)).child("Appearance"))
-                    .child(
-                        self.button("settings-sidebar", "Toggle sidebar", Control::Sidebar, cx)
-                            .p(px(12.))
-                            .border_1()
-                            .border_color(rgb(BORDER))
-                            .child("Sidebar")
-                            .child(div().flex_1())
-                            .child(if self.session.sidebar {
-                                "Shown"
-                            } else {
-                                "Hidden"
-                            }),
-                    )
-                    .child(
-                        self.button("settings-evee", "Toggle Evee", Control::Evee, cx)
-                            .p(px(12.))
-                            .border_1()
-                            .border_color(rgb(BORDER))
-                            .child("Evee panel")
-                            .child(div().flex_1())
-                            .child(if self.session.evee { "Shown" } else { "Hidden" }),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(rgb(MUTED))
-                            .child("Your tabs and layout are saved on this Mac."),
                     ),
             );
         } else if space == Space::Evee {
@@ -1035,7 +1009,6 @@ impl Render for Shell {
             if let Some((_, _, to)) = self.evee_animation.take() {
                 self.evee_progress = to;
             }
-            self.content_transition = None;
             self.palette_transition = None;
         }
         if let Some((start, from, to)) = self.grip_animation {
@@ -1070,28 +1043,6 @@ impl Render for Shell {
         let max_evee_width =
             (f32::from(window.viewport_size().width) - sidebar_width - 378.).clamp(220., 480.);
         let evee_width = self.session.evee_width.min(max_evee_width);
-        let main_right =
-            f32::from(window.viewport_size().width) - 8. - (evee_width + 10.) * self.evee_progress;
-        let max_tabs_width = (main_right - SIDEBAR - 60. - 46.)
-            .min(f32::from(window.viewport_size().width) - SIDEBAR - 60. - 46. - 224. - 38. - 9.)
-            .max(100.);
-        let visible_width = max_tabs_width.min(self.session.tabs.len() as f32 * 150. + 44.);
-        if self.reveal_tab || (visible_width - self.last_tabs_width).abs() > 0.5 {
-            let left = 14. + self.session.active as f32 * 150.;
-            let right = left + 166.;
-            let mut offset = f32::from(self.tabs_scroll.offset().x);
-            if left + offset < 0. {
-                offset = -left;
-            }
-            if right + offset > visible_width {
-                offset = visible_width - right;
-            }
-            let overflow = (self.session.tabs.len() as f32 * 150. + 44. - visible_width).max(0.);
-            self.tabs_scroll
-                .set_offset(point(px(offset.clamp(-overflow, 0.)), px(0.)));
-            self.last_tabs_width = visible_width;
-            self.reveal_tab = false;
-        }
         let progress = |start: &mut Option<Instant>| {
             let Some(instant) = *start else {
                 return 1.;
@@ -1104,17 +1055,13 @@ impl Render for Shell {
             }
             1. - (1. - t).powi(3)
         };
-        let content_progress = progress(&mut self.content_transition);
         let palette_progress = progress(&mut self.palette_transition);
         let content = if self.session.current() == Some(Space::Tasks) {
             self.tasks.clone().into_any_element()
         } else if let Some(space) = self.session.current() {
             self.empty_page(space, cx).into_any_element()
         } else {
-            row()
-                .justify_center()
-                .child(self.picker(false, cx))
-                .into_any_element()
+            self.empty_page(Space::Today, cx).into_any_element()
         };
         column()
             .id("shell")
@@ -1122,7 +1069,7 @@ impl Render for Shell {
             .size_full()
             .bg(rgb(SHELL))
             .text_color(rgb(TEXT))
-            .font_family(".AppleSystemUIFont")
+            .font_family(self.session.font.family())
             .text_size(px(13.))
             .line_height(relative(1.5))
             .track_focus(&self.focus)
@@ -1166,11 +1113,7 @@ impl Render for Shell {
             .on_action(
                 cx.listener(|this, _: &GoForward, w, cx| this.dispatch(Control::Forward, w, cx)),
             )
-            .on_action(cx.listener(|this, _: &NewTab, w, cx| this.dispatch(Control::New, w, cx)))
             .on_action(cx.listener(|this, _: &Search, w, cx| this.dispatch(Control::Search, w, cx)))
-            .on_action(cx.listener(|this, _: &CloseTab, w, cx| {
-                this.dispatch(Control::Close(this.session.active), w, cx)
-            }))
             .on_action(
                 cx.listener(|this, _: &ToggleSidebar, w, cx| {
                     this.dispatch(Control::Sidebar, w, cx)
@@ -1180,28 +1123,15 @@ impl Render for Shell {
                 cx.listener(|this, _: &ToggleEvee, w, cx| this.dispatch(Control::Evee, w, cx)),
             )
             .on_action(cx.listener(|this, _: &Escape, w, cx| {
+                if this.tasks.update(cx, |tasks, cx| tasks.dismiss(cx)) {
+                    w.focus(&this.focus);
+                    return;
+                }
                 if this.command || this.notifications {
                     this.dispatch(Control::Dismiss, w, cx)
                 } else {
                     w.focus(&this.focus);
                 }
-            }))
-            .on_action(cx.listener(|this, _: &NextTab, w, cx| {
-                this.dispatch(
-                    Control::Select((this.session.active + 1) % this.session.tabs.len()),
-                    w,
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|this, _: &PreviousTab, w, cx| {
-                this.dispatch(
-                    Control::Select(
-                        (this.session.active + this.session.tabs.len() - 1)
-                            % this.session.tabs.len(),
-                    ),
-                    w,
-                    cx,
-                )
             }))
             .on_action(cx.listener(|this, _: &FocusNext, w, cx| this.cycle_focus(false, w, cx)))
             .on_action(cx.listener(|this, _: &FocusPrevious, w, cx| this.cycle_focus(true, w, cx)))
@@ -1242,13 +1172,7 @@ impl Render for Shell {
                                             .overflow_y_scroll()
                                             .px(px(26.))
                                             .py(px(28.))
-                                            .child(
-                                                div()
-                                                    .relative()
-                                                    .top(px(5. * (1. - content_progress)))
-                                                    .opacity(0.35 + 0.65 * content_progress)
-                                                    .child(content),
-                                            ),
+                                            .child(div().relative().child(content)),
                                     ),
                             )
                             .when(self.evee_progress > 0., |s| {
@@ -1272,7 +1196,7 @@ impl Render for Shell {
                     .top_0()
                     .left_0()
                     .right_0()
-                    .child(self.header(max_tabs_width, cx)),
+                    .child(self.header(cx)),
             )
             .when(self.save_error, |s| {
                 s.child(
@@ -1286,51 +1210,37 @@ impl Render for Shell {
                         .child("Session could not be saved. Changes remain in this window."),
                 )
             })
-            .when(self.notifications, |s| {
-                s.child(
-                    panel()
-                        .absolute()
-                        .top(px(48.))
-                        .right(px(9.))
-                        .w(px(330.))
-                        .p(px(16.))
-                        .gap(px(8.))
-                        .child(row().child("Notifications").child(div().flex_1()).child(
-                            self.icon_button(
-                                "dismiss-notifications",
-                                "Close notifications",
-                                "close",
-                                Control::Dismiss,
-                                cx,
-                            ),
-                        ))
-                        .child(
-                            div()
-                                .text_color(rgb(MUTED))
-                                .child("Notifications are not connected yet."),
-                        ),
-                )
-            })
+            .when(self.notifications, |s| s.child(self.notification_panel(cx)))
+            .when_some(
+                self.tasks.update(cx, |tasks, cx| tasks.overlay(cx)),
+                |s, overlay| s.child(overlay),
+            )
             .when(self.command, |s| {
                 s.child(
                     div()
+                        .id("command-backdrop")
                         .absolute()
                         .inset_0()
+                        .cursor_default()
                         .bg(rgba(0x00000099))
                         .flex()
                         .justify_center()
                         .items_start()
                         .pt(px(80.))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, w, cx| this.dispatch(Control::Dismiss, w, cx)),
-                        )
+                        .on_mouse_move(|_, _, cx| cx.stop_propagation())
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(cx.listener(|this, _, w, cx| {
+                            cx.stop_propagation();
+                            this.dispatch(Control::Dismiss, w, cx);
+                        }))
                         .child(
                             div()
+                                .id("command-dialog")
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .on_click(|_, _, cx| cx.stop_propagation())
                                 .relative()
-                                .top(px(8. * (1. - palette_progress)))
-                                .opacity(0.35 + 0.65 * palette_progress)
+                                .opacity(0.65 + 0.35 * palette_progress)
                                 .child(self.command_palette(cx)),
                         ),
                 )
@@ -1345,17 +1255,10 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-alt-left", GoBack, Some("Control")),
         KeyBinding::new("cmd-alt-right", GoForward, Some("Control")),
-        KeyBinding::new("cmd-n", NewTab, Some("Control")),
-        KeyBinding::new("cmd-t", NewTab, Some("Control")),
         KeyBinding::new("cmd-k", Search, Some("Control")),
-        KeyBinding::new("cmd-w", CloseTab, Some("Control")),
         KeyBinding::new("cmd-b", ToggleSidebar, Some("Control")),
         KeyBinding::new("cmd-shift-e", ToggleEvee, Some("Control")),
         KeyBinding::new("escape", Escape, Some("Control")),
-        KeyBinding::new("cmd-]", NextTab, Some("Control")),
-        KeyBinding::new("cmd-[", PreviousTab, Some("Control")),
-        KeyBinding::new("ctrl-tab", NextTab, Some("Control")),
-        KeyBinding::new("ctrl-shift-tab", PreviousTab, Some("Control")),
         KeyBinding::new("tab", FocusNext, Some("Control")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("Control")),
         KeyBinding::new("cmd-q", Quit, None),
