@@ -27,5 +27,6 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: python3 crates/ainc-mac/scripts/check-colors.py
       - run: python3 crates/ainc-mac/scripts/check-ui-spacing.py
+      - run: python3 crates/ainc-mac/scripts/check-ui-core.py
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked --workspace

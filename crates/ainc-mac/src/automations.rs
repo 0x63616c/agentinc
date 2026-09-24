@@ -3,7 +3,7 @@ use crate::{
     storage::{
         AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, Store, TicketProposal,
     },
-    style::*,
+    ui::*,
 };
 use gpui::{prelude::*, *};
 use std::sync::Arc;
@@ -282,9 +282,6 @@ impl AutomationsPage {
             cx,
         )
     }
-    fn field(label: &'static str, input: Entity<TextInput>) -> impl IntoElement {
-        form_field(label, input, label)
-    }
 }
 impl Render for AutomationsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -360,10 +357,10 @@ impl Render for AutomationsPage {
                 .as_ref()
                 .map(|s| s.tickets().assignees)
                 .unwrap_or_default();
-            content=content.child(column_gap(FORM_STACK_GAP).child(Self::field("Name",self.name.clone())).child(Self::field("Ticket prompt",self.prompt.clone())).child(Self::field("Every (minutes)",self.minutes.clone()))
+            content=content.child(column_gap(FORM_STACK_GAP).child(text_field("Name",self.name.clone())).child(text_field("Ticket prompt",self.prompt.clone())).child(text_field("Every (minutes)",self.minutes.clone()))
                 .child(column().gap(px(8.)).child(div().text_color(rgb(MUTED)).child("Assign to"))
                     .when(!agents.iter().any(|a|a.kind==AssigneeKind::Agent),|s|s.child("Register an agent on the Agents page first."))
-                    .child(row().gap(px(8.)).flex_wrap().children(agents.into_iter().filter(|a|a.kind==AssigneeKind::Agent).map(|a|{let id=a.id.clone();self.button(SharedString::from(format!("automations.agent.{}",a.id)),a.name.clone(),true,move|this,_,cx|{this.agent=Some(id.clone());cx.notify();},cx).border_color(rgb(if self.agent.as_ref()==Some(&a.id){SELECTED_BORDER}else{BORDER})).child(a.name)}))))
+                    .child(row().gap(px(8.)).flex_wrap().children(agents.into_iter().filter(|a|a.kind==AssigneeKind::Agent).map(|a|{let id=a.id.clone();choice_button(self.button(SharedString::from(format!("automations.agent.{}",a.id)),a.name.clone(),true,move|this,_,cx|{this.agent=Some(id.clone());cx.notify();},cx), self.agent.as_ref()==Some(&a.id)).child(a.name)}))))
                 .child(div().text_color(rgb(MUTED)).text_size(type_size(CAPTION_SIZE)).child("Saving authorizes this rule to create and assign a new Ticket on each firing."))
                 .child(row_gap(CONTROL_GAP).child(self.button("automations.save","Save rule",true,|this,_,cx|this.save(cx),cx).child("Save rule")).child(self.button("automations.cancel","Cancel",true,|this,_,cx|{this.editing=false;cx.notify();},cx).child("Cancel"))));
         } else if let Some(rule) = selected {

@@ -50,7 +50,7 @@ def main() -> int:
             print(
                 f"::warning file=crates/ainc-mac/{name},line={number}::"
                 f"Raw {method} spacing {value}px; prefer {preferred(method)} "
-                "from style.rs. Name an optical exception there if needed."
+                "from ui/tokens.rs. Name an optical exception there if needed."
             )
     print(f"UI spacing ratchet: {warnings} new raw literal warning(s)")
     return 0

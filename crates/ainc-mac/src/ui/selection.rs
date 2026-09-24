@@ -1,9 +1,6 @@
 //! Reusable controls for preference pages and other native surfaces.
-use crate::style::*;
+use super::{button::*, layout::*, tokens::*};
 use gpui::{prelude::*, *};
-
-const SETTINGS_ROW_HEIGHT: f32 = 52.;
-const SETTINGS_INSET: f32 = 18.;
 
 /// A titled group with the same inset surface and row rhythm throughout Settings.
 pub fn settings_section(title: &'static str, rows: impl IntoElement) -> Div {
@@ -35,6 +32,7 @@ pub fn settings_row(
     control: impl IntoElement,
 ) -> Div {
     row()
+        .debug_selector(move || format!("settings.row.{label}"))
         .min_h(px(SETTINGS_ROW_HEIGHT))
         .px(px(SETTINGS_INSET))
         .py(px(8.))
@@ -42,6 +40,7 @@ pub fn settings_row(
         .justify_between()
         .child(
             column()
+                .debug_selector(move || format!("settings.row.{label}.label"))
                 .min_w_0()
                 .gap(px(3.))
                 .child(div().font_weight(FontWeight::MEDIUM).child(label))
@@ -52,7 +51,13 @@ pub fn settings_row(
                         .child(description.into()),
                 ),
         )
-        .child(div().max_w(px(450.)).flex_shrink_0().child(control))
+        .child(
+            div()
+                .debug_selector(move || format!("settings.row.{label}.control"))
+                .max_w(px(450.))
+                .flex_shrink_0()
+                .child(control),
+        )
 }
 
 pub fn settings_divider() -> Div {
@@ -185,6 +190,19 @@ pub fn settings_segments(children: impl IntoIterator<Item = impl IntoElement>) -
         .border_1()
         .border_color(rgb(BORDER))
         .children(children)
+}
+
+/// One option in a single-selection chip group.
+pub fn choice_button(button: Stateful<Div>, selected: bool) -> Stateful<Div> {
+    button
+        .role(accesskit::Role::RadioButton)
+        .aria_toggled(if selected {
+            accesskit::Toggled::True
+        } else {
+            accesskit::Toggled::False
+        })
+        .border_1()
+        .border_color(rgb(if selected { SELECTED_BORDER } else { BORDER }))
 }
 
 /// Accessible switch with a GPUI spring that keeps its velocity when retargeted.

@@ -1,0 +1,6 @@
+{
+  "src/automations.rs": {"local constructor": 1},
+  "src/input.rs": {"local constructor": 1},
+  "src/shell.rs": {"local constructor": 1},
+  "src/tickets.rs": {"local constructor": 1}
+}
