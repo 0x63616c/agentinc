@@ -69,13 +69,16 @@ measured the following on this mini:
 | --- | ---: | ---: | ---: |
 | Idle listener (`ps` sample) | 0.0% | 71,184 KiB (about 70 MiB) | — |
 | Native release build (sampled peak of build process tree) | 400% (four cores) | 1,953 MiB | 341 seconds |
+| Warm rebuild in the [final-code draft run](https://github.com/0x63616c/agentinc/actions/runs/36008543796) | 400% (four cores) | 1,345 MiB | 86 seconds |
 
 The build script samples every two seconds. A short peak may be missed, and
 summed process RSS can double-count shared pages. After the build, the
 persistent target was 3.4 GiB, Cargo cache 1.0 GiB, Rust toolchain 466 MiB,
 and pinned tools 372 MiB; the Mac had 50 GiB free. The job removed its
 per-release bundle and archive. The Ubuntu job passed and left five signed
-assets in a draft; it did not publish a release or create a public tag.
+assets in a draft; it did not publish a release or create a public tag. The
+final-code draft run also passed on both machines and produced five draft
+assets without creating a tag.
 
 ## Maintenance and removal
 
