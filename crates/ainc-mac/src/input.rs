@@ -1,7 +1,7 @@
 // Adapted from GPUI 0.2.2 examples/input.rs (Apache-2.0). See THIRD_PARTY.md.
 use std::ops::Range;
 
-use crate::style::{FOCUS, TEXT, TEXT_SELECTION};
+use crate::style::{FOCUS, TEXT, TEXT_SELECTION, type_size};
 use gpui::prelude::*;
 use gpui::*;
 use unicode_segmentation::*;
@@ -987,8 +987,8 @@ impl Render for TextInput {
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .w_full()
             .overflow_hidden()
-            .line_height(px(20.))
-            .text_size(px(13.))
+            .line_height(type_size(20.))
+            .text_size(type_size(13.))
             .text_color(rgb(TEXT))
             .child(TextElement { input: cx.entity() })
     }

@@ -397,7 +397,7 @@ impl TicketsPage {
             |button| {
                 button
                     .justify_center()
-                    .h(px(CONTROL_HEIGHT))
+                    .min_h(type_size(CONTROL_HEIGHT))
                     .px(px(10.))
                     .bg(background)
                     .on_hover(on_hover)
@@ -412,12 +412,12 @@ impl TicketsPage {
             .child(
                 div()
                     .text_color(rgb(MUTED))
-                    .text_size(px(LABEL_SIZE))
+                    .text_size(type_size(LABEL_SIZE))
                     .child(label.to_owned()),
             )
             .child(
                 row()
-                    .h(px(FIELD_HEIGHT))
+                    .min_h(type_size(FIELD_HEIGHT))
                     .px(px(12.))
                     .border_1()
                     .border_color(rgb(BORDER))
@@ -593,18 +593,18 @@ impl TicketsPage {
             .child(row().gap(px(8.)).child(self.button("tickets.back","All Tickets",true,ButtonKind::Quiet,|this,_,cx|{this.selected=None;cx.notify();},cx).child("← All Tickets")).child(div().flex_1())
                 .when(running,|s|s.child(self.button("tickets.stop","Cancel work",true,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Cancel{id,revision},cx),cx).border_1().border_color(rgb(BORDER)).child("Cancel work")))
                 .when(!self.state.runs.iter().any(|r|r.ticket_id==id),|s|s.child(self.button("tickets.delete","Delete Ticket",true,ButtonKind::Quiet,move|this,window,cx|{this.overlays.borrow_mut().open(Overlay::DeleteTicket(id),window,cx,Some(this.cancel_focus.clone()));cx.notify();},cx).text_color(rgb(DESTRUCTIVE_TEXT)).child("Delete"))))
-            .child(div().text_size(px(20.)).font_weight(FontWeight::MEDIUM).child(ticket.title.clone()))
-            .child(column().gap(px(8.)).child(div().text_size(px(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Status")).child(row().flex_wrap().gap(px(6.)).children(STATUSES.into_iter().map(|status|self.button(SharedString::from(format!("tickets.status.{status}")),status_name(status),status!=ticket.status,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::SetStatus{id,revision,status},cx),cx).border_1().border_color(rgb(if status==ticket.status{FOCUS}else{BORDER})).child(status_name(status))))))
-            .child(column().gap(px(8.)).child(div().text_size(px(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Assignee")).child(row().flex_wrap().gap(px(6.)).children(self.state.assignees.iter().map(|assignee|{
+            .child(div().text_size(type_size(20.)).font_weight(FontWeight::MEDIUM).child(ticket.title.clone()))
+            .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Status")).child(row().flex_wrap().gap(px(6.)).children(STATUSES.into_iter().map(|status|self.button(SharedString::from(format!("tickets.status.{status}")),status_name(status),status!=ticket.status,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::SetStatus{id,revision,status},cx),cx).border_1().border_color(rgb(if status==ticket.status{FOCUS}else{BORDER})).child(status_name(status))))))
+            .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Assignee")).child(row().flex_wrap().gap(px(6.)).children(self.state.assignees.iter().map(|assignee|{
                 let assignee_id=assignee.id.clone();let assignee_kind=assignee.kind;
                 self.button(SharedString::from(format!("tickets.assign.{}",assignee.id)),assignee.name.clone(),assignee.id!=ticket.assignee_id,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Assign{id,revision,assignee_id:assignee_id.clone(),assignee_kind},cx),cx).border_1().border_color(rgb(if assignee.id==ticket.assignee_id{FOCUS}else{BORDER})).child(assignee.name.clone())
             }))))
-            .children(self.state.runs.iter().filter(|r|r.ticket_id==id && r.generation==ticket.generation).map(|run|div().text_size(px(LABEL_SIZE)).text_color(rgb(MUTED)).child(run.error.as_ref().map_or_else(||format!("Work {}",run.state),|error|format!("Work stopped: {error}")))))
+            .children(self.state.runs.iter().filter(|r|r.ticket_id==id && r.generation==ticket.generation).map(|run|div().text_size(type_size(LABEL_SIZE)).text_color(rgb(MUTED)).child(run.error.as_ref().map_or_else(||format!("Work {}",run.state),|error|format!("Work stopped: {error}")))))
             .child(column().gap(px(16.)).child(div().font_weight(FontWeight::MEDIUM).child("Comments"))
                 .when(!self.state.comments.iter().any(|c|c.ticket_id==id),|s|s.child(div().text_color(rgb(MUTED)).child("Comments are the work log. Add context, decisions and evidence here.")))
                 .children(self.state.comments.iter().filter(|c|c.ticket_id==id).map(|comment|{
                     let author=self.state.assignees.iter().find(|a|a.id==comment.author_id).map_or("Agent",|a|a.name.as_str());
-                    column().id(("comment",comment.id as u64)).accessibility_id(format!("comment.{}",comment.id)).role(accesskit::Role::ListItem).aria_label(comment.body.clone()).gap(px(6.)).py(px(12.)).border_b_1().border_color(rgb(BORDER)).child(div().text_size(px(CAPTION_SIZE)).text_color(rgb(MUTED)).child(author.to_owned())).child(div().text_size(px(BODY_SIZE)).child(comment.body.clone()))
+                    column().id(("comment",comment.id as u64)).accessibility_id(format!("comment.{}",comment.id)).role(accesskit::Role::ListItem).aria_label(comment.body.clone()).gap(px(6.)).py(px(12.)).border_b_1().border_color(rgb(BORDER)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child(author.to_owned())).child(div().text_size(type_size(BODY_SIZE)).child(comment.body.clone()))
                 }))
                 .child(Self::field("Add a Comment",self.comment.clone()))
                 .child(row().justify_end().child(self.button("tickets.post","Post Comment",!self.comment.read(cx).content.trim().is_empty(),ButtonKind::Primary,|this,_,cx|this.add_comment(cx),cx).child("Post Comment"))))
@@ -662,7 +662,7 @@ impl Render for TicketsPage {
                                 .track_focus(&self.add_focus)
                                 .border_1()
                                 .border_color(rgb(0x555555))
-                                .text_size(px(LABEL_SIZE))
+                                .text_size(type_size(LABEL_SIZE))
                                 .child("Add Ticket"),
                             ),
                     )
@@ -686,7 +686,7 @@ impl Render for TicketsPage {
                                     .gap(px(8.))
                                     .child(
                                         div()
-                                            .text_size(px(CAPTION_SIZE))
+                                            .text_size(type_size(CAPTION_SIZE))
                                             .text_color(rgb(MUTED))
                                             .child(status_name(status)),
                                     )
@@ -726,7 +726,7 @@ impl Render for TicketsPage {
                                                 )
                                                 .child(
                                                     div()
-                                                        .text_size(px(CAPTION_SIZE))
+                                                        .text_size(type_size(CAPTION_SIZE))
                                                         .text_color(rgb(MUTED))
                                                         .child(assignee.to_owned()),
                                                 )

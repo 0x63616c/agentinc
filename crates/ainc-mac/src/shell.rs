@@ -13,7 +13,7 @@ mod sidebar;
 
 use crate::{
     input::TextInput,
-    model::{Availability, FontChoice, PAGES, Route, Session},
+    model::{Availability, FontChoice, FontSize, PAGES, Route, Session},
     overlay::{Overlay, OverlayHost},
     style::*,
 };
@@ -53,6 +53,7 @@ enum Control {
     MarkAllRead,
     Dismiss,
     Font(FontChoice),
+    FontSize(FontSize),
 }
 pub struct Shell {
     session: Session,
@@ -196,6 +197,7 @@ impl Shell {
         let loaded = Session::load_checked(&path);
         let session_writable = loaded.is_ok();
         let session = loaded.unwrap_or_default();
+        set_type_scale(session.font_size.scale());
         let pane_visible = session
             .panes
             .map(|pane| if pane.open { pane.width } else { 0. });
@@ -384,6 +386,17 @@ impl Shell {
             Control::Sidebar => self.toggle_pane(pane::Side::Left),
             Control::Evee => self.toggle_pane(pane::Side::Right),
             Control::Font(font) => self.session.font = font,
+            Control::FontSize(size) => {
+                self.session.font_size = size;
+                set_type_scale(size.scale());
+                self.assistant.update(cx, |_, cx| cx.notify());
+                self.tickets.update(cx, |_, cx| cx.notify());
+                self.automations.update(cx, |_, cx| cx.notify());
+                self.input.update(cx, |_, cx| cx.notify());
+                if let Some(updates) = cx.try_global::<crate::updates::Updates>().cloned() {
+                    updates.0.update(cx, |_, cx| cx.notify());
+                }
+            }
             Control::Notifications => {
                 let active = self.overlays.borrow().active();
                 if active == Some(Overlay::Notifications) {
@@ -457,6 +470,13 @@ impl Shell {
             ),
             Control::Font(font) => button.role(accesskit::Role::RadioButton).aria_toggled(
                 if self.session.font == font {
+                    accesskit::Toggled::True
+                } else {
+                    accesskit::Toggled::False
+                },
+            ),
+            Control::FontSize(size) => button.role(accesskit::Role::RadioButton).aria_toggled(
+                if self.session.font_size == size {
                     accesskit::Toggled::True
                 } else {
                     accesskit::Toggled::False
@@ -547,7 +567,7 @@ impl Shell {
                     .gap(px(6.))
                     .border_t_1()
                     .border_color(rgb(BORDER))
-                    .text_size(px(CAPTION_SIZE))
+                    .text_size(type_size(CAPTION_SIZE))
                     .text_color(rgb(MUTED))
                     .child(shortcut_badge("↑ ↓"))
                     .child("Navigate")
@@ -582,7 +602,7 @@ impl Shell {
                                     Control::MarkAllRead,
                                     cx,
                                 )
-                                .text_size(px(CAPTION_SIZE))
+                                .text_size(type_size(CAPTION_SIZE))
                                 .text_color(rgb(MUTED))
                                 .child("Mark all read"),
                             )
@@ -610,7 +630,7 @@ impl Shell {
                         .child(icon("bell", 16.))
                         .child(
                             div()
-                                .text_size(px(LABEL_SIZE))
+                                .text_size(type_size(LABEL_SIZE))
                                 .font_weight(FontWeight::MEDIUM)
                                 .child("No notifications yet"),
                         ),
@@ -643,14 +663,14 @@ impl Shell {
                                             .child(div().flex_1())
                                             .child(
                                                 div()
-                                                    .text_size(px(CAPTION_SIZE))
+                                                    .text_size(type_size(CAPTION_SIZE))
                                                     .text_color(rgb(MUTED))
                                                     .child(item.relative_time.clone()),
                                             ),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(LABEL_SIZE))
+                                            .text_size(type_size(LABEL_SIZE))
                                             .text_color(rgb(MUTED))
                                             .child(item.body.clone()),
                                     ),
@@ -695,7 +715,7 @@ impl Render for Shell {
                 .gap(px(20.))
                 .bg(rgb(SHELL))
                 .text_color(rgb(TEXT))
-                .child(div().text_size(px(24.)).child("Update to continue"))
+                .child(div().text_size(type_size(24.)).child("Update to continue"))
                 .child(
                     div()
                         .id("required-update")
@@ -793,7 +813,7 @@ impl Render for Shell {
             .bg(rgb(SHELL))
             .text_color(rgb(TEXT))
             .font_family(self.session.font.family())
-            .text_size(px(BODY_SIZE))
+            .text_size(type_size(BODY_SIZE))
             .line_height(relative(1.5))
             .track_focus(&self.focus)
             .key_context("Control")
@@ -971,7 +991,7 @@ mod interaction_tests {
     use super::{Shell, bind_keys};
     use crate::{
         input,
-        model::{PAGES, Route, Session},
+        model::{PAGES, PANE_WIDTHS, Route, Session},
         overlay::Overlay,
     };
     use gpui::{Focusable, Modifiers, MouseButton, TestAppContext, point, px};
@@ -982,7 +1002,7 @@ mod interaction_tests {
         let path = dir.path().join("session.json");
         cx.update(bind_keys);
         let (shell, cx) = cx.add_window_view(|window, cx| Shell::fixture(path.clone(), window, cx));
-        let start = point(px(178.), px(200.));
+        let start = point(px(PANE_WIDTHS[0].2), px(200.));
         let end = point(px(260.), px(200.));
         cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
         cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
@@ -1012,7 +1032,7 @@ mod interaction_tests {
         });
         let right =
             |bounds: gpui::Bounds<gpui::Pixels>| f32::from(bounds.origin.x + bounds.size.width);
-        for width in [150., 178.] {
+        for width in [PANE_WIDTHS[0].0, PANE_WIDTHS[0].2] {
             cx.update(|window, cx| {
                 shell.update(cx, |shell, cx| {
                     shell.session.panes[0].width = width;

@@ -273,7 +273,7 @@ impl AutomationsPage {
             },
             |button| {
                 button
-                    .h(px(CONTROL_HEIGHT))
+                    .min_h(type_size(CONTROL_HEIGHT))
                     .px(px(12.))
                     .bg(background)
                     .border_1()
@@ -289,13 +289,13 @@ impl AutomationsPage {
             .gap(px(8.))
             .child(
                 div()
-                    .text_size(px(LABEL_SIZE))
+                    .text_size(type_size(LABEL_SIZE))
                     .text_color(rgb(MUTED))
                     .child(label.to_owned()),
             )
             .child(
                 row()
-                    .h(px(FIELD_HEIGHT))
+                    .min_h(type_size(FIELD_HEIGHT))
                     .px(px(12.))
                     .border_1()
                     .border_color(rgb(BORDER))
@@ -321,8 +321,8 @@ impl Render for AutomationsPage {
             .iter()
             .find(|r| Some(&r.id) == self.selected.as_ref())
             .cloned();
-        let mut content=column().gap(px(24.)).w_full().max_w(px(880.)).child(row().justify_between().child(div().text_size(px(24.)).child("Automations")).child(row().gap(px(8.)).child(self.button("automations.refresh","Refresh",true,|this,_,cx|this.refresh(cx),cx).child("Refresh")).child(self.button("automations.create","Create Automation",true,|this,_,cx|this.edit(None,cx),cx).child("Create Automation"))))
-            .child(div().text_color(rgb(MUTED)).text_size(px(LABEL_SIZE)).child("Recurring Tickets for your agents. Overlapping work is skipped; missed firings stay in history."));
+        let mut content=column().gap(px(24.)).w_full().max_w(px(880.)).child(row().justify_between().child(div().text_size(type_size(24.)).child("Automations")).child(row().gap(px(8.)).child(self.button("automations.refresh","Refresh",true,|this,_,cx|this.refresh(cx),cx).child("Refresh")).child(self.button("automations.create","Create Automation",true,|this,_,cx|this.edit(None,cx),cx).child("Create Automation"))))
+            .child(div().text_color(rgb(MUTED)).text_size(type_size(LABEL_SIZE)).child("Recurring Tickets for your agents. Overlapping work is skipped; missed firings stay in history."));
         if let Some(error) = &self.error {
             content = content.child(
                 div()
@@ -345,14 +345,14 @@ impl Render for AutomationsPage {
                 .child(column().gap(px(8.)).child(div().text_color(rgb(MUTED)).child("Assign to"))
                     .when(!agents.iter().any(|a|a.kind==AssigneeKind::Agent),|s|s.child("Register an agent on the Agents page first."))
                     .child(row().gap(px(8.)).flex_wrap().children(agents.into_iter().filter(|a|a.kind==AssigneeKind::Agent).map(|a|{let id=a.id.clone();self.button(SharedString::from(format!("automations.agent.{}",a.id)),a.name.clone(),true,move|this,_,cx|{this.agent=Some(id.clone());cx.notify();},cx).border_color(rgb(if self.agent.as_ref()==Some(&a.id){FOCUS}else{BORDER})).child(a.name)}))))
-                .child(div().text_color(rgb(MUTED)).text_size(px(CAPTION_SIZE)).child("Saving authorizes this rule to create and assign a new Ticket on each firing."))
+                .child(div().text_color(rgb(MUTED)).text_size(type_size(CAPTION_SIZE)).child("Saving authorizes this rule to create and assign a new Ticket on each firing."))
                 .child(row().gap(px(8.)).child(self.button("automations.save","Save rule",true,|this,_,cx|this.save(cx),cx).child("Save rule")).child(self.button("automations.cancel","Cancel",true,|this,_,cx|{this.editing=false;cx.notify();},cx).child("Cancel"))));
         } else if let Some(rule) = selected {
             let edit = rule.clone();
             let pause = rule.clone();
             let run = rule.clone();
             content=content.child(column().gap(px(16.)).child(row().gap(px(8.)).child(self.button("automations.back","All rules",true,|this,_,cx|{this.selected=None;cx.notify();},cx).child("← All rules")))
-                .child(div().text_size(px(20.)).child(rule.name.clone())).child(rule.prompt.clone())
+                .child(div().text_size(type_size(20.)).child(rule.name.clone())).child(rule.prompt.clone())
                 .child(div().text_color(rgb(MUTED)).child(format!("Every {} {} · {}",rule.every_minutes,if rule.every_minutes == 1 {"minute"} else {"minutes"},if rule.revision!=rule.applied_revision {"Pending application"}else if rule.paused{"Paused"}else{"Active"})))
                 .when_some(rule.error.clone(),|s,e|s.child(div().text_color(rgb(DESTRUCTIVE_TEXT)).child(e)))
                 .child(row().gap(px(8.)).child(self.button("automations.edit","Edit rule",true,move|this,_,cx|this.edit(Some(edit.clone()),cx),cx).child("Edit rule"))

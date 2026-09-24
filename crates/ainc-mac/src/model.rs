@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
-pub const PANE_WIDTHS: [(f32, f32, f32); 2] = [(150., 320., 178.), (220., 480., 258.)];
+pub const PANE_WIDTHS: [(f32, f32, f32); 2] = [(150., 320., 216.), (220., 480., 258.)];
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PanePreference {
@@ -285,6 +285,33 @@ impl FontChoice {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FontSize {
+    Small,
+    #[default]
+    Default,
+    Large,
+    Larger,
+}
+impl FontSize {
+    pub const ALL: [(Self, &'static str); 4] = [
+        (Self::Small, "Small"),
+        (Self::Default, "Default"),
+        (Self::Large, "Large"),
+        (Self::Larger, "Larger"),
+    ];
+
+    pub fn scale(self) -> f32 {
+        match self {
+            Self::Small => 0.9,
+            Self::Default => 1.,
+            Self::Large => 1.1,
+            Self::Larger => 1.2,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Session {
@@ -292,6 +319,7 @@ pub struct Session {
     router: Router,
     pub panes: [PanePreference; 2],
     pub font: FontChoice,
+    pub font_size: FontSize,
 }
 impl Default for Session {
     fn default() -> Self {
@@ -309,6 +337,7 @@ impl Default for Session {
                 },
             ],
             font: FontChoice::System,
+            font_size: FontSize::Default,
         }
     }
 }
@@ -360,6 +389,12 @@ impl Session {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
         {
             session.font = font;
+        }
+        if let Some(font_size) = value
+            .get("font_size")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+        {
+            session.font_size = font_size;
         }
         if let Some(router) = value
             .get("router")
@@ -521,6 +556,21 @@ mod tests {
         assert_eq!(
             Session::from_json(r#"{"sidebar_width":900}"#).panes[0].width,
             PANE_WIDTHS[0].1
+        );
+    }
+    #[test]
+    fn font_size_is_a_backward_compatible_ui_preference() {
+        let legacy = Session::from_json(r#"{"font":"helvetica_neue"}"#);
+        assert_eq!(legacy.font_size, FontSize::Default);
+        let mut sized = legacy.clone();
+        sized.font_size = FontSize::Larger;
+        assert_eq!(
+            Session::from_json(&serde_json::to_string(&sized).unwrap()),
+            sized
+        );
+        assert_eq!(
+            Session::from_json(r#"{"font_size":"future_size"}"#).font_size,
+            FontSize::Default
         );
     }
     #[test]
