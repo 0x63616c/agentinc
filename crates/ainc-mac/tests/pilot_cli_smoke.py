@@ -16,7 +16,8 @@ with tempfile.TemporaryDirectory(prefix="c", dir=root / ".local") as temp:
     env = os.environ.copy()
     env.update(
         AGENTINC_SESSION_PATH=str(state / "session.json"),
-        AGENTINC_DATABASE_PATH=str(state / "db.sqlite3"),
+        AINC_DISCOVERY_FILE=os.environ["AINC_DISCOVERY_FILE"],
+        AINC_LEGACY_DIR=str(state / "legacy"),
         AGENTINC_CODEX_HOME=str(state / "codex"),
         AGENTINC_WINDOW_TITLE="Agentinc Pilot CLI QA",
     )
@@ -54,16 +55,16 @@ with tempfile.TemporaryDirectory(prefix="c", dir=root / ".local") as temp:
                 snap = cli("snapshot")["snapshot"]
                 ref = next(node["reference"] for node in snap["nodes"] if node["author_id"] == "search.input")
                 try:
-                    cli("type", ref, "--stdin", text="Tasks")
+                    cli("type", ref, "--stdin", text="Tickets")
                     break
                 except RuntimeError as error:
                     if "stale_ref" not in str(error):
                         raise
             else:
                 raise AssertionError("unable to get fresh ref")
-            cli("wait", '{"kind":"value","author_id":"search.input","equals":"Tasks"}', "3000")
+            cli("wait", '{"kind":"value","author_id":"search.input","equals":"Tickets"}', "3000")
             cli("press", "enter")
-            cli("wait", '{"kind":"present","author_id":"tasks.create"}', "3000")
+            cli("wait", '{"kind":"present","author_id":"tickets.create"}', "3000")
             capture = cli("screenshot")
             assert pathlib.Path(capture["path"]).is_file()
             print("CLI hello/snapshot/press/type/wait/screenshot passed; native PID/title/dimensions passed.")

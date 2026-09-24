@@ -260,9 +260,24 @@ fn daemon(instance: &Instance) -> Result<()> {
         instance.id.trim_start_matches("agentinc-")
     );
     let discovery = local(instance).join("api-url");
+    let runtime = serde_json::json!({
+        "endpoint": format!("http://127.0.0.1:{}", port(instance, "temporal", "7233")?),
+        "scope": instance.namespace,
+        "worker_group": format!("{}-agents", instance.id),
+    });
+    fs::write(
+        local(instance).join("runtime.json"),
+        serde_json::to_vec_pretty(&runtime)?,
+    )?;
     let status = cmd(instance, "cargo")
         .args(["run", "-p", "ainc-daemon", "--bin", "aincd"])
         .env("DATABASE_URL", db)
+        .env("AINC_RUNTIME_CONFIG", runtime.to_string())
+        .env("AINC_WORKSPACE_DIR", local(instance).join("workspace"))
+        .env(
+            "AINC_TOOL_ALLOW",
+            "[\"read_file\",\"write_file\",\"shell\",\"git\"]",
+        )
         .env("AINC_DISCOVERY_FILE", discovery)
         .env("AINC_LEGACY_DIR", local(instance).join("legacy"))
         .env("AGENTINC_CODEX_HOME", local(instance).join("codex"))

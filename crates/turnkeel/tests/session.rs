@@ -297,3 +297,44 @@ async fn tool_idempotency_keys_are_unique_across_turns() -> anyhow::Result<()> {
     turnkeel.shutdown().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn restored_session_deduplicates_delivery_and_resumes_events() -> anyhow::Result<()> {
+    let script = Script::new();
+    let agent = Agent::builder("restore-v1").model(script.model()).build();
+    let runtime = Runtime::test().await?;
+    let id = turnkeel::SessionId::new("retained-conversation");
+    let session = runtime
+        .open_session(
+            id.clone(),
+            &agent,
+            vec![
+                Message::user("prior"),
+                Message::assistant(vec![Content::Text {
+                    text: "retained answer".into(),
+                }]),
+            ],
+        )
+        .await?;
+    let again = runtime.open_session(id, &agent, vec![]).await?;
+    session.send_once("turn-1", "next").await?;
+    let call = script.next_model_call().await;
+    assert_eq!(call.request().messages.len(), 3);
+    again.send_once("turn-1", "next").await?;
+    call.reply(turnkeel::ModelResponse::text("one answer"));
+    let mut events = session.events();
+    let first = next_turn(&mut events).await?;
+    assert_eq!(texts(&first), ["next", "one answer"]);
+    let mut resumed = session.events_from(3);
+    session.send_once("turn-2", "another").await?;
+    let call = script.next_model_call().await;
+    assert_eq!(call.request().messages.len(), 5);
+    call.reply(turnkeel::ModelResponse::text("second answer"));
+    assert_eq!(
+        texts(&next_turn(&mut resumed).await?),
+        ["another", "second answer"]
+    );
+    session.cancel().await?;
+    runtime.shutdown().await?;
+    Ok(())
+}

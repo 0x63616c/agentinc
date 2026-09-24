@@ -121,6 +121,7 @@ pub(crate) fn format_transcript(messages: &[Message]) -> String {
     for m in messages {
         for c in &m.content {
             let line = match c {
+                Content::ModelContext { provider, .. } => format!("context from {provider}"),
                 Content::Text { text } => format!("{:?}: {text}", m.role),
                 Content::ToolUse { name, input, .. } => {
                     format!("{:?}: call {name}({input})", m.role)

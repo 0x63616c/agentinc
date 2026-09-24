@@ -67,6 +67,116 @@ pub mod types {
             Default::default()
         }
     }
+    ///`Assignee`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "kind",
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "id": {
+    ///      "type": "string"
+    ///    },
+    ///    "kind": {
+    ///      "$ref": "#/components/schemas/AssigneeKind"
+    ///    },
+    ///    "name": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct Assignee {
+        pub id: ::std::string::String,
+        pub kind: AssigneeKind,
+        pub name: ::std::string::String,
+    }
+    impl Assignee {
+        pub fn builder() -> builder::Assignee {
+            Default::default()
+        }
+    }
+    ///`AssigneeKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "human",
+    ///    "agent"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum AssigneeKind {
+        #[serde(rename = "human")]
+        Human,
+        #[serde(rename = "agent")]
+        Agent,
+    }
+    impl ::std::fmt::Display for AssigneeKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Human => f.write_str("human"),
+                Self::Agent => f.write_str("agent"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for AssigneeKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "human" => Ok(Self::Human),
+                "agent" => Ok(Self::Agent),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for AssigneeKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for AssigneeKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for AssigneeKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
     ///`Command`
     ///
     /// <details><summary>JSON schema</summary>
@@ -332,6 +442,56 @@ pub mod types {
     }
     impl CommandRequest {
         pub fn builder() -> builder::CommandRequest {
+            Default::default()
+        }
+    }
+    ///`Comment`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "author_id",
+    ///    "body",
+    ///    "created_at",
+    ///    "id",
+    ///    "ticket_id"
+    ///  ],
+    ///  "properties": {
+    ///    "author_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "body": {
+    ///      "type": "string"
+    ///    },
+    ///    "created_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "ticket_id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct Comment {
+        pub author_id: ::std::string::String,
+        pub body: ::std::string::String,
+        pub created_at: i64,
+        pub id: i64,
+        pub ticket_id: i64,
+    }
+    impl Comment {
+        pub fn builder() -> builder::Comment {
             Default::default()
         }
     }
@@ -630,6 +790,352 @@ pub mod types {
             Default::default()
         }
     }
+    ///`Ticket`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignee_id",
+    ///    "assignee_kind",
+    ///    "generation",
+    ///    "id",
+    ///    "revision",
+    ///    "status",
+    ///    "title"
+    ///  ],
+    ///  "properties": {
+    ///    "assignee_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "assignee_kind": {
+    ///      "$ref": "#/components/schemas/AssigneeKind"
+    ///    },
+    ///    "generation": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "revision": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/TicketStatus"
+    ///    },
+    ///    "title": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct Ticket {
+        pub assignee_id: ::std::string::String,
+        pub assignee_kind: AssigneeKind,
+        pub generation: i64,
+        pub id: i64,
+        pub revision: i64,
+        pub status: TicketStatus,
+        pub title: ::std::string::String,
+    }
+    impl Ticket {
+        pub fn builder() -> builder::Ticket {
+            Default::default()
+        }
+    }
+    ///`TicketCommand`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "title"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "create"
+    ///          ]
+    ///        },
+    ///        "title": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "delete"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "revision",
+    ///        "title"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "rename"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "title": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "revision",
+    ///        "status"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "set_status"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "status": {
+    ///          "$ref": "#/components/schemas/TicketStatus"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "assignee_id",
+    ///        "assignee_kind",
+    ///        "id",
+    ///        "kind",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "assignee_id": {
+    ///          "type": "string"
+    ///        },
+    ///        "assignee_kind": {
+    ///          "$ref": "#/components/schemas/AssigneeKind"
+    ///        },
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "assign"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "cancel"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "body",
+    ///        "kind",
+    ///        "ticket_id"
+    ///      ],
+    ///      "properties": {
+    ///        "body": {
+    ///          "type": "string"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "add_comment"
+    ///          ]
+    ///        },
+    ///        "ticket_id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "instructions",
+    ///        "kind",
+    ///        "model",
+    ///        "name"
+    ///      ],
+    ///      "properties": {
+    ///        "instructions": {
+    ///          "type": "string"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "register_agent"
+    ///          ]
+    ///        },
+    ///        "model": {
+    ///          "type": "string"
+    ///        },
+    ///        "name": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    #[serde(tag = "kind")]
+    pub enum TicketCommand {
+        #[serde(rename = "create")]
+        Create { title: ::std::string::String },
+        #[serde(rename = "delete")]
+        Delete { id: i64, revision: i64 },
+        #[serde(rename = "rename")]
+        Rename {
+            id: i64,
+            revision: i64,
+            title: ::std::string::String,
+        },
+        #[serde(rename = "set_status")]
+        SetStatus {
+            id: i64,
+            revision: i64,
+            status: TicketStatus,
+        },
+        #[serde(rename = "assign")]
+        Assign {
+            assignee_id: ::std::string::String,
+            assignee_kind: AssigneeKind,
+            id: i64,
+            revision: i64,
+        },
+        #[serde(rename = "cancel")]
+        Cancel { id: i64, revision: i64 },
+        #[serde(rename = "add_comment")]
+        AddComment {
+            body: ::std::string::String,
+            ticket_id: i64,
+        },
+        #[serde(rename = "register_agent")]
+        RegisterAgent {
+            instructions: ::std::string::String,
+            model: ::std::string::String,
+            name: ::std::string::String,
+        },
+    }
+    ///`TicketCommandRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "command",
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "command": {
+    ///      "$ref": "#/components/schemas/TicketCommand"
+    ///    },
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TicketCommandRequest {
+        pub command: TicketCommand,
+        pub operation_id: ::std::string::String,
+    }
+    impl TicketCommandRequest {
+        pub fn builder() -> builder::TicketCommandRequest {
+            Default::default()
+        }
+    }
     ///`TicketContract`
     ///
     /// <details><summary>JSON schema</summary>
@@ -655,6 +1161,179 @@ pub mod types {
     impl TicketContract {
         pub fn builder() -> builder::TicketContract {
             Default::default()
+        }
+    }
+    ///`TicketReceipt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "result_id": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TicketReceipt {
+        pub operation_id: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub result_id: ::std::option::Option<i64>,
+    }
+    impl TicketReceipt {
+        pub fn builder() -> builder::TicketReceipt {
+            Default::default()
+        }
+    }
+    ///`TicketSnapshot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignees",
+    ///    "comments",
+    ///    "runs",
+    ///    "tickets"
+    ///  ],
+    ///  "properties": {
+    ///    "assignees": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Assignee"
+    ///      }
+    ///    },
+    ///    "comments": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Comment"
+    ///      }
+    ///    },
+    ///    "runs": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/WorkRun"
+    ///      }
+    ///    },
+    ///    "tickets": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Ticket"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TicketSnapshot {
+        pub assignees: ::std::vec::Vec<Assignee>,
+        pub comments: ::std::vec::Vec<Comment>,
+        pub runs: ::std::vec::Vec<WorkRun>,
+        pub tickets: ::std::vec::Vec<Ticket>,
+    }
+    impl TicketSnapshot {
+        pub fn builder() -> builder::TicketSnapshot {
+            Default::default()
+        }
+    }
+    ///`TicketStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "backlog",
+    ///    "to_do",
+    ///    "in_progress",
+    ///    "done"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum TicketStatus {
+        #[serde(rename = "backlog")]
+        Backlog,
+        #[serde(rename = "to_do")]
+        ToDo,
+        #[serde(rename = "in_progress")]
+        InProgress,
+        #[serde(rename = "done")]
+        Done,
+    }
+    impl ::std::fmt::Display for TicketStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Backlog => f.write_str("backlog"),
+                Self::ToDo => f.write_str("to_do"),
+                Self::InProgress => f.write_str("in_progress"),
+                Self::Done => f.write_str("done"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for TicketStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "backlog" => Ok(Self::Backlog),
+                "to_do" => Ok(Self::ToDo),
+                "in_progress" => Ok(Self::InProgress),
+                "done" => Ok(Self::Done),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for TicketStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for TicketStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for TicketStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
     ///`Todo`
@@ -794,6 +1473,58 @@ pub mod types {
             Default::default()
         }
     }
+    ///`WorkRun`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "generation",
+    ///    "run_id",
+    ///    "state",
+    ///    "ticket_id"
+    ///  ],
+    ///  "properties": {
+    ///    "error": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "generation": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "run_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "state": {
+    ///      "type": "string"
+    ///    },
+    ///    "ticket_id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct WorkRun {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub error: ::std::option::Option<::std::string::String>,
+        pub generation: i64,
+        pub run_id: ::std::string::String,
+        pub state: ::std::string::String,
+        pub ticket_id: i64,
+    }
+    impl WorkRun {
+        pub fn builder() -> builder::WorkRun {
+            Default::default()
+        }
+    }
     /// Types for composing complex structures.
     pub mod builder {
         #[derive(Clone, Debug)]
@@ -851,6 +1582,74 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct Assignee {
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            kind: ::std::result::Result<super::AssigneeKind, ::std::string::String>,
+            name: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for Assignee {
+            fn default() -> Self {
+                Self {
+                    id: Err("no value supplied for id".to_string()),
+                    kind: Err("no value supplied for kind".to_string()),
+                    name: Err("no value supplied for name".to_string()),
+                }
+            }
+        }
+        impl Assignee {
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn kind<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::AssigneeKind>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.kind = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for kind: {e}"));
+                self
+            }
+            pub fn name<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.name = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for name: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<Assignee> for super::Assignee {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: Assignee,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    id: value.id?,
+                    kind: value.kind?,
+                    name: value.name?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::Assignee> for Assignee {
+            fn from(value: super::Assignee) -> Self {
+                Self {
+                    id: Ok(value.id),
+                    kind: Ok(value.kind),
+                    name: Ok(value.name),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct CommandRequest {
             command: ::std::result::Result<super::Command, ::std::string::String>,
             operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
@@ -901,6 +1700,102 @@ pub mod types {
                 Self {
                     command: Ok(value.command),
                     operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct Comment {
+            author_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            body: ::std::result::Result<::std::string::String, ::std::string::String>,
+            created_at: ::std::result::Result<i64, ::std::string::String>,
+            id: ::std::result::Result<i64, ::std::string::String>,
+            ticket_id: ::std::result::Result<i64, ::std::string::String>,
+        }
+        impl ::std::default::Default for Comment {
+            fn default() -> Self {
+                Self {
+                    author_id: Err("no value supplied for author_id".to_string()),
+                    body: Err("no value supplied for body".to_string()),
+                    created_at: Err("no value supplied for created_at".to_string()),
+                    id: Err("no value supplied for id".to_string()),
+                    ticket_id: Err("no value supplied for ticket_id".to_string()),
+                }
+            }
+        }
+        impl Comment {
+            pub fn author_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.author_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for author_id: {e}"));
+                self
+            }
+            pub fn body<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.body = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for body: {e}"));
+                self
+            }
+            pub fn created_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.created_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for created_at: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn ticket_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.ticket_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for ticket_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<Comment> for super::Comment {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: Comment,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    author_id: value.author_id?,
+                    body: value.body?,
+                    created_at: value.created_at?,
+                    id: value.id?,
+                    ticket_id: value.ticket_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::Comment> for Comment {
+            fn from(value: super::Comment) -> Self {
+                Self {
+                    author_id: Ok(value.author_id),
+                    body: Ok(value.body),
+                    created_at: Ok(value.created_at),
+                    id: Ok(value.id),
+                    ticket_id: Ok(value.ticket_id),
                 }
             }
         }
@@ -1395,6 +2290,184 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct Ticket {
+            assignee_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            assignee_kind: ::std::result::Result<super::AssigneeKind, ::std::string::String>,
+            generation: ::std::result::Result<i64, ::std::string::String>,
+            id: ::std::result::Result<i64, ::std::string::String>,
+            revision: ::std::result::Result<i64, ::std::string::String>,
+            status: ::std::result::Result<super::TicketStatus, ::std::string::String>,
+            title: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for Ticket {
+            fn default() -> Self {
+                Self {
+                    assignee_id: Err("no value supplied for assignee_id".to_string()),
+                    assignee_kind: Err("no value supplied for assignee_kind".to_string()),
+                    generation: Err("no value supplied for generation".to_string()),
+                    id: Err("no value supplied for id".to_string()),
+                    revision: Err("no value supplied for revision".to_string()),
+                    status: Err("no value supplied for status".to_string()),
+                    title: Err("no value supplied for title".to_string()),
+                }
+            }
+        }
+        impl Ticket {
+            pub fn assignee_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.assignee_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for assignee_id: {e}"));
+                self
+            }
+            pub fn assignee_kind<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::AssigneeKind>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.assignee_kind = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for assignee_kind: {e}"));
+                self
+            }
+            pub fn generation<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.generation = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for generation: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn revision<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.revision = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for revision: {e}"));
+                self
+            }
+            pub fn status<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::TicketStatus>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.status = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for status: {e}"));
+                self
+            }
+            pub fn title<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.title = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for title: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<Ticket> for super::Ticket {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: Ticket,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    assignee_id: value.assignee_id?,
+                    assignee_kind: value.assignee_kind?,
+                    generation: value.generation?,
+                    id: value.id?,
+                    revision: value.revision?,
+                    status: value.status?,
+                    title: value.title?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::Ticket> for Ticket {
+            fn from(value: super::Ticket) -> Self {
+                Self {
+                    assignee_id: Ok(value.assignee_id),
+                    assignee_kind: Ok(value.assignee_kind),
+                    generation: Ok(value.generation),
+                    id: Ok(value.id),
+                    revision: Ok(value.revision),
+                    status: Ok(value.status),
+                    title: Ok(value.title),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TicketCommandRequest {
+            command: ::std::result::Result<super::TicketCommand, ::std::string::String>,
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for TicketCommandRequest {
+            fn default() -> Self {
+                Self {
+                    command: Err("no value supplied for command".to_string()),
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                }
+            }
+        }
+        impl TicketCommandRequest {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::TicketCommand>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TicketCommandRequest> for super::TicketCommandRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TicketCommandRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    command: value.command?,
+                    operation_id: value.operation_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TicketCommandRequest> for TicketCommandRequest {
+            fn from(value: super::TicketCommandRequest) -> Self {
+                Self {
+                    command: Ok(value.command),
+                    operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct TicketContract {
             title: ::std::result::Result<::std::string::String, ::std::string::String>,
         }
@@ -1431,6 +2504,143 @@ pub mod types {
             fn from(value: super::TicketContract) -> Self {
                 Self {
                     title: Ok(value.title),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TicketReceipt {
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            result_id: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        }
+        impl ::std::default::Default for TicketReceipt {
+            fn default() -> Self {
+                Self {
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                    result_id: Ok(Default::default()),
+                }
+            }
+        }
+        impl TicketReceipt {
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TicketReceipt> for super::TicketReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TicketReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    operation_id: value.operation_id?,
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TicketReceipt> for TicketReceipt {
+            fn from(value: super::TicketReceipt) -> Self {
+                Self {
+                    operation_id: Ok(value.operation_id),
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TicketSnapshot {
+            assignees:
+                ::std::result::Result<::std::vec::Vec<super::Assignee>, ::std::string::String>,
+            comments: ::std::result::Result<::std::vec::Vec<super::Comment>, ::std::string::String>,
+            runs: ::std::result::Result<::std::vec::Vec<super::WorkRun>, ::std::string::String>,
+            tickets: ::std::result::Result<::std::vec::Vec<super::Ticket>, ::std::string::String>,
+        }
+        impl ::std::default::Default for TicketSnapshot {
+            fn default() -> Self {
+                Self {
+                    assignees: Err("no value supplied for assignees".to_string()),
+                    comments: Err("no value supplied for comments".to_string()),
+                    runs: Err("no value supplied for runs".to_string()),
+                    tickets: Err("no value supplied for tickets".to_string()),
+                }
+            }
+        }
+        impl TicketSnapshot {
+            pub fn assignees<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Assignee>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.assignees = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for assignees: {e}"));
+                self
+            }
+            pub fn comments<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Comment>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.comments = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for comments: {e}"));
+                self
+            }
+            pub fn runs<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::WorkRun>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.runs = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for runs: {e}"));
+                self
+            }
+            pub fn tickets<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Ticket>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.tickets = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for tickets: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TicketSnapshot> for super::TicketSnapshot {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TicketSnapshot,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    assignees: value.assignees?,
+                    comments: value.comments?,
+                    runs: value.runs?,
+                    tickets: value.tickets?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TicketSnapshot> for TicketSnapshot {
+            fn from(value: super::TicketSnapshot) -> Self {
+                Self {
+                    assignees: Ok(value.assignees),
+                    comments: Ok(value.comments),
+                    runs: Ok(value.runs),
+                    tickets: Ok(value.tickets),
                 }
             }
         }
@@ -1682,6 +2892,105 @@ pub mod types {
                 }
             }
         }
+        #[derive(Clone, Debug)]
+        pub struct WorkRun {
+            error: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            generation: ::std::result::Result<i64, ::std::string::String>,
+            run_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            state: ::std::result::Result<::std::string::String, ::std::string::String>,
+            ticket_id: ::std::result::Result<i64, ::std::string::String>,
+        }
+        impl ::std::default::Default for WorkRun {
+            fn default() -> Self {
+                Self {
+                    error: Ok(Default::default()),
+                    generation: Err("no value supplied for generation".to_string()),
+                    run_id: Err("no value supplied for run_id".to_string()),
+                    state: Err("no value supplied for state".to_string()),
+                    ticket_id: Err("no value supplied for ticket_id".to_string()),
+                }
+            }
+        }
+        impl WorkRun {
+            pub fn error<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.error = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for error: {e}"));
+                self
+            }
+            pub fn generation<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.generation = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for generation: {e}"));
+                self
+            }
+            pub fn run_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.run_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for run_id: {e}"));
+                self
+            }
+            pub fn state<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.state = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for state: {e}"));
+                self
+            }
+            pub fn ticket_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.ticket_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for ticket_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<WorkRun> for super::WorkRun {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: WorkRun,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    error: value.error?,
+                    generation: value.generation?,
+                    run_id: value.run_id?,
+                    state: value.state?,
+                    ticket_id: value.ticket_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::WorkRun> for WorkRun {
+            fn from(value: super::WorkRun) -> Self {
+                Self {
+                    error: Ok(value.error),
+                    generation: Ok(value.generation),
+                    run_id: Ok(value.run_id),
+                    state: Ok(value.state),
+                    ticket_id: Ok(value.ticket_id),
+                }
+            }
+        }
     }
 }
 #[derive(Clone, Debug)]
@@ -1821,6 +3130,27 @@ impl Client {
     ```*/
     pub fn product_state(&self) -> builder::ProductState<'_> {
         builder::ProductState::new(self)
+    }
+    /*Sends a `GET` request to `/v1/tickets`
+
+    ```ignore
+    let response = client.tickets_state()
+        .send()
+        .await;
+    ```*/
+    pub fn tickets_state(&self) -> builder::TicketsState<'_> {
+        builder::TicketsState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/tickets/commands`
+
+    ```ignore
+    let response = client.tickets_command()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn tickets_command(&self) -> builder::TicketsCommand<'_> {
+        builder::TicketsCommand::new(self)
     }
     /*Sends a `POST` request to `/v1/tickets/contract`
 
@@ -2302,6 +3632,152 @@ pub mod builder {
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
                 401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::tickets_state`]
+
+    [`Client::tickets_state`]: super::Client::tickets_state*/
+    #[derive(Debug, Clone)]
+    pub struct TicketsState<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> TicketsState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `GET` request to `/v1/tickets`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::TicketSnapshot>, Error<types::ErrorBody>> {
+            let Self { client } = self;
+            let url = format!("{}/v1/tickets", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "tickets_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                403u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::tickets_command`]
+
+    [`Client::tickets_command`]: super::Client::tickets_command*/
+    #[derive(Debug, Clone)]
+    pub struct TicketsCommand<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::TicketCommandRequest, String>,
+    }
+    impl<'a> TicketsCommand<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::TicketCommandRequest>,
+            <V as std::convert::TryInto<types::TicketCommandRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value.try_into().map(From::from).map_err(|s| {
+                format!(
+                    "conversion to `TicketCommandRequest` for body failed: {}",
+                    s
+                )
+            });
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(
+                    types::builder::TicketCommandRequest,
+                ) -> types::builder::TicketCommandRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/tickets/commands`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::TicketReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::TicketCommandRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/tickets/commands", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "tickets_command",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                403u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 503u16 => Err(Error::ErrorResponse(

@@ -27,7 +27,7 @@ fn regions(
     ];
     for (index, name) in [
         "Today",
-        "Tasks",
+        "Tickets",
         "Agents",
         "Home",
         "Calendar",
@@ -230,7 +230,7 @@ pub fn run() -> Result<()> {
         }
         for (index, route) in [
             Route::Today,
-            Route::Tasks,
+            Route::Tickets,
             Route::Agents,
             Route::Home,
             Route::Calendar,
@@ -259,15 +259,15 @@ pub fn run() -> Result<()> {
     suite.settle()?;
     // Add-task button is at the top right of the content panel, before the Evee panel.
     suite.click(826., 142.);
-    suite.capture("add-dialog", Route::Tasks, Some(Overlay::AddTask), true)?;
+    suite.capture("add-dialog", Route::Tickets, Some(Overlay::AddTicket), true)?;
     suite.cx.simulate_input(window.into(), "Rendered café 👋");
-    suite.capture("add-typed", Route::Tasks, Some(Overlay::AddTask), true)?;
+    suite.capture("add-typed", Route::Tickets, Some(Overlay::AddTicket), true)?;
     suite.keys("escape");
-    suite.capture("dialog-dismissed", Route::Tasks, None, true)?;
+    suite.capture("dialog-dismissed", Route::Tickets, None, true)?;
     suite.keys("cmd-k");
-    suite.capture("search-open", Route::Tasks, Some(Overlay::Search), true)?;
+    suite.capture("search-open", Route::Tickets, Some(Overlay::Search), true)?;
     suite.keys("escape cmd-shift-e");
-    suite.capture("evee-hidden", Route::Tasks, None, false)?;
+    suite.capture("evee-hidden", Route::Tickets, None, false)?;
     suite.keys("cmd-1");
     suite.capture("today-evee-hidden", Route::Today, None, false)?;
     suite.keys("cmd-shift-e");

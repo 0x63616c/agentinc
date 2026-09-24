@@ -3,16 +3,19 @@
 mod activities;
 mod conversation;
 mod session;
+mod test_server;
 mod workflow;
+pub(crate) use test_server::TestServer;
 
-use crate::{Agent, Error, Event, Message, RunId, SessionId};
+use crate::{Agent, Error, Event, Message, RunId, RuntimeConfig, SessionId};
 use activities::{AgentActivities, Registry};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use temporalio_client::{
-    Client, ClientOptions, ConnectionOptions, WorkflowExecuteUpdateOptions,
-    WorkflowGetResultOptions, WorkflowHandle, WorkflowSignalOptions, WorkflowStartOptions,
-    errors::WorkflowGetResultError,
+    Client, ClientOptions, ConnectionOptions, WorkflowCancelOptions, WorkflowExecuteUpdateOptions,
+    WorkflowGetResultOptions, WorkflowHandle, WorkflowIdReusePolicy, WorkflowSignalOptions,
+    WorkflowStartOptions,
+    errors::{WorkflowGetResultError, WorkflowInteractionError, WorkflowStartError},
 };
 use temporalio_sdk::{
     Runtime, Worker, WorkerOptions,
@@ -49,29 +52,65 @@ impl Engine {
             .await
             .map_err(|e| Error::Connection(e.to_string()))?;
         let client = env.client().clone();
-        Self::with_client(client, Some(env), options).await
+        Self::with_client(
+            client,
+            Some(env),
+            options,
+            format!("agentinc-{}", uuid::Uuid::new_v4()),
+            &[],
+        )
+        .await
     }
 
     pub(crate) async fn connect(url: &str) -> Result<Self, Error> {
-        let target: temporalio_client::Url = url
+        Self::configured(
+            RuntimeConfig {
+                endpoint: url.into(),
+                scope: "default".into(),
+                worker_group: format!("agentinc-{}", uuid::Uuid::new_v4()),
+            },
+            &[],
+        )
+        .await
+    }
+
+    pub(crate) async fn configured(config: RuntimeConfig, agents: &[Agent]) -> Result<Self, Error> {
+        if config.scope.trim().is_empty() || config.worker_group.trim().is_empty() {
+            return Err(Error::Connection(
+                "runtime scope and worker group must be nonempty".into(),
+            ));
+        }
+        let target: temporalio_client::Url = config
+            .endpoint
             .parse()
-            .map_err(|e| Error::Connection(format!("bad url {url}: {e}")))?;
+            .map_err(|e| Error::Connection(format!("invalid runtime endpoint: {e}")))?;
         let client = Client::connect(
-            ConnectionOptions::new(target).identity("agentinc").build(),
-            ClientOptions::new("default").build(),
+            ConnectionOptions::new(target).identity("turnkeel").build(),
+            ClientOptions::new(config.scope).build(),
         )
         .await
         .map_err(|e| Error::Connection(e.to_string()))?;
-        Self::with_client(client, None, EngineOptions::default()).await
+        Self::with_client(
+            client,
+            None,
+            EngineOptions::default(),
+            config.worker_group,
+            agents,
+        )
+        .await
     }
 
     async fn with_client(
         client: Client,
         local: Option<WorkflowEnvironment<LocalServer>>,
         options: EngineOptions,
+        task_queue: String,
+        agents: &[Agent],
     ) -> Result<Self, Error> {
-        let task_queue = format!("agentinc-{}", uuid::Uuid::new_v4());
         let registry = Registry::default();
+        for agent in agents {
+            registry.register(agent);
+        }
 
         // The worker future is !Send, so it gets its own thread and single-threaded runtime.
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
@@ -129,9 +168,19 @@ impl Engine {
         agent: &Agent,
         input: Message,
     ) -> Result<(RunId, RunHandle), Error> {
+        let id = RunId(format!("{RUN_ID_PREFIX}{}", uuid::Uuid::new_v4()));
+        let handle = self.start_with_id(&id, agent, input).await?;
+        Ok((id, handle))
+    }
+
+    pub(crate) async fn start_with_id(
+        &self,
+        id: &RunId,
+        agent: &Agent,
+        input: Message,
+    ) -> Result<RunHandle, Error> {
         self.registry.register(agent);
-        let run_id = RunId(format!("{RUN_ID_PREFIX}{}", uuid::Uuid::new_v4()));
-        let handle = self
+        match self
             .client
             .start_workflow(
                 AgentRunWorkflow::run,
@@ -139,41 +188,65 @@ impl Engine {
                     agent: agent_spec(agent),
                     input,
                 },
-                WorkflowStartOptions::new(self.task_queue.clone(), run_id.0.clone()).build(),
+                WorkflowStartOptions::new(self.task_queue.clone(), id.0.clone())
+                    .id_reuse_policy(WorkflowIdReusePolicy::RejectDuplicate)
+                    .build(),
             )
             .await
-            .map_err(|e| Error::Other(e.into()))?;
-        Ok((
-            run_id,
-            RunHandle {
+        {
+            Ok(handle) => Ok(RunHandle {
                 inner: Arc::new(handle),
-            },
-        ))
+            }),
+            Err(WorkflowStartError::AlreadyStarted { .. }) => Ok(self.run_handle(id)),
+            Err(error) => Err(Error::Other(error.into())),
+        }
+    }
+
+    pub(crate) fn run_handle(&self, id: &RunId) -> RunHandle {
+        RunHandle {
+            inner: Arc::new(
+                self.client
+                    .get_workflow_handle::<RunWorkflowType>(id.0.clone()),
+            ),
+        }
     }
 
     pub(crate) async fn start_session(
         &self,
         agent: &Agent,
     ) -> Result<(SessionId, SessionHandle), Error> {
-        self.registry.register(agent);
         let id = SessionId(format!("{SESSION_ID_PREFIX}{}", uuid::Uuid::new_v4()));
-        let handle = self
+        let handle = self.open_session(&id, agent, Vec::new()).await?;
+        Ok((id, handle))
+    }
+
+    pub(crate) async fn open_session(
+        &self,
+        id: &SessionId,
+        agent: &Agent,
+        history: Vec<Message>,
+    ) -> Result<SessionHandle, Error> {
+        self.registry.register(agent);
+        match self
             .client
             .start_workflow(
                 SessionWorkflow::run,
                 SessionInput {
                     agent: agent_spec(agent),
+                    history,
                 },
-                WorkflowStartOptions::new(self.task_queue.clone(), id.0.clone()).build(),
+                WorkflowStartOptions::new(self.task_queue.clone(), id.0.clone())
+                    .id_reuse_policy(WorkflowIdReusePolicy::RejectDuplicate)
+                    .build(),
             )
             .await
-            .map_err(|e| Error::Other(e.into()))?;
-        Ok((
-            id,
-            SessionHandle {
+        {
+            Ok(handle) => Ok(SessionHandle {
                 inner: Arc::new(handle),
-            },
-        ))
+            }),
+            Err(WorkflowStartError::AlreadyStarted { .. }) => Ok(self.session_handle(agent, id)),
+            Err(error) => Err(Error::Other(error.into())),
+        }
     }
 
     /// Attach to an existing session. The agent must be registered here so its model and
@@ -242,14 +315,48 @@ pub(crate) struct RunHandle {
 }
 
 impl RunHandle {
+    pub(crate) async fn events_after(&self, offset: usize) -> Result<(Vec<Event>, bool), Error> {
+        let completed = |output: RunOutput| {
+            // Old completed histories predate the event field.
+            let log = if output.events.is_empty() {
+                output
+                    .messages
+                    .into_iter()
+                    .map(Event::Message)
+                    .chain([Event::TurnEnded])
+                    .collect()
+            } else {
+                output.events
+            };
+            (log.get(offset..).unwrap_or_default().to_vec(), true)
+        };
+        tokio::select! {
+            output = self.output() => output.map(completed),
+            events = self.inner.execute_update(AgentRunWorkflow::events_after, offset, WorkflowExecuteUpdateOptions::default()) => {
+                match events {
+                    Ok(events) => Ok((events, false)),
+                    // An execution can close between starting the long poll and its acceptance.
+                    Err(_) => self.output().await.map(completed),
+                }
+            }
+        }
+    }
+
+    pub(crate) async fn cancel(&self) -> Result<(), Error> {
+        self.inner
+            .cancel(WorkflowCancelOptions::default())
+            .await
+            .map_err(|e| match e {
+                WorkflowInteractionError::NotFound(_) => Error::NotFound,
+                other => Error::Other(other.into()),
+            })
+    }
+
     pub(crate) async fn output(&self) -> Result<RunOutput, Error> {
         self.inner
             .get_result(WorkflowGetResultOptions::default())
             .await
-            .map_err(|e| match e {
-                WorkflowGetResultError::Cancelled { .. } => Error::Cancelled,
-                other => Error::RunFailed(root_message(&other)),
-            })
+            .map_err(result_error)
     }
 }
 
@@ -262,6 +369,27 @@ pub(crate) struct SessionHandle {
 }
 
 impl SessionHandle {
+    pub(crate) async fn send_once(&self, id: String, message: Message) -> Result<(), Error> {
+        self.inner
+            .signal(
+                SessionWorkflow::send_once,
+                session::Delivery { id, message },
+                WorkflowSignalOptions::default(),
+            )
+            .await
+            .map_err(|e| Error::Other(e.into()))
+    }
+
+    pub(crate) async fn cancel(&self) -> Result<(), Error> {
+        self.inner
+            .cancel(WorkflowCancelOptions::default())
+            .await
+            .map_err(|e| match e {
+                WorkflowInteractionError::NotFound(_) => Error::NotFound,
+                other => Error::Other(other.into()),
+            })
+    }
+
     pub(crate) async fn send(&self, message: Message) -> Result<(), Error> {
         self.inner
             .signal(
@@ -285,14 +413,20 @@ impl SessionHandle {
     }
 
     pub(crate) async fn events_after(&self, offset: usize) -> Result<Vec<Event>, Error> {
-        self.inner
-            .execute_update(
-                SessionWorkflow::events_after,
-                offset,
-                WorkflowExecuteUpdateOptions::default(),
-            )
-            .await
-            .map_err(|e| Error::Other(e.into()))
+        let closed = async {
+            self.inner
+                .get_result(WorkflowGetResultOptions::default())
+                .await
+                .map_err(result_error)?;
+            Ok(Vec::new())
+        };
+        tokio::pin!(closed);
+        tokio::select! {
+            result = &mut closed => result,
+            events = self.inner.execute_update(SessionWorkflow::events_after, offset, WorkflowExecuteUpdateOptions::default()) => {
+                match events { Ok(events) => Ok(events), Err(_) => closed.await }
+            }
+        }
     }
 }
 
@@ -303,4 +437,13 @@ fn root_message(err: &dyn std::error::Error) -> String {
         cur = next;
     }
     cur.to_string()
+}
+
+fn result_error(error: WorkflowGetResultError) -> Error {
+    match error {
+        WorkflowGetResultError::Cancelled { .. } => Error::Cancelled,
+        WorkflowGetResultError::NotFound(_) => Error::NotFound,
+        other if other.is_workflow_outcome() => Error::RunFailed(root_message(&other)),
+        other => Error::Connection(root_message(&other)),
+    }
 }

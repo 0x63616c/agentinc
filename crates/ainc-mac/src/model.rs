@@ -6,7 +6,8 @@ use std::{fs, io, path::Path};
 #[serde(rename_all = "snake_case")]
 pub enum Route {
     Today,
-    Tasks,
+    #[serde(alias = "tasks")]
+    Tickets,
     Agents,
     Home,
     Calendar,
@@ -42,8 +43,8 @@ pub const PAGES: &[PageSpec] = &[
         availability: Availability::Ready,
     },
     PageSpec {
-        route: Route::Tasks,
-        title: "Tasks",
+        route: Route::Tickets,
+        title: "Tickets",
         icon: "tasks",
         shortcut: Some(2),
         in_sidebar: true,
@@ -55,7 +56,7 @@ pub const PAGES: &[PageSpec] = &[
         icon: "agents",
         shortcut: Some(3),
         in_sidebar: true,
-        availability: Availability::Planned,
+        availability: Availability::Ready,
     },
     PageSpec {
         route: Route::Home,
@@ -134,7 +135,7 @@ impl Route {
                 "Your day starts here",
                 "Choose a destination from the sidebar.",
             ),
-            Self::Tasks => ("No tasks yet", "Add a task to get started."),
+            Self::Tickets => ("No Tickets yet", "Add a Ticket to get started."),
             Self::Agents => (
                 "No agents connected",
                 "Agent runs and reviews will appear here.",
@@ -158,10 +159,10 @@ impl Route {
     }
     pub fn planned(self) -> &'static [(&'static str, &'static str)] {
         match self {
-            Self::Tasks => &[
+            Self::Tickets => &[
                 (
                     "Capture & organize",
-                    "A place for tasks, lists and projects.",
+                    "Tickets, assignees and their work log.",
                 ),
                 ("Priorities & due dates", "Keep upcoming work in view."),
                 ("Reviews", "Review work completed with your agents."),
@@ -414,7 +415,7 @@ mod tests {
         assert_eq!(PAGES.len(), 9);
         for route in [
             Route::Today,
-            Route::Tasks,
+            Route::Tickets,
             Route::Agents,
             Route::Home,
             Route::Calendar,
@@ -428,10 +429,10 @@ mod tests {
         let shortcuts: Vec<_> = PAGES.iter().filter_map(|p| p.shortcut).collect();
         assert_eq!(shortcuts, (1..=8).collect::<Vec<_>>());
         let mut s = Session::default();
-        s.navigate(Route::Tasks);
+        s.navigate(Route::Tickets);
         s.navigate(Route::Home);
         s.go(false);
-        assert_eq!(s.current(), Route::Tasks);
+        assert_eq!(s.current(), Route::Tickets);
         s.navigate(Route::Library);
         assert!(!s.can_go(true));
         assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);

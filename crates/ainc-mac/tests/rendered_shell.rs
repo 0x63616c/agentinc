@@ -20,8 +20,8 @@ mod shell;
 mod storage;
 #[path = "../src/style.rs"]
 mod style;
-#[path = "../src/tasks.rs"]
-mod tasks;
+#[path = "../src/tickets.rs"]
+mod tickets;
 
 #[cfg(target_os = "macos")]
 #[path = "rendered/runner.rs"]

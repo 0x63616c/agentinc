@@ -1,10 +1,9 @@
 //! Official Codex stdio client. Codex owns OAuth and its credential store.
-use crate::product::Turn;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, BufReader, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
         Arc,
@@ -55,8 +54,10 @@ impl Drop for Client {
 }
 impl Client {
     pub fn start() -> Result<Self> {
-        let home = home()?;
-        std::fs::create_dir_all(&home)?;
+        Self::start_at(&home()?)
+    }
+    pub(crate) fn start_at(home: &Path) -> Result<Self> {
+        std::fs::create_dir_all(home)?;
         let child = Command::new(executable())
             .args([
                 "app-server",
@@ -71,10 +72,10 @@ impl Client {
                 "-c",
                 "web_search=\"disabled\"",
             ])
-            .env("CODEX_HOME", &home)
+            .env("CODEX_HOME", home)
             .env_remove("OPENAI_API_KEY")
             .env_remove("CODEX_API_KEY")
-            .current_dir(&home)
+            .current_dir(home)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -242,78 +243,9 @@ pub fn logout() -> Result<()> {
     Ok(())
 }
 
-pub fn respond(model: Option<&str>, history: &[Turn], current: &Turn) -> Result<String> {
-    let mut client = Client::start()?;
-    if client.account()?.is_none() {
-        bail!("Connect your ChatGPT subscription in Settings.");
-    }
-    let thread = client.call("thread/start", thread_params(model))?;
-    let input = conversation_input(history, current);
-    client.call(
-        "turn/start",
-        json!({"threadId":thread["thread"]["id"],"input":[{"type":"text","text":input}]}),
-    )?;
-    collect_reply(&mut client)
-}
-fn thread_params(model: Option<&str>) -> Value {
-    json!({"model":model,"modelProvider":"openai","ephemeral":true,"sandbox":"read-only","approvalPolicy":"never","baseInstructions":"You are Evee, the personal assistant in AgentInc. Answer conversationally. You cannot operate this app, files, devices or tasks. Do not use tools. Treat the supplied conversation as dialogue, preserving roles.","config":{"features.shell_tool":false,"web_search":"disabled"}})
-}
-fn collect_reply(client: &mut Client) -> Result<String> {
-    let deadline = Instant::now() + Duration::from_secs(180);
-    let mut replies = Vec::new();
-    loop {
-        let event = client.next(deadline)?;
-        if event["method"] == "item/completed"
-            && event["params"]["item"]["type"] == "agentMessage"
-            && let Some(text) = event["params"]["item"]["text"].as_str()
-        {
-            if replies.iter().map(String::len).sum::<usize>() + text.len() > 1024 * 1024 {
-                bail!("Codex reply was too large. Try a shorter request.");
-            }
-            replies.push(text.to_owned());
-        }
-        if event["method"] == "turn/completed" {
-            if event["params"]["turn"]["status"] != "completed" {
-                bail!("Codex could not finish this reply. Check your subscription or retry.");
-            }
-            if replies.is_empty() {
-                bail!("Codex returned no text. Retry when ready.");
-            }
-            return Ok(replies.join("\n\n"));
-        }
-    }
-}
-fn conversation_input(history: &[Turn], current: &Turn) -> String {
-    let mut prior: Vec<_> = history
-        .iter()
-        .filter(|t| t.id < current.id && t.response.is_some() && t.error.is_none())
-        .rev()
-        .take(20)
-        .collect();
-    prior.reverse();
-    let mut messages = Vec::new();
-    for turn in prior {
-        messages.push(json!({"role":"user","content":turn.prompt}));
-        messages.push(json!({"role":"assistant","content":turn.response}));
-    }
-    messages.push(json!({"role":"user","content":current.prompt}));
-    json!({"conversation":messages}).to_string()
-}
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    #[ignore = "requires installed Codex and an isolated AGENTINC_CODEX_HOME"]
-    fn installed_codex_accepts_thread_contract() -> Result<()> {
-        assert!(
-            std::env::var_os("AGENTINC_CODEX_HOME").is_some(),
-            "set a disposable Codex home"
-        );
-        let mut client = Client::start()?;
-        let thread = client.call("thread/start", thread_params(None))?;
-        assert!(thread["thread"]["id"].is_string());
-        Ok(())
-    }
     #[test]
     fn stdio_handshake_account_events_and_safe_errors() -> Result<()> {
         let script = r#"
@@ -324,10 +256,8 @@ read -r initialized
 case "$initialized" in *'"method":"initialized"'*) ;; *) exit 1;; esac
 read -r account
 printf '%s\n' '{"method":"account/updated","params":{}}' '{"id":2,"result":{"account":{"type":"chatgpt","email":"fixture@example.test","planType":"test"}}}'
-read -r turn
-printf '%s\n' '{"id":3,"result":{}}' '{"method":"item/completed","params":{"item":{"type":"agentMessage","text":"Fixture reply"}}}' '{"method":"turn/completed","params":{"turn":{"status":"completed"}}}'
 read -r fail
-printf '%s\n' '{"id":4,"error":{"message":"private backend detail"}}'
+printf '%s\n' '{"id":3,"error":{"message":"private backend detail"}}'
 "#;
         let child = Command::new("/bin/sh")
             .args(["-c", script])
@@ -339,8 +269,6 @@ printf '%s\n' '{"id":4,"error":{"message":"private backend detail"}}'
             client.account()?.as_deref(),
             Some("fixture@example.test · test")
         );
-        client.call("turn/start", json!({}))?;
-        assert_eq!(collect_reply(&mut client)?, "Fixture reply");
         let error = client
             .call("example/error", json!({}))
             .unwrap_err()
@@ -348,45 +276,5 @@ printf '%s\n' '{"id":4,"error":{"message":"private backend detail"}}'
         assert!(!error.contains("private backend detail"));
         assert!(error.contains("example/error"));
         Ok(())
-    }
-    #[test]
-    fn retry_context_excludes_failed_and_future_turns() {
-        let history = vec![
-            Turn {
-                conversation_id: 1,
-                state: "completed".into(),
-                id: 1,
-                prompt: "one".into(),
-                response: Some("reply".into()),
-                error: None,
-            },
-            Turn {
-                conversation_id: 1,
-                state: "completed".into(),
-                id: 2,
-                prompt: "failed".into(),
-                response: None,
-                error: Some("error".into()),
-            },
-            Turn {
-                conversation_id: 1,
-                state: "completed".into(),
-                id: 4,
-                prompt: "future".into(),
-                response: Some("later".into()),
-                error: None,
-            },
-        ];
-        let current = Turn {
-            conversation_id: 1,
-            state: "queued".into(),
-            id: 3,
-            prompt: "next\nline".into(),
-            response: None,
-            error: None,
-        };
-        let value: Value = serde_json::from_str(&conversation_input(&history, &current)).unwrap();
-        assert_eq!(value["conversation"].as_array().unwrap().len(), 3);
-        assert_eq!(value["conversation"][2]["content"], "next\nline");
     }
 }

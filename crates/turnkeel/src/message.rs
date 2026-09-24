@@ -16,6 +16,12 @@ pub enum Content {
     Text {
         text: String,
     },
+    /// Opaque provider context (for example encrypted reasoning) needed on the
+    /// next model call. Consumers must preserve it without displaying it as text.
+    ModelContext {
+        provider: String,
+        value: Value,
+    },
     ToolUse {
         id: String,
         name: String,

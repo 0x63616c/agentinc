@@ -47,3 +47,27 @@ pub async fn run(agent: &Agent, input: impl Into<Message>) -> Result<TestRun, Er
         transcript,
     })
 }
+
+/// An isolated service that outlives individual worker processes.
+/// Use its configuration in each replacement [`Runtime`]. No model is called by it.
+pub struct Server(crate::engine::TestServer);
+
+impl Server {
+    pub async fn start() -> Result<Self, Error> {
+        Ok(Self(crate::engine::TestServer::start().await?))
+    }
+
+    pub fn config(&self) -> crate::RuntimeConfig {
+        self.0.config.clone()
+    }
+
+    /// Verify a recorded run is compatible with the current agent loop, without
+    /// calling its model or tools again.
+    pub async fn replay(&self, id: &crate::RunId) -> Result<(), Error> {
+        self.0.replay(id).await
+    }
+
+    pub async fn shutdown(self) -> Result<(), Error> {
+        self.0.shutdown().await
+    }
+}

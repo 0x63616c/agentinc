@@ -7,7 +7,7 @@ mod profile;
 mod shell;
 mod storage;
 mod style;
-mod tasks;
+mod tickets;
 use gpui::*;
 use shell::*;
 struct DiagnosticLog;

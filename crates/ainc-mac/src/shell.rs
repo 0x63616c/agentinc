@@ -45,8 +45,8 @@ pub struct Shell {
     session: Session,
     overlays: Rc<RefCell<OverlayHost>>,
     assistant: Entity<crate::evee::AssistantPage>,
-    tasks: Entity<crate::tasks::TasksPage>,
-    _tasks_subscription: Subscription,
+    tickets: Entity<crate::tickets::TicketsPage>,
+    _tickets_subscription: Subscription,
     _assistant_subscriptions: Vec<Subscription>,
     profile: crate::profile::Profile,
     path: PathBuf,
@@ -146,9 +146,9 @@ impl Shell {
                 },
             ),
         ];
-        let tasks =
-            cx.new(|cx| crate::tasks::TasksPage::new(store, storage_error, overlays.clone(), cx));
-        let tasks_subscription = cx.observe(&tasks, |_, _, cx| cx.notify());
+        let tickets = cx
+            .new(|cx| crate::tickets::TicketsPage::new(store, storage_error, overlays.clone(), cx));
+        let tickets_subscription = cx.observe(&tickets, |_, _, cx| cx.notify());
         let input = cx.new(TextInput::new);
         let subscription = cx.observe(&input, |this, _, cx| {
             this.selected = 0;
@@ -165,8 +165,8 @@ impl Shell {
             session,
             overlays,
             assistant,
-            tasks,
-            _tasks_subscription: tasks_subscription,
+            tickets,
+            _tickets_subscription: tickets_subscription,
             _assistant_subscriptions: assistant_subscriptions,
             profile,
             sidebar_width,
@@ -249,8 +249,8 @@ impl Shell {
                 );
                 handles
             }
-            Some(Overlay::AddTask | Overlay::DeleteTask(_)) => {
-                self.tasks.read(cx).focus_handles(cx)
+            Some(Overlay::AddTicket | Overlay::AddAgent | Overlay::DeleteTicket(_)) => {
+                self.tickets.read(cx).focus_handles(cx)
             }
             Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => {
                 self.assistant.read(cx).focus_handles(cx)
@@ -820,19 +820,72 @@ impl Shell {
         let (title, detail) = route.empty();
         let mut page = column().gap(px(28.));
         if route == Route::Today {
-            for (index, destination) in [Route::Tasks, Route::Agents, Route::Calendar, Route::Home]
-                .into_iter()
-                .enumerate()
+            for (index, destination) in
+                [Route::Tickets, Route::Agents, Route::Calendar, Route::Home]
+                    .into_iter()
+                    .enumerate()
             {
                 let (empty_title, empty_detail) = destination.empty();
-                let (title, detail) = if destination == Route::Tasks {
+                let (title, detail) = if destination == Route::Tickets {
                     (
-                        self.tasks.read(cx).summary(),
-                        "Open Tasks to add or complete a to-do.".to_owned(),
+                        self.tickets.read(cx).summary(),
+                        "Open a Ticket to see its Comments and work.".to_owned(),
+                    )
+                } else if destination == Route::Agents {
+                    (
+                        self.tickets.read(cx).agent_summary(),
+                        "Assign a Ticket to start work.".to_owned(),
                     )
                 } else {
                     (empty_title.to_owned(), empty_detail.to_owned())
                 };
+                if destination == Route::Tickets {
+                    page = page.child(
+                        column()
+                            .gap(px(10.))
+                            .child(div().font_weight(FontWeight::MEDIUM).child("Tickets"))
+                            .child(
+                                div()
+                                    .id("today.tickets.summary")
+                                    .accessibility_id("today.tickets.summary")
+                                    .role(accesskit::Role::Label)
+                                    .aria_label(title.clone())
+                                    .text_color(rgb(MUTED))
+                                    .child(title.clone()),
+                            )
+                            .children(self.tickets.read(cx).preview().into_iter().map(
+                                |(id, title, status)| {
+                                    self.button(
+                                        ("today.ticket", id as u64),
+                                        title.clone(),
+                                        Control::Navigate(Route::Tickets),
+                                        cx,
+                                    )
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.tickets
+                                            .update(cx, |tickets, cx| tickets.select(id, cx));
+                                        this.dispatch(
+                                            Control::Navigate(Route::Tickets),
+                                            window,
+                                            cx,
+                                        );
+                                    }))
+                                    .w_full()
+                                    .justify_start()
+                                    .min_h(px(42.))
+                                    .child(title)
+                                    .child(div().flex_1())
+                                    .child(
+                                        div()
+                                            .text_size(px(CAPTION_SIZE))
+                                            .text_color(rgb(MUTED))
+                                            .child(status),
+                                    )
+                                },
+                            )),
+                    );
+                    continue;
+                }
                 page = page.child(
                     column()
                         .gap(px(14.))
@@ -1163,9 +1216,9 @@ impl Render for Shell {
         }
         let active_overlay = self.overlays.borrow().active();
         let content = match self.session.current() {
-            Route::Tasks => self.tasks.clone().into_any_element(),
+            Route::Tickets => self.tickets.clone().into_any_element(),
+            Route::Agents => self.tickets.update(cx, |tickets, cx| tickets.agents(cx)),
             Route::Today
-            | Route::Agents
             | Route::Home
             | Route::Calendar
             | Route::Library
@@ -1177,8 +1230,8 @@ impl Render for Shell {
         };
         let dialog_content = match active_overlay {
             Some(Overlay::Search) => Some(self.command_palette(cx).into_any_element()),
-            Some(Overlay::AddTask | Overlay::DeleteTask(_)) => {
-                self.tasks.update(cx, |tasks, cx| tasks.overlay(cx))
+            Some(Overlay::AddTicket | Overlay::AddAgent | Overlay::DeleteTicket(_)) => {
+                self.tickets.update(cx, |tickets, cx| tickets.overlay(cx))
             }
             Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => self
                 .assistant

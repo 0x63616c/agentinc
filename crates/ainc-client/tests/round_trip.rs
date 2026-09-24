@@ -65,5 +65,24 @@ async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::Pg
     assert_eq!(state.todos[0].id, ack.result_id.unwrap());
     assert_eq!(state.settings.model, None);
     assert_eq!(state.settings.selected_conversation, None);
+    let accepted = client
+        .tickets_command()
+        .body(ainc_client::types::TicketCommandRequest {
+            operation_id: "9cdc4782-ef0c-478a-8c91-176dc31aa3ed".into(),
+            command: ainc_client::types::TicketCommand::AddComment {
+                ticket_id: ack.result_id.unwrap(),
+                body: "Generated command evidence".into(),
+            },
+        })
+        .send()
+        .await
+        .unwrap();
+    let tickets = client.tickets_state().send().await.unwrap();
+    assert_eq!(
+        tickets.tickets[0].status,
+        ainc_client::types::TicketStatus::ToDo
+    );
+    assert_eq!(tickets.comments[0].id, accepted.result_id.unwrap());
+    assert_eq!(tickets.comments[0].body, "Generated command evidence");
     server.abort();
 }

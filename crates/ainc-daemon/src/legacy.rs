@@ -113,7 +113,7 @@ pub async fn import(pool: &PgPool, directory: &Path) -> Result<bool> {
     // Import is first-start only: refusing a populated destination is safer than
     // remapping or overwriting existing IDs behind the user's back.
     let populated: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM conversations UNION ALL SELECT id FROM todos)",
+        "SELECT EXISTS(SELECT 1 FROM conversations UNION ALL SELECT id FROM tickets)",
     )
     .fetch_one(&mut *tx)
     .await?;
@@ -145,7 +145,7 @@ pub async fn import(pool: &PgPool, directory: &Path) -> Result<bool> {
         sqlx::query("INSERT INTO turns(id,conversation_id,prompt,response,error,state) VALUES ($1,$2,$3,$4,$5,$6)").bind(id).bind(conversation).bind(prompt).bind(response).bind(error).bind(state).execute(&mut *tx).await?;
     }
     for (id, title, completed) in legacy.todos {
-        sqlx::query("INSERT INTO todos(id,title,completed) VALUES ($1,$2,$3)")
+        sqlx::query("INSERT INTO tickets(id,title,status) VALUES ($1,$2,CASE WHEN $3 THEN 'done' ELSE 'to_do' END)")
             .bind(id)
             .bind(title)
             .bind(completed)
@@ -155,7 +155,7 @@ pub async fn import(pool: &PgPool, directory: &Path) -> Result<bool> {
     for (key, value) in legacy.settings {
         sqlx::query("INSERT INTO assistant_settings(key,value) VALUES ($1,$2) ON CONFLICT(workspace_id,key) DO NOTHING").bind(key).bind(value).execute(&mut *tx).await?;
     }
-    for table in ["conversations", "turns", "todos"] {
+    for table in ["conversations", "turns", "tickets"] {
         sqlx::query(&format!("SELECT setval(pg_get_serial_sequence('{table}','id'), COALESCE((SELECT max(id) FROM {table}),0)+1,false)")).execute(&mut *tx).await?;
     }
     sqlx::query("INSERT INTO legacy_imports(source,session) VALUES ($1,$2)")

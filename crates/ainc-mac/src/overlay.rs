@@ -6,9 +6,9 @@ use gpui::{prelude::*, *};
 pub enum Overlay {
     Search,
     Notifications,
-    AddTask,
-    DeleteTask(i64),
-    TaskMenu(i64),
+    AddTicket,
+    AddAgent,
+    DeleteTicket(i64),
     RenameConversation(i64),
     DeleteConversation(i64),
     ConversationMenu(i64),
@@ -17,14 +17,15 @@ impl Overlay {
     pub fn is_dialog(self) -> bool {
         matches!(
             self,
-            Self::AddTask
-                | Self::DeleteTask(_)
+            Self::AddTicket
+                | Self::AddAgent
+                | Self::DeleteTicket(_)
                 | Self::RenameConversation(_)
                 | Self::DeleteConversation(_)
         )
     }
     pub fn is_menu(self) -> bool {
-        matches!(self, Self::TaskMenu(_) | Self::ConversationMenu(_))
+        matches!(self, Self::ConversationMenu(_))
     }
 }
 

@@ -138,7 +138,7 @@ impl ApiError {
             },
         }
     }
-    fn conflict() -> Self {
+    pub(crate) fn conflict() -> Self {
         Self::new(
             StatusCode::CONFLICT,
             "conflict",
@@ -197,7 +197,7 @@ pub async fn snapshot(pool: &PgPool) -> Result<Snapshot, sqlx::Error> {
         .await?;
     let conversations = sqlx::query_as("SELECT c.id,c.title,COALESCE((SELECT COALESCE(response,prompt) FROM turns WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1),'') AS snippet,to_char(to_timestamp(c.updated_at),'YYYY-MM-DD HH24:MI') AS updated,c.updated_at FROM conversations c WHERE workspace_id='local' ORDER BY updated_at DESC,id DESC").fetch_all(&mut *tx).await?;
     let turns = sqlx::query_as("SELECT t.id,conversation_id,prompt,response,error,state FROM turns t JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id='local' ORDER BY t.id").fetch_all(&mut *tx).await?;
-    let todos = sqlx::query_as("SELECT id,title,completed FROM todos WHERE workspace_id='local' ORDER BY completed,id DESC").fetch_all(&mut *tx).await?;
+    let todos = sqlx::query_as("SELECT id,title,(status='done') AS completed FROM tickets WHERE workspace_id='local' ORDER BY (status='done'),id DESC").fetch_all(&mut *tx).await?;
     let model = sqlx::query_scalar(
         "SELECT value FROM assistant_settings WHERE workspace_id='local' AND key='model'",
     )
@@ -291,6 +291,7 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
             if pending {
                 return Err(ApiError::conflict());
             }
+            sqlx::query("UPDATE conversation_sessions SET state='closed' WHERE conversation_id=$1 AND state='active'").bind(id).execute(&mut *tx).await?;
             sqlx::query("DELETE FROM conversations WHERE id=$1")
                 .bind(id)
                 .execute(&mut *tx)
@@ -334,7 +335,7 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
             }
             changed(
                 sqlx::query(
-                    "UPDATE turns SET error=NULL,state='queued' WHERE id=$1 AND state='failed'",
+                    "UPDATE turns SET error=NULL,response=NULL,state='queued',attempt=attempt+1,session_id=NULL WHERE id=$1 AND state='failed'",
                 )
                 .bind(id)
                 .execute(&mut *tx)
@@ -344,14 +345,14 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
             Some(id)
         }
         Command::CreateTodo { title } => Some(
-            sqlx::query_scalar("INSERT INTO todos(title) VALUES ($1) RETURNING id")
+            sqlx::query_scalar("INSERT INTO tickets(title) VALUES ($1) RETURNING id")
                 .bind(title.trim())
                 .fetch_one(&mut *tx)
                 .await?,
         ),
         Command::CompleteTodo { id, completed } => {
             changed(
-                sqlx::query("UPDATE todos SET completed=$2 WHERE id=$1 AND workspace_id='local'")
+                sqlx::query("UPDATE tickets SET status=CASE WHEN $2 THEN 'done' ELSE 'to_do' END,revision=revision+1 WHERE id=$1 AND workspace_id='local' AND assignee_kind='human'")
                     .bind(id)
                     .bind(completed)
                     .execute(&mut *tx)
@@ -362,7 +363,7 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
         }
         Command::DeleteTodo { id } => {
             changed(
-                sqlx::query("DELETE FROM todos WHERE id=$1 AND workspace_id='local'")
+                sqlx::query("DELETE FROM tickets WHERE id=$1 AND workspace_id='local'")
                     .bind(id)
                     .execute(&mut *tx)
                     .await?

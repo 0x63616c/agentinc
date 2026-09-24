@@ -32,6 +32,11 @@ pub struct Session {
 }
 
 impl Session {
+    /// Request cancellation. Already completed external effects are not undone.
+    pub async fn cancel(&self) -> Result<(), Error> {
+        self.handle.cancel().await
+    }
+
     pub fn id(&self) -> &SessionId {
         &self.id
     }
@@ -39,6 +44,16 @@ impl Session {
     /// Deliver a message. Returns once it is accepted, not when the reply is ready.
     pub async fn send(&self, message: impl Into<Message>) -> Result<(), Error> {
         self.handle.send(message.into()).await
+    }
+
+    /// Deliver once under a caller-owned ID. Bind the ID to an immutable message
+    /// in your command receipt; retries with the same ID are ignored.
+    pub async fn send_once(
+        &self,
+        id: impl Into<String>,
+        message: impl Into<Message>,
+    ) -> Result<(), Error> {
+        self.handle.send_once(id.into(), message.into()).await
     }
 
     /// Drop every message the model has not yet seen. Returns them, in send order.
@@ -51,8 +66,13 @@ impl Session {
     /// Starts from the beginning, so a fresh subscriber catches up on history first. Never
     /// ends on its own; stop reading when you have what you need.
     pub fn events(&self) -> BoxStream<'static, Result<Event, Error>> {
+        self.events_from(0)
+    }
+
+    /// Resume reading at a previously persisted event offset.
+    pub fn events_from(&self, offset: usize) -> BoxStream<'static, Result<Event, Error>> {
         let handle = self.handle.clone();
-        stream::unfold(Some((handle, 0usize)), |state| async move {
+        stream::unfold(Some((handle, offset)), |state| async move {
             let (handle, offset) = state?;
             match handle.events_after(offset).await {
                 Ok(events) => {

@@ -87,6 +87,11 @@ pub struct ModelCall {
 }
 
 impl ModelCall {
+    /// Wait until cancellation drops this model call's receiver.
+    pub async fn cancelled(&mut self) {
+        self.reply.closed().await;
+    }
+
     pub fn request(&self) -> &ModelRequest {
         &self.request
     }
@@ -106,6 +111,11 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
+    /// Wait until cancellation drops this tool call's receiver.
+    pub async fn cancelled(&mut self) {
+        self.reply.closed().await;
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
