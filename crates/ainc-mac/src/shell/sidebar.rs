@@ -17,11 +17,11 @@ impl Shell {
                     "nav.{}",
                     route.label().to_lowercase().replace(' ', "-")
                 ))
-                .h(px(32.))
+                .min_h(type_size(32.))
                 .px(px(10.))
                 .gap(px(12.))
                 .debug_selector(move || format!("sidebar-nav-{index}"))
-                .text_size(px(LABEL_SIZE))
+                .text_size(type_size(LABEL_SIZE))
                 .text_color(rgb(MUTED))
                 .when(self.session.current() == route, |s| {
                     s.bg(rgb(HOVER))
@@ -77,7 +77,7 @@ impl Shell {
                             .min_w_0()
                             .truncate()
                             .debug_selector(|| "workspace-title".into())
-                            .text_size(px(LABEL_SIZE))
+                            .text_size(type_size(LABEL_SIZE))
                             .child("World Wide Webb"),
                     ),
             )
@@ -110,7 +110,7 @@ impl Shell {
                     })
                     .child(
                         div()
-                            .text_size(px(LABEL_SIZE))
+                            .text_size(type_size(LABEL_SIZE))
                             .child(self.profile.name.clone()),
                     ),
                 ),

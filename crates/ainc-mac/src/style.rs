@@ -1,6 +1,9 @@
 //! Values measured from the final Control CSS, including its overrides.
 use gpui::{prelude::*, *};
-use std::borrow::Cow;
+use std::{
+    borrow::Cow,
+    sync::atomic::{AtomicU32, Ordering},
+};
 pub const SHELL: u32 = 0x0c0c0c;
 pub const SURFACE: u32 = 0x040404;
 pub const BORDER: u32 = 0x272727;
@@ -39,6 +42,17 @@ pub const BODY_SIZE: f32 = 13.;
 pub const LABEL_SIZE: f32 = 12.;
 pub const CAPTION_SIZE: f32 = 11.;
 pub const DIALOG_TITLE_SIZE: f32 = 18.;
+// The single app window shares a scale with its separately rendered page entities.
+static TYPE_SCALE: AtomicU32 = AtomicU32::new(1f32.to_bits());
+
+pub fn set_type_scale(scale: f32) {
+    TYPE_SCALE.store(scale.to_bits(), Ordering::Relaxed);
+}
+
+/// Each type step is two points larger than the original Control scale.
+pub fn type_size(size: f32) -> Pixels {
+    px((size + 2.) * f32::from_bits(TYPE_SCALE.load(Ordering::Relaxed)))
+}
 pub const DISABLED_OPACITY: f32 = 0.45;
 pub const HOVER_MS: u64 = 140;
 pub const GRIP_MS: u64 = 160;
@@ -158,13 +172,13 @@ pub fn evee_logo(size: f32) -> impl IntoElement {
 }
 pub fn shortcut_badge(label: impl Into<SharedString>) -> Div {
     row()
-        .h(px(20.))
+        .min_h(type_size(20.))
         .min_w(px(20.))
         .px(px(4.))
         .justify_center()
         .rounded(px(4.))
         .bg(rgb(PRIMARY_INK))
-        .text_size(px(10.))
+        .text_size(type_size(10.))
         .text_color(rgb(MUTED))
         .child(label.into())
 }

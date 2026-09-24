@@ -49,9 +49,9 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | Cmd+Shift+E | Toggle Evee |
 | Escape | Dismiss Search, task dialogs or notifications |
 
-Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag either side pane's divider to resize it; focus a divider and use Left/Right in 20-point steps or Home to reset its width. The profile opens Settings, including a persisted font choice between System (SF Pro) and Helvetica Neue. The notification bell opens an empty notification panel until notifications are connected.
+Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag either side pane's divider to resize it; focus a divider and use Left/Right in 20-point steps or Home to reset its width. The profile opens Settings, including persisted font family and size controls that update the whole app immediately. Default type is two points larger than the original Control scale. The notification bell opens an empty notification panel until notifications are connected.
 
-Sessions still save to `~/Library/Application Support/Agentinc OS/session.json`: the single destination, its history, font choice, and both side panes' visibility and widths. Older multi-tab sessions restore the active destination into the single space view; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
+Sessions still save to `~/Library/Application Support/Agentinc OS/session.json`: the single destination, its history, font family and size, and both side panes' visibility and widths. Older multi-tab sessions restore the active destination into the single space view; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
 
 For an isolated session without changing the regular app's state:
 

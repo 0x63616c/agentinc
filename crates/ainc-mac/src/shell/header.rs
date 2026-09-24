@@ -66,7 +66,7 @@ impl Shell {
                                 .h_full()
                                 .pl(px(14.))
                                 .gap(px(7.))
-                                .text_size(px(LABEL_SIZE))
+                                .text_size(type_size(LABEL_SIZE))
                                 .child(div().mt(px(1.)).child(icon(route.icon(), 14.)))
                                 .child(route.label()),
                         ),
@@ -90,7 +90,7 @@ impl Shell {
                     .border_1()
                     .border_color(rgb(BORDER))
                     .text_color(rgb(MUTED))
-                    .text_size(px(LABEL_SIZE))
+                    .text_size(type_size(LABEL_SIZE))
                     .child(icon("search", 14.))
                     .child("Go to…")
                     .child(div().flex_1())

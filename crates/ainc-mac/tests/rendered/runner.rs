@@ -1,6 +1,6 @@
 use crate::{
     input,
-    model::Route,
+    model::{FontSize, Route, Session},
     overlay::Overlay,
     shell::{self, Shell},
     style::Assets,
@@ -187,6 +187,14 @@ impl Suite {
 
 pub fn run() -> Result<()> {
     let temporary = tempfile::tempdir()?;
+    let session_path = temporary.path().join("session.json");
+    let small_session_path = temporary.path().join("small-session.json");
+    if std::env::var_os("AGENTINC_RENDER_LARGER").is_some() {
+        let mut session = Session::default();
+        session.font_size = FontSize::Larger;
+        session.save(&session_path)?;
+        session.save(&small_session_path)?;
+    }
     let output = std::env::var_os("AGENTINC_RENDER_OUTPUT")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("target/rendered-shell"));
@@ -200,7 +208,7 @@ pub fn run() -> Result<()> {
         shell::bind_keys(cx);
     });
     let mut window = cx.open_offscreen_window(size(px(1360.), px(828.)), |window, cx| {
-        cx.new(|cx| Shell::fixture(temporary.path().join("session.json"), window, cx))
+        cx.new(|cx| Shell::fixture(session_path, window, cx))
     })?;
     let mut suite = Suite {
         cx,
@@ -216,9 +224,7 @@ pub fn run() -> Result<()> {
             window = suite
                 .cx
                 .open_offscreen_window(size(px(1160.), px(728.)), |window, cx| {
-                    cx.new(|cx| {
-                        Shell::fixture(temporary.path().join("small-session.json"), window, cx)
-                    })
+                    cx.new(|cx| Shell::fixture(small_session_path.clone(), window, cx))
                 })?;
             suite.window = window;
             let actual = suite

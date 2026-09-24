@@ -113,7 +113,7 @@ pub fn dialog_shell(
         .on_click(|_, _, cx| cx.stop_propagation())
         .child(
             div()
-                .text_size(px(DIALOG_TITLE_SIZE))
+                .text_size(type_size(DIALOG_TITLE_SIZE))
                 .font_weight(FontWeight::MEDIUM)
                 .child(title),
         )
