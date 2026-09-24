@@ -445,6 +445,12 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     client.call(Command::Press {
         key: "cmd-k".into(),
     })?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "search.dialog".into(),
+        },
+    )?;
     act(&mut client, "search.input", Some("temporary"))?;
     client.call(Command::Press {
         key: "cmd-a".into(),

@@ -42,11 +42,8 @@ pub fn show() {}
 pub struct CommitTooltip;
 impl Render for CommitTooltip {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px(px(8.))
-            .py(px(5.))
-            .bg(rgb(crate::palette::SURFACE_MENU))
-            .text_color(rgb(crate::palette::TEXT_MUTED))
-            .child(ainc_release::identity::COMMIT)
+        div().pb(px(80.)).child(crate::overlay::tooltip_shell(
+            ainc_release::identity::COMMIT,
+        ))
     }
 }

@@ -108,56 +108,55 @@ impl Shell {
             .child(nav)
             .child(div().flex_1())
             .child(
-                row().h(px(50.)).flex_shrink_0().gap(px(4.)).child(
-                    self.button(
-                        "profile",
-                        "Settings",
-                        Control::Navigate(Route::Settings),
-                        cx,
-                    )
-                    .h(px(40.))
-                    .flex_1()
-                    .px(px(10.))
-                    .gap(px(8.))
-                    .child(match &self.profile.photo {
-                        Some(photo) => img(photo.clone())
-                            .size(px(24.))
-                            .rounded_full()
-                            .into_any_element(),
-                        None => row()
-                            .size(px(24.))
-                            .rounded_full()
-                            .bg(rgb(BORDER))
-                            .justify_center()
-                            .child(self.profile.name.chars().next().unwrap_or('C').to_string())
-                            .into_any_element(),
-                    })
-                    .child(
-                        column()
-                            .min_w_0()
-                            .gap(px(1.))
-                            .child(
-                                div()
-                                    .text_size(type_size(LABEL_SIZE))
-                                    .child(self.profile.name.clone()),
-                            )
-                            .child(
-                                div()
-                                    .id("sidebar.version")
-                                    .debug_selector(|| "sidebar-version".into())
-                                    .accessibility_id("sidebar.version")
-                                    .role(accesskit::Role::Label)
-                                    .aria_label(ainc_release::identity::version())
-                                    .text_size(type_size(CAPTION_SIZE))
-                                    .text_color(rgb(TEXT_MUTED))
-                                    .child(ainc_release::identity::version())
-                                    .when(!ainc_release::identity::PRODUCTION, |version| {
-                                        version.tooltip(|_, cx| {
-                                            cx.new(|_| crate::about::CommitTooltip).into()
-                                        })
-                                    }),
-                            ),
-                    ),
+                self.button(
+                    "profile",
+                    "Settings",
+                    Control::Navigate(Route::Settings),
+                    cx,
+                )
+                .h(px(98.))
+                .flex_shrink_0()
+                .w_full()
+                .flex_col()
+                .items_start()
+                .justify_center()
+                .px(px(10.))
+                .gap(px(4.))
+                .debug_selector(|| "sidebar-profile".into())
+                .child(match &self.profile.photo {
+                    Some(photo) => img(photo.clone())
+                        .size(px(24.))
+                        .rounded_full()
+                        .into_any_element(),
+                    None => row()
+                        .size(px(24.))
+                        .rounded_full()
+                        .bg(rgb(BORDER))
+                        .justify_center()
+                        .child(self.profile.name.chars().next().unwrap_or('C').to_string())
+                        .into_any_element(),
+                })
+                .child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(type_size(LABEL_SIZE))
+                        .child(self.profile.name.clone()),
+                )
+                .child(
+                    div()
+                        .id("sidebar.version")
+                        .flex_shrink_0()
+                        .debug_selector(|| "sidebar-version".into())
+                        .accessibility_id("sidebar.version")
+                        .role(accesskit::Role::Label)
+                        .aria_label(ainc_release::identity::version())
+                        .text_size(type_size(CAPTION_SIZE))
+                        .text_color(rgb(TEXT_MUTED))
+                        .child(ainc_release::identity::version())
+                        .when(!ainc_release::identity::PRODUCTION, |version| {
+                            version.tooltip(|_, cx| cx.new(|_| crate::about::CommitTooltip).into())
+                        }),
                 ),
             )
     }
