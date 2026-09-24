@@ -594,10 +594,10 @@ impl TicketsPage {
                 .when(running,|s|s.child(self.button("tickets.stop","Cancel work",true,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Cancel{id,revision},cx),cx).border_1().border_color(rgb(BORDER)).child("Cancel work")))
                 .when(!self.state.runs.iter().any(|r|r.ticket_id==id),|s|s.child(self.button("tickets.delete","Delete Ticket",true,ButtonKind::Quiet,move|this,window,cx|{this.overlays.borrow_mut().open(Overlay::DeleteTicket(id),window,cx,Some(this.cancel_focus.clone()));cx.notify();},cx).text_color(rgb(DESTRUCTIVE_TEXT)).child("Delete"))))
             .child(div().text_size(type_size(20.)).font_weight(FontWeight::MEDIUM).child(ticket.title.clone()))
-            .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Status")).child(row().flex_wrap().gap(px(6.)).children(STATUSES.into_iter().map(|status|self.button(SharedString::from(format!("tickets.status.{status}")),status_name(status),status!=ticket.status,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::SetStatus{id,revision,status},cx),cx).border_1().border_color(rgb(if status==ticket.status{FOCUS}else{BORDER})).child(status_name(status))))))
+            .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Status")).child(row().flex_wrap().gap(px(6.)).children(STATUSES.into_iter().map(|status|self.button(SharedString::from(format!("tickets.status.{status}")),status_name(status),status!=ticket.status,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::SetStatus{id,revision,status},cx),cx).border_1().border_color(rgb(if status==ticket.status{SELECTED_BORDER}else{BORDER})).child(status_name(status))))))
             .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Assignee")).child(row().flex_wrap().gap(px(6.)).children(self.state.assignees.iter().map(|assignee|{
                 let assignee_id=assignee.id.clone();let assignee_kind=assignee.kind;
-                self.button(SharedString::from(format!("tickets.assign.{}",assignee.id)),assignee.name.clone(),assignee.id!=ticket.assignee_id,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Assign{id,revision,assignee_id:assignee_id.clone(),assignee_kind},cx),cx).border_1().border_color(rgb(if assignee.id==ticket.assignee_id{FOCUS}else{BORDER})).child(assignee.name.clone())
+                self.button(SharedString::from(format!("tickets.assign.{}",assignee.id)),assignee.name.clone(),assignee.id!=ticket.assignee_id,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Assign{id,revision,assignee_id:assignee_id.clone(),assignee_kind},cx),cx).border_1().border_color(rgb(if assignee.id==ticket.assignee_id{SELECTED_BORDER}else{BORDER})).child(assignee.name.clone())
             }))))
             .children(self.state.runs.iter().filter(|r|r.ticket_id==id && r.generation==ticket.generation).map(|run|div().text_size(type_size(LABEL_SIZE)).text_color(rgb(MUTED)).child(run.error.as_ref().map_or_else(||format!("Work {}",run.state),|error|format!("Work stopped: {error}")))))
             .child(column().gap(px(16.)).child(div().font_weight(FontWeight::MEDIUM).child("Comments"))
@@ -661,7 +661,7 @@ impl Render for TicketsPage {
                                 )
                                 .track_focus(&self.add_focus)
                                 .border_1()
-                                .border_color(rgb(0x555555))
+                                .border_color(rgb(SELECTED_BORDER))
                                 .text_size(type_size(LABEL_SIZE))
                                 .child("Add Ticket"),
                             ),
@@ -717,7 +717,7 @@ impl Render for TicketsPage {
                                                 .py(px(10.))
                                                 .justify_start()
                                                 .border_b_1()
-                                                .border_color(rgb(0x1a1a1a))
+                                                .border_color(rgb(BORDER_SUBTLE))
                                                 .child(
                                                     div()
                                                         .flex_1()

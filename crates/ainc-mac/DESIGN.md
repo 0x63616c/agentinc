@@ -375,15 +375,15 @@ Page headings render only the title and any action. Empty states report the stat
 
 ### Native visual tokens
 
-`src/style.rs` is the native source of truth. Its current palette intentionally uses a darker shell (`#0c0c0c`) and surface (`#040404`) than the older browser-study frontmatter above. Native controls use these measured tokens:
+`src/palette.rs` is the native color source of truth. The native shell remains darker than the older browser-study frontmatter above. Selection, hover, text selection, and keyboard focus use neutral tones; focus keeps a distinct, brighter ring. `src/style.rs` owns the shared component and spacing vocabulary.
 
 | Role | Native value |
 |---|---|
-| Shell / surface / border / text / muted | `#0c0c0c` / `#040404` / `#272727` / `#ededed` / `#a0a0a0` |
-| Hover / row hover / selected / focus surface / focus ring | `#191919` / `#252525` / `#252525` / `#1d2520` / `#b5cabe` |
-| Error text / error border | `#e6acac` / `#b67171` |
-| Primary fill / ink; destructive fill / text | `#e8e8e8` / `#141414`; `#5b2b2b` / `#daa7a7` |
-| Dialog / menu surface / overlay border | `#171717` / `#1c1c1c` / `#353535` |
+| Shell / surface / border / text / muted | `SHELL` / `SURFACE` / `BORDER` / `TEXT` / `TEXT_MUTED` |
+| Hover / row hover / selected / focus surface / focus ring | `HOVER` / `HOVER_ROW` / `SELECTED` / `FOCUS_SURFACE` / `FOCUS` |
+| Error text / error border | `ERROR` / `ERROR_BORDER` |
+| Primary fill / ink; destructive fill / text | `PRIMARY` / `TEXT_ON_PRIMARY`; `DESTRUCTIVE` / `DESTRUCTIVE_TEXT` |
+| Dialog / menu surface / overlay border | `SURFACE_RAISED` / `SURFACE_MENU` / `BORDER_OVERLAY` |
 | Page inset X / Y; panel gap | `26px` / `28px`; `10px` |
 | Header control / control height / field height | `30px` / `32px` / `42px` |
 | Panel / dialog / menu / control / field radius | `14px` / `12px` / `6px` / `6px` / `7px` |

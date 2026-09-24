@@ -1,31 +1,11 @@
-//! Values measured from the final Control CSS, including its overrides.
+//! Shared native components and layout values.
+pub use crate::palette::*;
 use gpui::{prelude::*, *};
 use std::{
     borrow::Cow,
     sync::atomic::{AtomicU32, Ordering},
 };
-pub const SHELL: u32 = 0x0c0c0c;
-pub const SURFACE: u32 = 0x040404;
-pub const BORDER: u32 = 0x272727;
-pub const TEXT: u32 = 0xededed;
-pub const MUTED: u32 = 0xa0a0a0;
-pub const FOCUS: u32 = 0xb5cabe;
-
-// Native Control vocabulary. Keep optical exceptions at their measured values.
-pub const HOVER: u32 = 0x191919;
-pub const HOVER_ROW: u32 = 0x252525;
-pub const SELECTED: u32 = 0x252525;
-pub const FOCUS_SURFACE: u32 = 0x1d2520;
-pub const TEXT_SELECTION: u32 = 0x34453bff;
-pub const ERROR: u32 = 0xe6acac;
-pub const ERROR_BORDER: u32 = 0xb67171;
-pub const PRIMARY: u32 = 0xe8e8e8;
-pub const PRIMARY_INK: u32 = 0x141414;
-pub const DESTRUCTIVE: u32 = 0x5b2b2b;
-pub const DESTRUCTIVE_TEXT: u32 = 0xdaa7a7;
-pub const DIALOG_SURFACE: u32 = 0x171717;
-pub const MENU_SURFACE: u32 = 0x1c1c1c;
-pub const OVERLAY_BORDER: u32 = 0x353535;
+// Native Control layout vocabulary. Keep optical exceptions at their measured values.
 pub const PAGE_X: f32 = 26.;
 pub const PAGE_Y: f32 = 28.;
 pub const PANEL_GAP: f32 = 10.;

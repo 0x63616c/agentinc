@@ -1,7 +1,7 @@
 // Adapted from GPUI 0.2.2 examples/input.rs (Apache-2.0). See THIRD_PARTY.md.
 use std::ops::Range;
 
-use crate::style::{FOCUS, TEXT, TEXT_SELECTION, type_size};
+use crate::style::{FOCUS, TEXT, TEXT_PLACEHOLDER, TEXT_SELECTION, type_size};
 use gpui::prelude::*;
 use gpui::*;
 use unicode_segmentation::*;
@@ -663,7 +663,7 @@ impl Element for TextElement {
             let cursor_text: SharedString = content[cursor_start..cursor].to_owned().into();
             let font_size = style.font_size.to_pixels(window.rem_size());
             let color = if content.is_empty() {
-                rgb(0x888888).into()
+                rgb(TEXT_PLACEHOLDER).into()
             } else {
                 style.color
             };
@@ -737,7 +737,7 @@ impl Element for TextElement {
         }
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), rgb(0x888888).into())
+            (input.placeholder.clone(), rgb(TEXT_PLACEHOLDER).into())
         } else if input.secret {
             ("*".repeat(content.len()).into(), style.color)
         } else {

@@ -28,7 +28,7 @@ impl Shell {
             .pr(px(9.))
             .gap(px(12.))
             .border_b_1()
-            .border_color(rgb(0x1a1a1a))
+            .border_color(rgb(BORDER_SUBTLE))
             .text_size(type_size(CAPTION_SIZE))
             .text_color(rgb(MUTED))
             .child(div().flex_1())
@@ -134,7 +134,7 @@ impl Shell {
                                 .gap(px(12.))
                                 .pb(px(20.))
                                 .border_b_1()
-                                .border_color(rgb(0x1a1a1a))
+                                .border_color(rgb(BORDER_SUBTLE))
                                 .child(icon(destination.icon(), 20.))
                                 .child(
                                     column().gap(px(5.)).child(title).child(
@@ -182,7 +182,7 @@ impl Shell {
                                     .p(px(4.))
                                     .gap(px(2.))
                                     .rounded(px(8.))
-                                    .bg(rgb(0x1b1b1b))
+                                    .bg(rgb(SURFACE_SEGMENT))
                                     .border_1()
                                     .border_color(rgb(BORDER))
                                     .child(
@@ -195,9 +195,9 @@ impl Shell {
                                         .min_h(type_size(32.))
                                         .px(px(11.))
                                         .bg(rgb(if self.session.font == FontChoice::System {
-                                            0x333333
+                                            SELECTED_SEGMENT
                                         } else {
-                                            0x1b1b1b
+                                            SURFACE_SEGMENT
                                         }))
                                         .child("System · SF Pro"),
                                     )
@@ -212,9 +212,9 @@ impl Shell {
                                         .px(px(11.))
                                         .bg(rgb(
                                             if self.session.font == FontChoice::HelveticaNeue {
-                                                0x333333
+                                                SELECTED_SEGMENT
                                             } else {
-                                                0x1b1b1b
+                                                SURFACE_SEGMENT
                                             },
                                         ))
                                         .child("Helvetica Neue"),
@@ -231,7 +231,7 @@ impl Shell {
                                     .p(px(4.))
                                     .gap(px(2.))
                                     .rounded(px(8.))
-                                    .bg(rgb(0x1b1b1b))
+                                    .bg(rgb(SURFACE_SEGMENT))
                                     .border_1()
                                     .border_color(rgb(BORDER))
                                     .children(FontSize::ALL.into_iter().enumerate().map(
@@ -245,9 +245,9 @@ impl Shell {
                                             .min_h(type_size(32.))
                                             .px(px(11.))
                                             .bg(rgb(if self.session.font_size == size {
-                                                0x333333
+                                                SELECTED_SEGMENT
                                             } else {
-                                                0x1b1b1b
+                                                SURFACE_SEGMENT
                                             }))
                                             .child(label)
                                         },

@@ -4,6 +4,7 @@ mod evee;
 mod input;
 mod model;
 mod overlay;
+mod palette;
 mod profile;
 mod shell;
 mod storage;
