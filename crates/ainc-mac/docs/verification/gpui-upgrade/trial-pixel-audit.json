@@ -1,0 +1,46 @@
+{
+  "capture-today-2": {
+    "sha256": "59eef2aa104a60791544c7e190faaa4f55fc5691bb4db791e63b08aa54252ecb",
+    "device_pixels": [
+      2720,
+      1656
+    ],
+    "pixels_above_threshold": {
+      "header": 1621,
+      "workspace": 1732,
+      "profile": 1888,
+      "Evee": 1120,
+      "border": 2752,
+      "Today": 779,
+      "Tasks": 616,
+      "Agents": 661,
+      "Home": 616,
+      "Calendar": 928,
+      "Library": 763,
+      "My apps": 883,
+      "Assistant": 797
+    }
+  },
+  "capture-today-5": {
+    "sha256": "f53801725b4f49606a8ce501d8f51a0b36c6592612bcfe4570af1dd2b077284c",
+    "device_pixels": [
+      2320,
+      1456
+    ],
+    "pixels_above_threshold": {
+      "header": 1621,
+      "workspace": 1732,
+      "profile": 1888,
+      "Evee": 1120,
+      "border": 2352,
+      "Today": 779,
+      "Tasks": 616,
+      "Agents": 661,
+      "Home": 616,
+      "Calendar": 928,
+      "Library": 763,
+      "My apps": 883,
+      "Assistant": 797
+    }
+  }
+}

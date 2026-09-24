@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><title>Agentinc OS · Design study</title>
+<link rel="stylesheet" href="agentinc-os.css">
+</head>
+<body>
+<header class="review-bar">
+ <div class="review-brand"><svg class="brand-symbol" viewBox="0 0 28 28" aria-hidden="true"><path d="M6 20 12 6h4l6 14h-5l-1.5-4h-7"/><path d="M4 23h20"/></svg><span>Agentinc OS <span class="subtle">/ Design study</span></span></div>
+ <div class="direction-picker" role="group" aria-label="Design direction"><button data-direction="quiet" aria-pressed="false">Quiet</button><button data-direction="control" aria-pressed="true">Control</button><button data-direction="focus" aria-pressed="false">Focus</button></div>
+ <a class="review-link" href="#design-notes">Compare directions <span aria-hidden="true">↓</span></a>
+</header>
+<main>
+ <div class="preview-intro"><p id="direction-description">Control, refined around your references.</p><span>Interactive concept · sample data</span></div>
+ <section class="app-window" data-direction="control" aria-label="Agentinc OS interactive prototype">
+  <header class="titlebar"><div class="window-controls"><div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div><button class="icon-button" id="toggle-sidebar" aria-label="Toggle sidebar" aria-expanded="true"><span data-icon="panel"></span></button></div><nav id="workspace-tabs" aria-label="Open spaces"></nav><button class="icon-button new-tab" id="new-tab" aria-label="New tab"><span data-icon="plus"></span></button><button class="icon-button" id="open-command" aria-label="Search or jump to a space"><span data-icon="search"></span><span class="search-label">Search</span><kbd>⌘ K</kbd></button></header>
+  <div class="app-body">
+   <aside class="sidebar">
+    <div class="workspace-name"><span class="workspace-avatar">C</span><div>Calum’s space</div></div>
+    <nav aria-label="Main navigation" id="main-nav"></nav>
+    <div class="sidebar-bottom"><button class="evee-nav" data-page="evee"><span class="evee-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>Evee</span><span data-icon="arrowUpRight"></span></button><div class="sidebar-footer"><button id="show-notifications" aria-label="Show notifications" title="Notifications"><span data-icon="bell"></span></button><button id="reset-demo" aria-label="Reset sample data" title="Reset sample data"><span data-icon="reset"></span></button></div></div>
+   </aside>
+   <div class="workspace">
+    <section class="main-panel" aria-label="Current space">
+    <div class="workspace-toolbar"><div class="breadcrumb"><span data-icon="grid"></span><span>My space</span><span class="separator">/</span><strong id="page-name">Today</strong></div><div class="toolbar-actions"><span class="today-date">Tuesday, September 22</span><button class="icon-button" id="toggle-evee" aria-label="Open Evee panel" aria-expanded="false"><span data-icon="panel"></span></button></div></div>
+    <div class="workspace-columns"><div id="screen" tabindex="-1"></div></div>
+    </section><aside id="evee-rail" hidden></aside>
+
+   </div>
+  </div>
+  <aside id="notification-card" hidden aria-label="Notification"><span class="notification-icon"><span data-icon="branch"></span></span><div><strong>Ready for your review</strong><p>Home controls has a change waiting.</p><button class="secondary" data-agent="coder">View run</button></div><button class="icon-button" id="dismiss-notification" aria-label="Dismiss notification"><span data-icon="close"></span></button></aside>
+ </section>
+ <section class="design-notes" id="design-notes">
+  <div class="notes-heading"><h1>Control, with its own point of view.</h1><p>Your selected direction is the default. The earlier alternatives are still here to compare.</p></div>
+  <div class="comparisons">
+   <button class="comparison" data-direction="quiet"><div class="mini quiet-mini" aria-hidden="true"><div class="mini-side"></div><div class="mini-main"><b></b><span></span><div class="mini-split"><div><i></i><i></i><i></i></div><div><i></i><i></i></div></div><em></em></div></div><div class="comparison-title"><h2>Quiet</h2><span>More breathing room</span></div><p>Generous space, a familiar sidebar, and just enough of everything. The daily overview.</p><small>Tradeoff: less visible at once.</small></button>
+   <button class="comparison selected" data-direction="control"><div class="mini control-mini" aria-hidden="true"><div class="mini-side"></div><div class="mini-main"><b></b><span></span><i></i><i></i><i></i><em></em></div><div class="mini-rail"><i></i><i></i><i></i></div></div><div class="comparison-title"><h2>Control</h2><span>Your chosen direction</span></div><p>A tighter workspace with Evee alongside your work. Made for moving between agents and life.</p><small>Tradeoff: a busier first impression.</small></button>
+   <button class="comparison" data-direction="focus"><div class="mini focus-mini" aria-hidden="true"><div class="mini-top"></div><div class="mini-main"><b></b><span></span><div class="mini-split"><div><i></i><i></i><i></i></div><div><i></i><i></i></div></div><em></em></div></div><div class="comparison-title"><h2>Focus</h2><span>Content first</span></div><p>A horizontal shelf of spaces, with your day taking center stage. Less app chrome, more breathing room.</p><small>Tradeoff: less room for many future apps.</small></button>
+  </div>
+  <form id="feedback-form" data-lavish-question="agentinc-direction"><div><label for="feedback">What feels right? What would you change?</label><textarea id="feedback" placeholder="The sidebar from Quiet, the density from Control…" rows="2"></textarea></div><div class="feedback-actions"><span id="feedback-state" role="status">Selected: Control</span><button class="primary" type="submit">Queue this direction <span data-icon="arrowUpRight"></span></button></div></form>
+  <div class="references"><span>Design references</span><a href="https://vercel.com/geist/introduction" target="_blank" rel="noreferrer">Vercel / Geist ↗</a><a href="https://developer.apple.com/design/human-interface-guidelines/designing-for-macos" target="_blank" rel="noreferrer">Apple / macOS ↗</a><a href="https://ui.shadcn.com/blocks" target="_blank" rel="noreferrer">shadcn/ui ↗</a><a href="https://linear.app/now/how-we-redesigned-the-linear-ui" target="_blank" rel="noreferrer">Linear / hierarchy ↗</a><a href="https://github.com/pbakaus/impeccable" target="_blank" rel="noreferrer">Impeccable ↗</a></div>
+  <p class="prototype-note">A visual exploration, not a connected app. Example tasks, events, conversations, and device states are fictional. Actions only change this browser preview.</p>
+ </section>
+</main>
+<dialog id="command-dialog"><form method="dialog" class="command-head"><span data-icon="search"></span><input id="command-search" aria-label="Search spaces" placeholder="Where would you like to go?" autocomplete="off"><button class="icon-button" aria-label="Close search">Esc</button></form><div id="command-results"></div><div class="command-foot">Your whole space, a few keystrokes away.</div></dialog>
+<dialog id="event-dialog" aria-labelledby="event-dialog-title"><form id="event-form"><header class="event-dialog-head"><div><h2 id="event-dialog-title">New event</h2></div><button class="icon-button" type="button" data-action="cancel-event" aria-label="Close event dialog"><span data-icon="close"></span></button></header><input type="hidden" name="eventId"><label for="event-name">Event name</label><input id="event-name" name="name" maxlength="100" placeholder="What’s happening?" required><label for="event-date">Date</label><input id="event-date" name="date" type="date" required><div class="event-time-fields"><div><label for="event-time">Starts</label><input id="event-time" name="time" type="time" required></div><div><label for="event-end">Ends</label><input id="event-end" name="end" type="time" required></div></div><label for="event-location">Location <span class="subtle">(optional)</span></label><input id="event-location" name="location" maxlength="150" placeholder="Add a place or link"><p id="event-error" role="alert"></p><footer><button class="text-button event-delete" type="button" data-action="delete-event" hidden>Delete event</button><div><button class="secondary" type="button" data-action="cancel-event">Cancel</button><button class="primary" type="submit" id="save-event">Create event</button></div></footer></form></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="agentinc-os.js"></script>
+</body>
+</html>

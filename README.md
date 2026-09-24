@@ -48,7 +48,8 @@ run.assert_transcript().user("hello").assistant_contains("Hi there.").end();
 
 - `turnkeel` — the SDK
 - `turnkeel-macros` — the `#[tool]` attribute, re-exported from `turnkeel`
-- `ainc-mac` — the AgentInc app placeholder and the SDK's future running example
+- `ainc-mac` — the imported native AgentInc GPUI app (see [its README](crates/ainc-mac/README.md))
+- `gpui-pilot`, `gpui-pilot-cli` — opt-in native UI automation
 
 ## Development environment
 

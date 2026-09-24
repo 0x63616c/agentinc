@@ -1,11 +1,12 @@
 [workspace]
-resolver = "2"
-members = ["crates/turnkeel", "crates/turnkeel-macros", "crates/ainc-mac", "crates/ainc-daemon", "crates/ainc-client", "crates/ainc-cli", "crates/ainc-xtask"]
+resolver = "3"
+members = ["crates/turnkeel", "crates/turnkeel-macros", "crates/ainc-mac", "crates/ainc-daemon", "crates/ainc-client", "crates/ainc-cli", "crates/ainc-xtask", "crates/gpui-pilot", "crates/gpui-pilot-cli"]
+exclude = ["vendor/gpui"]
 
 [workspace.package]
 edition = "2024"
 license = "MIT"
-rust-version = "1.92"
+rust-version = "1.98"
 
 [workspace.dependencies]
 turnkeel = { path = "crates/turnkeel" }
@@ -28,3 +29,12 @@ temporalio-macros = "1.0"
 temporalio-workflow = "1.0"
 # Only to turn TLS on for the SDK's dev-server download; not imported anywhere.
 temporalio-sdk-core = { version = "0.9", default-features = false, features = ["tls-ring"] }
+
+[patch."https://github.com/zed-industries/zed"]
+gpui = { path = "vendor/gpui" }
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+strip = true

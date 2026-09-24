@@ -1,0 +1,3 @@
+# Preserve exact upstream bytes and valid unified-diff context lines.
+vendor/gpui/** linguist-vendored -whitespace
+vendor/gpui-pilot.patch -whitespace

@@ -1,1 +1,142 @@
-fn main() {}
+mod assistant;
+mod evee;
+mod input;
+mod model;
+mod overlay;
+mod profile;
+mod shell;
+mod storage;
+mod style;
+mod tasks;
+use gpui::*;
+use shell::*;
+struct DiagnosticLog;
+impl log::Log for DiagnosticLog {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        true
+    }
+    fn log(&self, r: &log::Record) {
+        eprintln!("{}: {}", r.level(), r.args());
+    }
+    fn flush(&self) {}
+}
+fn main() {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    #[cfg(feature = "automation")]
+    let pilot_directory = {
+        if args.is_empty() {
+            None
+        } else if args.len() == 2 && args[0] == "--gpui-pilot-session" {
+            for name in [
+                "AGENTINC_SESSION_PATH",
+                "AGENTINC_DATABASE_PATH",
+                "AGENTINC_CODEX_HOME",
+                "AGENTINC_WINDOW_TITLE",
+            ] {
+                let value = std::env::var_os(name)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or_else(|| {
+                        eprintln!("Pilot launch requires isolation variable {name}");
+                        std::process::exit(2);
+                    });
+                if name != "AGENTINC_WINDOW_TITLE" && !std::path::Path::new(&value).is_absolute() {
+                    eprintln!("Pilot isolation paths must be absolute: {name}");
+                    std::process::exit(2);
+                }
+            }
+            Some(std::path::PathBuf::from(&args[1]))
+        } else {
+            eprintln!("Usage: agentinc-os [--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY]");
+            std::process::exit(2);
+        }
+    };
+    #[cfg(not(feature = "automation"))]
+    if !args.is_empty() {
+        eprintln!("This build does not accept automation flags");
+        std::process::exit(2);
+    }
+
+    let _ = log::set_logger(&DiagnosticLog);
+    log::set_max_level(log::LevelFilter::Warn);
+    gpui_platform::application()
+        .with_assets(style::Assets)
+        .run(move |cx| {
+            input::bind_keys(cx);
+            shell::bind_keys(cx);
+            cx.on_action(|_: &Quit, cx| cx.quit());
+            cx.set_menus(vec![
+                Menu {
+                    disabled: false,
+                    name: "AgentInc".into(),
+                    items: vec![
+                        MenuItem::os_submenu("Services", SystemMenuType::Services),
+                        MenuItem::separator(),
+                        MenuItem::action("Quit AgentInc", Quit),
+                    ],
+                },
+                Menu {
+                    disabled: false,
+                    name: "File".into(),
+                    items: vec![MenuItem::action("Search…", Search)],
+                },
+                Menu {
+                    disabled: false,
+                    name: "View".into(),
+                    items: vec![
+                        MenuItem::action("Toggle Sidebar", ToggleSidebar),
+                        MenuItem::action("Toggle Evee", ToggleEvee),
+                        MenuItem::action("Back", GoBack),
+                        MenuItem::action("Forward", GoForward),
+                    ],
+                },
+            ]);
+            let bounds = Bounds::centered(None, size(px(1360.), px(828.)), cx);
+            let result = cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some(
+                            std::env::var("AGENTINC_WINDOW_TITLE")
+                                .unwrap_or_else(|_| "AgentInc".into())
+                                .into(),
+                        ),
+                        appears_transparent: true,
+                        traffic_light_position: Some(point(px(18.), px(18.))),
+                    }),
+                    window_min_size: Some(size(px(800.), px(600.))),
+                    app_id: Some("co.worldwidewebb.agentinc".into()),
+                    ..Default::default()
+                },
+                |window, cx| cx.new(|cx| Shell::new(window, cx)),
+            );
+            let window = match result {
+                Ok(window) => window,
+                Err(error) => {
+                    eprintln!("Could not open AgentInc: {error}");
+                    cx.quit();
+                    return;
+                }
+            };
+            #[cfg(feature = "automation")]
+            if let Some(directory) = pilot_directory {
+                let title = std::env::var("AGENTINC_WINDOW_TITLE").expect("validated pilot title");
+                match gpui_pilot::host::Host::start(&directory, title, window.into(), cx) {
+                    Ok(host) => cx.set_global(host),
+                    Err(error) => {
+                        eprintln!("Could not start pilot: {error:#}");
+                        cx.quit();
+                        return;
+                    }
+                }
+            }
+            #[cfg(not(feature = "automation"))]
+            let _ = window;
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+            cx.activate(true);
+        });
+}

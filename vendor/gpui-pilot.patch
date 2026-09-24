@@ -1,0 +1,165 @@
+--- a/src/window/a11y.rs
++++ b/src/window/a11y.rs
+@@ -128,6 +128,14 @@
+     ///
+     /// [forcibly disabled]: crate::Application::new_inaccessible
+     force_disabled: bool,
++    #[cfg(feature = "pilot")]
++    pub(crate) pilot_active: bool,
++    #[cfg(feature = "pilot")]
++    pub(crate) pilot_frame: u64,
++    #[cfg(feature = "pilot")]
++    pub(crate) pilot_tree: Option<TreeUpdate>,
++    #[cfg(feature = "pilot")]
++    pub(crate) pilot_hitboxes: FxHashMap<NodeId, crate::Hitbox>,
+     /// Whether a11y features have been requested by the system.
+     ///
+     /// Updated by AccessKit using callbacks provided to the adapter. Can change
+@@ -171,6 +179,14 @@
+     ) -> Self {
+         Self {
+             force_disabled,
++            #[cfg(feature = "pilot")]
++            pilot_active: false,
++            #[cfg(feature = "pilot")]
++            pilot_frame: 0,
++            #[cfg(feature = "pilot")]
++            pilot_tree: None,
++            #[cfg(feature = "pilot")]
++            pilot_hitboxes: FxHashMap::default(),
+             active_flag,
+             active_this_frame: false,
+             nodes: A11yNodeBuilder::new(),
+@@ -210,7 +226,10 @@
+     /// See the docs for [`Self::active_flag`] and [`Self::active_this_frame`]
+     /// for more commentary.
+     pub(crate) fn sync_active_flag(&mut self) {
+-        self.active_this_frame = self.is_enabled() && self.active_flag.load(Ordering::SeqCst);
++        let active = self.active_flag.load(Ordering::SeqCst);
++        #[cfg(feature = "pilot")]
++        let active = active || self.pilot_active;
++        self.active_this_frame = self.is_enabled() && active;
+     }
+ 
+     pub(crate) fn is_enabled(&self) -> bool {
+@@ -273,6 +292,8 @@
+ 
+     /// Clear per-frame state and push the root node to start a new frame.
+     pub(crate) fn begin_frame(&mut self) {
++        #[cfg(feature = "pilot")]
++        self.pilot_hitboxes.clear();
+         self.focus_ids.clear();
+         self.node_bounds.clear();
+         self.action_listeners.clear();
+@@ -282,6 +303,10 @@
+     /// Finalize the tree and produce a [`TreeUpdate`] for the platform adapter.
+     pub(crate) fn end_frame(&mut self, frame: debug::FrameDebugInfo) -> TreeUpdate {
+         let update = self.nodes.finalize();
++        #[cfg(feature = "pilot")]
++        if self.pilot_active {
++            self.pilot_tree = Some(update.clone());
++        }
+         self.debug.capture(
+             &update,
+             self.nodes.focus,
+--- a/src/window.rs
++++ b/src/window.rs
+@@ -3269,6 +3269,11 @@
+         if self.platform_window.prepare_frame() {
+             self.refresh();
+         }
++        // Pilot needs a complete typed tree, including otherwise cached views.
++        #[cfg(feature = "pilot")]
++        if self.a11y.pilot_active {
++            self.refresh();
++        }
+         self.invalidate_entities();
+         cx.entities.clear_accessed();
+         debug_assert!(self.rendered_entity_stack.is_empty());
+@@ -3396,6 +3401,10 @@
+             self.refresh();
+         }
+         self.needs_present.set(true);
++        #[cfg(feature = "pilot")]
++        if self.a11y.pilot_active {
++            self.a11y.pilot_frame += 1;
++        }
+ 
+         #[cfg(feature = "profiler")]
+         {
+@@ -9289,3 +9298,56 @@
+         .expect("closed inspector has no bookkeeping and no style overrides");
+     }
+ }
++
++/// Minimal opt-in, process-local automation seam. No transport lives in GPUI.
++#[cfg(feature = "pilot")]
++impl Window {
++    /// Activate typed semantics locally without activating an OS screen reader.
++    pub fn pilot_enable(&mut self) {
++        self.a11y.pilot_active = true;
++        self.refresh();
++    }
++
++    /// Last complete semantics and corresponding committed scene generation.
++    pub fn pilot_frame(&self) -> Option<(u64, &accesskit::TreeUpdate)> {
++        self.a11y
++            .pilot_tree
++            .as_ref()
++            .map(|tree| (self.a11y.pilot_frame, tree))
++    }
++
++    /// Whether application changes require a new committed frame.
++    pub fn pilot_needs_draw(&self) -> bool {
++        self.invalidator.is_dirty() || self.a11y.pilot_frame == 0
++    }
++
++    /// Test a semantic element's actual clipped hitbox against the rendered frame.
++    pub fn pilot_hit_test(&self, node: accesskit::NodeId, point: Point<Pixels>) -> bool {
++        self.a11y
++            .pilot_hitboxes
++            .get(&node)
++            .is_some_and(|hitbox| hitbox.is_hovered_at(point, self))
++    }
++
++    /// Clipped logical bounds of a semantic element's input target.
++    pub fn pilot_hit_bounds(&self, node: accesskit::NodeId) -> Option<Bounds<Pixels>> {
++        self.a11y
++            .pilot_hitboxes
++            .get(&node)
++            .map(|hitbox| hitbox.bounds.intersect(&hitbox.content_mask.bounds))
++    }
++
++    /// Commit Unicode text through the platform input handler, preserving selection/undo.
++    pub fn pilot_type_text(&mut self, text: &str, cx: &mut App) -> bool {
++        if let Some(mut handler) = self.platform_window.take_input_handler() {
++            let accepts = handler.accepts_text_input(self, cx);
++            if accepts {
++                handler.dispatch_input(text, self, cx);
++            }
++            self.platform_window.set_input_handler(handler);
++            accepts
++        } else {
++            false
++        }
++    }
++}
+--- a/src/elements/div.rs
++++ b/src/elements/div.rs
+@@ -2387,6 +2387,16 @@
+                                 None
+                             };
+ 
++                            #[cfg(feature = "pilot")]
++                            if window.a11y.pilot_active {
++                                if let (Some(id), Some(hitbox)) = (global_id, hitbox.as_ref()) {
++                                    window
++                                        .a11y
++                                        .pilot_hitboxes
++                                        .insert(id.accesskit_node_id(), hitbox.clone());
++                                }
++                            }
++
+                             let scroll_offset =
+                                 self.clamp_scroll_position(bounds, &style, window, cx);
+                             let result = f(&style, scroll_offset, hitbox, window, cx);
