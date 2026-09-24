@@ -34,7 +34,7 @@ Install the official [Codex CLI](https://developers.openai.com/codex/cli), then 
 
 Open **Assistant** in the sidebar to start, reopen, rename or delete conversations. Existing single-chat history migrates into “Previous conversation”. Send with Return or the composer’s arrow; Shift+Return inserts a newline. Failed replies remain retryable and conversations persist on the daemon, including when the app closes.
 
-Tasks supports create, complete/reopen and delete. Conversations, Tasks and product preferences are owned by `aincd` in Postgres. Its repeat-safe one-way import reads the previous SQLite database without migrating it in place. See [daemon ownership and setup](../../docs/phase-2-ownership.md). See the [assistant handoff and verification](docs/EVEE_ASSISTANT_HANDOFF.md) for the supported interface, limits and native/live verification evidence.
+Tasks supports create, complete/reopen and delete. Conversations, Tasks and product preferences are owned by `aincd` in Postgres. Its repeat-safe one-way import reads the previous SQLite database without migrating it in place. See [daemon ownership and setup](../../docs/phase-2-ownership.md) and [native ownership verification](docs/verification/OWNERSHIP.md).
 
 ## Using the shell
 
@@ -67,17 +67,10 @@ AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
 
 - [Native acceptance report and screenshots](docs/verification/STATUS.md)
 - [Workspace import and native flow evidence](docs/verification/IMPORT.md)
-- [Scope and handoff](docs/CONTROL_BUILD_HANDOFF.md), [implementation plan](docs/CONTROL_IMPLEMENTATION_PLAN.md)
 - `src/model.rs`: navigation and persistence, independent of the UI.
 - `src/shell.rs`, `src/shell/`, `src/style.rs`: GPUI shell, its header/content/pane views, shared styling and interactions.
 - `src/input.rs`: native text input adapted from the official GPUI example.
-- [Third-party sources](THIRD_PARTY.md), [resolved text-rendering diagnosis](docs/verification/BLOCKER.md).
-
-## Original design study
-
-The portable browser prototype remains in `.lavish/agentinc-os-standalone.html`; open it directly in a browser. Editable sources are `.lavish/agentinc-os.{html,css,js}`. `PRODUCT.md`, `DESIGN.md`, `.impeccable/design.json` and `docs/control-reference/` record its product and visual direction.
-
-The browser's sample tasks, agents, controls, events and conversations are illustrative. Its concept selector and review toolbar are excluded from the native app. Browser interaction checks remain in `tests/preview-smoke.js`.
+- [Third-party sources](THIRD_PARTY.md), [current GPUI acceptance](docs/verification/GPUI_UPGRADE.md).
 
 ## Opt-in GPUI automation
 

@@ -56,7 +56,7 @@ Approved live refinements intentionally differ from the original screenshots: da
 
 ## Resolved diagnostics and limits
 
-The original invisible-text problem was fixed by enabling GPUI's `font-kit` feature; see [BLOCKER.md](BLOCKER.md). It was not a reason to replace GPUI or upgrade its pinned version.
+The original invisible-text problem was fixed by enabling GPUI's `font-kit` feature. It was not a reason to replace GPUI or upgrade its pinned version.
 
 Earlier entries in this report incorrectly interpreted large screenshot previews as partial native redraws. The **same saved PNG files** show complete text and panels when reduced to logical dimensions before viewing. A temporary, ignored diagnostic copy of GPUI also recorded complete scene counts and successful Metal rendering/readback. This resolves the capture blocker; it does not establish a native renderer defect. All diagnostic dependency changes were removed, Cargo.lock restored, and the final official build verified. Older tracked diagnostic images are historical evidence, not the final acceptance set linked above.
 
