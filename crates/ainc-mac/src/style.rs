@@ -23,10 +23,8 @@ pub const HEADER_SEARCH_LEFT_INSET: f32 = 9.;
 // The shortcut badge needs only 4 px after it to balance the search control.
 pub const HEADER_SEARCH_RIGHT_INSET: f32 = 4.;
 // The workspace mark's left edge uses a half pixel to balance its icon.
-#[allow(dead_code)] // The concurrent sidebar lane owns this call site.
 pub const SIDEBAR_IDENTITY_LEFT_INSET: f32 = 6.5;
 // The workspace label's right edge retains the measured 6 px optical inset.
-#[allow(dead_code)] // The concurrent sidebar lane owns this call site.
 pub const SIDEBAR_IDENTITY_RIGHT_INSET: f32 = 6.;
 // The Evee mark keeps its measured 10 px alignment against the pane edge.
 pub const EVEE_HEADER_LEFT_INSET: f32 = 10.;
@@ -242,7 +240,12 @@ pub fn icon(name: &'static str, size: f32) -> Svg {
         .text_color(rgb(MUTED))
         .flex_shrink_0()
 }
-pub fn nav_icon(name: &'static str, selected: bool) -> Svg {
+pub fn nav_icon(
+    name: &'static str,
+    selected: bool,
+    tint: u32,
+    hover_group: impl Into<SharedString>,
+) -> Svg {
     svg()
         .path(if selected {
             format!("selected/{name}.svg")
@@ -250,7 +253,8 @@ pub fn nav_icon(name: &'static str, selected: bool) -> Svg {
             format!("{name}.svg")
         })
         .size(px(17.))
-        .text_color(rgb(if selected { TEXT } else { MUTED }))
+        .text_color(rgb(tint))
+        .group_hover(hover_group, |s| s.text_color(rgb(TEXT)))
         .flex_shrink_0()
 }
 pub fn evee_logo(size: f32) -> impl IntoElement {

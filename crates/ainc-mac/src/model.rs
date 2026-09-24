@@ -37,7 +37,6 @@ pub struct PageSpec {
     pub route: Route,
     pub title: &'static str,
     pub icon: &'static str,
-    pub shortcut: Option<u8>,
     pub in_sidebar: bool,
     pub availability: Availability,
 }
@@ -47,7 +46,6 @@ pub const PAGES: &[PageSpec] = &[
         route: Route::Today,
         title: "Today",
         icon: "sun",
-        shortcut: Some(1),
         in_sidebar: true,
         availability: Availability::Ready,
     },
@@ -55,55 +53,13 @@ pub const PAGES: &[PageSpec] = &[
         route: Route::Tickets,
         title: "Tickets",
         icon: "tasks",
-        shortcut: Some(2),
         in_sidebar: true,
         availability: Availability::Ready,
-    },
-    PageSpec {
-        route: Route::Agents,
-        title: "Agents",
-        icon: "agents",
-        shortcut: Some(3),
-        in_sidebar: true,
-        availability: Availability::Ready,
-    },
-    PageSpec {
-        route: Route::Automations,
-        title: "Automations",
-        icon: "refresh",
-        shortcut: Some(9),
-        in_sidebar: true,
-        availability: Availability::Ready,
-    },
-    PageSpec {
-        route: Route::Home,
-        title: "Home",
-        icon: "home",
-        shortcut: Some(4),
-        in_sidebar: true,
-        availability: Availability::Planned,
     },
     PageSpec {
         route: Route::Calendar,
         title: "Calendar",
         icon: "calendar",
-        shortcut: Some(5),
-        in_sidebar: true,
-        availability: Availability::Planned,
-    },
-    PageSpec {
-        route: Route::Library,
-        title: "Library",
-        icon: "photos",
-        shortcut: Some(6),
-        in_sidebar: true,
-        availability: Availability::Planned,
-    },
-    PageSpec {
-        route: Route::Apps,
-        title: "My apps",
-        icon: "grid",
-        shortcut: Some(7),
         in_sidebar: true,
         availability: Availability::Planned,
     },
@@ -111,21 +67,65 @@ pub const PAGES: &[PageSpec] = &[
         route: Route::Assistant,
         title: "Assistant",
         icon: "spark",
-        shortcut: Some(8),
         in_sidebar: true,
         availability: Availability::Ready,
+    },
+    PageSpec {
+        route: Route::Agents,
+        title: "Agents",
+        icon: "agents",
+        in_sidebar: true,
+        availability: Availability::Ready,
+    },
+    PageSpec {
+        route: Route::Automations,
+        title: "Automations",
+        icon: "refresh",
+        in_sidebar: true,
+        availability: Availability::Ready,
+    },
+    PageSpec {
+        route: Route::Home,
+        title: "Home",
+        icon: "home",
+        in_sidebar: true,
+        availability: Availability::Planned,
+    },
+    PageSpec {
+        route: Route::Library,
+        title: "Library",
+        icon: "photos",
+        in_sidebar: true,
+        availability: Availability::Planned,
+    },
+    PageSpec {
+        route: Route::Apps,
+        title: "My apps",
+        icon: "grid",
+        in_sidebar: true,
+        availability: Availability::Planned,
     },
     PageSpec {
         route: Route::Settings,
         title: "Settings",
         icon: "settings",
-        shortcut: None,
         in_sidebar: false,
         availability: Availability::Ready,
     },
 ];
 
 impl Route {
+    pub fn from_shortcut(number: u8) -> Option<Self> {
+        if !(1..=9).contains(&number) {
+            return None;
+        }
+        PAGES
+            .iter()
+            .filter(|page| page.in_sidebar)
+            .nth(usize::from(number - 1))
+            .map(|page| page.route)
+    }
+
     pub fn spec(self) -> &'static PageSpec {
         PAGES
             .iter()
@@ -501,8 +501,6 @@ mod tests {
         ] {
             assert_eq!(route.spec().route, route);
         }
-        let shortcuts: Vec<_> = PAGES.iter().filter_map(|p| p.shortcut).collect();
-        assert_eq!(shortcuts, vec![1, 2, 3, 9, 4, 5, 6, 7, 8]);
         let mut s = Session::default();
         s.navigate(Route::Tickets);
         s.navigate(Route::Home);
@@ -511,6 +509,33 @@ mod tests {
         s.navigate(Route::Library);
         assert!(!s.can_go(true));
         assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);
+    }
+    #[test]
+    fn sidebar_shortcuts_follow_visual_order() {
+        let sidebar: Vec<_> = PAGES
+            .iter()
+            .filter(|page| page.in_sidebar)
+            .map(|page| page.route)
+            .collect();
+        assert_eq!(
+            sidebar,
+            [
+                Route::Today,
+                Route::Tickets,
+                Route::Calendar,
+                Route::Assistant,
+                Route::Agents,
+                Route::Automations,
+                Route::Home,
+                Route::Library,
+                Route::Apps,
+            ]
+        );
+        for (index, route) in sidebar.into_iter().enumerate() {
+            assert_eq!(Route::from_shortcut((index + 1) as u8), Some(route));
+        }
+        assert_eq!(Route::from_shortcut(0), None);
+        assert_eq!(Route::from_shortcut(10), None);
     }
     #[test]
     fn legacy_session_and_unknown_route_preserve_preferences() {

@@ -8,7 +8,8 @@ use crate::{
 };
 use anyhow::{Result, ensure};
 use gpui::{
-    AppContext, Bounds, Modifiers, Pixels, VisualTestAppContext, WindowHandle, point, px, size,
+    AppContext, Bounds, Modifiers, MouseButton, Pixels, VisualTestAppContext, WindowHandle, point,
+    px, size,
 };
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
@@ -55,21 +56,21 @@ fn regions(
             150,
         ),
     ];
-    for (index, name) in [
-        "Today",
-        "Tickets",
-        "Agents",
-        "Automations",
-        "Home",
-        "Calendar",
-        "Library",
-        "My apps",
-        "Assistant",
+    for (index, (name, group_offset)) in [
+        ("Today", 0),
+        ("Tickets", 0),
+        ("Calendar", 0),
+        ("Assistant", 0),
+        ("Agents", 12),
+        ("Automations", 12),
+        ("Home", 24),
+        ("Library", 24),
+        ("My apps", 24),
     ]
     .into_iter()
     .enumerate()
     {
-        let y = 115 + index as u32 * 34;
+        let y = 115 + index as u32 * 34 + group_offset;
         regions.push((name, [20, y, 165, y + 28], text, 35));
     }
     if evee {
@@ -381,6 +382,19 @@ pub fn run() -> Result<()> {
     };
     suite.capture("initial", Route::Today, None, true)?;
     suite.capture_version_tooltip()?;
+    suite.cx.simulate_mouse_move(
+        suite.window.into(),
+        point(px(125.), px(167.)),
+        None::<MouseButton>,
+        Modifiers::default(),
+    );
+    suite.capture("hover-tickets", Route::Today, None, true)?;
+    suite.cx.simulate_mouse_move(
+        suite.window.into(),
+        point(px(500.), px(500.)),
+        None::<MouseButton>,
+        Modifiers::default(),
+    );
     for round in 0..3 {
         if round == 1 {
             // AppKit resize is asynchronous without its native event loop. Use a second
@@ -402,12 +416,13 @@ pub fn run() -> Result<()> {
         for (index, route) in [
             Route::Today,
             Route::Tickets,
-            Route::Agents,
-            Route::Home,
             Route::Calendar,
+            Route::Assistant,
+            Route::Agents,
+            Route::Automations,
+            Route::Home,
             Route::Library,
             Route::Apps,
-            Route::Assistant,
         ]
         .into_iter()
         .enumerate()
@@ -426,16 +441,19 @@ pub fn run() -> Result<()> {
             }
         }
         suite.keys("cmd-k");
+        if round == 0 {
+            suite.capture("search-empty", Route::Apps, Some(Overlay::Search), true)?;
+        }
         suite.cx.simulate_input(window.into(), "settings");
         suite.capture(
             &format!("search-{round}"),
-            Route::Assistant,
+            Route::Apps,
             Some(Overlay::Search),
             true,
         )?;
         suite.keys("enter");
         suite.capture(&format!("settings-{round}"), Route::Settings, None, true)?;
-        suite.keys("cmd-9");
+        suite.keys("cmd-6");
         suite.capture(
             &format!("automations-{round}"),
             Route::Automations,
@@ -469,6 +487,8 @@ pub fn run() -> Result<()> {
     suite.capture("today-evee-hidden", Route::Today, None, false)?;
     suite.keys("cmd-shift-e");
     suite.capture("evee-restored", Route::Today, None, true)?;
+    suite.keys("cmd-,");
+    suite.capture("settings-shortcut", Route::Settings, None, true)?;
     println!(
         "{} real Metal frames passed, including region-removal negative controls",
         suite.count

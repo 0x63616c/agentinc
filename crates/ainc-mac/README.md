@@ -59,7 +59,8 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | --- | --- |
 | Cmd+K | Search spaces |
 | Cmd+Option+Left / Right | Back / forward |
-| Cmd+1…8 | Today, Tasks, Agents, Home, Calendar, Library, My apps, Assistant |
+| Cmd+1…9 | Today, Tickets, Calendar, Assistant, Agents, Automations, Home, Library, My apps |
+| Cmd+, | Settings |
 | Cmd+B | Toggle sidebar |
 | Cmd+Shift+E | Toggle Evee |
 | Escape | Dismiss Search, task dialogs or notifications |

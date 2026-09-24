@@ -16,6 +16,8 @@ mod evee;
 mod input;
 #[path = "../src/model.rs"]
 mod model;
+#[path = "../src/native_update.rs"]
+mod native_update;
 #[path = "../src/overlay.rs"]
 mod overlay;
 #[path = "../src/palette.rs"]
