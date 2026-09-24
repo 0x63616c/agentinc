@@ -13,10 +13,64 @@ const MAX_RESPONSE: usize = 4 * 1024 * 1024;
 #[derive(Clone)]
 pub struct CodexModel {
     model: String,
+    connection: Arc<CodexModels>,
+}
+
+/// One personal Connection shared across selected models and agent definitions.
+#[derive(Clone)]
+pub struct CodexModels {
     profile: PathBuf,
+    endpoint: String,
     http: reqwest::Client,
-    // Serialize refreshes: the official client rotates the profile's credentials.
     auth_lock: Arc<tokio::sync::Mutex<()>>,
+}
+impl CodexModels {
+    pub fn local() -> Result<Self, ModelError> {
+        Self::new(
+            crate::codex::home()
+                .map_err(|_| ModelError::fatal("Connection profile unavailable."))?,
+        )
+    }
+    pub fn new(profile: PathBuf) -> Result<Self, ModelError> {
+        let endpoint = ENDPOINT.to_owned();
+        #[cfg(debug_assertions)]
+        let endpoint = if let Ok(value) = std::env::var("AINC_TEST_RESPONSES_URL") {
+            let url = reqwest::Url::parse(&value)
+                .map_err(|_| ModelError::fatal("Invalid fixture URL."))?;
+            if url.scheme() != "http"
+                || url.host_str() != Some("127.0.0.1")
+                || !url.username().is_empty()
+                || url.password().is_some()
+            {
+                return Err(ModelError::fatal(
+                    "Fixture transport must use loopback HTTP.",
+                ));
+            }
+            value
+        } else {
+            endpoint
+        };
+        Ok(Self {
+            profile,
+            endpoint,
+            http: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .map_err(|_| ModelError::fatal("Could not create model transport."))?,
+            auth_lock: Arc::default(),
+        })
+    }
+}
+impl crate::execution::ModelCatalog for CodexModels {
+    fn resolve(&self, id: &str) -> Result<Arc<dyn Model>, ModelError> {
+        if id.trim().is_empty() {
+            return Err(ModelError::fatal("Select a model before starting work."));
+        }
+        Ok(Arc::new(CodexModel {
+            model: id.into(),
+            connection: Arc::new(self.clone()),
+        }))
+    }
 }
 
 #[derive(Deserialize)]
@@ -36,25 +90,27 @@ impl CodexModel {
         }
         Ok(Self {
             model,
-            profile,
-            http: reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .map_err(|_| ModelError::fatal("Could not create model transport."))?,
-            auth_lock: Arc::default(),
+            connection: Arc::new(CodexModels::new(profile)?),
         })
     }
 
-    async fn credentials(&self) -> Result<Tokens, ModelError> {
-        let _guard = self.auth_lock.lock().await;
-        let profile = self.profile.clone();
+    async fn credentials(&self) -> Result<(Tokens, String), ModelError> {
+        let guard = self.connection.auth_lock.clone().lock_owned().await;
+        let profile = self.connection.profile.clone();
+        let mut selected_model = self.model.clone();
         tokio::task::spawn_blocking(move || {
+            let _guard = guard;
             let mut client = crate::codex::Client::start_at(&profile).map_err(|_| {
                 ModelError::fatal("Codex sign-in is unavailable. Refresh the Connection.")
             })?;
-            client
+            let account = client
                 .call("account/read", json!({"refreshToken":true}))
                 .map_err(|_| ModelError::fatal("Refresh the ChatGPT Connection in Settings."))?;
+            if account["account"]["type"] != "chatgpt" {
+                return Err(ModelError::fatal(
+                    "Sign in with a ChatGPT subscription in Settings.",
+                ));
+            }
             let data = std::fs::read(profile.join("auth.json")).map_err(|_| {
                 ModelError::fatal("Sign in with a Codex file credential store for this profile.")
             })?;
@@ -64,7 +120,20 @@ impl CodexModel {
             if auth.tokens.access_token.is_empty() || auth.tokens.account_id.is_empty() {
                 return Err(ModelError::fatal("Sign in to ChatGPT in Settings."));
             }
-            Ok(auth.tokens)
+            if selected_model == "connection-default" {
+                let models = client
+                    .call("model/list", json!({"limit":100}))
+                    .map_err(|_| {
+                        ModelError::fatal("Could not read the Connection's default model.")
+                    })?;
+                selected_model = models["data"]
+                    .as_array()
+                    .and_then(|items| items.iter().find(|m| m["isDefault"] == true))
+                    .and_then(|m| m["model"].as_str())
+                    .ok_or_else(|| ModelError::fatal("Select a model in Settings."))?
+                    .into();
+            }
+            Ok((auth.tokens, selected_model))
         })
         .await
         .map_err(|_| ModelError::fatal("Connection refresh stopped."))?
@@ -77,6 +146,7 @@ impl CodexModel {
         request: ModelRequest,
     ) -> Result<ModelResponse, ModelError> {
         let response = self
+            .connection
             .http
             .post(endpoint)
             .bearer_auth(tokens.access_token)
@@ -122,10 +192,21 @@ impl Model for CodexModel {
         &self,
         request: ModelRequest,
     ) -> BoxFuture<'static, Result<ModelResponse, ModelError>> {
-        let model = self.clone();
+        let mut model = self.clone();
         Box::pin(async move {
-            let tokens = model.credentials().await?;
-            model.request(ENDPOINT, tokens, request).await
+            let (tokens, selected) = model.credentials().await?;
+            model.model = selected;
+            if model.connection.endpoint != ENDPOINT
+                && (tokens.access_token != "fixture-access-token"
+                    || tokens.account_id != "fixture-account")
+            {
+                return Err(ModelError::fatal(
+                    "Fixture transport refuses real credentials.",
+                ));
+            }
+            model
+                .request(&model.connection.endpoint, tokens, request)
+                .await
         })
     }
 }

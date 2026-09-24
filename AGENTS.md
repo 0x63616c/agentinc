@@ -51,7 +51,8 @@ needs to become its own crate.
   sense with a single agent and no UI? If yes, it belongs in the SDK.
 - **AgentInc** is a personal life-OS app; its native client is at `crates/ainc-mac`.
   The daemon owns product state; migration, isolated profile overrides and local
-  companion setup are documented in `docs/phase-2-ownership.md`. Rule: anything a human can do in
+  companion setup are documented in `docs/phase-2-ownership.md`; current runtime and tool policy
+  are in `docs/phase-3-execution.md`. Rule: anything a human can do in
   its UI, an agent can do through the same tools.
 
 There is no framework layer yet. Extract one from the OS later, once the generic parts

@@ -73,6 +73,10 @@ pub enum TicketCommand {
     Create {
         title: String,
     },
+    Delete {
+        id: i64,
+        revision: i64,
+    },
     Rename {
         id: i64,
         revision: i64,
@@ -341,6 +345,22 @@ pub(crate) async fn execute(
                 .fetch_one(&mut *tx)
                 .await?,
             )
+        }
+        TicketCommand::Delete { id, revision } => {
+            lock_ticket(&mut tx, actor, id, Some(revision)).await?;
+            let worked: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs WHERE ticket_id=$1)")
+                    .bind(id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+            if worked {
+                return Err(ApiError::conflict());
+            }
+            sqlx::query("DELETE FROM tickets WHERE id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            Some(id)
         }
         TicketCommand::Rename {
             id,

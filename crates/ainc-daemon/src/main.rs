@@ -62,7 +62,28 @@ async fn main() -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     let product = ainc_daemon::product::Product::new(pool.clone(), token.trim().into())?;
-    let runner = ainc_daemon::conversations::Runner::start(pool.clone()).await?;
+    let config: turnkeel::RuntimeConfig = if let Ok(config) = env::var("AINC_RUNTIME_CONFIG") {
+        serde_json::from_str(&config).context("parse AINC_RUNTIME_CONFIG")?
+    } else {
+        serde_json::from_slice(
+            &fs::read(Path::new(&discovery).with_file_name("runtime.json"))
+                .context("configure the durable runtime in runtime.json beside daemon discovery")?,
+        )?
+    };
+    let workspace = env::var_os("AINC_WORKSPACE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(&discovery).with_file_name("workspace"));
+    fs::create_dir_all(&workspace)?;
+    let allowed =
+        serde_json::from_str(&env::var("AINC_TOOL_ALLOW").unwrap_or_else(|_| "[]".into()))
+            .context("AINC_TOOL_ALLOW must be a JSON list of read_file, write_file, shell, git")?;
+    let policy = ainc_daemon::coding::WorkspacePolicy::new(workspace, allowed)?;
+    let models = std::sync::Arc::new(ainc_daemon::inference::CodexModels::local()?);
+    let runner =
+        ainc_daemon::conversations::Runner::start(pool.clone(), config.clone(), models.clone())
+            .await?;
+    let tickets =
+        ainc_daemon::execution::Runner::start(pool.clone(), config, models, policy).await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     publish_address(Path::new(&discovery), address)?;
@@ -70,6 +91,7 @@ async fn main() -> Result<()> {
     tokio::select! {
         result = axum::serve(listener, ainc_daemon::product_router(product)).into_future() => result?,
         result = runner.run() => result?,
+        result = tickets.run() => result?,
     }
     Ok(())
 }

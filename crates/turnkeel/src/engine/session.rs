@@ -14,11 +14,14 @@ pub(crate) const SESSION_ID_PREFIX: &str = "agentinc-session-";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SessionInput {
     pub agent: AgentSpec,
+    #[serde(default)]
+    pub history: Vec<Message>,
 }
 
 #[workflow]
 pub(crate) struct SessionWorkflow {
     conversation: Conversation,
+    delivered: std::collections::BTreeSet<String>,
 }
 
 impl HasConversation for SessionWorkflow {
@@ -31,8 +34,11 @@ impl HasConversation for SessionWorkflow {
 impl SessionWorkflow {
     #[init]
     fn new(_ctx: &WorkflowContextView, input: SessionInput) -> Self {
+        let mut conversation = Conversation::new(input.agent);
+        conversation.messages = input.history;
         Self {
-            conversation: Conversation::new(input.agent),
+            conversation,
+            delivered: Default::default(),
         }
     }
 
@@ -48,6 +54,13 @@ impl SessionWorkflow {
     #[signal]
     pub(crate) fn send(&mut self, _ctx: &mut SyncWorkflowContext<Self>, message: Message) {
         self.conversation.pending.push(message);
+    }
+
+    #[signal]
+    pub(crate) fn send_once(&mut self, _ctx: &mut SyncWorkflowContext<Self>, delivery: Delivery) {
+        if self.delivered.insert(delivery.id) {
+            self.conversation.pending.push(delivery.message);
+        }
     }
 
     #[update]
@@ -74,4 +87,10 @@ impl SessionWorkflow {
                 .to_vec()
         })
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct Delivery {
+    pub id: String,
+    pub message: Message,
 }

@@ -880,6 +880,30 @@ pub mod types {
     ///      "required": [
     ///        "id",
     ///        "kind",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "delete"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
     ///        "revision",
     ///        "title"
     ///      ],
@@ -1045,6 +1069,8 @@ pub mod types {
     pub enum TicketCommand {
         #[serde(rename = "create")]
         Create { title: ::std::string::String },
+        #[serde(rename = "delete")]
+        Delete { id: i64, revision: i64 },
         #[serde(rename = "rename")]
         Rename {
             id: i64,

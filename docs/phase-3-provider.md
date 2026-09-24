@@ -44,6 +44,5 @@ after a durable effect but before acknowledgement, then verifies a replacement
 uses the same receipt/key, produces exactly one effect and passes history replay.
 Non-idempotent tools retain their existing one-attempt policy.
 
-This slice adds the adapter and runtime mechanics. Switching daemon Conversations
-and Ticket dispatch to it is the next integration slice; the old runner remains
-active until that switch is complete.
+Daemon integration and its process recovery evidence are documented in
+[phase-3-execution.md](phase-3-execution.md).

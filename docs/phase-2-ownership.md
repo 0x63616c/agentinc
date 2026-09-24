@@ -1,5 +1,8 @@
 # Phase 2: daemon ownership
 
+This is the phase-2 migration record. Current SDK execution, runtime configuration,
+Tickets and crash recovery are documented in [phase-3-execution.md](phase-3-execution.md).
+
 `aincd` owns product writes and Codex processes. The Mac app renders owned snapshots from the generated `ainc-client`; it has no SQLite dependency and never waits for SQL or a provider process on the foreground. The existing text-only Codex protocol, ephemeral threads, bounded replies, sign-in flow and retry context are preserved in `crates/ainc-daemon/src/codex.rs`.
 
 ## Acknowledgement and execution

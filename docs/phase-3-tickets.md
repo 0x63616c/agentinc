@@ -9,7 +9,7 @@ model/instruction snapshot captured for each assignment.
 
 The Ticket migration renames the phase-2 Postgres table in place, keeps IDs/titles,
 and maps incomplete/completed rows to To do/Done. SQLite import writes the new
-schema. Phase-2 DTOs remain a compatibility adapter until the native Ticket UI lands;
+schema. Phase-2 DTOs remain a compatibility adapter for older clients;
 they do not create a second authoritative store. Legacy completion only operates on
 human-owned Tickets, so the old UI cannot complete an agent's live assignment.
 
@@ -34,5 +34,5 @@ read/write denial, agent scope, stale credentials, cancellation and redispatch. 
 existing legacy import and native-client compatibility tests remain green. A generated
 client submits a Comment and reads the migrated Ticket over HTTP.
 
-The dispatch consumer and coding-tool execution are the next slice. Queued intent
-is durable but this domain slice alone does not execute an assigned Ticket.
+The outbox consumer, coding policy and durable Conversation integration are documented
+in [phase-3-execution.md](phase-3-execution.md).

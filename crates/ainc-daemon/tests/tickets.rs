@@ -388,3 +388,45 @@ async fn moving_agent_work_to_backlog_cancels_and_to_do_dispatches_again(pool: P
     assert!(current.runs[1].generation > current.runs[0].generation);
     assert_ne!(current.runs[1].run_id, current.runs[0].run_id);
 }
+
+#[sqlx::test]
+async fn deletion_uses_a_receipt_and_preserves_inspectable_run_history(pool: PgPool) {
+    let (app, assigned, token) = assigned(&pool).await;
+    let deletion = request(Command::Delete {
+        id: assigned,
+        revision: 1,
+    });
+    assert_eq!(
+        command(&app, &token, &deletion).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        command(&app, "owner-fixture", &deletion).await.0,
+        StatusCode::CONFLICT
+    );
+    let id = apply(
+        &app,
+        Command::Create {
+            title: "Remove unused Ticket".into(),
+        },
+    )
+    .await
+    .result_id
+    .unwrap();
+    apply(
+        &app,
+        Command::AddComment {
+            ticket_id: id,
+            body: "User-entered draft".into(),
+        },
+    )
+    .await;
+    let deletion = request(Command::Delete { id, revision: 0 });
+    let first = command(&app, "owner-fixture", &deletion).await;
+    assert_eq!(first.0, StatusCode::OK);
+    assert_eq!(command(&app, "owner-fixture", &deletion).await, first);
+    let state = state(&app).await;
+    assert_eq!(state.tickets.len(), 1);
+    assert_eq!(state.runs.len(), 1);
+    assert!(state.comments.is_empty());
+}

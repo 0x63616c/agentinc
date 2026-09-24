@@ -1,6 +1,9 @@
 mod codex;
+pub mod coding;
 mod connection;
+mod conversation_tools;
 pub mod conversations;
+pub mod execution;
 pub mod inference;
 pub mod legacy;
 pub mod product;

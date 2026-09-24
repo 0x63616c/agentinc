@@ -2,6 +2,9 @@
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// The requested run or session does not exist in retained history.
+    #[error("run or session not found")]
+    NotFound,
     /// The run finished with a failure.
     #[error("run failed: {0}")]
     RunFailed(String),

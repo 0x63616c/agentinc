@@ -189,6 +189,7 @@ dependencies = [
  "anyhow",
  "axum",
  "futures",
+ "libc",
  "reqwest",
  "rusqlite",
  "serde",

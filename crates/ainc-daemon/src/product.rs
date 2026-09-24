@@ -291,6 +291,7 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
             if pending {
                 return Err(ApiError::conflict());
             }
+            sqlx::query("UPDATE conversation_sessions SET state='closed' WHERE conversation_id=$1 AND state='active'").bind(id).execute(&mut *tx).await?;
             sqlx::query("DELETE FROM conversations WHERE id=$1")
                 .bind(id)
                 .execute(&mut *tx)
@@ -334,7 +335,7 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
             }
             changed(
                 sqlx::query(
-                    "UPDATE turns SET error=NULL,state='queued' WHERE id=$1 AND state='failed'",
+                    "UPDATE turns SET error=NULL,response=NULL,state='queued',attempt=attempt+1,session_id=NULL WHERE id=$1 AND state='failed'",
                 )
                 .bind(id)
                 .execute(&mut *tx)

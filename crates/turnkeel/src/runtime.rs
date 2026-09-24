@@ -88,6 +88,19 @@ impl Runtime {
         Ok(Session { id, handle })
     }
 
+    /// Open once under a persisted ID, restoring prior dialogue when creating it.
+    /// Existing sessions retain their own history. Keep each ID bound to one agent
+    /// definition; use a fresh ID after a terminal failure or a model change.
+    pub async fn open_session(
+        &self,
+        id: SessionId,
+        agent: &Agent,
+        history: Vec<Message>,
+    ) -> Result<Session, Error> {
+        let handle = self.engine.open_session(&id, agent, history).await?;
+        Ok(Session { id, handle })
+    }
+
     /// Attach to a session opened earlier, possibly by another process.
     pub fn session_by_id(&self, agent: &Agent, id: SessionId) -> Session {
         let handle = self.engine.session_handle(agent, &id);
