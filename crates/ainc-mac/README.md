@@ -49,9 +49,9 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | Cmd+Shift+E | Toggle Evee |
 | Escape | Dismiss Search, task dialogs or notifications |
 
-Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag Evee's left divider to resize it. The profile opens Settings, including a persisted font choice between System (SF Pro) and Helvetica Neue. The notification bell opens an empty notification panel until notifications are connected.
+Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag either side pane's divider to resize it; focus a divider and use Left/Right in 20-point steps or Home to reset its width. The profile opens Settings, including a persisted font choice between System (SF Pro) and Helvetica Neue. The notification bell opens an empty notification panel until notifications are connected.
 
-Sessions still save to `~/Library/Application Support/Agentinc OS/session.json`: the single destination, its history, font choice, panel visibility and Evee width. Older multi-tab sessions restore the active destination into one tab; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
+Sessions still save to `~/Library/Application Support/Agentinc OS/session.json`: the single destination, its history, font choice, and both side panes' visibility and widths. Older multi-tab sessions restore the active destination into the single space view; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
 
 For an isolated session without changing the regular app's state:
 
@@ -69,7 +69,7 @@ AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
 - [Workspace import and native flow evidence](docs/verification/IMPORT.md)
 - [Scope and handoff](docs/CONTROL_BUILD_HANDOFF.md), [implementation plan](docs/CONTROL_IMPLEMENTATION_PLAN.md)
 - `src/model.rs`: navigation and persistence, independent of the UI.
-- `src/shell.rs`, `src/style.rs`: GPUI shell, shared styling and interactions.
+- `src/shell.rs`, `src/shell/`, `src/style.rs`: GPUI shell, its header/content/pane views, shared styling and interactions.
 - `src/input.rs`: native text input adapted from the official GPUI example.
 - [Third-party sources](THIRD_PARTY.md), [resolved text-rendering diagnosis](docs/verification/BLOCKER.md).
 

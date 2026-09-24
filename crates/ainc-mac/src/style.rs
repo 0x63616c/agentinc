@@ -7,7 +7,6 @@ pub const BORDER: u32 = 0x272727;
 pub const TEXT: u32 = 0xededed;
 pub const MUTED: u32 = 0xa0a0a0;
 pub const FOCUS: u32 = 0xb5cabe;
-pub const SIDEBAR: f32 = 178.;
 
 // Native Control vocabulary. Keep optical exceptions at their measured values.
 pub const HOVER: u32 = 0x191919;
@@ -214,8 +213,8 @@ impl AssetSource for Assets {
     }
 }
 // One continuous contour avoids vertical border tails at the inverse shoulders.
-// Tab width is 142px; the 12px shoulders meet the panel border 2px above its base.
-pub fn tab_contour(active: bool) -> impl IntoElement {
+// The current space label is 142px wide; its shoulders meet the panel border.
+pub fn current_space_contour() -> impl IntoElement {
     canvas(
         |_, _, _| (),
         move |bounds, _, window, _| {
@@ -236,11 +235,11 @@ pub fn tab_contour(active: bool) -> impl IntoElement {
             fill.line_to(p(0., 40.));
             fill.close();
             if let Ok(path) = fill.build() {
-                window.paint_path(path, rgb(if active { SURFACE } else { HOVER }));
+                window.paint_path(path, rgb(SURFACE));
             }
             let mut line = PathBuilder::stroke(px(1.));
             contour(&mut line);
-            if active && let Ok(path) = line.build() {
+            if let Ok(path) = line.build() {
                 window.paint_path(path, rgb(BORDER));
             }
         },

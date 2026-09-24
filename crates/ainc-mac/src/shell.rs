@@ -1,3 +1,16 @@
+#[path = "shell/header.rs"]
+mod header;
+#[path = "shell/layout.rs"]
+mod layout;
+#[path = "shell/main_content.rs"]
+mod main_content;
+#[path = "shell/pane.rs"]
+mod pane;
+#[path = "shell/right_pane.rs"]
+mod right_pane;
+#[path = "shell/sidebar.rs"]
+mod sidebar;
+
 use crate::{
     input::TextInput,
     model::{Availability, FontChoice, PAGES, Route, Session},
@@ -54,6 +67,7 @@ pub struct Shell {
     profile: crate::profile::Profile,
     path: PathBuf,
     focus: FocusHandle,
+    pane_focus: [FocusHandle; 2],
     input: Entity<TextInput>,
     picker_result_focus: Vec<FocusHandle>,
     picker_close_focus: FocusHandle,
@@ -64,13 +78,11 @@ pub struct Shell {
     notification_items: Vec<Notification>,
     save_error: bool,
     session_writable: bool,
-    resizing_evee: bool,
-    grip_opacity: f32,
-    grip_animation: Option<(Instant, f32, f32)>,
-    sidebar_width: f32,
-    evee_progress: f32,
-    evee_animation: Option<(Instant, f32, f32)>,
-    sidebar_animation: Option<(Instant, f32, f32)>,
+    resizing: Option<pane::Side>,
+    grip_opacity: [f32; 2],
+    grip_animation: [Option<(Instant, f32, f32)>; 2],
+    pane_visible: [f32; 2],
+    pane_animation: [Option<(Instant, f32, f32)>; 2],
 }
 struct Notification {
     icon: &'static str,
@@ -140,8 +152,9 @@ impl Shell {
                     match event {
                         crate::evee::Navigation::Settings => this.session.navigate(Route::Settings),
                         crate::evee::Navigation::Chat => {
-                            this.session.evee = true;
-                            this.evee_animation = Some((Instant::now(), this.evee_progress, 1.));
+                            if !this.session.panes[pane::Side::Right.index()].open {
+                                this.toggle_pane(pane::Side::Right);
+                            }
                         }
                     }
                     this.save(cx);
@@ -183,8 +196,9 @@ impl Shell {
         let loaded = Session::load_checked(&path);
         let session_writable = loaded.is_ok();
         let session = loaded.unwrap_or_default();
-        let evee_progress = if session.evee { 1. } else { 0. };
-        let sidebar_width = if session.sidebar { SIDEBAR } else { 0. };
+        let pane_visible = session
+            .panes
+            .map(|pane| if pane.open { pane.width } else { 0. });
         let update_subscription = cx
             .try_global::<crate::updates::Updates>()
             .cloned()
@@ -200,12 +214,11 @@ impl Shell {
             _update_subscription: update_subscription,
             _assistant_subscriptions: assistant_subscriptions,
             profile,
-            sidebar_width,
-            evee_progress,
-            evee_animation: None,
-            sidebar_animation: None,
+            pane_visible,
+            pane_animation: [None; 2],
             path,
             focus,
+            pane_focus: [cx.focus_handle(), cx.focus_handle()],
             input,
             picker_result_focus: PAGES.iter().map(|_| cx.focus_handle()).collect(),
             picker_close_focus: cx.focus_handle(),
@@ -216,9 +229,9 @@ impl Shell {
             notification_items: Vec::new(),
             save_error: !session_writable,
             session_writable,
-            resizing_evee: false,
-            grip_opacity: 0.,
-            grip_animation: None,
+            resizing: None,
+            grip_opacity: [0.; 2],
+            grip_animation: [None; 2],
         };
         shell.restore_update_drafts(cx);
         shell
@@ -244,7 +257,7 @@ impl Shell {
         (
             self.session.current(),
             self.overlays.borrow().active(),
-            self.session.evee,
+            self.session.panes[pane::Side::Right.index()].open,
         )
     }
 
@@ -368,22 +381,8 @@ impl Shell {
                 self.palette_transition = Some(Instant::now());
                 self.focus_picker(window, cx);
             }
-            Control::Sidebar => {
-                self.session.sidebar = !self.session.sidebar;
-                self.sidebar_animation = Some((
-                    Instant::now(),
-                    self.sidebar_width,
-                    if self.session.sidebar { SIDEBAR } else { 0. },
-                ));
-            }
-            Control::Evee => {
-                self.session.evee = !self.session.evee;
-                self.evee_animation = Some((
-                    Instant::now(),
-                    self.evee_progress,
-                    if self.session.evee { 1. } else { 0. },
-                ));
-            }
+            Control::Sidebar => self.toggle_pane(pane::Side::Left),
+            Control::Evee => self.toggle_pane(pane::Side::Right),
             Control::Font(font) => self.session.font = font,
             Control::Notifications => {
                 let active = self.overlays.borrow().active();
@@ -447,9 +446,9 @@ impl Shell {
         match control {
             Control::Sidebar | Control::Evee => button.role(accesskit::Role::Switch).aria_toggled(
                 if if matches!(control, Control::Sidebar) {
-                    self.session.sidebar
+                    self.session.panes[pane::Side::Left.index()].open
                 } else {
-                    self.session.evee
+                    self.session.panes[pane::Side::Right.index()].open
                 } {
                     accesskit::Toggled::True
                 } else {
@@ -478,229 +477,6 @@ impl Shell {
             .size(px(HEADER_CONTROL))
             .justify_center()
             .child(icon(name, 16.))
-    }
-    fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let route = self.session.current();
-        row()
-            .h(px(48.))
-            .flex_shrink_0()
-            .items_end()
-            .pr(px(9.))
-            .child(
-                row()
-                    .w(px(SIDEBAR + 60.))
-                    .h_full()
-                    .flex_shrink_0()
-                    .justify_end()
-                    .pr(px(9.))
-                    .child(self.icon_button(
-                        "sidebar",
-                        "Toggle sidebar · ⌘ B",
-                        "panel",
-                        Control::Sidebar,
-                        cx,
-                    ))
-                    .children([false, true].map(|forward| {
-                        let name = if forward {
-                            "chevronRight"
-                        } else {
-                            "chevronLeft"
-                        };
-                        if self.session.can_go(forward) {
-                            self.icon_button(
-                                if forward { "forward" } else { "back" },
-                                name,
-                                name,
-                                if forward {
-                                    Control::Forward
-                                } else {
-                                    Control::Back
-                                },
-                                cx,
-                            )
-                            .into_any_element()
-                        } else {
-                            row()
-                                .size(px(30.))
-                                .justify_center()
-                                .opacity(0.3)
-                                .child(icon(name, 16.))
-                                .into_any_element()
-                        }
-                    })),
-            )
-            .child(
-                row().relative().mb(px(-2.)).w(px(170.)).h(px(42.)).child(
-                    row()
-                        .absolute()
-                        .left(px(14.))
-                        .bottom_0()
-                        .w(px(142.))
-                        .h(px(40.))
-                        .rounded_t(px(10.))
-                        .child(tab_contour(true))
-                        .child(
-                            row()
-                                .h_full()
-                                .pl(px(14.))
-                                .gap(px(7.))
-                                .text_size(px(LABEL_SIZE))
-                                .child(div().mt(px(1.)).child(icon(route.icon(), 14.)))
-                                .child(route.label()),
-                        ),
-                ),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .h_full()
-                    .window_control_area(WindowControlArea::Drag),
-            )
-            .child(
-                self.button("shell.search", "Search · ⌘ K", Control::Search, cx)
-                    .flex_shrink_0()
-                    .w(px(224.))
-                    .h(px(30.))
-                    .mb(px(9.))
-                    .pl(px(9.))
-                    .pr(px(4.))
-                    .bg(rgb(0x0a0a0a))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .text_color(rgb(MUTED))
-                    .text_size(px(LABEL_SIZE))
-                    .child(icon("search", 14.))
-                    .child("Go to…")
-                    .child(div().flex_1())
-                    .child(shortcut_badge("⌘ K").w(px(36.))),
-            )
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .ml(px(8.))
-                    .mb(px(9.))
-                    .child(self.icon_button(
-                        "notifications",
-                        "Notifications",
-                        "bell",
-                        Control::Notifications,
-                        cx,
-                    )),
-            )
-    }
-    fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut nav = column().gap(px(2.));
-        for page in PAGES.iter().filter(|page| page.in_sidebar) {
-            let route = page.route;
-            let index = page.shortcut.expect("sidebar route has shortcut");
-            nav = nav.child(
-                self.button(
-                    ("nav", index as usize),
-                    route.label(),
-                    Control::Navigate(route),
-                    cx,
-                )
-                .accessibility_id(format!(
-                    "nav.{}",
-                    route.label().to_lowercase().replace(' ', "-")
-                ))
-                .h(px(32.))
-                .px(px(10.))
-                .gap(px(12.))
-                .text_size(px(LABEL_SIZE))
-                .text_color(rgb(MUTED))
-                .when(self.session.current() == route, |s| {
-                    s.bg(rgb(HOVER))
-                        .text_color(rgb(TEXT))
-                        .font_weight(FontWeight::MEDIUM)
-                })
-                .child(nav_icon(route.icon(), self.session.current() == route))
-                .child(route.label())
-                .child(div().flex_1())
-                .when(self.command_held, |s| {
-                    s.child(shortcut_badge(format!("⌘{index}")))
-                }),
-            );
-        }
-        column()
-            .w(px(SIDEBAR))
-            .h_full()
-            .flex_shrink_0()
-            .px(px(12.))
-            .pt(px(20.))
-            .child(
-                row()
-                    .pl(px(6.5))
-                    .pr(px(6.))
-                    .gap(px(8.5))
-                    .mb(px(22.))
-                    .child(
-                        row()
-                            .size(px(24.))
-                            .flex_shrink_0()
-                            .justify_center()
-                            .rounded(px(7.))
-                            .border_1()
-                            .border_color(rgb(0x353535))
-                            .bg(rgb(HOVER))
-                            .child("W"),
-                    )
-                    .child(div().text_size(px(LABEL_SIZE)).child("World Wide Webb")),
-            )
-            .child(nav)
-            .child(div().flex_1())
-            .child(
-                row().h(px(50.)).flex_shrink_0().gap(px(4.)).child(
-                    self.button(
-                        "profile",
-                        "Settings",
-                        Control::Navigate(Route::Settings),
-                        cx,
-                    )
-                    .h(px(40.))
-                    .flex_1()
-                    .px(px(10.))
-                    .gap(px(8.))
-                    .child(match &self.profile.photo {
-                        Some(photo) => img(photo.clone())
-                            .size(px(24.))
-                            .rounded_full()
-                            .into_any_element(),
-                        None => row()
-                            .size(px(24.))
-                            .rounded_full()
-                            .bg(rgb(0x272727))
-                            .justify_center()
-                            .child(self.profile.name.chars().next().unwrap_or('C').to_string())
-                            .into_any_element(),
-                    })
-                    .child(
-                        div()
-                            .text_size(px(LABEL_SIZE))
-                            .child(self.profile.name.clone()),
-                    ),
-                ),
-            )
-    }
-    fn toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        row()
-            .h(px(50.))
-            .flex_shrink_0()
-            .pl(px(PAGE_X))
-            .pr(px(9.))
-            .gap(px(12.))
-            .border_b_1()
-            .border_color(rgb(0x1a1a1a))
-            .text_size(px(CAPTION_SIZE))
-            .text_color(rgb(MUTED))
-            .child(div().flex_1())
-            .child(self.icon_button(
-                "toggle-evee",
-                "Toggle Evee panel · ⌘ ⇧ E",
-                "panel",
-                Control::Evee,
-                cx,
-            ))
     }
     fn command_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let matches = Route::matching(&self.input.read(cx).content);
@@ -885,331 +661,6 @@ impl Shell {
                     }),
             )
     }
-    fn static_page(&self, route: Route, cx: &mut Context<Self>) -> impl IntoElement {
-        let (title, detail) = route.empty();
-        let mut page = column().gap(px(28.));
-        if route == Route::Today {
-            for (index, destination) in
-                [Route::Tickets, Route::Agents, Route::Calendar, Route::Home]
-                    .into_iter()
-                    .enumerate()
-            {
-                let (empty_title, empty_detail) = destination.empty();
-                let (title, detail) = if destination == Route::Tickets {
-                    (
-                        self.tickets.read(cx).summary(),
-                        "Open a Ticket to see its Comments and work.".to_owned(),
-                    )
-                } else if destination == Route::Agents {
-                    (
-                        self.tickets.read(cx).agent_summary(),
-                        "Assign a Ticket to start work.".to_owned(),
-                    )
-                } else {
-                    (empty_title.to_owned(), empty_detail.to_owned())
-                };
-                if destination == Route::Tickets {
-                    page = page.child(
-                        column()
-                            .gap(px(10.))
-                            .child(div().font_weight(FontWeight::MEDIUM).child("Tickets"))
-                            .child(
-                                div()
-                                    .id("today.tickets.summary")
-                                    .accessibility_id("today.tickets.summary")
-                                    .role(accesskit::Role::Label)
-                                    .aria_label(title.clone())
-                                    .text_color(rgb(MUTED))
-                                    .child(title.clone()),
-                            )
-                            .children(self.tickets.read(cx).preview().into_iter().map(
-                                |(id, title, status)| {
-                                    self.button(
-                                        ("today.ticket", id as u64),
-                                        title.clone(),
-                                        Control::Navigate(Route::Tickets),
-                                        cx,
-                                    )
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.tickets
-                                            .update(cx, |tickets, cx| tickets.select(id, cx));
-                                        this.dispatch(
-                                            Control::Navigate(Route::Tickets),
-                                            window,
-                                            cx,
-                                        );
-                                    }))
-                                    .w_full()
-                                    .justify_start()
-                                    .min_h(px(42.))
-                                    .child(title)
-                                    .child(div().flex_1())
-                                    .child(
-                                        div()
-                                            .text_size(px(CAPTION_SIZE))
-                                            .text_color(rgb(MUTED))
-                                            .child(status),
-                                    )
-                                },
-                            )),
-                    );
-                    continue;
-                }
-                page = page.child(
-                    column()
-                        .gap(px(14.))
-                        .child(
-                            self.button(
-                                ("overview", index),
-                                destination.label(),
-                                Control::Navigate(destination),
-                                cx,
-                            )
-                            .py(px(5.))
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(destination.label()),
-                            )
-                            .child(div().flex_1())
-                            .child(icon("arrowUpRight", 13.)),
-                        )
-                        .child(
-                            row()
-                                .gap(px(12.))
-                                .pb(px(20.))
-                                .border_b_1()
-                                .border_color(rgb(0x1a1a1a))
-                                .child(icon(destination.icon(), 20.))
-                                .child(
-                                    column().gap(px(5.)).child(title).child(
-                                        div()
-                                            .text_size(px(LABEL_SIZE))
-                                            .text_color(rgb(MUTED))
-                                            .child(detail),
-                                    ),
-                                ),
-                        ),
-                );
-            }
-        } else if !matches!(route, Route::Settings | Route::Assistant) {
-            page = page.child(
-                column()
-                    .mt(px(28.))
-                    .gap(px(12.))
-                    .child(icon(route.icon(), 26.))
-                    .child(div().font_weight(FontWeight::MEDIUM).child(title))
-                    .child(
-                        div()
-                            .text_size(px(LABEL_SIZE))
-                            .text_color(rgb(MUTED))
-                            .child(detail),
-                    ),
-            );
-        }
-        if route == Route::Settings {
-            page = page.w_full().max_w(px(640.)).child(
-                column()
-                    .gap(px(16.))
-                    .child(
-                        div()
-                            .text_size(px(16.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Appearance"),
-                    )
-                    .child(
-                        row()
-                            .justify_between()
-                            .gap(px(16.))
-                            .child(div().child("Font"))
-                            .child(
-                                row()
-                                    .p(px(4.))
-                                    .gap(px(2.))
-                                    .rounded(px(8.))
-                                    .bg(rgb(0x1b1b1b))
-                                    .border_1()
-                                    .border_color(rgb(BORDER))
-                                    .child(
-                                        self.button(
-                                            "font-system",
-                                            "System font",
-                                            Control::Font(FontChoice::System),
-                                            cx,
-                                        )
-                                        .h(px(32.))
-                                        .px(px(11.))
-                                        .bg(rgb(if self.session.font == FontChoice::System {
-                                            0x333333
-                                        } else {
-                                            0x1b1b1b
-                                        }))
-                                        .child("System · SF Pro"),
-                                    )
-                                    .child(
-                                        self.button(
-                                            "font-helvetica",
-                                            "Helvetica Neue",
-                                            Control::Font(FontChoice::HelveticaNeue),
-                                            cx,
-                                        )
-                                        .h(px(32.))
-                                        .px(px(11.))
-                                        .bg(rgb(
-                                            if self.session.font == FontChoice::HelveticaNeue {
-                                                0x333333
-                                            } else {
-                                                0x1b1b1b
-                                            },
-                                        ))
-                                        .child("Helvetica Neue"),
-                                    ),
-                            ),
-                    )
-                    .when_some(
-                        cx.try_global::<crate::updates::Updates>().cloned(),
-                        |view, updates| {
-                            view.child(
-                                div()
-                                    .mt(px(12.))
-                                    .pt(px(20.))
-                                    .border_t_1()
-                                    .border_color(rgb(BORDER))
-                                    .child(updates.0.update(cx, |this, cx| this.settings(cx))),
-                            )
-                        },
-                    )
-                    .child(
-                        div()
-                            .mt(px(8.))
-                            .pt(px(28.))
-                            .border_t_1()
-                            .border_color(rgb(BORDER))
-                            .text_size(px(16.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Accounts & connections"),
-                    )
-                    .child(self.assistant.update(cx, |this, cx| this.settings_view(cx))),
-            );
-        } else if route == Route::Assistant {
-            page = page.child(
-                self.assistant
-                    .update(cx, |this, cx| this.conversations_view(cx)),
-            );
-        } else if route.spec().availability == Availability::Planned {
-            page = page.child(
-                column()
-                    .gap(px(16.))
-                    .mt(px(12.))
-                    .child(
-                        div()
-                            .text_size(px(CAPTION_SIZE))
-                            .text_color(rgb(MUTED))
-                            .child("Not available yet"),
-                    )
-                    .children(route.planned().iter().map(|(title, detail)| {
-                        column()
-                            .gap(px(6.))
-                            .py(px(16.))
-                            .border_t_1()
-                            .border_color(rgb(BORDER))
-                            .child(*title)
-                            .child(
-                                div()
-                                    .text_size(px(LABEL_SIZE))
-                                    .text_color(rgb(MUTED))
-                                    .child(*detail),
-                            )
-                    })),
-            );
-        }
-        page
-    }
-    fn evee(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement {
-        panel()
-            .relative()
-            .w(px(width))
-            .child(
-                div()
-                    .id("evee-resizer")
-                    .on_hover(cx.listener(|this, hovered, _, cx| {
-                        this.grip_animation = Some((
-                            Instant::now(),
-                            this.grip_opacity,
-                            if *hovered { 1. } else { 0. },
-                        ));
-                        cx.notify();
-                    }))
-                    .absolute()
-                    .left(px(-11.))
-                    .top_0()
-                    .bottom_0()
-                    .w(px(10.))
-                    .tab_index(0)
-                    .cursor(CursorStyle::ResizeLeftRight)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .w(px(2.))
-                            .h(px(22.))
-                            .rounded_full()
-                            .bg(rgba(0x33333300 | (self.grip_opacity * 255.) as u32)),
-                    )
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, _, _, cx| {
-                            this.resizing_evee = true;
-                            cx.stop_propagation();
-                        }),
-                    )
-                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                        match event.keystroke.key.as_str() {
-                            "left" => {
-                                this.session.evee_width = (this.session.evee_width + 20.).min(480.)
-                            }
-                            "right" => {
-                                this.session.evee_width = (this.session.evee_width - 20.).max(220.)
-                            }
-                            "home" => this.session.evee_width = 258.,
-                            _ => return,
-                        }
-                        cx.stop_propagation();
-                        this.save(cx);
-                    })),
-            )
-            .h_full()
-            .flex_shrink_0()
-            .px(px(20.))
-            .pb(px(20.))
-            .child(
-                row()
-                    .h(px(50.))
-                    .flex_shrink_0()
-                    .gap(px(8.))
-                    .text_size(px(LABEL_SIZE))
-                    .ml(px(-20.))
-                    .mr(px(-20.))
-                    .pl(px(10.))
-                    .pr(px(9.))
-                    .border_b_1()
-                    .border_color(rgb(0x1a1a1a))
-                    .mb(px(20.))
-                    .child(evee_logo(29.))
-                    .child("Evee")
-                    .child(div().flex_1())
-                    .child(self.icon_button(
-                        "close-evee",
-                        "Close Evee panel",
-                        "close",
-                        Control::Evee,
-                        cx,
-                    )),
-            )
-            .child(div().flex_1().min_h_0().child(self.assistant.clone()))
-    }
-
     fn keys(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.overlays.borrow().active() == Some(Overlay::Search) {
             let matches = Route::matching(&self.input.read(cx).content);
@@ -1260,49 +711,40 @@ impl Render for Shell {
                 .into_any_element();
         }
         if reduced_motion() {
-            if let Some((_, _, to)) = self.grip_animation.take() {
-                self.grip_opacity = to;
+            for index in 0..2 {
+                if let Some((_, _, to)) = self.grip_animation[index].take() {
+                    self.grip_opacity[index] = to;
+                }
             }
-            if let Some((_, _, to)) = self.sidebar_animation.take() {
-                self.sidebar_width = to;
-            }
-            if let Some((_, _, to)) = self.evee_animation.take() {
-                self.evee_progress = to;
+            for index in 0..2 {
+                if let Some((_, _, to)) = self.pane_animation[index].take() {
+                    self.pane_visible[index] = to;
+                }
             }
             self.palette_transition = None;
         }
-        if let Some((start, from, to)) = self.grip_animation {
-            let t = (start.elapsed().as_secs_f32() / (HOVER_MS as f32 / 1000.)).min(1.);
-            self.grip_opacity = from + (to - from) * t;
-            if t < 1. {
-                window.request_animation_frame();
-            } else {
-                self.grip_animation = None;
+        for index in 0..2 {
+            if let Some((start, from, to)) = self.grip_animation[index] {
+                let t = (start.elapsed().as_secs_f32() / (HOVER_MS as f32 / 1000.)).min(1.);
+                self.grip_opacity[index] = from + (to - from) * t;
+                if t < 1. {
+                    window.request_animation_frame();
+                } else {
+                    self.grip_animation[index] = None;
+                }
             }
         }
-        if let Some((start, from, to)) = self.sidebar_animation {
-            let t = (start.elapsed().as_secs_f32() / (PANEL_MS as f32 / 1000.)).min(1.);
-            let eased = 1. - (1. - t).powi(3);
-            self.sidebar_width = from + (to - from) * eased;
-            if t < 1. {
-                window.request_animation_frame();
-            } else {
-                self.sidebar_animation = None;
+        for index in 0..2 {
+            if let Some((start, from, to)) = self.pane_animation[index] {
+                let t = (start.elapsed().as_secs_f32() / (PANEL_MS as f32 / 1000.)).min(1.);
+                self.pane_visible[index] = from + (to - from) * (1. - (1. - t).powi(3));
+                if t < 1. {
+                    window.request_animation_frame();
+                } else {
+                    self.pane_animation[index] = None;
+                }
             }
         }
-        if let Some((start, from, to)) = self.evee_animation {
-            let t = (start.elapsed().as_secs_f32() / (PANEL_MS as f32 / 1000.)).min(1.);
-            self.evee_progress = from + (to - from) * (1. - (1. - t).powi(3));
-            if t < 1. {
-                window.request_animation_frame();
-            } else {
-                self.evee_animation = None;
-            }
-        }
-        let sidebar_width = self.sidebar_width + 8. * (1. - self.sidebar_width / SIDEBAR);
-        let max_evee_width =
-            (f32::from(window.viewport_size().width) - sidebar_width - 378.).clamp(220., 480.);
-        let evee_width = self.session.evee_width.min(max_evee_width);
         let progress = |start: &mut Option<Instant>| {
             let Some(instant) = *start else {
                 return 1.;
@@ -1376,15 +818,12 @@ impl Render for Shell {
             }))
             .on_mouse_move(
                 cx.listener(move |this, event: &MouseMoveEvent, window, cx| {
-                    if this.resizing_evee {
+                    if this.resizing.is_some() {
                         if event.dragging() {
-                            this.session.evee_width =
-                                (f32::from(window.viewport_size().width - event.position.x) - 8.)
-                                    .clamp(220., max_evee_width);
+                            this.resize_from_pointer(event.position, window);
                             cx.notify();
-                            window.refresh();
                         } else {
-                            this.resizing_evee = false;
+                            this.resizing = None;
                             this.save(cx);
                         }
                     }
@@ -1393,8 +832,7 @@ impl Render for Shell {
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
-                    if this.resizing_evee {
-                        this.resizing_evee = false;
+                    if this.resizing.take().is_some() {
                         this.save(cx);
                     }
                 }),
@@ -1420,61 +858,14 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|this, _: &FocusNext, w, cx| this.cycle_focus(false, w, cx)))
             .on_action(cx.listener(|this, _: &FocusPrevious, w, cx| this.cycle_focus(true, w, cx)))
-            .child(
-                row()
-                    .flex_1()
-                    .min_h_0()
-                    .pt(px(48.))
-                    .pb(px(8.))
-                    .pr(px(8.))
-                    .child(
-                        div()
-                            .w(px(self.sidebar_width))
-                            .h_full()
-                            .flex_shrink_0()
-                            .overflow_hidden()
-                            .child(self.sidebar(cx)),
-                    )
-                    .pl(px(8. * (1. - self.sidebar_width / SIDEBAR)))
-                    .child(
-                        row()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .gap(px(PANEL_GAP * self.evee_progress))
-                            .child(
-                                panel()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .h_full()
-                                    .overflow_hidden()
-                                    .child(self.toolbar(cx))
-                                    .child(
-                                        column()
-                                            .id("page")
-                                            .flex_1()
-                                            .min_h_0()
-                                            .overflow_y_scroll()
-                                            .px(px(PAGE_X))
-                                            .py(px(PAGE_Y))
-                                            .child(div().relative().child(content)),
-                                    ),
-                            )
-                            .when(self.evee_progress > 0., |s| {
-                                s.child(
-                                    div()
-                                        .w(px(evee_width * self.evee_progress))
-                                        .h_full()
-                                        .flex_shrink_0()
-                                        .when(self.evee_animation.is_some(), |s| {
-                                            s.overflow_hidden()
-                                        })
-                                        .child(self.evee(evee_width, cx)),
-                                )
-                            }),
-                    ),
-            )
-            // Header paints after panels so active tabs cover their top border.
+            .child(self.layout_body(
+                self.sidebar(cx).into_any_element(),
+                self.main_area(content, cx).into_any_element(),
+                self.evee(cx).into_any_element(),
+                window,
+                cx,
+            ))
+            // Header paints after panels so the current space covers the top border.
             .child(
                 div()
                     .absolute()
@@ -1580,10 +971,110 @@ mod interaction_tests {
     use super::{Shell, bind_keys};
     use crate::{
         input,
-        model::{PAGES, Route},
+        model::{PAGES, Route, Session},
         overlay::Overlay,
     };
-    use gpui::{Focusable, TestAppContext};
+    use gpui::{Focusable, Modifiers, MouseButton, TestAppContext, point, px};
+
+    #[gpui::test]
+    fn sidebar_drag_persists_and_toggle_restores_its_width(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.json");
+        cx.update(bind_keys);
+        let (shell, cx) = cx.add_window_view(|window, cx| Shell::fixture(path.clone(), window, cx));
+        let start = point(px(178.), px(200.));
+        let end = point(px(260.), px(200.));
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.panes[0].width, 260.)
+        });
+        assert_eq!(Session::load(&path).panes[0].width, 260.);
+        cx.simulate_keystrokes("cmd-b");
+        shell.read_with(cx, |shell, _| assert!(!shell.session.panes[0].open));
+        let focus = shell.read_with(cx, |shell, _| shell.focus.clone());
+        cx.update(|window, cx| window.focus(&focus, cx));
+        cx.simulate_keystrokes("cmd-b");
+        shell.read_with(cx, |shell, _| {
+            assert!(shell.session.panes[0].open);
+            assert_eq!(shell.session.panes[0].width, 260.);
+        });
+    }
+
+    #[gpui::test]
+    fn sidebar_badges_align_and_text_stays_inside_at_minimum_and_default_widths(
+        cx: &mut TestAppContext,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        let right =
+            |bounds: gpui::Bounds<gpui::Pixels>| f32::from(bounds.origin.x + bounds.size.width);
+        for width in [150., 178.] {
+            cx.update(|window, cx| {
+                shell.update(cx, |shell, cx| {
+                    shell.session.panes[0].width = width;
+                    shell.pane_visible[0] = width;
+                    shell.command_held = true;
+                    cx.notify();
+                });
+                window.draw(cx).clear(cx);
+            });
+            let sidebar = cx.debug_bounds("sidebar-content").unwrap();
+            let title = cx.debug_bounds("workspace-title").unwrap();
+            assert!(
+                right(title) <= right(sidebar) - 6.,
+                "title at width {width}"
+            );
+            let mut badge_right: Option<f32> = None;
+            for index in 1..=9 {
+                let badge = cx
+                    .debug_bounds(match index {
+                        1 => "sidebar-badge-1",
+                        2 => "sidebar-badge-2",
+                        3 => "sidebar-badge-3",
+                        4 => "sidebar-badge-4",
+                        5 => "sidebar-badge-5",
+                        6 => "sidebar-badge-6",
+                        7 => "sidebar-badge-7",
+                        8 => "sidebar-badge-8",
+                        _ => "sidebar-badge-9",
+                    })
+                    .unwrap();
+                let label = cx
+                    .debug_bounds(match index {
+                        1 => "sidebar-label-1",
+                        2 => "sidebar-label-2",
+                        3 => "sidebar-label-3",
+                        4 => "sidebar-label-4",
+                        5 => "sidebar-label-5",
+                        6 => "sidebar-label-6",
+                        7 => "sidebar-label-7",
+                        8 => "sidebar-label-8",
+                        _ => "sidebar-label-9",
+                    })
+                    .unwrap();
+                assert!(
+                    right(label) + 8. <= f32::from(badge.origin.x),
+                    "label {index} at width {width}"
+                );
+                assert!(
+                    right(badge) <= right(sidebar) - 10.,
+                    "badge {index} at width {width}"
+                );
+                if let Some(expected) = badge_right {
+                    assert!(
+                        (right(badge) - expected).abs() <= 1.,
+                        "badge {index} at width {width}"
+                    );
+                } else {
+                    badge_right = Some(right(badge));
+                }
+            }
+        }
+    }
 
     #[gpui::test]
     fn routes_and_history_use_shell_actions(cx: &mut TestAppContext) {
