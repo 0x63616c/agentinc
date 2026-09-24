@@ -2,9 +2,9 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-# Keep the original Evee artwork and black canvas; only enlarge it within the tile.
-magick assets/evee.png -resize 150% -gravity center \
-  -crop 1254x1254+0+0 +repage assets/AppIcon.png
+# Keep the original Evee artwork and black canvas; center its visible bounds.
+magick assets/evee.png -resize 135% -gravity center \
+  -crop 1254x1254-24-12 +repage assets/AppIcon.png
 
 iconset=$(mktemp -d)/AppIcon.iconset
 mkdir -p "$iconset"
