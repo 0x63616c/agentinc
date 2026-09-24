@@ -15,7 +15,7 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = ROOT / "crates/ainc-mac/dist/AgentInc.app/Contents/MacOS/agentinc-os"
+APP = ROOT / "crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc"
 PILOT = ROOT / "target/debug/gpui-pilot"
 DISCOVERY = ROOT / ".local/dev/api-url"
 TITLE = "AgentInc README Capture"
@@ -71,6 +71,12 @@ def type_into(manifest, author_id, value):
 
 
 def wait(manifest, kind, author_id):
+    if kind == "absent":
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if not any(n.get("author_id") == author_id for n in snapshot(manifest)["nodes"]):
+                return
+        raise TimeoutError(f"Pilot node remained present: {author_id}")
     return pilot(manifest, "wait", json.dumps({"kind": kind, "author_id": author_id}), "10000")
 
 
@@ -94,6 +100,9 @@ def create_ticket(manifest, title, status):
     if not matches():
         click(manifest, "tickets.create")
         type_into(manifest, "tickets.title", title)
+        pilot(manifest, "wait", json.dumps({
+            "kind": "value", "author_id": "tickets.title", "equals": title,
+        }), "10000")
         click(manifest, "tickets.submit")
         wait(manifest, "absent", "tickets.title")
     deadline = time.monotonic() + 10
@@ -141,7 +150,7 @@ def main():
             "AINC_LEGACY_DIR": str(state / "legacy"),
             "AGENTINC_CODEX_HOME": str(state / "codex"),
             "AGENTINC_WINDOW_TITLE": TITLE,
-            "AGENTINC_CAPTURE_WORKSPACE": "Northstar Studio",
+            "AGENTINC_CAPTURE_WORKSPACE": "Acme Inc",
             "AGENTINC_CAPTURE_PROFILE": "Alex",
         })
         with (state / "app.log").open("w") as log:
