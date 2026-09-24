@@ -29,6 +29,9 @@ No sleeps or timers in tests. Coordinate on state or explicit gates.
 
 Flat: every crate lives directly under `crates/`. No nesting; related crates share a
 prefix instead (`crates/os-tickets`, never `crates/agentinc-os/tickets`).
+For the accepted product plan, see [docs/architecture.md](docs/architecture.md) and
+[docs/adr/](docs/adr/). Crate names below describe the current source; final names
+are pending the separate naming job.
 
 - `crates/agentinc` — the SDK. Public modules at `src/*.rs`. The private engine at
   `src/engine/`. Test helpers at `src/testing/`.
@@ -37,14 +40,15 @@ prefix instead (`crates/os-tickets`, never `crates/agentinc-os/tickets`).
 - `crates/agentinc-os` — the OS app (see below). It is the SDK's example: every public
   SDK feature should be used there.
 
-Expected to grow: `crates/agentinc-<provider>` for model providers (Anthropic first), and
-possibly `crates/agentinc-core` if the engine ever needs to become its own crate.
+Expected to grow: provider crates, and possibly a core crate if the engine ever
+needs to become its own crate.
 
 ## Two names, two layers
 
-- **`agentinc`** is the SDK. It runs *one agent* durably. Boundary test: does this make
+- **SDK** (currently `agentinc`) runs *one agent* durably. Boundary test: does this make
   sense with a single agent and no UI? If yes, it belongs in the SDK.
-- **Agentinc OS** is a personal life-OS app at `crates/agentinc-os`. Rule: anything a
+- **AgentInc** is a personal life-OS app; its current stub is at `crates/agentinc-os`.
+  Rule: anything a
   human can do in its UI, an agent can do through the same tools.
 
 There is no framework layer yet. Extract one from the OS later, once the generic parts
@@ -121,3 +125,10 @@ These were argued out and settled. Revisit with a reason, not by accident.
 - **Model providers are thin `reqwest` clients we own**, not community SDKs.
 - **Tower for middleware was considered and parked.** Do not add hook callbacks in the
   meantime; that space is reserved.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.
