@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, BufReader, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
         Arc,
@@ -55,8 +55,10 @@ impl Drop for Client {
 }
 impl Client {
     pub fn start() -> Result<Self> {
-        let home = home()?;
-        std::fs::create_dir_all(&home)?;
+        Self::start_at(&home()?)
+    }
+    pub(crate) fn start_at(home: &Path) -> Result<Self> {
+        std::fs::create_dir_all(home)?;
         let child = Command::new(executable())
             .args([
                 "app-server",
@@ -71,10 +73,10 @@ impl Client {
                 "-c",
                 "web_search=\"disabled\"",
             ])
-            .env("CODEX_HOME", &home)
+            .env("CODEX_HOME", home)
             .env_remove("OPENAI_API_KEY")
             .env_remove("CODEX_API_KEY")
-            .current_dir(&home)
+            .current_dir(home)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

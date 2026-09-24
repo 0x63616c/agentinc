@@ -1,6 +1,7 @@
 mod codex;
 mod connection;
 pub mod conversations;
+pub mod inference;
 pub mod legacy;
 pub mod product;
 use axum::{

@@ -29,7 +29,7 @@ The real-server checks live in `crates/turnkeel/tests/recovery.rs`:
 
 Run `cargo test --locked -p turnkeel -p turnkeel-macros` and
 `cargo clippy --locked -p turnkeel -p turnkeel-macros --all-targets -- -D warnings`.
-Tests use only scripted models, no subscription credentials. This foundation does not
-claim in-flight activity crash recovery, durable product outbox dispatch, Ticket fencing,
+Tests use only scripted models, no subscription credentials. The activity-crash and live-event follow-up is documented in [phase-3-provider.md](phase-3-provider.md).
+This foundation does not claim durable product outbox dispatch, Ticket fencing,
 provider compatibility, bounded session history, or native UI acceptance; those remain
 phase 3 delivery gates.

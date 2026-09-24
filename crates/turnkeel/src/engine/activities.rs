@@ -73,7 +73,7 @@ impl AgentActivities {
     #[activity(name = "agentinc.model_step")]
     pub(crate) async fn model_step(
         self: Arc<Self>,
-        _ctx: ActivityContext,
+        ctx: ActivityContext,
         input: StepInput,
     ) -> Result<ModelResponse, ActivityError> {
         let agent = self.registry.get(&input.agent)?;
@@ -82,14 +82,16 @@ impl AgentActivities {
             messages: input.messages,
             tools: super::conversation::agent_spec(&agent).tools,
         };
-        let mut response = agent.model.complete(request).await.map_err(|e| {
-            let failure = if e.retryable {
-                ApplicationFailure::new(e.message)
-            } else {
-                ApplicationFailure::non_retryable(e.message)
-            };
-            ActivityError::application(failure)
-        })?;
+        let mut response = cancellable(&ctx, agent.model.complete(request))
+            .await?
+            .map_err(|e| {
+                let failure = if e.retryable {
+                    ApplicationFailure::new(e.message)
+                } else {
+                    ApplicationFailure::non_retryable(e.message)
+                };
+                ActivityError::application(failure)
+            })?;
         assign_tool_use_ids(&mut response);
         Ok(response)
     }
@@ -97,7 +99,7 @@ impl AgentActivities {
     #[activity(name = "agentinc.call_tool")]
     pub(crate) async fn call_tool(
         self: Arc<Self>,
-        _ctx: ActivityContext,
+        ctx: ActivityContext,
         input: ToolCallInput,
     ) -> Result<ToolCallOutput, ActivityError> {
         let agent = self.registry.get(&input.agent)?;
@@ -109,10 +111,10 @@ impl AgentActivities {
             });
         };
         let tool_ctx = ToolCtx::new(&input.idempotency_key);
-        let first = tool.call(tool_ctx.clone(), input.args.clone()).await;
+        let first = cancellable(&ctx, tool.call(tool_ctx.clone(), input.args.clone())).await?;
 
         if self.check_idempotency && tool.idempotent() && first.is_ok() {
-            let second = tool.call(tool_ctx, input.args).await;
+            let second = cancellable(&ctx, tool.call(tool_ctx, input.args)).await?;
             if !matches!(&second, Ok(v) if Some(v) == first.as_ref().ok()) {
                 return Err(ActivityError::application(
                     ApplicationFailure::non_retryable(format!(
@@ -149,6 +151,24 @@ fn assign_tool_use_ids(response: &mut ModelResponse) {
             && id.is_empty()
         {
             *id = format!("call_{i}_{}", uuid::Uuid::new_v4().simple());
+        }
+    }
+}
+
+/// Heartbeats detect a dead worker and deliver cancellation to live I/O futures.
+/// Dropping a future must stop its owned processes; tools still fence/receipt effects.
+async fn cancellable<T>(
+    ctx: &ActivityContext,
+    future: impl std::future::Future<Output = T>,
+) -> Result<T, ActivityError> {
+    tokio::pin!(future);
+    let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(1));
+    loop {
+        tokio::select! {
+            biased;
+            _ = ctx.cancelled() => return Err(ActivityError::cancelled()),
+            output = &mut future => return Ok(output),
+            _ = heartbeat.tick() => { ctx.record_heartbeat(()).await?; }
         }
     }
 }

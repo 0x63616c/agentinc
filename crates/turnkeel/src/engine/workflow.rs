@@ -1,7 +1,7 @@
 //! One run: one message in, one reply out, then the workflow ends.
 
 use super::conversation::{AgentSpec, Conversation, HasConversation, turn};
-use crate::Message;
+use crate::{Event, Message};
 use serde::{Deserialize, Serialize};
 use temporalio_macros::{workflow, workflow_methods};
 use temporalio_sdk::{WorkflowContext, WorkflowContextView, WorkflowResult};
@@ -21,6 +21,8 @@ pub(crate) struct RunInput {
 pub(crate) struct RunOutput {
     pub text: String,
     pub messages: Vec<Message>,
+    #[serde(default)]
+    pub events: Vec<Event>,
 }
 
 #[workflow]
@@ -43,10 +45,29 @@ impl AgentRunWorkflow {
         Self { conversation }
     }
 
+    #[update]
+    pub(crate) async fn events_after(ctx: &mut WorkflowContext<Self>, offset: usize) -> Vec<Event> {
+        let _ = ctx
+            .wait_condition(|w| w.conversation.log.len() > offset)
+            .await;
+        ctx.state(|w| {
+            w.conversation
+                .log
+                .get(offset..)
+                .unwrap_or_default()
+                .to_vec()
+        })
+    }
+
     #[run(name = "agentinc.run")]
     pub(crate) async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<RunOutput> {
         let text = turn(ctx).await?;
         let messages = ctx.state(|w| w.conversation.messages.clone());
-        Ok(RunOutput { text, messages })
+        let events = ctx.state(|w| w.conversation.log.clone());
+        Ok(RunOutput {
+            text,
+            messages,
+            events,
+        })
     }
 }

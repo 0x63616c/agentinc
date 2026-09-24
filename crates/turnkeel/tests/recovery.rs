@@ -155,10 +155,156 @@ async fn cancellation_stops_a_gated_run() -> anyhow::Result<()> {
     let agent = Agent::builder("cancel-v1").model(script.model()).build();
     let runtime = Runtime::test().await?;
     let run = runtime.start(&agent, "wait").await?;
-    let call = script.next_model_call().await;
+    let mut call = script.next_model_call().await;
     run.cancel().await?;
     assert!(matches!(run.result().await, Err(Error::Cancelled)));
-    call.reply(ModelResponse::text("too late"));
+    call.cancelled().await;
     runtime.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn run_events_arrive_before_completion_and_replay_afterward() -> anyhow::Result<()> {
+    let script = Script::new();
+    let agent = Agent::builder("events-v1").model(script.model()).build();
+    let runtime = Runtime::test().await?;
+    let run = runtime.start(&agent, "hello").await?;
+    let call = script.next_model_call().await;
+    let mut events = run.events();
+    assert_eq!(
+        events.next().await.unwrap()?,
+        Event::Message(turnkeel::Message::user("hello"))
+    );
+    call.reply(ModelResponse::text("world"));
+    let mut rest = Vec::new();
+    while let Some(event) = events.next().await {
+        rest.push(event?);
+    }
+    assert_eq!(rest.len(), 2);
+    assert_eq!(rest.last(), Some(&Event::TurnEnded));
+    let mut replay = run.events();
+    let mut count = 0;
+    while let Some(event) = replay.next().await {
+        event?;
+        count += 1;
+    }
+    assert_eq!(count, 3);
+    runtime.shutdown().await?;
+    Ok(())
+}
+
+#[derive(Clone)]
+struct ReceiptTool {
+    directory: std::path::PathBuf,
+    gate: bool,
+}
+impl turnkeel::Tool for ReceiptTool {
+    fn name(&self) -> &str {
+        "receipt"
+    }
+    fn description(&self) -> &str {
+        "Commit a durable fixture effect once."
+    }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({"type":"object"})
+    }
+    fn call(
+        &self,
+        ctx: turnkeel::ToolCtx,
+        _: serde_json::Value,
+    ) -> futures::future::BoxFuture<'static, Result<serde_json::Value, turnkeel::ToolError>> {
+        let path = self.directory.join("effect");
+        let gate = self.gate;
+        let key = ctx.idempotency_key().to_owned();
+        Box::pin(async move {
+            use std::io::Write;
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut file) => {
+                    file.write_all(key.as_bytes()).unwrap();
+                    file.sync_all().unwrap();
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    assert_eq!(std::fs::read_to_string(&path).unwrap(), key);
+                }
+                Err(error) => panic!("fixture effect: {error}"),
+            }
+            if gate {
+                println!("EFFECT_COMMITTED");
+                std::future::pending::<()>().await;
+            }
+            Ok(serde_json::json!("one effect"))
+        })
+    }
+}
+
+#[tokio::test]
+async fn effect_worker() -> anyhow::Result<()> {
+    let Ok(config) = std::env::var("TURNKEEL_EFFECT_CONFIG") else {
+        return Ok(());
+    };
+    let config = serde_json::from_str(&config)?;
+    let gate = std::env::var("TURNKEEL_EFFECT_GATE")? == "yes";
+    let agent = Agent::builder("effect-v1")
+        .model(
+            ScriptedModel::new()
+                .on_user(
+                    "go",
+                    turnkeel::testing::tool_call("receipt", serde_json::json!({})),
+                )
+                .on_tool_result("receipt", text("finished")),
+        )
+        .tool(ReceiptTool {
+            directory: std::env::var("TURNKEEL_EFFECT_DIR")?.into(),
+            gate,
+        })
+        .build();
+    let runtime = Runtime::configured(config, std::slice::from_ref(&agent)).await?;
+    let run = runtime
+        .start_with_id(RunId::new("crash-effect"), &agent, "go")
+        .await?;
+    assert_eq!(run.result().await?, "finished");
+    println!("RECOVERED");
+    runtime.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn killed_worker_recovers_unacknowledged_effect_without_repeating_it() -> anyhow::Result<()> {
+    let server = Server::start().await?;
+    let directory = std::env::temp_dir().join(format!("turnkeel-effect-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory)?;
+    let spawn = |gate: &str| -> anyhow::Result<_> {
+        Ok(tokio::process::Command::new(std::env::current_exe()?)
+            .args(["--exact", "effect_worker", "--nocapture"])
+            .env(
+                "TURNKEEL_EFFECT_CONFIG",
+                serde_json::to_string(&server.config())?,
+            )
+            .env("TURNKEEL_EFFECT_DIR", &directory)
+            .env("TURNKEEL_EFFECT_GATE", gate)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .kill_on_drop(true)
+            .spawn()?)
+    };
+    let mut first = spawn("yes")?;
+    let mut lines = BufReader::new(first.stdout.take().unwrap()).lines();
+    until(&mut lines, "EFFECT_COMMITTED").await?;
+    let committed = std::fs::read(directory.join("effect"))?;
+    first.kill().await?;
+    first.wait().await?;
+    let mut replacement = spawn("no")?;
+    let mut lines = BufReader::new(replacement.stdout.take().unwrap()).lines();
+    until(&mut lines, "RECOVERED").await?;
+    assert!(replacement.wait().await?.success());
+    assert_eq!(std::fs::read(directory.join("effect"))?, committed);
+    assert_eq!(std::fs::read_dir(&directory)?.count(), 1);
+    server.replay(&RunId::new("crash-effect")).await?;
+    server.shutdown().await?;
+    std::fs::remove_dir_all(directory)?;
     Ok(())
 }

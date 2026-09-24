@@ -11,6 +11,9 @@ name = "aincd"
 path = "src/main.rs"
 
 [dependencies]
+turnkeel.workspace = true
+futures.workspace = true
+reqwest = { version = "0.13", features = ["json", "stream"] }
 anyhow.workspace = true
 axum = "0.8"
 serde.workspace = true
@@ -24,6 +27,5 @@ rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 utoipa = { version = "5.5", features = ["axum_extras"] }
 
 [dev-dependencies]
-reqwest = { version = "0.13", features = ["json"] }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }

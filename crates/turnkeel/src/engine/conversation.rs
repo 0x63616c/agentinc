@@ -96,6 +96,7 @@ pub(crate) async fn turn<W: HasConversation>(ctx: &WorkflowContext<W>) -> Workfl
                     messages,
                 },
                 ActivityOptions::with_start_to_close_timeout(Duration::from_secs(300))
+                    .heartbeat_timeout(Duration::from_secs(10))
                     .summary(format!("step {}", step + 1))
                     .build(),
             )
@@ -125,6 +126,7 @@ pub(crate) async fn turn<W: HasConversation>(ctx: &WorkflowContext<W>) -> Workfl
                 .find(|t| t.name == name)
                 .is_none_or(|t| t.idempotent);
             let base = ActivityOptions::with_start_to_close_timeout(Duration::from_secs(120))
+                .heartbeat_timeout(Duration::from_secs(10))
                 .summary(name.clone());
             let options = if idempotent {
                 base.build()

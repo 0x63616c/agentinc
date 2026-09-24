@@ -302,6 +302,33 @@ pub(crate) struct RunHandle {
 }
 
 impl RunHandle {
+    pub(crate) async fn events_after(&self, offset: usize) -> Result<(Vec<Event>, bool), Error> {
+        let completed = |output: RunOutput| {
+            // Old completed histories predate the event field.
+            let log = if output.events.is_empty() {
+                output
+                    .messages
+                    .into_iter()
+                    .map(Event::Message)
+                    .chain([Event::TurnEnded])
+                    .collect()
+            } else {
+                output.events
+            };
+            (log.get(offset..).unwrap_or_default().to_vec(), true)
+        };
+        tokio::select! {
+            output = self.output() => output.map(completed),
+            events = self.inner.execute_update(AgentRunWorkflow::events_after, offset, WorkflowExecuteUpdateOptions::default()) => {
+                match events {
+                    Ok(events) => Ok((events, false)),
+                    // An execution can close between starting the long poll and its acceptance.
+                    Err(_) => self.output().await.map(completed),
+                }
+            }
+        }
+    }
+
     pub(crate) async fn cancel(&self) -> Result<(), Error> {
         self.inner
             .cancel(WorkflowCancelOptions::default())
