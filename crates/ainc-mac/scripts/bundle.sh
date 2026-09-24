@@ -18,7 +18,7 @@ cp "target/$profile/agentinc-os" "$bundle/Contents/MacOS/AgentInc"
 cp "target/$profile/aincd" "$bundle/Contents/MacOS/aincd"
 cp "target/$profile/ainc-update" "$bundle/Contents/MacOS/ainc-update"
 codesign --force --sign - "$bundle/Contents/MacOS/aincd"
-cp crates/ainc-mac/assets/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
+cp crates/ainc-mac/assets/AppIconDev.icns "$bundle/Contents/Resources/AppIcon.icns"
 version=$(cargo metadata --no-deps --format-version=1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ainc-release"))')
 build=$(git rev-list --count HEAD)
 cat > "$bundle/Contents/Info.plist" <<PLIST
