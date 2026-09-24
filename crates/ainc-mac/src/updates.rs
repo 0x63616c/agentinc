@@ -66,6 +66,39 @@ impl UpdateView {
             }
         })
         .detach();
+        if directory.join("feed.json").is_file() && !ainc_release::UPDATE_PUBLIC_KEY.is_empty() {
+            let saved = directory.clone();
+            let request = cx.background_executor().spawn(async move {
+                let signed: SignedManifest =
+                    serde_json::from_slice(&std::fs::read(saved.join("feed.json"))?)?;
+                let manifest =
+                    updater::verify_download(&signed, ainc_release::UPDATE_PUBLIC_KEY, &saved)?;
+                anyhow::ensure!(
+                    manifest.is_upgrade(ainc_release::VERSION, std::env::consts::ARCH)?,
+                    "saved update is no longer newer"
+                );
+                anyhow::Ok((signed, manifest))
+            });
+            cx.spawn(async move |this, cx| {
+                if let Ok(release) = request.await {
+                    let _ = this.update(cx, |this, cx| {
+                        if !this.busy
+                            && this
+                                .release
+                                .as_ref()
+                                .is_none_or(|(_, manifest)| manifest.version <= release.1.version)
+                        {
+                            this.release = Some(release);
+                            this.available = true;
+                            this.ready = true;
+                            this.message = "Update verified and ready to install".into();
+                            cx.notify();
+                        }
+                    });
+                }
+            })
+            .detach();
+        }
         Self {
             preferences,
             directory,
@@ -78,6 +111,13 @@ impl UpdateView {
             changelog: false,
         }
     }
+    pub fn is_ready(&self) -> bool {
+        self.ready
+            && updater::now() >= self.preferences.remind_after
+            && self.release.as_ref().is_some_and(|(_, manifest)| {
+                self.preferences.skipped_version.as_deref() != Some(&manifest.version.to_string())
+            })
+    }
     fn save(&mut self) {
         if let Err(error) = self
             .preferences
@@ -89,6 +129,10 @@ impl UpdateView {
     fn check(&mut self, manual: bool, cx: &mut Context<Self>) {
         if self.busy {
             return;
+        }
+        if manual {
+            self.preferences.skipped_version = None;
+            self.preferences.remind_after = 0;
         }
         self.busy = true;
         self.message = "Checking for updates…".into();
@@ -156,19 +200,8 @@ impl UpdateView {
                 &directory.join("app.tar.gz"),
                 progress,
             ))?;
-            let stage = directory.join("verified");
-            if stage.exists() {
-                std::fs::remove_dir_all(&stage)?;
-            }
-            let verified = updater::extract(
-                &signed,
-                ainc_release::UPDATE_PUBLIC_KEY,
-                &directory.join("app.tar.gz"),
-                &stage,
-            )?;
-            let result = updater::verify_bundle(&stage.join("AgentInc.app"), &verified);
-            std::fs::remove_dir_all(stage)?;
-            result
+            updater::verify_download(&signed, ainc_release::UPDATE_PUBLIC_KEY, &directory)
+                .map(|_| ())
         });
         cx.spawn(async move |this, cx| {
             let result = request.await;

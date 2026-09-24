@@ -1483,6 +1483,29 @@ impl Render for Shell {
                     .right_0()
                     .child(self.header(cx)),
             )
+            .when(
+                cx.try_global::<crate::updates::Updates>()
+                    .is_some_and(|updates| updates.0.read(cx).is_ready()),
+                |view| {
+                    view.child(
+                        div()
+                            .id("update-ready")
+                            .accessibility_id("updates.ready")
+                            .role(accesskit::Role::Button)
+                            .aria_label("Update ready")
+                            .absolute()
+                            .bottom(px(16.))
+                            .left(px(220.))
+                            .px(px(16.))
+                            .py(px(10.))
+                            .rounded(px(8.))
+                            .bg(rgb(0x292929))
+                            .cursor_pointer()
+                            .on_click(|_, _, cx| crate::updates::open(cx, false))
+                            .child("Update ready · View update"),
+                    )
+                },
+            )
             .when(self.save_error, |s| {
                 s.child(
                     div()

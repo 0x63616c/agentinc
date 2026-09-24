@@ -184,6 +184,24 @@ pub fn verify_bundle(bundle: &Path, manifest: &Manifest) -> Result<()> {
     Ok(())
 }
 
+/// Revalidate a saved candidate before presenting it as ready, including after restart.
+pub fn verify_download(signed: &SignedManifest, key: &str, directory: &Path) -> Result<Manifest> {
+    static STAGE_ID: AtomicU64 = AtomicU64::new(0);
+    let stage = directory.join(format!(
+        "verified-{}-{}",
+        std::process::id(),
+        STAGE_ID.fetch_add(1, Ordering::Relaxed)
+    ));
+    if stage.exists() {
+        fs::remove_dir_all(&stage)?;
+    }
+    let verified = extract(signed, key, &directory.join("app.tar.gz"), &stage)?;
+    let result = verify_bundle(&stage.join("AgentInc.app"), &verified);
+    fs::remove_dir_all(stage)?;
+    result?;
+    Ok(verified)
+}
+
 /// Two renames on the same volume; preserve the old app until restart succeeds.
 pub fn replace_bundle(installed: &Path, staged: &Path) -> Result<PathBuf> {
     let backup = installed.with_extension("previous.app");
