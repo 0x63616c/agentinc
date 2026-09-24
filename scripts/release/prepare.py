@@ -66,22 +66,27 @@ def main():
     # transitive Homebrew dependencies; fresh Macs never resolve /opt/homebrew.
     framework = contents / 'Frameworks'
     framework.mkdir()
-    queue = [p for p in bundle.rglob('*') if p.is_file() and run('file', '-b', str(p)).startswith('Mach-O')]
+    queue = [(p, p) for p in bundle.rglob('*') if p.is_file() and run('file', '-b', str(p)).startswith('Mach-O')]
     copied = {}
     checked = set()
     while queue:
-        binary = queue.pop()
+        binary, original = queue.pop()
         if binary in checked:
             continue
         checked.add(binary)
         deps = run('otool', '-L', str(binary)).splitlines()[1:]
         for line in deps:
             dependency = line.strip().split(' (compatibility')[0]
-            if dependency.startswith(('/usr/lib/', '/System/Library/', '@loader_path/')):
+            if dependency.startswith(('/usr/lib/', '/System/Library/')):
                 continue
-            if dependency.startswith('@'):
+            if dependency.startswith('@loader_path/'):
+                source = (original.parent / dependency.removeprefix('@loader_path/')).resolve()
+                if source.is_relative_to(bundle) and source.is_file():
+                    continue
+            elif dependency.startswith('@'):
                 raise SystemExit(f'unresolved dynamic library {dependency} in {binary}')
-            source = Path(dependency).resolve()
+            else:
+                source = Path(dependency).resolve()
             if source == binary.resolve():
                 continue
             if not source.is_file():
@@ -92,7 +97,7 @@ def main():
                 shutil.copy2(source, destination)
                 copied[source] = destination
                 subprocess.run(['install_name_tool', '-id', '@loader_path/' + name, str(destination)], check=True)
-                queue.append(destination)
+                queue.append((destination, source))
             destination = copied[source]
             relative = os.path.relpath(destination, binary.parent)
             subprocess.run(['install_name_tool', '-change', dependency, '@loader_path/' + relative, str(binary)], check=True)

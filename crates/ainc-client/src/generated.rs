@@ -4337,7 +4337,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4388,7 +4388,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4442,7 +4442,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4529,7 +4529,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4620,7 +4620,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4685,7 +4685,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4744,7 +4744,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4803,7 +4803,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4862,7 +4862,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4922,7 +4922,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -4981,7 +4981,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -5070,7 +5070,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -5159,7 +5159,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
@@ -5210,7 +5210,7 @@ pub mod builder {
             let result = client.exec(request, &info).await;
             client.post(&result, &info).await?;
             match (crate::server_compatibility)(&result).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => return Err(Error::Custom(e.to_string())),
             }
             let response = result?;
