@@ -4,6 +4,13 @@ use ed25519_dalek::{SigningKey, pkcs8::DecodePrivateKey};
 use sha2::{Digest, Sha256};
 use std::{env, fs};
 fn main() -> Result<()> {
+    if env::args().nth(1).as_deref() == Some("--identity") {
+        println!(
+            "{}",
+            serde_json::json!({"version":ainc_release::VERSION,"api":ainc_release::API,"minimum_client":ainc_release::MIN_CLIENT,"schema":1,"build":ainc_release::BUILD})
+        );
+        return Ok(());
+    }
     // Check this before touching artifacts. CI must fail clearly, never silently
     // publish an unsigned feed when the production key is unavailable.
     let pem = env::var("UPDATE_SIGNING_KEY_ED25519_PEM")

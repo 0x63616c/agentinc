@@ -96,10 +96,13 @@ def main():
             if not dependency.startswith(('/usr/lib/', '/System/', '@loader_path/', '@rpath/')):
                 raise SystemExit(f'nonportable dependency {dependency} in {binary}')
             if dependency.startswith('@loader_path/'):
-                target = (binary.parent / dependency.removeprefix('@loader_path/')).resolve()
-                if not target.is_relative_to(bundle) or not target.is_file():
+                dependency_path = (binary.parent / dependency.removeprefix('@loader_path/')).resolve()
+                if not dependency_path.is_relative_to(bundle) or not dependency_path.is_file():
                     raise SystemExit(f'unresolved bundle dependency {dependency} in {binary}')
-    identity = dict(version=version, build=build, commit=commit, architecture=platform.machine().replace('arm64','aarch64'), api=1, minimum_client='0.1.0', schema=1)
+    identity = json.loads(run(str(target / 'ainc-release-manifest'), '--identity'))
+    identity.update(commit=commit, architecture=platform.machine().replace('arm64','aarch64'))
+    if identity['version'] != version or identity['build'] != build:
+        raise SystemExit('compiled product identity differs from Cargo metadata/build input')
     (resources / 'release.json').write_text(json.dumps(identity, indent=2) + '\n')
     plist = dict(CFBundleName='AgentInc', CFBundleDisplayName='AgentInc', CFBundleIdentifier='co.worldwidewebb.agentinc', CFBundleExecutable='agentinc-os', CFBundleIconFile='AppIcon', CFBundlePackageType='APPL', CFBundleShortVersionString=version, CFBundleVersion=build, LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, NSPrincipalClass='NSApplication')
     (contents / 'Info.plist').write_bytes(plistlib.dumps(plist))

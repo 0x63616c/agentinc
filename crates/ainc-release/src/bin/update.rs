@@ -10,6 +10,13 @@ use std::{
 fn main() {
     if let Err(error) = install() {
         eprintln!("Update failed: {error:#}");
+        // Restore an app window even when pre-install checks or draining fail.
+        if let Some(path) = std::env::args_os().nth(1) {
+            let path = PathBuf::from(path);
+            if path.is_dir() {
+                let _ = Command::new("/usr/bin/open").arg(path).status();
+            }
+        }
         std::process::exit(1);
     }
 }

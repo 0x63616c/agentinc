@@ -9,6 +9,7 @@ from pathlib import Path
 import selectors
 import subprocess
 import urllib.request
+import uuid
 
 parser=argparse.ArgumentParser()
 parser.add_argument('bundle', type=Path)
@@ -48,6 +49,7 @@ child=None
 try:
  child=start()
  assert request('/health/ready')['status']=='ready'
+ request('/v1/commands',{'operation_id':str(uuid.uuid4()),'command':{'kind':'create_conversation'}})
  first=request('/v1/state')
  print('Fresh bundled runtime ready')
  if args.workspace_tests:
@@ -73,6 +75,16 @@ try:
  assert child.wait(timeout=120)==0
  child=None
  print('Drain completed and removed discovery')
+ child=start()
+ child.kill()
+ child.wait(timeout=30)
+ child=None
+ child=start()
+ assert request('/v1/state')==first
+ request('/internal/drain',{})
+ assert child.wait(timeout=120)==0
+ child=None
+ print('Hard-killed daemon recovered without orphaned-runtime interference')
 finally:
  if child is not None and child.poll() is None:
   child.terminate();child.wait(timeout=120)

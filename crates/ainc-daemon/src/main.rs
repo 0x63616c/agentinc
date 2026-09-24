@@ -11,6 +11,11 @@ use std::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args: Vec<_> = env::args_os().skip(1).collect();
+    if args.len() == 2 && args[0] == "--local-runtime" {
+        return local_runtime::helper(Path::new(&args[1])).await;
+    }
+    anyhow::ensure!(args.is_empty(), "usage: aincd");
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
@@ -28,11 +33,8 @@ async fn main() -> Result<()> {
         .context("another daemon owns this discovery file")?;
     let local = if env::var_os("DATABASE_URL").is_none() {
         Some(
-            local_runtime::LocalRuntime::start(
-                &Path::new(&discovery).with_file_name("runtime"),
-                &local_runtime::bundled_resources()?,
-            )
-            .await?,
+            local_runtime::ManagedRuntime::start(Path::new(&discovery).with_file_name("runtime"))
+                .await?,
         )
     } else {
         None

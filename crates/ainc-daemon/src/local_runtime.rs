@@ -11,6 +11,7 @@ use std::{
 };
 
 pub struct LocalRuntime {
+    _owner: fs::File,
     postgres: Child,
     temporal: Child,
     pub database_url: String,
@@ -38,6 +39,15 @@ impl LocalRuntime {
     pub async fn start(root: &Path, resources: &Path) -> Result<Self> {
         fs::create_dir_all(root)?;
         fs::set_permissions(root, fs::Permissions::from_mode(0o700))?;
+        let owner = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(root.join("owner.lock"))?;
+        // Serializes restart against the previous helper flushing its children.
+        owner.lock().context("lock bundled runtime ownership")?;
         let bin = resources.join("postgres/bin");
         let data = root.join("postgres");
         let password_path = root.join("postgres-password");
@@ -126,6 +136,7 @@ impl LocalRuntime {
             }
         };
         let mut runtime = Self {
+            _owner: owner,
             postgres,
             temporal,
             database_url: format!("postgres://agentinc:{password}@127.0.0.1:{pg_port}/postgres"),
@@ -177,11 +188,16 @@ impl LocalRuntime {
 impl Drop for LocalRuntime {
     fn drop(&mut self) {
         // Children belong exclusively to this daemon under its discovery lock.
-        // SIGTERM lets both stores flush; do not kill a PID read from a file.
-        for child in [&mut self.temporal, &mut self.postgres] {
-            // SAFETY: these PIDs are owned children; kill sends only SIGTERM.
+        // PostgreSQL fast shutdown disconnects residual pool sockets, rolls back
+        // unfinished transactions and checkpoints. Smart shutdown could wait
+        // forever on a detached SDK pool after its owner has drained.
+        for (child, signal) in [
+            (&mut self.temporal, libc::SIGTERM),
+            (&mut self.postgres, libc::SIGINT),
+        ] {
+            // SAFETY: these PIDs are owned children, not values from a PID file.
             unsafe {
-                libc::kill(child.id() as i32, libc::SIGTERM);
+                libc::kill(child.id() as i32, signal);
             }
             let _ = child.wait();
         }
@@ -192,4 +208,77 @@ pub fn bundled_resources() -> Result<PathBuf> {
         .parent()
         .context("daemon executable parent")?
         .join("../Resources/runtime"))
+}
+
+/// The helper owns services while its parent holds stdin open. Kernel EOF also
+/// covers SIGKILL/crash, without trusting stale process IDs or signaling strangers.
+pub async fn helper(root: &Path) -> Result<()> {
+    use std::io::Write;
+    use tokio::io::AsyncReadExt;
+    let runtime = LocalRuntime::start(root, &bundled_resources()?).await?;
+    let identity = serde_json::json!({"database_url":runtime.database_url,"config":runtime.config});
+    writeln!(std::io::stdout(), "{}", identity)?;
+    std::io::stdout().flush()?;
+    let mut ignored = Vec::new();
+    tokio::io::stdin().read_to_end(&mut ignored).await?;
+    drop(runtime);
+    Ok(())
+}
+
+pub struct ManagedRuntime {
+    child: Child,
+    lifetime: Option<std::process::ChildStdin>,
+    pub database_url: String,
+    pub config: turnkeel::RuntimeConfig,
+}
+impl ManagedRuntime {
+    pub async fn start(root: PathBuf) -> Result<Self> {
+        tokio::task::spawn_blocking(move || {
+            use std::io::BufRead;
+            let mut child = Command::new(std::env::current_exe()?)
+                .arg("--local-runtime")
+                .arg(root)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .spawn()?;
+            let lifetime = child.stdin.take();
+            let output = child.stdout.take().context("runtime identity pipe")?;
+            let mut line = String::new();
+            let result = (|| -> Result<(String, turnkeel::RuntimeConfig)> {
+                ensure!(
+                    std::io::BufReader::new(output).read_line(&mut line)? > 0,
+                    "bundled runtime helper exited before readiness"
+                );
+                let mut identity: serde_json::Value =
+                    serde_json::from_str(&line).context("runtime identity")?;
+                let database = identity["database_url"]
+                    .as_str()
+                    .context("runtime database")?
+                    .to_owned();
+                let config = serde_json::from_value(identity["config"].take())?;
+                Ok((database, config))
+            })();
+            match result {
+                Ok((database_url, config)) => Ok(Self {
+                    child,
+                    lifetime,
+                    database_url,
+                    config,
+                }),
+                Err(error) => {
+                    drop(lifetime);
+                    let _ = child.wait();
+                    Err(error)
+                }
+            }
+        })
+        .await?
+    }
+}
+impl Drop for ManagedRuntime {
+    fn drop(&mut self) {
+        drop(self.lifetime.take());
+        let _ = self.child.wait();
+    }
 }

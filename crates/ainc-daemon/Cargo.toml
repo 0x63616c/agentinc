@@ -22,7 +22,7 @@ axum = "0.8"
 serde.workspace = true
 serde_json.workspace = true
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate", "json"] }
-tokio = { workspace = true, features = ["net", "process", "io-util", "signal"] }
+tokio = { workspace = true, features = ["net", "process", "io-util", "io-std", "signal"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid.workspace = true
