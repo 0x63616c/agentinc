@@ -92,17 +92,17 @@ pub fn dialog_shell(
     column()
         .id("shared-dialog")
         .w(px(440.))
-        .p(px(24.))
+        .p(px(DIALOG_PADDING))
         .gap(px(20.))
-        .bg(rgb(0x171717))
+        .bg(rgb(DIALOG_SURFACE))
         .border_1()
-        .border_color(rgb(0x353535))
-        .rounded(px(12.))
+        .border_color(rgb(OVERLAY_BORDER))
+        .rounded(px(DIALOG_RADIUS))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(|_, _, cx| cx.stop_propagation())
         .child(
             div()
-                .text_size(px(18.))
+                .text_size(px(DIALOG_TITLE_SIZE))
                 .font_weight(FontWeight::MEDIUM)
                 .child(title.into()),
         )
@@ -114,35 +114,11 @@ pub fn menu_shell(content: impl IntoElement) -> Div {
     column()
         .w(px(146.))
         .p(px(4.))
-        .bg(rgb(0x1c1c1c))
+        .bg(rgb(MENU_SURFACE))
         .border_1()
-        .border_color(rgb(0x353535))
-        .rounded(px(6.))
+        .border_color(rgb(OVERLAY_BORDER))
+        .rounded(px(MENU_RADIUS))
         .child(content)
-}
-
-pub fn action_button<V: 'static>(
-    button: Stateful<Div>,
-    enabled: bool,
-    action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-    cx: &mut Context<V>,
-) -> Stateful<Div> {
-    let key_action = action.clone();
-    button
-        .on_click(cx.listener(move |view, _, window, cx| {
-            cx.stop_propagation();
-            if enabled {
-                action(view, window, cx);
-            }
-        }))
-        .on_key_down(cx.listener(move |view, event: &KeyDownEvent, window, cx| {
-            if event.keystroke.key == "enter" || event.keystroke.key == "space" {
-                cx.stop_propagation();
-                if enabled {
-                    key_action(view, window, cx);
-                }
-            }
-        }))
 }
 
 #[cfg(test)]

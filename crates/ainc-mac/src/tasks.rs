@@ -1,6 +1,6 @@
 use crate::{
     input::{Submit, TextInput},
-    overlay::{Overlay, OverlayHost, action_button, dialog_shell, menu_shell},
+    overlay::{Overlay, OverlayHost, dialog_shell, menu_shell},
     storage::{Store, Todo},
     style::*,
 };
@@ -151,28 +151,36 @@ impl TasksPage {
     fn button(
         &self,
         id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        enabled: bool,
+        kind: ButtonKind,
         f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + Clone + 'static,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let id = id.into();
         let hover_id = id.clone();
         let background = self.hover.color(&id);
+        let on_hover = cx.listener(move |this, over, _, cx| {
+            if enabled {
+                this.hover.set(hover_id.clone(), *over);
+                cx.notify();
+            }
+        });
         action_button(
-            row()
-                .id(id)
-                .tab_index(0)
-                .cursor_pointer()
-                .justify_center()
-                .rounded(px(6.))
-                .h(px(32.))
-                .px(px(10.))
-                .bg(background)
-                .on_hover(cx.listener(move |this, over, _, cx| {
-                    this.hover.set(hover_id.clone(), *over);
-                    cx.notify();
-                }))
-                .focus(|s| s.bg(rgb(0x252525))),
-            true,
+            ButtonSpec {
+                id,
+                label: label.into(),
+                kind,
+                enabled,
+            },
+            |button| {
+                button
+                    .justify_center()
+                    .h(px(CONTROL_HEIGHT))
+                    .px(px(10.))
+                    .bg(background)
+                    .on_hover(on_hover)
+            },
             f,
             cx,
         )
@@ -194,35 +202,35 @@ impl TasksPage {
                 .gap(px(6.))
                 .child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(px(LABEL_SIZE))
                         .text_color(rgb(MUTED))
                         .child("Task title"),
                 )
                 .child(
                     row()
-                        .h(px(42.))
+                        .h(px(FIELD_HEIGHT))
                         .px(px(12.))
                         .border_1()
                         .border_color(rgb(if self.form_error.is_some() {
-                            0xb67171
+                            ERROR_BORDER
                         } else {
                             BORDER
                         }))
-                        .rounded(px(7.))
+                        .rounded(px(FIELD_RADIUS))
                         .child(self.input.clone()),
                 )
                 .when_some(self.form_error.clone(), |s, error| {
                     s.child(
                         div()
-                            .text_size(px(12.))
-                            .text_color(rgb(0xe6acac))
+                            .text_size(px(LABEL_SIZE))
+                            .text_color(rgb(ERROR))
                             .child(error),
                     )
                 })
                 .into_any_element()
         } else {
             div()
-                .text_size(px(12.))
+                .text_size(px(LABEL_SIZE))
                 .text_color(rgb(MUTED))
                 .child("This task will be permanently removed.")
                 .into_any_element()
@@ -233,6 +241,9 @@ impl TasksPage {
             .child(
                 self.button(
                     "task-cancel",
+                    "Cancel",
+                    true,
+                    ButtonKind::Secondary,
                     |this, window, cx| {
                         this.overlays.borrow_mut().dismiss(window);
                         cx.notify();
@@ -247,6 +258,13 @@ impl TasksPage {
             .child(
                 self.button(
                     "task-submit",
+                    if is_add { "Create task" } else { "Delete task" },
+                    !invalid,
+                    if is_add {
+                        ButtonKind::Primary
+                    } else {
+                        ButtonKind::Destructive
+                    },
                     move |this, _, cx| {
                         if let Some(id) = target {
                             this.change(id, None, cx);
@@ -257,9 +275,8 @@ impl TasksPage {
                     cx,
                 )
                 .track_focus(&self.submit_focus)
-                .opacity(if invalid { 0.45 } else { 1. })
-                .bg(rgb(if is_add { 0xe8e8e8 } else { 0x5b2b2b }))
-                .text_color(rgb(if is_add { 0x141414 } else { TEXT }))
+                .bg(rgb(if is_add { PRIMARY } else { DESTRUCTIVE }))
+                .text_color(rgb(if is_add { PRIMARY_INK } else { TEXT }))
                 .child(if is_add { "Create" } else { "Delete task" }),
             );
         Some(dialog_shell(title, body, footer).into_any_element())
@@ -280,19 +297,26 @@ impl Render for TasksPage {
             }))
             .child(
                 row().child(div().flex_1()).child(
-                    self.button("add-task", Self::open_add, cx)
-                        .track_focus(&self.add_focus)
-                        .border_1()
-                        .border_color(rgb(0x555555))
-                        .text_size(px(12.))
-                        .child("Add task"),
+                    self.button(
+                        "add-task",
+                        "Add task",
+                        true,
+                        ButtonKind::Secondary,
+                        Self::open_add,
+                        cx,
+                    )
+                    .track_focus(&self.add_focus)
+                    .border_1()
+                    .border_color(rgb(0x555555))
+                    .text_size(px(LABEL_SIZE))
+                    .child("Add task"),
                 ),
             )
             .when_some(self.error.clone(), |s, error| {
                 s.child(
                     div()
-                        .text_size(px(12.))
-                        .text_color(rgb(0xe6acac))
+                        .text_size(px(LABEL_SIZE))
+                        .text_color(rgb(ERROR))
                         .child(error),
                 )
             })
@@ -313,7 +337,7 @@ impl Render for TasksPage {
                             .gap(px(8.))
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(CAPTION_SIZE))
                                     .text_color(rgb(MUTED))
                                     .child(if completed { "Completed" } else { "To do" }),
                             )
@@ -344,6 +368,13 @@ impl Render for TasksPage {
                                             .child(
                                                 self.button(
                                                     ("complete", id as u64),
+                                                    if completed {
+                                                        "Reopen task"
+                                                    } else {
+                                                        "Complete task"
+                                                    },
+                                                    true,
+                                                    ButtonKind::Quiet,
                                                     move |this, _, cx| {
                                                         this.change(id, Some(!completed), cx)
                                                     },
@@ -362,7 +393,7 @@ impl Render for TasksPage {
                                                         } else {
                                                             0x555555
                                                         }))
-                                                        .text_size(px(12.))
+                                                        .text_size(px(LABEL_SIZE))
                                                         .text_color(rgb(0x88b69b))
                                                         .child(if completed { "✓" } else { "" }),
                                                 ),
@@ -371,7 +402,7 @@ impl Render for TasksPage {
                                                 div()
                                                     .flex_1()
                                                     .min_w_0()
-                                                    .text_size(px(12.))
+                                                    .text_size(px(LABEL_SIZE))
                                                     .text_color(rgb(if completed {
                                                         MUTED
                                                     } else {
@@ -382,6 +413,9 @@ impl Render for TasksPage {
                                             .child(
                                                 self.button(
                                                     ("more", id as u64),
+                                                    "Task actions",
+                                                    true,
+                                                    ButtonKind::Quiet,
                                                     move |this, window, cx| {
                                                         let active =
                                                             this.overlays.borrow().active();
@@ -419,6 +453,9 @@ impl Render for TasksPage {
                                                     menu_shell(
                                                         self.button(
                                                             ("delete", id as u64),
+                                                            "Delete task",
+                                                            true,
+                                                            ButtonKind::Quiet,
                                                             move |this, window, cx| {
                                                                 if this
                                                                     .todos
@@ -443,8 +480,8 @@ impl Render for TasksPage {
                                                         )
                                                         .w_full()
                                                         .justify_start()
-                                                        .text_size(px(12.))
-                                                        .text_color(rgb(0xdaa7a7))
+                                                        .text_size(px(LABEL_SIZE))
+                                                        .text_color(rgb(DESTRUCTIVE_TEXT))
                                                         .child("Delete"),
                                                     )
                                                     .absolute()

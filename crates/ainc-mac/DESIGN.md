@@ -373,6 +373,25 @@ Page headings render only the title and any action. Empty states report the stat
 
 ## Native interaction principles
 
+### Native visual tokens
+
+`src/style.rs` is the native source of truth. Its current palette intentionally uses a darker shell (`#0c0c0c`) and surface (`#040404`) than the older browser-study frontmatter above. Native controls use these measured tokens:
+
+| Role | Native value |
+|---|---|
+| Shell / surface / border / text / muted | `#0c0c0c` / `#040404` / `#272727` / `#ededed` / `#a0a0a0` |
+| Hover / row hover / selected / focus surface / focus ring | `#191919` / `#252525` / `#252525` / `#1d2520` / `#b5cabe` |
+| Error text / error border | `#e6acac` / `#b67171` |
+| Primary fill / ink; destructive fill / text | `#e8e8e8` / `#141414`; `#5b2b2b` / `#daa7a7` |
+| Dialog / menu surface / overlay border | `#171717` / `#1c1c1c` / `#353535` |
+| Page inset X / Y; panel gap | `26px` / `28px`; `10px` |
+| Header control / control height / field height | `30px` / `32px` / `42px` |
+| Panel / dialog / menu / control / field radius | `14px` / `12px` / `6px` / `6px` / `7px` |
+| Body / label / caption / dialog title | `13px` / `12px` / `11px` / `18px` |
+| Hover / grip / panel / message motion | `140ms` / `160ms` / `180ms` / `220ms` |
+
+The shared button contract handles click, Enter/Space, disabled activation, and focus styling. Feature views still compose their own rows and hover fades. The supplied button label is retained as a semantic requirement, but GPUI 0.2.2 currently does not expose it in the observed macOS accessibility tree; accessibility remains an explicit framework investigation. Reduce Motion disables the hover fade and skips motion transitions. Preserve optical exceptions and avoid a runtime theme loader.
+
 - Show a page name once, in the connected tab. Start page content with its action or substance, without repeating the tab name in a breadcrumb or heading.
 - Open create and edit forms in a centred modal instead of inline fields. Escape and outside click dismiss them.
 - Put destructive row actions behind a three-dot menu and confirm them before applying them.

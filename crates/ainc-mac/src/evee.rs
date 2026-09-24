@@ -1,7 +1,7 @@
 use crate::{
     assistant,
     input::{Submit, TextInput},
-    overlay::{Overlay, OverlayHost, action_button, dialog_shell, menu_shell},
+    overlay::{Overlay, OverlayHost, dialog_shell, menu_shell},
     storage::{Conversation, Store, Turn},
     style::*,
 };
@@ -240,9 +240,14 @@ impl AssistantPage {
                         row()
                             .justify_between()
                             .gap(px(16.))
-                            .child(column().gap(px(3.)).child("ChatGPT").child(
-                                div().text_size(px(11.)).text_color(rgb(MUTED)).child(state),
-                            ))
+                            .child(
+                                column().gap(px(3.)).child("ChatGPT").child(
+                                    div()
+                                        .text_size(px(CAPTION_SIZE))
+                                        .text_color(rgb(MUTED))
+                                        .child(state),
+                                ),
+                            )
                             .child(
                                 self.action(
                                     "codex-sign-in",
@@ -266,7 +271,12 @@ impl AssistantPage {
                             ),
                     )
                     .when_some(self.connection_error.clone(), |s, e| {
-                        s.child(div().text_size(px(11.)).text_color(rgb(0xe6acac)).child(e))
+                        s.child(
+                            div()
+                                .text_size(px(CAPTION_SIZE))
+                                .text_color(rgb(ERROR))
+                                .child(e),
+                        )
                     })
                     .when(self.login_cancel.is_some(), |s| {
                         s.child(self.action(
@@ -289,7 +299,7 @@ impl AssistantPage {
                                 .child(
                                     div()
                                         .mt(px(8.))
-                                        .text_size(px(11.))
+                                        .text_size(px(CAPTION_SIZE))
                                         .text_color(rgb(MUTED))
                                         .child("Model"),
                                 )
@@ -335,7 +345,7 @@ impl AssistantPage {
                     .border_color(rgb(BORDER))
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(CAPTION_SIZE))
                             .text_color(rgb(MUTED))
                             .child("Uses your ChatGPT subscription."),
                     )
@@ -475,7 +485,12 @@ impl AssistantPage {
                 ),
             )
             .when_some(self.error.clone(), |s, e| {
-                s.child(div().text_size(px(12.)).text_color(rgb(0xe6acac)).child(e))
+                s.child(
+                    div()
+                        .text_size(px(LABEL_SIZE))
+                        .text_color(rgb(ERROR))
+                        .child(e),
+                )
             })
             .when(self.conversations.is_empty(), |s| {
                 s.child(
@@ -500,7 +515,7 @@ impl AssistantPage {
                 column()
                     .relative()
                     .rounded(px(7.))
-                    .bg(rgb(if selected { 0x242424 } else { SURFACE }))
+                    .bg(rgb(if selected { SELECTED } else { SURFACE }))
                     .child(
                         row()
                             .gap(px(8.))
@@ -517,7 +532,7 @@ impl AssistantPage {
                                 .flex_1()
                                 .min_w_0()
                                 .justify_start()
-                                .bg(rgb(if selected { 0x242424 } else { SURFACE }))
+                                .bg(rgb(if selected { SELECTED } else { SURFACE }))
                                 .child(
                                     column()
                                         .gap(px(3.))
@@ -525,14 +540,14 @@ impl AssistantPage {
                                         .min_w_0()
                                         .child(
                                             div()
-                                                .text_size(px(13.))
+                                                .text_size(px(BODY_SIZE))
                                                 .text_color(rgb(TEXT))
                                                 .truncate()
                                                 .child(conversation.title.clone()),
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(11.))
+                                                .text_size(px(CAPTION_SIZE))
                                                 .text_color(rgb(MUTED))
                                                 .truncate()
                                                 .child(snippet),
@@ -549,6 +564,7 @@ impl AssistantPage {
                             .child(self.action_window(
                                 ("chat-menu", id as u64),
                                 "…",
+                                Some("Conversation actions"),
                                 enabled,
                                 move |this, window, cx| {
                                     let mut host = this.overlays.borrow_mut();
@@ -581,6 +597,7 @@ impl AssistantPage {
                                             self.action_window(
                                                 ("rename-chat", id as u64),
                                                 "Rename",
+                                                None,
                                                 enabled,
                                                 move |this, window, cx| {
                                                     if let Some(c) = this
@@ -613,6 +630,7 @@ impl AssistantPage {
                                             self.action_window(
                                                 ("delete-chat", id as u64),
                                                 "Delete",
+                                                None,
                                                 enabled,
                                                 move |this, window, cx| {
                                                     this.form_error = None;
@@ -628,7 +646,7 @@ impl AssistantPage {
                                             )
                                             .w_full()
                                             .justify_start()
-                                            .text_color(rgb(0xdaa7a7)),
+                                            .text_color(rgb(DESTRUCTIVE_TEXT)),
                                         ),
                                 )
                                 .absolute()
@@ -671,28 +689,28 @@ impl AssistantPage {
                 .gap(px(6.))
                 .child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(px(LABEL_SIZE))
                         .text_color(rgb(MUTED))
                         .child("Title"),
                 )
                 .child(
                     row()
-                        .h(px(42.))
+                        .h(px(FIELD_HEIGHT))
                         .px(px(12.))
                         .border_1()
                         .border_color(rgb(if self.form_error.is_some() {
-                            0xb67171
+                            ERROR_BORDER
                         } else {
                             BORDER
                         }))
-                        .rounded(px(7.))
+                        .rounded(px(FIELD_RADIUS))
                         .child(self.rename_input.clone()),
                 )
                 .when_some(self.form_error.clone(), |s, error| {
                     s.child(
                         div()
-                            .text_size(px(12.))
-                            .text_color(rgb(0xe6acac))
+                            .text_size(px(LABEL_SIZE))
+                            .text_color(rgb(ERROR))
                             .child(error),
                     )
                 })
@@ -702,15 +720,15 @@ impl AssistantPage {
                 .gap(px(6.))
                 .child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(px(LABEL_SIZE))
                         .text_color(rgb(MUTED))
                         .child("This permanently removes its messages from this Mac."),
                 )
                 .when_some(self.form_error.clone(), |s, error| {
                     s.child(
                         div()
-                            .text_size(px(12.))
-                            .text_color(rgb(0xe6acac))
+                            .text_size(px(LABEL_SIZE))
+                            .text_color(rgb(ERROR))
                             .child(error),
                     )
                 })
@@ -729,6 +747,7 @@ impl AssistantPage {
                 self.action_window(
                     "conversation-cancel",
                     "Cancel",
+                    None,
                     true,
                     |this, window, cx| {
                         this.overlays.borrow_mut().dismiss(window);
@@ -759,8 +778,8 @@ impl AssistantPage {
                     cx,
                 )
                 .track_focus(&self.submit_focus)
-                .bg(rgb(if rename { 0xe8e8e8 } else { 0x5b2b2b }))
-                .text_color(rgb(if rename { 0x141414 } else { TEXT })),
+                .bg(rgb(if rename { PRIMARY } else { DESTRUCTIVE }))
+                .text_color(rgb(if rename { PRIMARY_INK } else { TEXT })),
             );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
@@ -882,12 +901,13 @@ impl AssistantPage {
         f: impl Fn(&mut Self, &mut Context<Self>) + Clone + 'static,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        self.action_window(id, label, enabled, move |this, _, cx| f(this, cx), cx)
+        self.action_window(id, label, None, enabled, move |this, _, cx| f(this, cx), cx)
     }
     fn action_window(
         &self,
         id: impl Into<ElementId>,
         label: &str,
+        semantic_label: Option<&str>,
         enabled: bool,
         f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + Clone + 'static,
         cx: &mut Context<Self>,
@@ -895,25 +915,36 @@ impl AssistantPage {
         let id = id.into();
         let hover_id = id.clone();
         let background = self.hover.color(&id);
+        let on_hover = cx.listener(move |this, over, _, cx| {
+            if enabled {
+                this.hover.set(hover_id.clone(), *over);
+                cx.notify();
+            }
+        });
         action_button(
-            row()
-                .id(id)
-                .tab_index(0)
-                .justify_center()
-                .rounded(px(6.))
-                .px(px(10.))
-                .py(px(6.))
-                .text_size(px(11.))
-                .cursor_pointer()
-                .opacity(if enabled { 1. } else { 0.4 })
-                .bg(background)
-                .on_hover(cx.listener(move |this, over, _, cx| {
-                    this.hover.set(hover_id.clone(), *over);
-                    cx.notify();
-                }))
-                .focus(|s| s.bg(rgb(0x1d2520)))
-                .child(label.to_owned()),
-            enabled,
+            ButtonSpec {
+                id,
+                label: semantic_label
+                    .unwrap_or(if label.is_empty() {
+                        "Open conversation"
+                    } else {
+                        label
+                    })
+                    .to_owned()
+                    .into(),
+                kind: ButtonKind::Quiet,
+                enabled,
+            },
+            |button| {
+                button
+                    .justify_center()
+                    .px(px(10.))
+                    .py(px(6.))
+                    .text_size(px(CAPTION_SIZE))
+                    .bg(background)
+                    .on_hover(on_hover)
+                    .child(label.to_owned())
+            },
             f,
             cx,
         )
@@ -926,7 +957,7 @@ impl Render for AssistantPage {
         let progress = if self.reduced_motion {
             1.
         } else if let Some(start) = self.appearance {
-            let t = (start.elapsed().as_secs_f32() / 0.22).min(1.);
+            let t = (start.elapsed().as_secs_f32() / (MESSAGE_MS as f32 / 1000.)).min(1.);
             if t < 1. {
                 window.request_animation_frame();
             } else {
@@ -950,7 +981,7 @@ impl Render for AssistantPage {
             .child(
                 row()
                     .gap(px(8.))
-                    .text_size(px(11.))
+                    .text_size(px(CAPTION_SIZE))
                     .text_color(rgb(MUTED))
                     .child(
                         div().flex_1().child(
@@ -974,7 +1005,7 @@ impl Render for AssistantPage {
                     column()
                         .gap(px(5.))
                         .items_start()
-                        .text_size(px(11.))
+                        .text_size(px(CAPTION_SIZE))
                         .text_color(rgb(MUTED))
                         .child("Connect ChatGPT to chat.")
                         .child(
@@ -993,16 +1024,16 @@ impl Render for AssistantPage {
             .when(self.store.is_none(), |s| {
                 s.child(
                     div()
-                        .text_size(px(11.))
-                        .text_color(rgb(0xe6acac))
+                        .text_size(px(CAPTION_SIZE))
+                        .text_color(rgb(ERROR))
                         .child("Chat storage is unavailable. Check database access and restart."),
                 )
             })
             .when_some(self.error.clone(), |s, error| {
                 s.child(
                     div()
-                        .text_size(px(11.))
-                        .text_color(rgb(0xe6acac))
+                        .text_size(px(CAPTION_SIZE))
+                        .text_color(rgb(ERROR))
                         .child(error),
                 )
             })
@@ -1022,7 +1053,7 @@ impl Render for AssistantPage {
                             column()
                                 .py(px(16.))
                                 .gap(px(8.))
-                                .text_size(px(12.))
+                                .text_size(px(LABEL_SIZE))
                                 .text_color(rgb(MUTED))
                                 .child("What’s on your mind?"),
                         )
@@ -1040,14 +1071,16 @@ impl Render for AssistantPage {
                                     .gap(px(5.))
                                     .p(px(12.))
                                     .rounded(px(10.))
-                                    .bg(rgb(0x191919))
+                                    .bg(rgb(HOVER))
                                     .child(
                                         div()
                                             .text_size(px(10.))
                                             .text_color(rgb(MUTED))
                                             .child("You"),
                                     )
-                                    .child(div().text_size(px(12.)).child(turn.prompt.clone())),
+                                    .child(
+                                        div().text_size(px(LABEL_SIZE)).child(turn.prompt.clone()),
+                                    ),
                             )
                             .when_some(turn.response.clone(), |s, reply| {
                                 s.child(
@@ -1057,10 +1090,10 @@ impl Render for AssistantPage {
                                         .child(
                                             div()
                                                 .text_size(px(10.))
-                                                .text_color(rgb(0xb5cabe))
+                                                .text_color(rgb(FOCUS))
                                                 .child("Evee"),
                                         )
-                                        .child(div().text_size(px(12.)).child(reply))
+                                        .child(div().text_size(px(LABEL_SIZE)).child(reply))
                                         .child(self.action(
                                             ("copy", turn.id as u64),
                                             "Copy reply",
@@ -1082,7 +1115,7 @@ impl Render for AssistantPage {
                                 s.child(
                                     div()
                                         .px(px(2.))
-                                        .text_size(px(12.))
+                                        .text_size(px(LABEL_SIZE))
                                         .text_color(rgb(MUTED))
                                         .child("Evee is thinking…"),
                                 )
@@ -1094,8 +1127,8 @@ impl Render for AssistantPage {
                                         .gap(px(6.))
                                         .child(
                                             div()
-                                                .text_size(px(11.))
-                                                .text_color(rgb(0xe6acac))
+                                                .text_size(px(CAPTION_SIZE))
+                                                .text_color(rgb(ERROR))
                                                 .child(error),
                                         )
                                         .child(self.action(
@@ -1121,11 +1154,18 @@ impl Render for AssistantPage {
                     .child(self.input.clone())
                     .child(
                         row().justify_end().child(
-                            self.action("send", "", send_enabled, Self::send, cx)
-                                .size(px(30.))
-                                .p(px(0.))
-                                .bg(rgb(0x2a2a2a))
-                                .child(icon("send", 16.).text_color(rgb(TEXT))),
+                            self.action_window(
+                                "send",
+                                "",
+                                Some("Send message"),
+                                send_enabled,
+                                |this, _, cx| this.send(cx),
+                                cx,
+                            )
+                            .size(px(30.))
+                            .p(px(0.))
+                            .bg(rgb(0x2a2a2a))
+                            .child(icon("send", 16.).text_color(rgb(TEXT))),
                         ),
                     ),
             )

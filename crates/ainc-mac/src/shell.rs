@@ -284,40 +284,29 @@ impl Shell {
     fn button(
         &self,
         id: impl Into<ElementId>,
-        _label: impl Into<SharedString>,
+        label: impl Into<SharedString>,
         control: Control,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        row()
-            .id(id)
-            .tab_index(0)
-            .cursor_pointer()
-            .rounded(px(6.))
-            .gap(px(8.))
-            .hover(move |s| {
-                if matches!(control, Control::Open(_)) {
-                    s.text_color(rgb(TEXT))
-                } else {
-                    s.bg(rgb(0x191919)).text_color(rgb(TEXT))
-                }
-            })
-            .focus(move |s| {
-                if matches!(control, Control::Open(_)) {
-                    s.border_color(rgb(0x555555))
-                } else {
-                    s.bg(rgb(0x1d2520)).border_color(rgb(FOCUS))
-                }
-            })
-            .on_click(cx.listener(move |this, _, window, cx| {
-                cx.stop_propagation();
-                this.dispatch(control, window, cx);
-            }))
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
-                if event.keystroke.key == "enter" || event.keystroke.key == "space" {
-                    cx.stop_propagation();
-                    this.dispatch(control, window, cx);
-                }
-            }))
+        action_button(
+            ButtonSpec {
+                id: id.into(),
+                label: label.into(),
+                kind: ButtonKind::Quiet,
+                enabled: true,
+            },
+            |button| {
+                button.gap(px(8.)).hover(move |s| {
+                    if matches!(control, Control::Open(_)) {
+                        s.text_color(rgb(TEXT))
+                    } else {
+                        s.bg(rgb(HOVER)).text_color(rgb(TEXT))
+                    }
+                })
+            },
+            move |this: &mut Self, window, cx| this.dispatch(control, window, cx),
+            cx,
+        )
     }
     fn icon_button(
         &self,
@@ -328,7 +317,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         self.button(id, label, control, cx)
-            .size(px(30.))
+            .size(px(HEADER_CONTROL))
             .justify_center()
             .child(icon(name, 16.))
     }
@@ -397,7 +386,7 @@ impl Shell {
                                 .h_full()
                                 .pl(px(14.))
                                 .gap(px(7.))
-                                .text_size(px(12.))
+                                .text_size(px(LABEL_SIZE))
                                 .child(div().mt(px(1.)).child(icon(route.icon(), 14.)))
                                 .child(route.label()),
                         ),
@@ -421,7 +410,7 @@ impl Shell {
                     .border_1()
                     .border_color(rgb(BORDER))
                     .text_color(rgb(MUTED))
-                    .text_size(px(12.))
+                    .text_size(px(LABEL_SIZE))
                     .child(icon("search", 14.))
                     .child("Go to…")
                     .child(div().flex_1())
@@ -456,10 +445,10 @@ impl Shell {
                 .h(px(32.))
                 .px(px(10.))
                 .gap(px(12.))
-                .text_size(px(12.))
+                .text_size(px(LABEL_SIZE))
                 .text_color(rgb(MUTED))
                 .when(self.session.current() == route, |s| {
-                    s.bg(rgb(0x191919))
+                    s.bg(rgb(HOVER))
                         .text_color(rgb(TEXT))
                         .font_weight(FontWeight::MEDIUM)
                 })
@@ -491,10 +480,10 @@ impl Shell {
                             .rounded(px(7.))
                             .border_1()
                             .border_color(rgb(0x353535))
-                            .bg(rgb(0x191919))
+                            .bg(rgb(HOVER))
                             .child("W"),
                     )
-                    .child(div().text_size(px(12.)).child("World Wide Webb")),
+                    .child(div().text_size(px(LABEL_SIZE)).child("World Wide Webb")),
             )
             .child(nav)
             .child(div().flex_1())
@@ -523,7 +512,11 @@ impl Shell {
                             .child(self.profile.name.chars().next().unwrap_or('C').to_string())
                             .into_any_element(),
                     })
-                    .child(div().text_size(px(12.)).child(self.profile.name.clone())),
+                    .child(
+                        div()
+                            .text_size(px(LABEL_SIZE))
+                            .child(self.profile.name.clone()),
+                    ),
                 ),
             )
     }
@@ -531,12 +524,12 @@ impl Shell {
         row()
             .h(px(50.))
             .flex_shrink_0()
-            .pl(px(26.))
+            .pl(px(PAGE_X))
             .pr(px(9.))
             .gap(px(12.))
             .border_b_1()
             .border_color(rgb(0x1a1a1a))
-            .text_size(px(11.))
+            .text_size(px(CAPTION_SIZE))
             .text_color(rgb(MUTED))
             .child(div().flex_1())
             .child(self.icon_button(
@@ -591,7 +584,7 @@ impl Shell {
                         .h(px(40.))
                         .px(px(10.))
                         .gap(px(12.))
-                        .when(index == self.selected, |s| s.bg(rgb(0x191919)))
+                        .when(index == self.selected, |s| s.bg(rgb(HOVER)))
                         .child(icon(route.icon(), 17.))
                         .child(route.label())
                         .child(div().flex_1())
@@ -609,7 +602,7 @@ impl Shell {
                     .gap(px(6.))
                     .border_t_1()
                     .border_color(rgb(BORDER))
-                    .text_size(px(11.))
+                    .text_size(px(CAPTION_SIZE))
                     .text_color(rgb(MUTED))
                     .child(shortcut_badge("↑ ↓"))
                     .child("Navigate")
@@ -644,7 +637,7 @@ impl Shell {
                                     Control::MarkAllRead,
                                     cx,
                                 )
-                                .text_size(px(11.))
+                                .text_size(px(CAPTION_SIZE))
                                 .text_color(rgb(MUTED))
                                 .child("Mark all read"),
                             )
@@ -672,7 +665,7 @@ impl Shell {
                         .child(icon("bell", 16.))
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(LABEL_SIZE))
                                 .font_weight(FontWeight::MEDIUM)
                                 .child("No notifications yet"),
                         ),
@@ -705,14 +698,14 @@ impl Shell {
                                             .child(div().flex_1())
                                             .child(
                                                 div()
-                                                    .text_size(px(11.))
+                                                    .text_size(px(CAPTION_SIZE))
                                                     .text_color(rgb(MUTED))
                                                     .child(item.relative_time.clone()),
                                             ),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(12.))
+                                            .text_size(px(LABEL_SIZE))
                                             .text_color(rgb(MUTED))
                                             .child(item.body.clone()),
                                     ),
@@ -769,7 +762,7 @@ impl Shell {
                                 .child(
                                     column().gap(px(5.)).child(title).child(
                                         div()
-                                            .text_size(px(12.))
+                                            .text_size(px(LABEL_SIZE))
                                             .text_color(rgb(MUTED))
                                             .child(detail),
                                     ),
@@ -786,7 +779,7 @@ impl Shell {
                     .child(div().font_weight(FontWeight::MEDIUM).child(title))
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(LABEL_SIZE))
                             .text_color(rgb(MUTED))
                             .child(detail),
                     ),
@@ -875,7 +868,7 @@ impl Shell {
                     .mt(px(12.))
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(CAPTION_SIZE))
                             .text_color(rgb(MUTED))
                             .child("Not available yet"),
                     )
@@ -888,7 +881,7 @@ impl Shell {
                             .child(*title)
                             .child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(px(LABEL_SIZE))
                                     .text_color(rgb(MUTED))
                                     .child(*detail),
                             )
@@ -960,7 +953,7 @@ impl Shell {
                     .h(px(50.))
                     .flex_shrink_0()
                     .gap(px(8.))
-                    .text_size(px(12.))
+                    .text_size(px(LABEL_SIZE))
                     .ml(px(-20.))
                     .mr(px(-20.))
                     .pl(px(10.))
@@ -1021,7 +1014,7 @@ impl Render for Shell {
             self.palette_transition = None;
         }
         if let Some((start, from, to)) = self.grip_animation {
-            let t = (start.elapsed().as_secs_f32() / 0.14).min(1.);
+            let t = (start.elapsed().as_secs_f32() / (HOVER_MS as f32 / 1000.)).min(1.);
             self.grip_opacity = from + (to - from) * t;
             if t < 1. {
                 window.request_animation_frame();
@@ -1030,7 +1023,7 @@ impl Render for Shell {
             }
         }
         if let Some((start, from, to)) = self.sidebar_animation {
-            let t = (start.elapsed().as_secs_f32() / 0.18).min(1.);
+            let t = (start.elapsed().as_secs_f32() / (PANEL_MS as f32 / 1000.)).min(1.);
             let eased = 1. - (1. - t).powi(3);
             self.sidebar_width = from + (to - from) * eased;
             if t < 1. {
@@ -1040,7 +1033,7 @@ impl Render for Shell {
             }
         }
         if let Some((start, from, to)) = self.evee_animation {
-            let t = (start.elapsed().as_secs_f32() / 0.18).min(1.);
+            let t = (start.elapsed().as_secs_f32() / (PANEL_MS as f32 / 1000.)).min(1.);
             self.evee_progress = from + (to - from) * (1. - (1. - t).powi(3));
             if t < 1. {
                 window.request_animation_frame();
@@ -1056,7 +1049,7 @@ impl Render for Shell {
             let Some(instant) = *start else {
                 return 1.;
             };
-            let t = (instant.elapsed().as_secs_f32() / 0.16).min(1.);
+            let t = (instant.elapsed().as_secs_f32() / (GRIP_MS as f32 / 1000.)).min(1.);
             if t < 1. {
                 window.request_animation_frame();
             } else {
@@ -1099,7 +1092,7 @@ impl Render for Shell {
             .bg(rgb(SHELL))
             .text_color(rgb(TEXT))
             .font_family(self.session.font.family())
-            .text_size(px(13.))
+            .text_size(px(BODY_SIZE))
             .line_height(relative(1.5))
             .track_focus(&self.focus)
             .key_context("Control")
@@ -1189,7 +1182,7 @@ impl Render for Shell {
                             .flex_1()
                             .min_w_0()
                             .h_full()
-                            .gap(px(10. * self.evee_progress))
+                            .gap(px(PANEL_GAP * self.evee_progress))
                             .child(
                                 panel()
                                     .flex_1()
@@ -1203,8 +1196,8 @@ impl Render for Shell {
                                             .flex_1()
                                             .min_h_0()
                                             .overflow_y_scroll()
-                                            .px(px(26.))
-                                            .py(px(28.))
+                                            .px(px(PAGE_X))
+                                            .py(px(PAGE_Y))
                                             .child(div().relative().child(content)),
                                     ),
                             )

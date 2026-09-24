@@ -1,6 +1,7 @@
 // Adapted from GPUI 0.2.2 examples/input.rs (Apache-2.0). See THIRD_PARTY.md.
 use std::ops::Range;
 
+use crate::style::{FOCUS, TEXT, TEXT_SELECTION};
 use gpui::prelude::*;
 use gpui::*;
 use unicode_segmentation::*;
@@ -700,7 +701,7 @@ impl Element for TextElement {
                             point(origin.x + line.x_for_index(cursor - offset), origin.y),
                             size(px(2.), height),
                         ),
-                        rgb(0xb5cabe),
+                        rgb(FOCUS),
                     ));
                 }
                 let start = selected_range.start.max(offset);
@@ -714,7 +715,7 @@ impl Element for TextElement {
                                 height,
                             ),
                         ),
-                        rgba(0x34453bff),
+                        rgba(TEXT_SELECTION),
                     ));
                 }
                 lines.push((offset, line, line_bounds));
@@ -794,7 +795,7 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    rgb(0xb5cabe),
+                    rgb(FOCUS),
                 )),
             )
         } else {
@@ -810,7 +811,7 @@ impl Element for TextElement {
                             bounds.bottom(),
                         ),
                     ),
-                    rgba(0x34453bff),
+                    rgba(TEXT_SELECTION),
                 )),
                 None,
             )
@@ -957,7 +958,7 @@ impl Render for TextInput {
             .overflow_hidden()
             .line_height(px(20.))
             .text_size(px(13.))
-            .text_color(rgb(0xededed))
+            .text_color(rgb(TEXT))
             .child(TextElement { input: cx.entity() })
     }
 }
