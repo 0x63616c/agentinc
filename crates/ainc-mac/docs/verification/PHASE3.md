@@ -28,7 +28,9 @@ output and tool evidence arrive through the same snapshot as human Comments.
   the unavailable state using a refused loopback connection.
 - Automation-feature strict Clippy checks the driver acceptance code too.
 - CLI smoke verifies native WindowServer identity at 1360 × 828 and normal driver
-  endpoint cleanup on quit. The signed debug bundle includes the companion daemon.
+  endpoint cleanup on quit. The signed debug bundle includes the companion daemon;
+  `codesign --verify --deep --strict` passes, its normal executable rejects automation
+  flags, and LaunchServices opened its own 1360 × 828 native window with isolated state.
 
 Native UI acceptance uses the worktree's own Postgres/Temporal stack and a fresh
 synthetic database, separate discovery, runtime worker identity, Codex profile and UI
