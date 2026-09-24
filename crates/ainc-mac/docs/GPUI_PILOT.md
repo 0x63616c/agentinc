@@ -17,8 +17,8 @@ target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" --json
 Commands: `hello`, `snapshot`, `click REF`, `press KEY`, `type REF --stdin`, `wait CONDITION_JSON [TIMEOUT_MS]`, `screenshot`. Keys use GPUI syntax, e.g. `cmd-k`, `enter`, `cmd-a`, `escape`. `type` inserts Unicode at the focused input's current selection through its normal GPUI input handler. Click the input first if it is not focused. There is no direct state-setting/fill endpoint. Read text from stdin to avoid putting it into process arguments.
 
 ```sh
-printf 'Tasks' | target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" type 'REF_FROM_SNAPSHOT' --stdin
-target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" wait '{"kind":"present","author_id":"tasks.create"}' 3000
+printf 'Tickets' | target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" type 'REF_FROM_SNAPSHOT' --stdin
+target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" wait '{"kind":"present","author_id":"tickets.create"}' 3000
 ```
 
 Copy a **fresh** ref from the latest snapshot. Refs encode the random app session, explicit window, committed frame and AccessKit node ID. Any subsequent committed frame invalidates them, including animation frames. A `stale_ref` response means no input was dispatched: observe again. A timeout or broken connection after dispatch is uncertain; do not automatically replay a create/delete click. Phase 1 has no request replay cache.
@@ -29,7 +29,7 @@ Screenshots are full GPUI window content at the window's backing scale, captured
 
 The source of truth is `crates/gpui-pilot/src/protocol.rs`. Transport is versioned newline-delimited JSON over a Unix socket, with one request per connection. The manifest identifies the owned process/window/session; the token is read from its private file, never passed on the CLI or printed. Server and client verify peer effective user IDs. Session directories are created exclusively with mode 0700; token/manifest/socket are 0600. Existing sessions are never reclaimed, even if apparently stale. A normal shutdown removes input/discovery endpoints and retains captures. A crash can leave files; choose a new directory.
 
-The adapter reads typed AccessKit `TreeUpdate`s, not debug JSON. Snapshots retain parent refs, author IDs, roles, names/values, selected/checked/focus/disabled state, and logical bounds. They expose the currently rendered semantics; broad component coverage is deferred. Duplicate author IDs fail the snapshot with `ambiguous_target`. Password values are omitted and screenshots are refused while a password field is mounted. Use synthetic isolated data: ordinary assistant/task text is intentionally observable.
+The adapter reads typed AccessKit `TreeUpdate`s, not debug JSON. Snapshots retain parent refs, author IDs, roles, names/values, selected/checked/focus/disabled state, and logical bounds. They expose the currently rendered semantics; broad component coverage is deferred. Duplicate author IDs fail the snapshot with `ambiguous_target`. Password values are omitted and screenshots are refused while a password field is mounted. Use synthetic isolated data: ordinary assistant/Ticket text is intentionally observable.
 
 Clicks revalidate the current committed frame, enabled state, the clipped semantic element hitbox and GPUI hit ownership, then dispatch move/down/up through GPUI. Press dispatches GPUI keydown/keymap handling and keyup. Type requires an editable focused node and commits through GPUI's platform input handler, preserving selection, change notifications and undo. Input is serialized by the foreground executor. Each action returns a newly committed frame with `path: gpui-input`; that is dispatch acknowledgment, not proof of a business outcome.
 
@@ -63,7 +63,9 @@ cargo test --locked -p agentinc-os --features rendered-tests --test rendered_she
 python3 crates/ainc-mac/tests/pilot_cli_smoke.py
 ```
 
-`pilot_acceptance` launches the actual app executable with isolated UI, daemon discovery, import/profile and title variables and a fresh private driver session. Its only UI operations/assertions use the socket driver. It follows Search → Tasks → Add task → Unicode title → Create, checks the resulting task row, exercises stale refs, overlay rejection, selection/undo, a concurrent wait and a deadline, and checks screenshot pixels in independent shell regions. Artifacts and small-sample latency distributions are written to `target/pilot-acceptance/`. The test process stops only its own child.
+`pilot_acceptance` launches the actual app executable with isolated UI, daemon discovery, import/profile and title variables and a fresh private driver session. Its only UI operations/assertions use the socket driver. It follows Search → Tickets → Add Ticket → Unicode title → Create, checks the resulting Ticket row, four statuses, assignee changes, Comments, agent registration and Today links, exercises stale refs, overlay rejection, selection/undo, a concurrent wait and a deadline, and checks screenshot pixels in independent shell regions. Artifacts and small-sample latency distributions are written to `target/pilot-acceptance/`. The test process stops only its own child.
+
+A separate unavailable-service launch verifies that Today reports Tickets unavailable instead of an empty successful read.
 
 The existing 38-frame `rendered_shell` suite remains the broader capture-integrity gate. Separate OS acceptance is recorded in `docs/verification/GPUI_PILOT.md`; in-process tests do not prove native menus, OS prompts, screen-reader behavior or IME composition.
 

@@ -1,9 +1,11 @@
 //! Generated daemon client plus an owned presentation snapshot. The foreground
 //! reads this cache only; refresh and command methods run on the background executor.
-pub use ainc_client::types::{Command, Conversation, Todo, Turn};
+pub use ainc_client::types::{
+    AssigneeKind, Command, Conversation, Ticket, TicketCommand, TicketSnapshot, TicketStatus, Turn,
+};
 use ainc_client::{
     Client,
-    types::{CommandRequest, Snapshot},
+    types::{Assignee, CommandRequest, Snapshot, TicketCommandRequest},
 };
 #[cfg(test)]
 use anyhow::bail;
@@ -103,6 +105,8 @@ pub async fn client() -> Result<Client> {
 
 pub struct Store {
     snapshot: Mutex<Snapshot>,
+    tickets: Mutex<TicketSnapshot>,
+    pending_ticket: Mutex<Option<TicketCommandRequest>>,
     // Serialize mutations and refreshes so an older snapshot cannot replace a
     // newer acknowledgement. Never acquire this lock on the foreground.
     requests: Mutex<()>,
@@ -119,6 +123,17 @@ impl Store {
                 todos: vec![],
                 settings: Default::default(),
             }),
+            tickets: Mutex::new(TicketSnapshot {
+                tickets: vec![],
+                comments: vec![],
+                runs: vec![],
+                assignees: vec![Assignee {
+                    id: "owner".into(),
+                    name: "You".into(),
+                    kind: AssigneeKind::Human,
+                }],
+            }),
+            pending_ticket: Mutex::new(None),
             requests: Mutex::new(()),
             pending: Mutex::new(None),
             #[cfg(test)]
@@ -137,6 +152,14 @@ impl Store {
         if self.fixture {
             return Ok(());
         }
+        let pending_ticket = self
+            .pending_ticket
+            .lock()
+            .expect("pending Ticket command")
+            .clone();
+        if let Some(request) = pending_ticket {
+            return self.ticket_command(request.command).map(|_| ());
+        }
         let pending = self.pending.lock().expect("pending command").clone();
         if let Some(request) = pending {
             return self.command(request.command).map(|_| ());
@@ -148,8 +171,13 @@ impl Store {
         self.refresh_inner()
     }
     fn refresh_inner(&self) -> Result<()> {
-        let snapshot =
-            background(async { Ok(client().await?.product_state().send().await?.into_inner()) })?;
+        let (snapshot, tickets) = background(async {
+            let client = client().await?;
+            let snapshot = client.product_state().send().await?.into_inner();
+            let tickets = client.tickets_state().send().await?.into_inner();
+            anyhow::Ok((snapshot, tickets))
+        })?;
+        *self.tickets.lock().expect("Ticket snapshot") = tickets;
         *self
             .snapshot
             .lock()
@@ -159,8 +187,55 @@ impl Store {
     pub fn snapshot(&self) -> Snapshot {
         self.snapshot.lock().expect("presentation snapshot").clone()
     }
-    pub fn todos(&self) -> Result<Vec<Todo>> {
-        Ok(self.snapshot().todos)
+    pub fn tickets(&self) -> TicketSnapshot {
+        self.tickets.lock().expect("Ticket snapshot").clone()
+    }
+    pub fn ticket_command(&self, command: TicketCommand) -> Result<Option<i64>> {
+        #[cfg(test)]
+        if self.fixture {
+            return self.fixture_ticket(command);
+        }
+        let _serial = self
+            .requests
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Request state unavailable"))?;
+        let request = {
+            let mut pending = self.pending_ticket.lock().expect("pending Ticket command");
+            if let Some(prior) = pending.as_ref() {
+                anyhow::ensure!(
+                    serde_json::to_value(&prior.command)? == serde_json::to_value(&command)?,
+                    "Retry the unacknowledged Ticket change before another change."
+                );
+                prior.clone()
+            } else {
+                let request = TicketCommandRequest {
+                    command,
+                    operation_id: uuid::Uuid::new_v4().to_string(),
+                };
+                *pending = Some(request.clone());
+                request
+            }
+        };
+        let ack = background(async {
+            let client = client().await?;
+            let mut result = client.tickets_command().body(request.clone()).send().await;
+            if matches!(result, Err(progenitor_client::Error::CommunicationError(_))) {
+                result = client.tickets_command().body(request).send().await;
+            }
+            match result {
+                Ok(ack) => Ok(ack.into_inner()),
+                Err(error) => {
+                    if error.status().is_some_and(|s| s.is_client_error()) {
+                        *self.pending_ticket.lock().expect("pending Ticket command") = None;
+                    }
+                    Err(error.into())
+                }
+            }
+        })?;
+        self.refresh_inner()
+            .context("Change acknowledged; refresh to load the saved result")?;
+        *self.pending_ticket.lock().expect("pending Ticket command") = None;
+        Ok(ack.result_id)
     }
     pub fn command(&self, command: Command) -> Result<Option<i64>> {
         #[cfg(test)]
@@ -224,51 +299,80 @@ impl Store {
             .context("Missing turn acknowledgement")?;
         Ok(turn)
     }
-    pub fn add_todo(&self, title: &str) -> Result<()> {
-        self.command(Command::CreateTodo {
-            title: title.into(),
-        })?;
-        Ok(())
-    }
-    pub fn set_completed(&self, id: i64, completed: bool) -> Result<()> {
-        self.command(Command::CompleteTodo { id, completed })?;
-        Ok(())
-    }
-    pub fn delete_todo(&self, id: i64) -> Result<()> {
-        self.command(Command::DeleteTodo { id })?;
-        Ok(())
+    #[cfg(test)]
+    fn fixture_command(&self, _: Command) -> Result<Option<i64>> {
+        bail!("No rendered fixture for this command")
     }
     #[cfg(test)]
-    fn fixture_command(&self, command: Command) -> Result<Option<i64>> {
-        let mut s = self.snapshot.lock().unwrap();
+    fn fixture_ticket(&self, command: TicketCommand) -> Result<Option<i64>> {
+        let mut s = self.tickets.lock().unwrap();
         match command {
-            Command::CreateTodo { title } => {
+            TicketCommand::Delete { id, .. } => {
+                s.tickets.retain(|t| t.id != id);
+                s.comments.retain(|c| c.ticket_id != id);
+                Ok(Some(id))
+            }
+            TicketCommand::Create { title } => {
                 let title = title.trim();
                 if title.is_empty() || title.chars().count() > 500 {
                     bail!("Invalid title");
                 }
-                let id = s.todos.iter().map(|t| t.id).max().unwrap_or(0) + 1;
-                s.todos.insert(
+                let id = s.tickets.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+                s.tickets.insert(
                     0,
-                    Todo {
+                    Ticket {
                         id,
                         title: title.into(),
-                        completed: false,
+                        status: TicketStatus::ToDo,
+                        assignee_id: "owner".into(),
+                        assignee_kind: AssigneeKind::Human,
+                        generation: 0,
+                        revision: 0,
                     },
                 );
                 Ok(Some(id))
             }
-            Command::CompleteTodo { id, completed } => {
-                if let Some(t) = s.todos.iter_mut().find(|t| t.id == id) {
-                    t.completed = completed;
+            TicketCommand::SetStatus { id, status, .. } => {
+                if let Some(t) = s.tickets.iter_mut().find(|t| t.id == id) {
+                    t.status = status;
+                    t.revision += 1;
                 }
                 Ok(Some(id))
             }
-            Command::DeleteTodo { id } => {
-                s.todos.retain(|t| t.id != id);
+            TicketCommand::Assign {
+                id,
+                assignee_id,
+                assignee_kind,
+                ..
+            } => {
+                if let Some(t) = s.tickets.iter_mut().find(|t| t.id == id) {
+                    t.assignee_id = assignee_id;
+                    t.assignee_kind = assignee_kind;
+                    t.revision += 1;
+                }
                 Ok(Some(id))
             }
-            _ => bail!("No rendered fixture for this command"),
+            TicketCommand::AddComment { ticket_id, body } => {
+                let id = s.comments.len() as i64 + 1;
+                s.comments.push(ainc_client::types::Comment {
+                    id,
+                    ticket_id,
+                    body,
+                    author_id: "owner".into(),
+                    created_at: 0,
+                });
+                Ok(Some(id))
+            }
+            TicketCommand::RegisterAgent { name, .. } => {
+                let id = format!("agent-{}", s.assignees.len());
+                s.assignees.push(Assignee {
+                    id,
+                    name,
+                    kind: AssigneeKind::Agent,
+                });
+                Ok(None)
+            }
+            _ => bail!("No rendered fixture for this Ticket command"),
         }
     }
 }

@@ -46,6 +46,27 @@ fn act(client: &mut Client, id: &str, text: Option<&str>) -> Result<Snapshot> {
         }
     }
 }
+fn wait_disabled(client: &mut Client, id: &str) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let snapshot = snap(client)?;
+        // The page disables all controls while saving; the back control becomes
+        // available only when acknowledgement and the refreshed state are loaded.
+        if !snapshot.by_id(id)?.enabled && snapshot.by_id("tickets.back")?.enabled {
+            return Ok(());
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Ticket acknowledgement timed out: {id}"
+        );
+        wait(
+            client,
+            Condition::FrameAfter {
+                frame: snapshot.frame,
+            },
+        )?;
+    }
+}
 fn wait(client: &mut Client, condition: Condition) -> Result<Snapshot> {
     Ok(client
         .call(Command::Wait {
@@ -107,7 +128,7 @@ fn latency(client: &mut Client, command: Command, count: usize) -> Result<serde_
     )
 }
 #[test]
-fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
+fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     fs::create_dir_all(".local")?;
     let temporary = tempfile::Builder::new().prefix("p").tempdir_in(".local")?;
     let directory = temporary.path().canonicalize()?;
@@ -156,17 +177,17 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
         },
     )?;
     // The overlay must reject a fresh ref to the obscured sidebar.
-    let behind = snap(&mut client)?.by_id("nav.tasks")?.reference.clone();
+    let behind = snap(&mut client)?.by_id("nav.tickets")?.reference.clone();
     let blocked = client.request(Command::Click { reference: behind })?;
     ensure!(
         matches!(blocked.result, Reply::Error { error, .. } if error.code == "target_occluded" || error.code == "stale_ref")
     );
-    act(&mut client, "search.input", Some("Tasks"))?;
+    act(&mut client, "search.input", Some("Tickets"))?;
     let filtered = wait(
         &mut client,
         Condition::Value {
             author_id: "search.input".into(),
-            equals: "Tasks".into(),
+            equals: "Tickets".into(),
         },
     )?;
     ensure!(
@@ -180,7 +201,7 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
             .count()
             == 1
     );
-    act(&mut client, "search.result.tasks", None)?;
+    act(&mut client, "search.result.tickets", None)?;
     wait(
         &mut client,
         Condition::Absent {
@@ -188,17 +209,17 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
         },
     )?;
     let stale = client.request(Command::Click {
-        reference: filtered.by_id("search.result.tasks")?.reference.clone(),
+        reference: filtered.by_id("search.result.tickets")?.reference.clone(),
     })?;
     ensure!(matches!(stale.result, Reply::Error { error, .. } if error.code == "stale_ref"));
-    act(&mut client, "tasks.create", None)?;
+    act(&mut client, "tickets.create", None)?;
     let empty = snap(&mut client)?;
-    ensure!(!empty.by_id("tasks.submit")?.enabled);
-    act(&mut client, "tasks.title", Some("Pilot café 👋"))?;
+    ensure!(!empty.by_id("tickets.submit")?.enabled);
+    act(&mut client, "tickets.title", Some("Pilot café 👋"))?;
     wait(
         &mut client,
         Condition::Value {
-            author_id: "tasks.title".into(),
+            author_id: "tickets.title".into(),
             equals: "Pilot café 👋".into(),
         },
     )?;
@@ -207,18 +228,18 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
     let waiting = std::thread::spawn(move || {
         observer.call(Command::Wait {
             condition: Condition::Absent {
-                author_id: "tasks.title".into(),
+                author_id: "tickets.title".into(),
             },
             timeout_ms: 3000,
         })
     });
-    act(&mut client, "tasks.submit", None)?;
+    act(&mut client, "tickets.submit", None)?;
     waiting
         .join()
         .unwrap()
-        .context("task acknowledgement did not close the dialog")?;
+        .context("Ticket acknowledgement did not close the dialog")?;
     let created = snap(&mut client)?;
-    let task = created
+    let ticket = created
         .nodes
         .iter()
         .find(|node| {
@@ -226,11 +247,101 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
                 && node
                     .author_id
                     .as_deref()
-                    .is_some_and(|id| id.starts_with("task.") && !id.ends_with(".complete"))
+                    .is_some_and(|id| id.starts_with("ticket.") && !id.ends_with(".complete"))
         })
-        .context("acknowledged task missing from rendered snapshot")?;
-    let completed = format!("{}.complete", task.author_id.as_ref().unwrap());
-    ensure!(created.by_id(&completed)?.checked == Some(false));
+        .context("acknowledged Ticket missing from rendered snapshot")?;
+    let ticket_id = ticket.author_id.clone().unwrap();
+    act(&mut client, &ticket_id, None)?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "tickets.status.backlog".into(),
+        },
+    )?;
+    act(&mut client, "tickets.status.backlog", None)?;
+    wait_disabled(&mut client, "tickets.status.backlog")?;
+    act(&mut client, "tickets.comment", None)?;
+    act(
+        &mut client,
+        "tickets.comment",
+        Some("Pilot evidence: scoped Comments survive refresh."),
+    )?;
+    act(&mut client, "tickets.post", None)?;
+    wait(
+        &mut client,
+        Condition::Value {
+            author_id: "tickets.comment".into(),
+            equals: "".into(),
+        },
+    )?;
+    let detail = snap(&mut client)?;
+    ensure!(
+        detail
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("Pilot evidence: scoped Comments survive refresh."))
+    );
+    screenshot(&mut client, "ticket-comments", &output)?;
+    act(&mut client, "nav.agents", None)?;
+    act(&mut client, "agents.create", None)?;
+    act(&mut client, "agents.name", Some("Pilot worker"))?;
+    act(&mut client, "agents.instructions", None)?;
+    act(
+        &mut client,
+        "agents.instructions",
+        Some("Produce fixture evidence for the assigned Ticket."),
+    )?;
+    act(&mut client, "tickets.submit", None)?;
+    wait(
+        &mut client,
+        Condition::Absent {
+            author_id: "agents.name".into(),
+        },
+    )?;
+    let agents = snap(&mut client)?;
+    let agent = agents
+        .nodes
+        .iter()
+        .rfind(|n| {
+            n.name.as_deref() == Some("Pilot worker")
+                && n.author_id
+                    .as_deref()
+                    .is_some_and(|s| s.starts_with("agent."))
+        })
+        .context("registered agent missing")?;
+    let agent_id = agent
+        .author_id
+        .as_ref()
+        .unwrap()
+        .strip_prefix("agent.")
+        .unwrap()
+        .to_owned();
+    screenshot(&mut client, "agents", &output)?;
+    act(&mut client, "nav.tickets", None)?;
+    let assign = format!("tickets.assign.{agent_id}");
+    act(&mut client, &assign, None)?;
+    wait_disabled(&mut client, &assign)?;
+    // Backlog assignment does not invoke a provider. Reassign to the human before
+    // making the Ticket actionable, so acceptance cannot spend a subscription.
+    act(&mut client, "tickets.assign.owner", None)?;
+    wait_disabled(&mut client, "tickets.assign.owner")?;
+    act(&mut client, "tickets.status.in_progress", None)?;
+    wait_disabled(&mut client, "tickets.status.in_progress")?;
+    screenshot(&mut client, "ticket-assignee", &output)?;
+    act(&mut client, "nav.today", None)?;
+    let today_id = ticket_id.replacen("ticket.", "today.ticket.", 1);
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: today_id.clone(),
+        },
+    )?;
+    screenshot(&mut client, "today-tickets", &output)?;
+    act(&mut client, &today_id, None)?;
+    act(&mut client, "tickets.status.done", None)?;
+    wait_disabled(&mut client, "tickets.status.done")?;
+    act(&mut client, "tickets.status.to_do", None)?;
+    wait_disabled(&mut client, "tickets.status.to_do")?;
     screenshot(&mut client, "created", &output)?;
     fs::write(
         output.join("created.json"),
@@ -244,7 +355,7 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
     client.call(Command::Press {
         key: "cmd-a".into(),
     })?;
-    act(&mut client, "search.input", Some("Tasks"))?;
+    act(&mut client, "search.input", Some("Tickets"))?;
     client.call(Command::Press {
         key: "cmd-z".into(),
     })?;
@@ -276,7 +387,9 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
         output.join("latency.json"),
         serde_json::to_vec_pretty(&metrics)?,
     )?;
-    println!("Search → Tasks → create task passed via socket + GPUI dispatch. {metrics}");
+    println!(
+        "Tickets, Comments, assignee, four states and Today passed via socket + GPUI dispatch. {metrics}"
+    );
     client
         .call(Command::Press {
             key: "cmd-q".into(),
@@ -288,5 +401,55 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
         std::thread::sleep(Duration::from_millis(20));
     }
     ensure!(!manifest.exists(), "normal quit left session endpoints");
+    Ok(())
+}
+
+#[test]
+fn today_read_failure_is_unavailable_not_empty() -> Result<()> {
+    fs::create_dir_all(".local")?;
+    let temporary = tempfile::Builder::new().prefix("u").tempdir_in(".local")?;
+    let directory = temporary.path().canonicalize()?;
+    let pilot = directory.join("s");
+    let output = PathBuf::from("target/pilot-acceptance");
+    fs::create_dir_all(&output)?;
+    fs::write(
+        directory.join("owner-token"),
+        "isolated-unavailable-fixture",
+    )?;
+    let mut app = App(Process::new(env!("CARGO_BIN_EXE_agentinc-os"))
+        .args(["--gpui-pilot-session", pilot.to_str().unwrap()])
+        .env("AGENTINC_SESSION_PATH", directory.join("session.json"))
+        .env("AINC_DISCOVERY_FILE", directory.join("api-url"))
+        .env("AINC_TOKEN_FILE", directory.join("owner-token"))
+        .env("AINC_DAEMON_URL", "http://127.0.0.1:1")
+        .env("AINC_LEGACY_DIR", directory.join("legacy"))
+        .env("AGENTINC_CODEX_HOME", directory.join("codex"))
+        .env("AGENTINC_WINDOW_TITLE", "Agentinc Unavailable Acceptance")
+        .stdout(Stdio::null())
+        .stderr(fs::File::create(output.join("unavailable.log"))?)
+        .spawn()?);
+    let manifest = pilot.join("instance.json");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !manifest.exists() {
+        ensure!(app.0.try_wait()?.is_none(), "unavailable fixture exited");
+        ensure!(Instant::now() < deadline, "startup timeout");
+        std::thread::yield_now();
+    }
+    let mut client = Client::connect(&manifest)?;
+    wait(
+        &mut client,
+        Condition::Name {
+            author_id: "today.tickets.summary".into(),
+            equals: "Tickets unavailable".into(),
+        },
+    )?;
+    let snapshot = snap(&mut client)?;
+    ensure!(
+        !snapshot
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("All caught up"))
+    );
+    screenshot(&mut client, "today-unavailable", &output)?;
     Ok(())
 }
