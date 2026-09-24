@@ -36,6 +36,8 @@ impl StoredSession {
             .instructions("You are Evee, the personal assistant in AgentInc. Use Ticket tools for requested product changes. Autonomous work belongs on an assigned Ticket; do not claim to perform external actions without tools.")
             .tool(crate::conversation_tools::TicketsTool { pool:pool.clone(), session_id:self.id.clone(), mutation:false })
             .tool(crate::conversation_tools::TicketsTool { pool:pool.clone(), session_id:self.id.clone(), mutation:true })
+            .tool(crate::conversation_tools::AutomationsTool { pool:pool.clone(), session_id:self.id.clone(), mutation:false })
+            .tool(crate::conversation_tools::AutomationsTool { pool:pool.clone(), session_id:self.id.clone(), mutation:true })
             .build())
     }
 }

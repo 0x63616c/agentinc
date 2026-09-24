@@ -153,6 +153,8 @@ impl Runner {
         }
     }
     async fn dispatch(&self) -> anyhow::Result<()> {
+        sqlx::query("INSERT INTO worker_health(id,last_seen) VALUES('tickets',extract(epoch FROM clock_timestamp())::bigint) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen")
+            .execute(&self.pool).await?;
         let rows: Vec<(i64, String, String)> = sqlx::query_as(
             "SELECT id,action,run_id FROM dispatch_outbox WHERE NOT dispatched ORDER BY id",
         )

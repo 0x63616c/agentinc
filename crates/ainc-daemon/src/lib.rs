@@ -1,3 +1,4 @@
+pub mod automations;
 mod codex;
 pub mod coding;
 mod connection;
@@ -79,7 +80,9 @@ async fn ticket_contract(Json(ticket): Json<TicketContract>) -> Json<TicketContr
         product::state,
         product::command,
         tickets::state,
-        tickets::command
+        tickets::command,
+        automations::state,
+        automations::command
     ),
     components(schemas(Health, Version, TicketContract))
 )]
@@ -120,6 +123,7 @@ pub fn product_router(product: product::Product) -> Router {
     router(product.pool.clone())
         .merge(product::router(product.clone()))
         .merge(connection::router(product.clone()))
-        .merge(tickets::router(product))
+        .merge(tickets::router(product.clone()))
+        .merge(automations::router(product))
         .layer(axum::middleware::map_response(server_version_header))
 }

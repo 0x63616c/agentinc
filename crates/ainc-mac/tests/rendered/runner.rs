@@ -29,6 +29,7 @@ fn regions(
         "Today",
         "Tickets",
         "Agents",
+        "Automations",
         "Home",
         "Calendar",
         "Library",

@@ -83,7 +83,8 @@ async fn main() -> Result<()> {
         ainc_daemon::conversations::Runner::start(pool.clone(), config.clone(), models.clone())
             .await?;
     let tickets =
-        ainc_daemon::execution::Runner::start(pool.clone(), config, models, policy).await?;
+        ainc_daemon::execution::Runner::start(pool.clone(), config.clone(), models, policy).await?;
+    let automations = ainc_daemon::automations::Runner::start(pool.clone(), config).await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     publish_address(Path::new(&discovery), address)?;
@@ -92,6 +93,7 @@ async fn main() -> Result<()> {
         result = axum::serve(listener, ainc_daemon::product_router(product)).into_future() => result?,
         result = runner.run() => result?,
         result = tickets.run() => result?,
+        result = automations.run() => result?,
     }
     Ok(())
 }

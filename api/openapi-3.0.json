@@ -43,6 +43,206 @@
         ],
         "type": "string"
       },
+      "Automation": {
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "applied_revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "every_minutes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "missed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overlap_skipped": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prompt",
+          "agent_id",
+          "every_minutes",
+          "paused",
+          "revision",
+          "applied_revision",
+          "missed",
+          "overlap_skipped"
+        ],
+        "type": "object"
+      },
+      "AutomationCommand": {
+        "oneOf": [
+          {
+            "properties": {
+              "every_minutes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "id": {
+                "nullable": true,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "save"
+                ],
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "proposal": {
+                "$ref": "#/components/schemas/TicketProposal"
+              },
+              "revision": {
+                "format": "int64",
+                "nullable": true,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "name",
+              "proposal",
+              "every_minutes",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "pause"
+                ],
+                "type": "string"
+              },
+              "paused": {
+                "type": "boolean"
+              },
+              "revision": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "revision",
+              "paused",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "run_now"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "revision",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "AutomationReceipt": {
+        "properties": {
+          "result_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_id"
+        ],
+        "type": "object"
+      },
+      "AutomationRequest": {
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/AutomationCommand"
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "command"
+        ],
+        "type": "object"
+      },
+      "AutomationSnapshot": {
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntry"
+            },
+            "type": "array"
+          },
+          "occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/OccurrenceView"
+            },
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/Automation"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "rules",
+          "occurrences",
+          "history"
+        ],
+        "type": "object"
+      },
       "Command": {
         "oneOf": [
           {
@@ -372,6 +572,36 @@
         ],
         "type": "object"
       },
+      "HistoryEntry": {
+        "properties": {
+          "automation_id": {
+            "type": "string"
+          },
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "automation_id",
+          "kind",
+          "count",
+          "observed_at"
+        ],
+        "type": "object"
+      },
       "Model": {
         "properties": {
           "id": {
@@ -384,6 +614,39 @@
         "required": [
           "id",
           "name"
+        ],
+        "type": "object"
+      },
+      "OccurrenceView": {
+        "properties": {
+          "automation_id": {
+            "type": "string"
+          },
+          "detail": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "scheduled_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          },
+          "ticket_id": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "automation_id",
+          "state",
+          "scheduled_at"
         ],
         "type": "object"
       },
@@ -473,6 +736,24 @@
       },
       "TicketCommand": {
         "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "create_assigned"
+                ],
+                "type": "string"
+              },
+              "proposal": {
+                "$ref": "#/components/schemas/TicketProposal"
+              }
+            },
+            "required": [
+              "proposal",
+              "kind"
+            ],
+            "type": "object"
+          },
           {
             "properties": {
               "kind": {
@@ -704,6 +985,22 @@
         ],
         "type": "object"
       },
+      "TicketProposal": {
+        "description": "A bounded proposal to create one actionable Ticket for a registered agent.\nThe command boundary authorizes and commits it with a durable receipt.",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "agent_id"
+        ],
+        "type": "object"
+      },
       "TicketReceipt": {
         "properties": {
           "operation_id": {
@@ -916,6 +1213,116 @@
           }
         },
         "tags": []
+      }
+    },
+    "/v1/automations": {
+      "get": {
+        "operationId": "automations_state",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationSnapshot"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "automations"
+        ]
+      }
+    },
+    "/v1/automations/commands": {
+      "post": {
+        "operationId": "automations_command",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationReceipt"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "automations"
+        ]
       }
     },
     "/v1/commands": {

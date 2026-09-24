@@ -376,3 +376,126 @@ async fn killed_ticket_worker_reconciles_dispatch_and_projects_one_result(pool: 
         .unwrap();
     stack.shutdown().await;
 }
+
+#[sqlx::test]
+async fn automation_schedule_survives_daemon_death_and_deduplicates_ticket(pool: PgPool) {
+    use ainc_daemon::{
+        automations::{AutomationCommand, AutomationReceipt, AutomationRequest},
+        tickets::{TicketCommand, TicketCommandRequest, TicketProposal},
+    };
+    let (stack, entered, release) = Stack::new().await;
+    let mut daemon = stack.daemon(&pool).await;
+    let (client, url) = stack.client();
+    client
+        .post(format!("{url}/v1/tickets/commands"))
+        .json(&TicketCommandRequest {
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            command: TicketCommand::RegisterAgent {
+                name: "Scheduled fixture".into(),
+                model: "fixture".into(),
+                instructions: "Provide fixture evidence".into(),
+            },
+        })
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    let agent_id = sqlx::query_scalar("SELECT id FROM agents")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let receipt: AutomationReceipt = client
+        .post(format!("{url}/v1/automations/commands"))
+        .json(&AutomationRequest {
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            command: AutomationCommand::Save {
+                id: None,
+                revision: None,
+                name: "Restart schedule".into(),
+                proposal: TicketProposal {
+                    title: "Survive scheduled worker death".into(),
+                    agent_id,
+                },
+                every_minutes: 30,
+            },
+        })
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    loop {
+        let applied: bool =
+            sqlx::query_scalar("SELECT revision=applied_revision FROM automations WHERE id=$1")
+                .bind(&receipt.result_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        if applied {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    daemon.kill().await.unwrap();
+    daemon.wait().await.unwrap();
+    // The Schedule exists and accepts a firing with no daemon or product worker.
+    stack.server.fire_rule(&receipt.result_id).await.unwrap();
+    let mut replacement = stack.daemon(&pool).await;
+    entered.await.unwrap();
+    let (ticket, occurrence): (i64, String) =
+        sqlx::query_as("SELECT ticket_id,id FROM occurrences WHERE ticket_id IS NOT NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    replacement.kill().await.unwrap();
+    replacement.wait().await.unwrap();
+    sqlx::query("UPDATE dispatch_outbox SET dispatched=false")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let _ = release.send(());
+    let mut results = PgListener::connect_with(&pool).await.unwrap();
+    results.listen("agentinc_results").await.unwrap();
+    let mut final_worker = stack.daemon(&pool).await;
+    loop {
+        let finished: bool =
+            sqlx::query_scalar("SELECT state='completed' FROM ticket_runs WHERE ticket_id=$1")
+                .bind(ticket)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        if finished {
+            break;
+        }
+        results.recv().await.unwrap();
+    }
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM tickets")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM comments")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+    let linked: Option<i64> = sqlx::query_scalar("SELECT ticket_id FROM occurrences WHERE id=$1")
+        .bind(occurrence)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(linked, Some(ticket));
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM dispatch_outbox WHERE action='start'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count, 1);
+    final_worker.kill().await.unwrap();
+    final_worker.wait().await.unwrap();
+    stack.shutdown().await;
+}

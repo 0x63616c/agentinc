@@ -86,3 +86,83 @@ impl Tool for TicketsTool {
         })
     }
 }
+
+#[derive(Clone)]
+pub(crate) struct AutomationsTool {
+    pub pool: PgPool,
+    pub session_id: String,
+    pub mutation: bool,
+}
+impl Tool for AutomationsTool {
+    fn name(&self) -> &str {
+        if self.mutation {
+            "automation_command"
+        } else {
+            "list_automations"
+        }
+    }
+    fn description(&self) -> &str {
+        if self.mutation {
+            "Save or control an Automation explicitly requested in this Conversation. A saved rule grants recurring creation and assignment of Tickets. Read rules and agent IDs first."
+        } else {
+            "Read the owner's Automation rules, occurrences, linked Tickets and missed firing history."
+        }
+    }
+    fn schema(&self) -> Value {
+        if !self.mutation {
+            return json!({"type":"object","properties":{},"additionalProperties":false});
+        }
+        let api = crate::openapi();
+        fn inline(value: &Value, api: &Value) -> Value {
+            if let Some(reference) = value.get("$ref").and_then(Value::as_str) {
+                return inline(
+                    api.pointer(reference.trim_start_matches('#'))
+                        .expect("local API schema reference"),
+                    api,
+                );
+            }
+            match value {
+                Value::Object(map) => Value::Object(
+                    map.iter()
+                        .map(|(key, value)| (key.clone(), inline(value, api)))
+                        .collect(),
+                ),
+                Value::Array(values) => {
+                    Value::Array(values.iter().map(|v| inline(v, api)).collect())
+                }
+                value => value.clone(),
+            }
+        }
+        json!({"type":"object","properties":{"command":inline(&api["components"]["schemas"]["AutomationCommand"],&api)},"required":["command"],"additionalProperties":false})
+    }
+    fn idempotent(&self) -> bool {
+        self.mutation
+    }
+    fn call(&self, ctx: ToolCtx, args: Value) -> BoxFuture<'static, Result<Value, ToolError>> {
+        let this = self.clone();
+        Box::pin(async move {
+            let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM conversation_sessions s JOIN conversations c ON c.id=s.conversation_id WHERE s.id=$1 AND s.state='active' AND c.workspace_id='local')").bind(&this.session_id).fetch_one(&this.pool).await.map_err(|_|ToolError::Failed("Automation service unavailable".into()))?;
+            if !active {
+                return Err(ToolError::InvalidArguments(
+                    "Conversation is no longer active".into(),
+                ));
+            }
+            if this.mutation {
+                let command = serde_json::from_value(args["command"].clone()).map_err(|e| {
+                    ToolError::InvalidArguments(format!("Invalid Automation command: {e}"))
+                })?;
+                let digest = Sha256::digest(ctx.idempotency_key().as_bytes());
+                let operation_id =
+                    uuid::Uuid::from_bytes(digest[..16].try_into().expect("SHA-256 length"))
+                        .to_string();
+                let receipt=crate::automations::execute(&this.pool,&Actor::owner(),crate::automations::AutomationRequest{operation_id,command}).await.map_err(|_|ToolError::InvalidArguments("Command refused. Read current Automation revisions before retrying; verify the assignee and arguments.".into()))?;
+                Ok(json!(receipt))
+            } else {
+                crate::automations::snapshot(&this.pool, &Actor::owner())
+                    .await
+                    .map(|s| json!(s))
+                    .map_err(|_| ToolError::Failed("Automation service unavailable".into()))
+            }
+        })
+    }
+}

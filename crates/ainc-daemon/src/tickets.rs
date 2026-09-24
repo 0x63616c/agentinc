@@ -70,6 +70,9 @@ pub struct TicketSnapshot {
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TicketCommand {
+    CreateAssigned {
+        proposal: TicketProposal,
+    },
     Create {
         title: String,
     },
@@ -106,6 +109,13 @@ pub enum TicketCommand {
         instructions: String,
         model: String,
     },
+}
+/// A bounded proposal to create one actionable Ticket for a registered agent.
+/// The command boundary authorizes and commits it with a durable receipt.
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+pub struct TicketProposal {
+    pub title: String,
+    pub agent_id: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 pub struct TicketCommandRequest {
@@ -255,6 +265,17 @@ pub(crate) async fn execute(
     actor: &Actor,
     request: TicketCommandRequest,
 ) -> Result<TicketReceipt, ApiError> {
+    let mut tx = pool.begin().await?;
+    let receipt = execute_in(&mut tx, actor, request).await?;
+    tx.commit().await?;
+    Ok(receipt)
+}
+
+pub(crate) async fn execute_in(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: &Actor,
+    request: TicketCommandRequest,
+) -> Result<TicketReceipt, ApiError> {
     if uuid::Uuid::parse_str(&request.operation_id).is_err() {
         return Err(invalid("Use a UUID operation ID."));
     }
@@ -272,20 +293,19 @@ pub(crate) async fn execute(
     }
     let payload =
         serde_json::to_value(&request.command).map_err(|_| invalid("Invalid command."))?;
-    let mut tx = pool.begin().await?;
     // Fence even receipt reads after reassignment, within the same transaction.
     if let Some((id, _)) = actor.assignment {
-        lock_ticket(&mut tx, actor, id, None).await?;
+        lock_ticket(tx, actor, id, None).await?;
     }
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
         .bind(format!(
             "{}/{}/{}",
             actor.workspace, actor.id, request.operation_id
         ))
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     let prior:Option<(Value,Option<i64>)>=sqlx::query_as("SELECT command,result_id FROM ticket_receipts WHERE workspace_id=$1 AND actor_id=$2 AND operation_id=$3")
-        .bind(&actor.workspace).bind(&actor.id).bind(&request.operation_id).fetch_optional(&mut *tx).await?;
+        .bind(&actor.workspace).bind(&actor.id).bind(&request.operation_id).fetch_optional(&mut **tx).await?;
     if let Some((old, result_id)) = prior {
         if old != payload {
             return Err(ApiError::conflict());
@@ -296,13 +316,31 @@ pub(crate) async fn execute(
         });
     }
     let result_id = match request.command {
+        TicketCommand::CreateAssigned { proposal } => {
+            let valid: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM agents WHERE workspace_id=$1 AND id=$2)",
+            )
+            .bind(&actor.workspace)
+            .bind(&proposal.agent_id)
+            .fetch_one(&mut **tx)
+            .await?;
+            if !valid || proposal.title.trim().is_empty() || proposal.title.chars().count() > 500 {
+                return Err(invalid(
+                    "Choose a registered agent and a title of 1–500 characters.",
+                ));
+            }
+            let id = sqlx::query_scalar("INSERT INTO tickets(workspace_id,title,assignee_kind,assignee_id,generation) VALUES ($1,$2,'agent',$3,1) RETURNING id")
+                .bind(&actor.workspace).bind(proposal.title.trim()).bind(proposal.agent_id).fetch_one(&mut **tx).await?;
+            start_generation(tx, actor, id).await?;
+            Some(id)
+        }
         TicketCommand::Create { title } => Some(
             sqlx::query_scalar(
                 "INSERT INTO tickets(workspace_id,title) VALUES ($1,$2) RETURNING id",
             )
             .bind(&actor.workspace)
             .bind(title.trim())
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut **tx)
             .await?,
         ),
         TicketCommand::RegisterAgent {
@@ -320,7 +358,7 @@ pub(crate) async fn execute(
             .bind(&actor.workspace)
             .bind(&id)
             .bind(name.trim())
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
             sqlx::query(
                 "INSERT INTO agents(workspace_id,id,instructions,model) VALUES ($1,$2,$3,$4)",
@@ -329,12 +367,12 @@ pub(crate) async fn execute(
             .bind(id)
             .bind(instructions)
             .bind(model.trim())
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
             None
         }
         TicketCommand::AddComment { ticket_id, body } => {
-            lock_ticket(&mut tx, actor, ticket_id, None).await?;
+            lock_ticket(tx, actor, ticket_id, None).await?;
             Some(
                 sqlx::query_scalar(
                     "INSERT INTO comments(ticket_id,author_id,body) VALUES ($1,$2,$3) RETURNING id",
@@ -342,23 +380,23 @@ pub(crate) async fn execute(
                 .bind(ticket_id)
                 .bind(&actor.id)
                 .bind(body.trim())
-                .fetch_one(&mut *tx)
+                .fetch_one(&mut **tx)
                 .await?,
             )
         }
         TicketCommand::Delete { id, revision } => {
-            lock_ticket(&mut tx, actor, id, Some(revision)).await?;
+            lock_ticket(tx, actor, id, Some(revision)).await?;
             let worked: bool =
                 sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs WHERE ticket_id=$1)")
                     .bind(id)
-                    .fetch_one(&mut *tx)
+                    .fetch_one(&mut **tx)
                     .await?;
             if worked {
                 return Err(ApiError::conflict());
             }
             sqlx::query("DELETE FROM tickets WHERE id=$1")
                 .bind(id)
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
             Some(id)
         }
@@ -367,11 +405,11 @@ pub(crate) async fn execute(
             revision,
             title,
         } => {
-            lock_ticket(&mut tx, actor, id, Some(revision)).await?;
+            lock_ticket(tx, actor, id, Some(revision)).await?;
             sqlx::query("UPDATE tickets SET title=$2,revision=revision+1 WHERE id=$1")
                 .bind(id)
                 .bind(title.trim())
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
             Some(id)
         }
@@ -380,25 +418,25 @@ pub(crate) async fn execute(
             revision,
             status,
         } => {
-            let ticket = lock_ticket(&mut tx, actor, id, Some(revision)).await?;
+            let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             if ticket.status != status {
                 if actor.assignment.is_some() && ticket.status != TicketStatus::InProgress {
                     return Err(denied());
                 }
                 if actor.assignment.is_none() {
-                    cancel_generation(&mut tx, &ticket).await?;
+                    cancel_generation(tx, &ticket).await?;
                 }
                 sqlx::query("UPDATE tickets SET status=$2,revision=revision+1,generation=generation+$3 WHERE id=$1")
                     .bind(id)
                     .bind(status)
                     .bind(i64::from(actor.assignment.is_none()))
-                    .execute(&mut *tx)
+                    .execute(&mut **tx)
                     .await?;
                 if actor.assignment.is_none()
                     && matches!(status, TicketStatus::ToDo | TicketStatus::InProgress)
                     && ticket.assignee_kind == AssigneeKind::Agent
                 {
-                    start_generation(&mut tx, actor, id).await?;
+                    start_generation(tx, actor, id).await?;
                 }
             }
             Some(id)
@@ -409,28 +447,27 @@ pub(crate) async fn execute(
             assignee_kind,
             assignee_id,
         } => {
-            let ticket = lock_ticket(&mut tx, actor, id, Some(revision)).await?;
-            cancel_generation(&mut tx, &ticket).await?;
-            sqlx::query("UPDATE tickets SET assignee_kind=$2,assignee_id=$3,revision=revision+1,generation=generation+1,status=CASE WHEN status='in_progress' THEN 'to_do' ELSE status END WHERE id=$1").bind(id).bind(assignee_kind).bind(assignee_id).execute(&mut *tx).await?;
+            let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
+            cancel_generation(tx, &ticket).await?;
+            sqlx::query("UPDATE tickets SET assignee_kind=$2,assignee_id=$3,revision=revision+1,generation=generation+1,status=CASE WHEN status='in_progress' THEN 'to_do' ELSE status END WHERE id=$1").bind(id).bind(assignee_kind).bind(assignee_id).execute(&mut **tx).await?;
             if assignee_kind == AssigneeKind::Agent
                 && matches!(ticket.status, TicketStatus::ToDo | TicketStatus::InProgress)
             {
-                start_generation(&mut tx, actor, id).await?;
+                start_generation(tx, actor, id).await?;
             }
             Some(id)
         }
         TicketCommand::Cancel { id, revision } => {
-            let ticket = lock_ticket(&mut tx, actor, id, Some(revision)).await?;
-            cancel_generation(&mut tx, &ticket).await?;
-            sqlx::query("UPDATE tickets SET generation=generation+1,revision=revision+1,status=CASE WHEN status='in_progress' THEN 'to_do' ELSE status END WHERE id=$1").bind(id).execute(&mut *tx).await?;
+            let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
+            cancel_generation(tx, &ticket).await?;
+            sqlx::query("UPDATE tickets SET generation=generation+1,revision=revision+1,status=CASE WHEN status='in_progress' THEN 'to_do' ELSE status END WHERE id=$1").bind(id).execute(&mut **tx).await?;
             Some(id)
         }
     };
-    sqlx::query("INSERT INTO ticket_receipts(workspace_id,actor_id,operation_id,command,result_id) VALUES ($1,$2,$3,$4,$5)").bind(&actor.workspace).bind(&actor.id).bind(&request.operation_id).bind(payload).bind(result_id).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO ticket_receipts(workspace_id,actor_id,operation_id,command,result_id) VALUES ($1,$2,$3,$4,$5)").bind(&actor.workspace).bind(&actor.id).bind(&request.operation_id).bind(payload).bind(result_id).execute(&mut **tx).await?;
     sqlx::query("SELECT pg_notify('agentinc_dispatch','')")
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
-    tx.commit().await?;
     Ok(TicketReceipt {
         operation_id: request.operation_id,
         result_id,

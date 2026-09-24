@@ -61,6 +61,18 @@ impl TestServer {
         result.map_err(Error::Other)
     }
 
+    pub async fn fire_rule(&self, id: &str) -> Result<(), Error> {
+        self.env
+            .client()
+            .get_schedule_handle(id)
+            .trigger(
+                temporalio_client::schedules::ScheduleOverlapPolicy::Skip,
+                Default::default(),
+            )
+            .await
+            .map_err(|e| Error::Other(e.into()))
+    }
+
     pub async fn shutdown(self) -> Result<(), Error> {
         self.env
             .shutdown()

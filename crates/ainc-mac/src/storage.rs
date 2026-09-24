@@ -1,7 +1,8 @@
 //! Generated daemon client plus an owned presentation snapshot. The foreground
 //! reads this cache only; refresh and command methods run on the background executor.
 pub use ainc_client::types::{
-    AssigneeKind, Command, Conversation, Ticket, TicketCommand, TicketSnapshot, TicketStatus, Turn,
+    AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, Command, Conversation, Ticket,
+    TicketCommand, TicketProposal, TicketSnapshot, TicketStatus, Turn,
 };
 use ainc_client::{
     Client,
@@ -106,6 +107,8 @@ pub async fn client() -> Result<Client> {
 pub struct Store {
     snapshot: Mutex<Snapshot>,
     tickets: Mutex<TicketSnapshot>,
+    automations: Mutex<AutomationSnapshot>,
+    pending_automation: Mutex<Option<ainc_client::types::AutomationRequest>>,
     pending_ticket: Mutex<Option<TicketCommandRequest>>,
     // Serialize mutations and refreshes so an older snapshot cannot replace a
     // newer acknowledgement. Never acquire this lock on the foreground.
@@ -133,6 +136,12 @@ impl Store {
                     kind: AssigneeKind::Human,
                 }],
             }),
+            automations: Mutex::new(AutomationSnapshot {
+                rules: vec![],
+                occurrences: vec![],
+                history: vec![],
+            }),
+            pending_automation: Mutex::new(None),
             pending_ticket: Mutex::new(None),
             requests: Mutex::new(()),
             pending: Mutex::new(None),
@@ -171,13 +180,15 @@ impl Store {
         self.refresh_inner()
     }
     fn refresh_inner(&self) -> Result<()> {
-        let (snapshot, tickets) = background(async {
+        let (snapshot, tickets, automations) = background(async {
             let client = client().await?;
             let snapshot = client.product_state().send().await?.into_inner();
             let tickets = client.tickets_state().send().await?.into_inner();
-            anyhow::Ok((snapshot, tickets))
+            let automations = client.automations_state().send().await?.into_inner();
+            anyhow::Ok((snapshot, tickets, automations))
         })?;
         *self.tickets.lock().expect("Ticket snapshot") = tickets;
+        *self.automations.lock().expect("Automation snapshot") = automations;
         *self
             .snapshot
             .lock()
@@ -189,6 +200,72 @@ impl Store {
     }
     pub fn tickets(&self) -> TicketSnapshot {
         self.tickets.lock().expect("Ticket snapshot").clone()
+    }
+    pub fn automations(&self) -> AutomationSnapshot {
+        self.automations
+            .lock()
+            .expect("Automation snapshot")
+            .clone()
+    }
+    pub fn automation_command(&self, command: AutomationCommand) -> Result<String> {
+        #[cfg(test)]
+        if self.fixture {
+            bail!("Automation writes require the daemon");
+        }
+        let _serial = self
+            .requests
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Request state unavailable"))?;
+        let request = {
+            let mut pending = self
+                .pending_automation
+                .lock()
+                .expect("pending Automation command");
+            if let Some(prior) = pending.as_ref() {
+                anyhow::ensure!(
+                    serde_json::to_value(&prior.command)? == serde_json::to_value(&command)?,
+                    "Retry the unacknowledged Automation change before another change."
+                );
+                prior.clone()
+            } else {
+                let request = ainc_client::types::AutomationRequest {
+                    command,
+                    operation_id: uuid::Uuid::new_v4().to_string(),
+                };
+                *pending = Some(request.clone());
+                request
+            }
+        };
+        let ack = background(async {
+            let client = client().await?;
+            let mut result = client
+                .automations_command()
+                .body(request.clone())
+                .send()
+                .await;
+            if matches!(result, Err(progenitor_client::Error::CommunicationError(_))) {
+                result = client.automations_command().body(request).send().await;
+            }
+            match result {
+                Ok(ack) => Ok(ack.into_inner()),
+                Err(error) => {
+                    if error.status().is_some_and(|s| s.is_client_error()) {
+                        *self
+                            .pending_automation
+                            .lock()
+                            .expect("pending Automation command") = None;
+                    }
+                    Err(error.into())
+                }
+            }
+        })?;
+        self.refresh_inner()
+            .context("Change acknowledged; refresh to load the saved result")?;
+        *self
+            .pending_automation
+            .lock()
+            .expect("pending Automation command") = None;
+        Ok(ack.result_id)
     }
     pub fn ticket_command(&self, command: TicketCommand) -> Result<Option<i64>> {
         #[cfg(test)]
