@@ -27,7 +27,6 @@ pub mod testing;
 mod tool;
 
 pub use agent::{Agent, AgentBuilder};
-pub use turnkeel_macros::tool;
 pub use error::Error;
 pub use event::Event;
 pub use message::{Content, Message, Role};
@@ -36,6 +35,7 @@ pub use run::{Run, RunId};
 pub use runtime::Runtime;
 pub use session::{Session, SessionId};
 pub use tool::{Tool, ToolCtx, ToolError, ToolSet};
+pub use turnkeel_macros::tool;
 
 /// Re-exports used by generated code. Not part of the public API.
 #[doc(hidden)]

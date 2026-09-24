@@ -1,11 +1,11 @@
 //! Tests driven by `testing::Script`: the test decides every model reply and tool result
 //! at the moment it happens.
 
-use turnkeel::testing::{Script, text};
-use turnkeel::{Agent, Runtime, Content, Event, Message, ModelResponse, StopReason};
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::json;
+use turnkeel::testing::{Script, text};
+use turnkeel::{Agent, Content, Event, Message, ModelResponse, Runtime, StopReason};
 
 type Events = BoxStream<'static, Result<Event, turnkeel::Error>>;
 

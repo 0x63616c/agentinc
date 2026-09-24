@@ -18,7 +18,7 @@ pub use script::{ModelCall, Script, ScriptModel, ScriptTool, ToolCall};
 pub use scripted::{ScriptedModel, text, tool_call};
 pub use transcript::TranscriptAssert;
 
-use crate::{Agent, Runtime, Error, Message, Run};
+use crate::{Agent, Error, Message, Run, Runtime};
 
 /// A finished run plus its transcript, for asserting on.
 #[derive(Debug)]

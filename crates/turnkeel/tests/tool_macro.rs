@@ -1,5 +1,5 @@
-use turnkeel::{Tool, ToolCtx, tool};
 use serde_json::json;
+use turnkeel::{Tool, ToolCtx, tool};
 
 /// Adds two numbers.
 #[tool]
