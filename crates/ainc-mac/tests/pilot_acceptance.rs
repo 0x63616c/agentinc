@@ -130,7 +130,9 @@ fn latency(client: &mut Client, command: Command, count: usize) -> Result<serde_
 #[test]
 fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     fs::create_dir_all(".local")?;
-    let temporary = tempfile::Builder::new().prefix("p").tempdir_in(".local")?;
+    let temporary = tempfile::Builder::new()
+        .prefix("p")
+        .tempdir_in(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))?;
     let directory = temporary.path().canonicalize()?;
     let pilot = directory.join("s");
     let output = PathBuf::from("target/pilot-acceptance");
@@ -531,7 +533,9 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
 #[test]
 fn today_read_failure_is_unavailable_not_empty() -> Result<()> {
     fs::create_dir_all(".local")?;
-    let temporary = tempfile::Builder::new().prefix("u").tempdir_in(".local")?;
+    let temporary = tempfile::Builder::new()
+        .prefix("u")
+        .tempdir_in(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))?;
     let directory = temporary.path().canonicalize()?;
     let pilot = directory.join("s");
     let output = PathBuf::from("target/pilot-acceptance");
@@ -540,6 +544,15 @@ fn today_read_failure_is_unavailable_not_empty() -> Result<()> {
         directory.join("owner-token"),
         "isolated-unavailable-fixture",
     )?;
+    let os_check = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/pilot_hidden_acceptance.swift"
+    );
+    let frontmost = Process::new("swift")
+        .args([os_check, "frontmost"])
+        .output()?;
+    ensure!(frontmost.status.success(), "frontmost OS probe failed");
+    let frontmost = String::from_utf8(frontmost.stdout)?.trim().to_owned();
     let mut app = App(Process::new(env!("CARGO_BIN_EXE_agentinc-os"))
         .args(["--gpui-pilot-session", pilot.to_str().unwrap()])
         .env("AGENTINC_SESSION_PATH", directory.join("session.json"))
@@ -575,5 +588,29 @@ fn today_read_failure_is_unavailable_not_empty() -> Result<()> {
             .any(|n| n.name.as_deref() == Some("All caught up"))
     );
     screenshot(&mut client, "today-unavailable", &output)?;
+    act(&mut client, "shell.search", None)?;
+    act(&mut client, "search.input", Some("Tickets"))?;
+    wait(
+        &mut client,
+        Condition::Value {
+            author_id: "search.input".into(),
+            equals: "Tickets".into(),
+        },
+    )?;
+    screenshot(&mut client, "hidden-input", &output)?;
+    let os_result = Process::new("swift")
+        .args([
+            os_check,
+            &app.0.id().to_string(),
+            "Agentinc Unavailable Acceptance",
+            &frontmost,
+        ])
+        .output()?;
+    ensure!(
+        os_result.status.success(),
+        "hidden WindowServer check failed: {}",
+        String::from_utf8_lossy(&os_result.stderr)
+    );
+    println!("{}", String::from_utf8_lossy(&os_result.stdout));
     Ok(())
 }

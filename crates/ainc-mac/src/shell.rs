@@ -1025,7 +1025,7 @@ mod interaction_tests {
     #[gpui::test]
     fn custom_header_owns_titlebar_gestures(_cx: &mut TestAppContext) {
         let bounds = gpui::Bounds::new(point(px(0.), px(0.)), gpui::size(px(1360.), px(828.)));
-        assert!(crate::main_window_options(bounds, "QA".into()).app_owns_titlebar_drag);
+        assert!(crate::main_window_options(bounds, "QA".into(), true).app_owns_titlebar_drag);
     }
 
     #[gpui::test]

@@ -24,7 +24,11 @@ impl log::Log for DiagnosticLog {
     fn flush(&self) {}
 }
 
-fn main_window_options(bounds: Bounds<Pixels>, title: SharedString) -> WindowOptions {
+fn main_window_options(
+    bounds: Bounds<Pixels>,
+    title: SharedString,
+    visible: bool,
+) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(TitlebarOptions {
@@ -35,6 +39,8 @@ fn main_window_options(bounds: Bounds<Pixels>, title: SharedString) -> WindowOpt
         app_owns_titlebar_drag: true,
         window_min_size: Some(size(px(800.), px(600.))),
         app_id: Some("co.worldwidewebb.agentinc".into()),
+        focus: visible,
+        show: visible,
         ..Default::default()
     }
 }
@@ -43,10 +49,12 @@ fn main() {
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     #[cfg(feature = "automation")]
-    let pilot_directory = {
+    let (pilot_directory, pilot_visible) = {
         if args.is_empty() {
-            None
-        } else if args.len() == 2 && args[0] == "--gpui-pilot-session" {
+            (None, false)
+        } else if (args.len() == 2 || (args.len() == 3 && args[2] == "--gpui-pilot-visible"))
+            && args[0] == "--gpui-pilot-session"
+        {
             for name in [
                 "AGENTINC_SESSION_PATH",
                 "AINC_DISCOVERY_FILE",
@@ -65,9 +73,11 @@ fn main() {
                     std::process::exit(2);
                 }
             }
-            Some(std::path::PathBuf::from(&args[1]))
+            (Some(std::path::PathBuf::from(&args[1])), args.len() == 3)
         } else {
-            eprintln!("Usage: agentinc-os [--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY]");
+            eprintln!(
+                "Usage: agentinc-os [--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY [--gpui-pilot-visible]]"
+            );
             std::process::exit(2);
         }
     };
@@ -116,12 +126,17 @@ fn main() {
                 },
             ]);
             let bounds = Bounds::centered(None, size(px(1360.), px(828.)), cx);
+            #[cfg(feature = "automation")]
+            let visible = pilot_directory.is_none() || pilot_visible;
+            #[cfg(not(feature = "automation"))]
+            let visible = true;
             let result = cx.open_window(
                 main_window_options(
                     bounds,
                     std::env::var("AGENTINC_WINDOW_TITLE")
                         .unwrap_or_else(|_| "AgentInc".into())
                         .into(),
+                    visible,
                 ),
                 |window, cx| cx.new(|cx| Shell::new(window, cx)),
             );
@@ -154,6 +169,8 @@ fn main() {
                 }
             })
             .detach();
-            cx.activate(true);
+            if visible {
+                cx.activate(true);
+            }
         });
 }
