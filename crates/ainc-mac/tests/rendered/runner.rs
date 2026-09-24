@@ -31,19 +31,14 @@ fn regions(
         ("workspace", [15, 65, 165, 100], text, 60),
         (
             "profile avatar",
-            [18, height - 86, 50, height - 54],
+            [18, height - 38, 52, height - 8],
             text,
             30,
         ),
-        (
-            "profile name",
-            [18, height - 55, 140, height - 32],
-            text,
-            30,
-        ),
+        ("profile name", [50, height - 34, 155, height - 9], text, 30),
         (
             "profile version",
-            [18, height - 32, 110, height - 8],
+            [160, height - 34, 234, height - 9],
             25,
             12,
         ),
@@ -248,35 +243,20 @@ impl Suite {
         Ok(())
     }
 
-    fn capture_version_tooltip(&mut self) -> Result<()> {
-        let baseline = image::open(self.output.join("initial.png"))?.into_rgba8();
-        self.cx.simulate_mouse_move(
-            self.window.into(),
-            point(px(50.), px(802.)),
-            None,
-            Modifiers::none(),
+    fn check_profile_row_geometry(&mut self) -> Result<()> {
+        let card = self.bounds("sidebar-profile")?;
+        let name = self.bounds("sidebar-profile-name")?;
+        let version = self.bounds("sidebar-version")?;
+        near("compact profile height", f32::from(card.size.height), 44.)?;
+        ensure!(
+            name.origin.x + name.size.width <= version.origin.x,
+            "profile name overlaps version"
         );
-        self.cx.advance_clock(Duration::from_millis(500));
-        self.settle()?;
-        let image = self.cx.capture_screenshot(self.window.into())?;
-        image.save(self.output.join("version-tooltip.png"))?;
-        let scale = image.width() / 1360;
-        let changed = |bounds: [u32; 4]| {
-            let [left, top, right, bottom] = bounds;
-            (top * scale..bottom * scale)
-                .flat_map(|y| (left * scale..right * scale).map(move |x| (x, y)))
-                .filter(|&(x, y)| image.get_pixel(x, y) != baseline.get_pixel(x, y))
-                .count()
-        };
-        ensure!(changed([105, 680, 600, 760]) > 100, "tooltip not rendered");
-        ensure!(changed([20, 110, 165, 390]) == 0, "shell changed on hover");
-        self.cx.simulate_mouse_move(
-            self.window.into(),
-            point(px(400.), px(400.)),
-            None,
-            Modifiers::none(),
-        );
-        self.cx.run_until_parked();
+        near(
+            "profile name and version centres",
+            f32::from(name.origin.y + name.size.height / 2.),
+            f32::from(version.origin.y + version.size.height / 2.),
+        )?;
         Ok(())
     }
     fn keys(&mut self, keys: &str) {
@@ -416,7 +396,18 @@ pub fn run() -> Result<()> {
         count: 0,
     };
     suite.capture("initial", Route::Today, None, true)?;
-    suite.capture_version_tooltip()?;
+    suite.check_profile_row_geometry()?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_profile_name(
+            "A very long profile name that must truncate before the version",
+            cx,
+        );
+    })?;
+    suite.capture("profile-long-name", Route::Today, None, true)?;
+    suite.check_profile_row_geometry()?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_profile_name("QA Profile", cx);
+    })?;
     suite.cx.simulate_mouse_move(
         suite.window.into(),
         point(px(125.), px(167.)),
