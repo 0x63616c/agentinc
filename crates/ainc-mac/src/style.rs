@@ -7,7 +7,6 @@ use std::{
 };
 // Native Control layout vocabulary. Keep optical exceptions at their measured values.
 pub const PAGE_X: f32 = 26.;
-pub const PAGE_Y: f32 = 28.;
 pub const PANEL_GAP: f32 = 10.;
 pub const HEADER_CONTROL: f32 = 30.;
 pub const CONTROL_HEIGHT: f32 = 32.;
@@ -119,6 +118,62 @@ pub fn row() -> Div {
 pub fn column() -> Div {
     div().flex().flex_col()
 }
+
+/// Shared heading for a page's title, short description, and title-row actions.
+pub struct PageHeader {
+    title: SharedString,
+    description: Option<SharedString>,
+    actions: Option<AnyElement>,
+}
+
+impl PageHeader {
+    pub fn new(title: impl Into<SharedString>) -> Self {
+        Self {
+            title: title.into(),
+            description: None,
+            actions: None,
+        }
+    }
+
+    pub fn description(mut self, description: impl Into<SharedString>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn actions(mut self, actions: impl IntoElement) -> Self {
+        self.actions = Some(actions.into_any_element());
+        self
+    }
+
+    pub fn build(self) -> Div {
+        column()
+            .gap(px(6.))
+            .child(
+                row()
+                    .w_full()
+                    .justify_between()
+                    .gap(px(16.))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(type_size(22.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(self.title),
+                    )
+                    .when_some(self.actions, |s, actions| s.child(actions)),
+            )
+            .when_some(self.description, |s, description| {
+                s.child(
+                    div()
+                        .text_size(type_size(LABEL_SIZE))
+                        .text_color(rgb(MUTED))
+                        .child(description),
+                )
+            })
+    }
+}
+
 pub fn panel() -> Div {
     column()
         .bg(rgb(SURFACE))

@@ -321,8 +321,45 @@ impl Render for AutomationsPage {
             .iter()
             .find(|r| Some(&r.id) == self.selected.as_ref())
             .cloned();
-        let mut content=column().gap(px(24.)).w_full().max_w(px(880.)).child(row().justify_between().child(div().text_size(type_size(24.)).child("Automations")).child(row().gap(px(8.)).child(self.button("automations.refresh","Refresh",true,|this,_,cx|this.refresh(cx),cx).child("Refresh")).child(self.button("automations.create","Create Automation",true,|this,_,cx|this.edit(None,cx),cx).child("Create Automation"))))
-            .child(div().text_color(rgb(MUTED)).text_size(type_size(LABEL_SIZE)).child("Recurring Tickets for your agents. Overlapping work is skipped; missed firings stay in history."));
+        let mut content = column()
+            .gap(px(24.))
+            .w_full()
+            .max_w(px(880.))
+            .child(
+                PageHeader::new("Automations")
+                    .description("Recurring Tickets for your agents.")
+                    .actions(
+                        row()
+                            .gap(px(8.))
+                            .child(
+                                self.button(
+                                    "automations.refresh",
+                                    "Refresh",
+                                    true,
+                                    |this, _, cx| this.refresh(cx),
+                                    cx,
+                                )
+                                .child("Refresh"),
+                            )
+                            .child(
+                                self.button(
+                                    "automations.create",
+                                    "Create Automation",
+                                    true,
+                                    |this, _, cx| this.edit(None, cx),
+                                    cx,
+                                )
+                                .child("Create Automation"),
+                            ),
+                    )
+                    .build(),
+            )
+            .child(
+                div()
+                    .text_color(rgb(MUTED))
+                    .text_size(type_size(LABEL_SIZE))
+                    .child("Overlapping work is skipped; missed firings stay in history."),
+            );
         if let Some(error) = &self.error {
             content = content.child(
                 div()

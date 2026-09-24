@@ -126,7 +126,21 @@ fn main() {
                     ],
                 },
             ]);
-            let bounds = Bounds::centered(None, size(px(1360.), px(828.)), cx);
+            #[cfg(feature = "automation")]
+            // Pilot captures the same pages at both supported review widths.
+            let pilot_narrow =
+                pilot_directory.is_some() && std::env::var_os("AGENTINC_PILOT_NARROW").is_some();
+            #[cfg(not(feature = "automation"))]
+            let pilot_narrow = false;
+            let bounds = Bounds::centered(
+                None,
+                if pilot_narrow {
+                    size(px(1160.), px(728.))
+                } else {
+                    size(px(1360.), px(828.))
+                },
+                cx,
+            );
             #[cfg(feature = "automation")]
             let visible = pilot_directory.is_none() || pilot_visible;
             #[cfg(not(feature = "automation"))]

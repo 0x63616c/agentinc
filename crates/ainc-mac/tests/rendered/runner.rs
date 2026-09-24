@@ -271,11 +271,18 @@ pub fn run() -> Result<()> {
         )?;
         suite.keys("enter");
         suite.capture(&format!("settings-{round}"), Route::Settings, None, true)?;
+        suite.keys("cmd-9");
+        suite.capture(
+            &format!("automations-{round}"),
+            Route::Automations,
+            None,
+            true,
+        )?;
     }
     suite.keys("cmd-2");
     suite.settle()?;
-    // Add-task button is at the top right of the content panel, before the Evee panel.
-    suite.click(826., 142.);
+    // Add Ticket is in the shared page header at the smaller window width.
+    suite.click(811., 93.);
     suite.capture("add-dialog", Route::Tickets, Some(Overlay::AddTicket), true)?;
     suite.cx.simulate_input(window.into(), "Rendered café 👋");
     suite.capture("add-typed", Route::Tickets, Some(Overlay::AddTicket), true)?;

@@ -121,6 +121,19 @@ impl Shell {
                     .ml(px(8.))
                     .mb(px(9.))
                     .child(self.icon_button(
+                        "toggle-evee",
+                        "Toggle Evee panel · ⌘ ⇧ E",
+                        "panel",
+                        Control::Evee,
+                        cx,
+                    )),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .ml(px(8.))
+                    .mb(px(9.))
+                    .child(self.icon_button(
                         "notifications",
                         "Notifications",
                         "bell",

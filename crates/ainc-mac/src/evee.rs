@@ -525,17 +525,20 @@ impl AssistantPage {
         column()
             .gap(px(16.))
             .child(
-                row().child(div().flex_1()).child(
-                    self.action(
-                        "new-chat",
-                        "New conversation",
-                        enabled,
-                        Self::new_conversation,
-                        cx,
+                PageHeader::new("Assistant")
+                    .description("Your conversations with Evee.")
+                    .actions(
+                        self.action(
+                            "new-chat",
+                            "New conversation",
+                            enabled,
+                            Self::new_conversation,
+                            cx,
+                        )
+                        .border_1()
+                        .border_color(rgb(BORDER)),
                     )
-                    .border_1()
-                    .border_color(rgb(BORDER)),
-                ),
+                    .build(),
             )
             .when_some(self.error.clone(), |s, e| {
                 s.child(

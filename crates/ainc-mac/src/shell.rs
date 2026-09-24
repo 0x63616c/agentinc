@@ -885,7 +885,7 @@ impl Render for Shell {
             .on_action(cx.listener(|this, _: &FocusPrevious, w, cx| this.cycle_focus(true, w, cx)))
             .child(self.layout_body(
                 self.sidebar(cx).into_any_element(),
-                self.main_area(content, cx).into_any_element(),
+                self.main_area(content).into_any_element(),
                 self.evee(cx).into_any_element(),
                 window,
                 cx,
