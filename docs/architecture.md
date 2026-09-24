@@ -63,6 +63,12 @@ Use **Tilt + Docker Compose**, with no Kubernetes requirement for local developm
 
 One product version drives the app bundle and compatible daemon/client release manifest; the SDK may version independently. Build, test, sign, notarize and verify the app and companion daemon, then publish a signed update archive and release notes. The app owns a **Rust updater** with Sparkle feature parity: app-menu **Check for Updates**, settings, an update window with release notes, **Install and Relaunch / Remind Me Later / Skip This Version**, progress and full changelog. Sparkle through `objc2` is a fallback if parity cannot be delivered safely. The updater works when the product database is unavailable. App relaunch preserves drafts; a bundled daemon update drains intake and resumes durable work after compatibility checks.
 
+## Development environment
+
+`cargo xtask dev` starts the worktree's Tilt + Compose stack and native daemon. `cargo xtask doctor` shows its identity and API discovery; `cargo xtask down` stops that stack without deleting volumes. `cargo xtask generate` exports the Utoipa contract as validated OpenAPI 3.0.3 and regenerates the Progenitor client and CLI operations. The first Ticket endpoint only echoes the DTO to prove the contract; the Ticket domain is a later phase.
+
+`dev/check-isolation.sh WORKTREE_A WORKTREE_B` exercises two disposable worktrees, then restarts one while checking the other's database and health.
+
 ## Phased roadmap
 
 | Phase | Work | Acceptance |

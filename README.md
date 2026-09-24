@@ -50,6 +50,12 @@ run.assert_transcript().user("hello").assistant_contains("Hi there.").end();
 - `turnkeel-macros` — the `#[tool]` attribute, re-exported from `turnkeel`
 - `ainc-mac` — the AgentInc app placeholder and the SDK's future running example
 
+## Development environment
+
+Install Docker, Tilt, the Temporal CLI, PostgreSQL's `psql`, and Rust. Run `cargo xtask dev` in a worktree to start its isolated Postgres, Temporal, UI and native `aincd`. `cargo xtask doctor` prints its identity and discovered API URL; `cargo xtask down` stops only that worktree's stack and keeps its database volume. `cargo xtask generate` refreshes the checked-in OpenAPI 3.0.3 export and Progenitor client/CLI; `cargo xtask generate --check` checks drift.
+
+After `cargo xtask dev`, use `cargo run -p ainc-cli -- health_ready`, `get_version`, or `ticket_contract --title example`. The Ticket operation is a phase 1 wire contract; Ticket persistence and commands come later. For a disposable two-worktree isolation/restart check, run `dev/check-isolation.sh WORKTREE_A WORKTREE_B`; it stops those two stacks when finished and preserves their volumes.
+
 ## Status
 
 Early. Sessions and tools work; approvals, cancellation, streaming, structured
