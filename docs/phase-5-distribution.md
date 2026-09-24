@@ -35,7 +35,8 @@ leave signed artifacts in a draft and use a throwaway Ed25519 key. The public fe
 `https://github.com/0x63616c/agentinc/releases/latest/download/feed.json`.
 Production publishing refuses if `UPDATE_SIGNING_KEY_ED25519_PEM` is missing or empty.
 The production public key is the single `UPDATE_PUBLIC_KEY` constant in
-`crates/ainc-release/src/lib.rs`; it is deliberately empty until provisioned.
+`crates/ainc-release/src/lib.rs`; Firstmate provisioned it and the repository secret
+on 2026-09-24. Acceptance jobs still use throwaway keys and stay draft.
 
 Apple credentials are read only in the signing job, written to a temporary private
 directory, and never passed as secret values on command lines. Required secrets:
@@ -112,7 +113,7 @@ startup and crash recovery pass. The installer retains the previous bundle on th
 failure. The test uses the real signed bundle and production install function, with
 `0.0.0` supplied as the predecessor version by the test fixture.
 
-The production public key/secret still need provisioning. All distribution artifacts
+The production public key and secret have been provisioned. All distribution artifacts
 remain drafts; no public release or tag was created. Full install/relaunch acceptance
 must pass before this phase is complete.
 
