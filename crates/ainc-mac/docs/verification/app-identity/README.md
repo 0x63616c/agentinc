@@ -11,8 +11,10 @@ captures use this branch's compiled development identity and the same fixture.
 
 The 24 px profile photo, name, and muted `0.1.0-dev` are stacked on the
 same left edge. The profile still opens Settings. The rendered runner checks
-separate photo, name, and version regions across 38 frames. Pilot checks
-`sidebar.version` as a label named `0.1.0-dev` in the full app acceptance run.
+separate photo, name, and version regions across 41 frames. The Pilot initial
+snapshot exposes `sidebar.version` as a label named `0.1.0-dev`. The broader
+Pilot acceptance run reaches that snapshot but later fails on a Ticket
+acknowledgement timeout; its hidden-window test reports a frontmost-app change.
 The [development tooltip capture](version-tooltip.png) shows the full commit
 above the profile without covering its text.
 

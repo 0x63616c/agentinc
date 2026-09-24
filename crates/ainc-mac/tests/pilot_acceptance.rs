@@ -98,7 +98,7 @@ fn screenshot(client: &mut Client, name: &str, output: &std::path::Path) -> Resu
     for (region, [x0, y0, x1, y1]) in [
         ("header", [150, 10, 1350, 40]),
         ("sidebar", [20, 110, 165, 390]),
-        ("profile", [15, 784, 170, 816]),
+        ("profile", [15, 735, 170, 812]),
         ("Evee", [1110, 56, 1340, 90]),
     ] {
         let mut bright = 0;
