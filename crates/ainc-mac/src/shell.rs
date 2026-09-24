@@ -1385,7 +1385,7 @@ mod interaction_tests {
 
     #[gpui::test]
     fn routes_and_history_use_shell_actions(cx: &mut TestAppContext) {
-        let dir = tempfile::tempdir_in("target").unwrap();
+        let dir = tempfile::tempdir().unwrap();
         cx.update(bind_keys);
         let (shell, cx) = cx.add_window_view(|window, cx| {
             Shell::fixture(dir.path().join("session.json"), window, cx)
@@ -1408,7 +1408,7 @@ mod interaction_tests {
 
     #[gpui::test]
     fn search_filters_selects_and_restores_focus(cx: &mut TestAppContext) {
-        let dir = tempfile::tempdir_in("target").unwrap();
+        let dir = tempfile::tempdir().unwrap();
         cx.update(|cx| {
             bind_keys(cx);
             input::bind_keys(cx);
