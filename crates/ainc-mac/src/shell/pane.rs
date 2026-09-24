@@ -82,7 +82,7 @@ impl Shell {
                     .w(px(2.))
                     .h(px(22.))
                     .rounded_full()
-                    .bg(rgba(0x33333300 | (self.grip_opacity[index] * 255.) as u32)),
+                    .bg(rgba(GRIP_TINT | (self.grip_opacity[index] * 255.) as u32)),
             )
             .on_mouse_down(
                 MouseButton::Left,

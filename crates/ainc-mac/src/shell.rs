@@ -676,7 +676,7 @@ impl Shell {
                                     ),
                             )
                             .when(item.unread, |s| {
-                                s.child(div().size(px(5.)).rounded_full().bg(rgb(FOCUS)))
+                                s.child(div().size(px(5.)).rounded_full().bg(rgb(STATUS_UNREAD)))
                             })
                     }),
             )
@@ -724,7 +724,7 @@ impl Render for Shell {
                         .cursor_pointer()
                         .px(px(16.))
                         .py(px(10.))
-                        .bg(rgb(0x292929))
+                        .bg(rgb(HOVER_CONTROL))
                         .on_click(|_, _, cx| crate::updates::open(cx, true))
                         .child("Check for Updates"),
                 )
@@ -910,7 +910,7 @@ impl Render for Shell {
                             .px(px(16.))
                             .py(px(10.))
                             .rounded(px(8.))
-                            .bg(rgb(0x292929))
+                            .bg(rgb(HOVER_CONTROL))
                             .cursor_pointer()
                             .on_click(|_, _, cx| crate::updates::open(cx, false))
                             .child("Update ready · View update"),
@@ -925,7 +925,7 @@ impl Render for Shell {
                         .left(px(190.))
                         .px(px(12.))
                         .py(px(8.))
-                        .bg(rgb(0x241818))
+                        .bg(rgb(SURFACE_ERROR))
                         .child("Session could not be saved. Changes remain in this window."),
                 )
             })
@@ -940,7 +940,7 @@ impl Render for Shell {
                         .absolute()
                         .inset_0()
                         .cursor_default()
-                        .bg(rgba(0x000000aa))
+                        .bg(rgba(SCRIM))
                         .flex()
                         .items_center()
                         .justify_center()

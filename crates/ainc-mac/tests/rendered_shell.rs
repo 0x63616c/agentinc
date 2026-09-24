@@ -14,6 +14,8 @@ mod input;
 mod model;
 #[path = "../src/overlay.rs"]
 mod overlay;
+#[path = "../src/palette.rs"]
+mod palette;
 #[path = "../src/profile.rs"]
 mod profile;
 #[path = "../src/shell.rs"]

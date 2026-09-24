@@ -86,7 +86,7 @@ impl Shell {
                     .mb(px(9.))
                     .pl(px(9.))
                     .pr(px(4.))
-                    .bg(rgb(0x0a0a0a))
+                    .bg(rgb(SURFACE_SEARCH))
                     .border_1()
                     .border_color(rgb(BORDER))
                     .text_color(rgb(MUTED))

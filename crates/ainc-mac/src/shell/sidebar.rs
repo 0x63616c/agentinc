@@ -67,7 +67,7 @@ impl Shell {
                             .justify_center()
                             .rounded(px(7.))
                             .border_1()
-                            .border_color(rgb(0x353535))
+                            .border_color(rgb(BORDER_OVERLAY))
                             .bg(rgb(HOVER))
                             .child("W"),
                     )
@@ -103,7 +103,7 @@ impl Shell {
                         None => row()
                             .size(px(24.))
                             .rounded_full()
-                            .bg(rgb(0x272727))
+                            .bg(rgb(BORDER))
                             .justify_center()
                             .child(self.profile.name.chars().next().unwrap_or('C').to_string())
                             .into_any_element(),

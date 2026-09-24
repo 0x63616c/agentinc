@@ -1180,7 +1180,7 @@ impl Render for AssistantPage {
                                         .child(
                                             div()
                                                 .text_size(type_size(10.))
-                                                .text_color(rgb(FOCUS))
+                                                .text_color(rgb(TEXT_ACCENT))
                                                 .child("Evee"),
                                         )
                                         .child(div().text_size(type_size(LABEL_SIZE)).child(reply))
@@ -1240,7 +1240,7 @@ impl Render for AssistantPage {
                     .rounded(px(10.))
                     .border_1()
                     .border_color(rgb(BORDER))
-                    .bg(rgb(0x181818))
+                    .bg(rgb(SURFACE_COMPOSER))
                     .child(self.input.clone())
                     .child(
                         row().justify_end().child(
@@ -1254,7 +1254,7 @@ impl Render for AssistantPage {
                             )
                             .size(px(30.))
                             .p(px(0.))
-                            .bg(rgb(0x2a2a2a))
+                            .bg(rgb(HOVER_SEND))
                             .child(icon("send", 16.).text_color(rgb(TEXT))),
                         ),
                     ),

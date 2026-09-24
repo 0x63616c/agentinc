@@ -19,7 +19,7 @@ impl Shell {
                     .pl(px(10.))
                     .pr(px(9.))
                     .border_b_1()
-                    .border_color(rgb(0x1a1a1a))
+                    .border_color(rgb(BORDER_SUBTLE))
                     .mb(px(20.))
                     .child(evee_logo(29.))
                     .child("Evee")
