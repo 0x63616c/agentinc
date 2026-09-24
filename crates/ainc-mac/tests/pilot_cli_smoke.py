@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix="c", dir=root / ".local") as temp:
     )
     with (output / "cli-app.log").open("w") as log:
         app = subprocess.Popen(
-            [root / "target/debug/agentinc-os", "--gpui-pilot-session", state / "s"],
+            [root / "target/debug/agentinc-os", "--gpui-pilot-session", state / "s", "--gpui-pilot-visible"],
             env=env, stdout=log, stderr=log,
         )
         try:

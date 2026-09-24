@@ -40,7 +40,8 @@ For the accepted product plan, see [docs/architecture.md](docs/architecture.md) 
   with `crates/ainc-mac/scripts/bundle.sh`; see its README for isolated validation.
 - `crates/gpui-pilot`, `crates/gpui-pilot-cli` — opt-in app automation. The GPUI
   patch and regeneration instructions are in `vendor/` and
-  `crates/ainc-mac/scripts/vendor-pilot-gpui.py`.
+  `crates/ainc-mac/scripts/vendor-pilot-gpui.py`. Pilot launches are hidden by
+  default; see `crates/ainc-mac/docs/GPUI_PILOT.md` for the visible OS-test opt-in.
 
 Expected to grow: provider crates, and possibly a core crate if the engine ever
 needs to become its own crate.

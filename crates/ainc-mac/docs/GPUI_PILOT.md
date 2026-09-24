@@ -4,7 +4,7 @@
 
 ## Launch and use
 
-Normal `cargo build` and `crates/ainc-mac/scripts/bundle.sh [release]` omit the library and its host feature. Normal app binaries reject automation arguments before opening a window. `automation` must be explicitly compiled **and** `--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY` must be passed. An automation-enabled binary launched without this argument creates no driver endpoint and does not activate the semantic observer.
+Normal `cargo build` and `crates/ainc-mac/scripts/bundle.sh [release]` omit the library and its host feature. Normal app binaries reject automation arguments before opening a window. `automation` must be explicitly compiled **and** `--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY` must be passed. An automation-enabled binary launched without this argument creates no driver endpoint and does not activate the semantic observer. Pilot sessions open an undisplayed, unfocused native Metal window and leave the current app frontmost. Pass `--gpui-pilot-visible` after the session directory only for checks that require an on-screen OS window, such as `tests/pilot_cli_smoke.py`. Ordinary launches remain visible.
 
 ```sh
 # Start cargo xtask dev first. This uses its isolated daemon and a fresh UI session.
@@ -66,6 +66,7 @@ python3 crates/ainc-mac/tests/pilot_cli_smoke.py
 `pilot_acceptance` launches the actual app executable with isolated UI, daemon discovery, import/profile and title variables and a fresh private driver session. Its only UI operations/assertions use the socket driver. It follows Search → Tickets → Add Ticket → Unicode title → Create, checks the resulting Ticket row, four statuses, assignee changes, Comments, agent registration and Today links, exercises stale refs, overlay rejection, selection/undo, a concurrent wait and a deadline, and checks screenshot pixels in independent shell regions. Artifacts and small-sample latency distributions are written to `target/pilot-acceptance/`. The test process stops only its own child.
 
 A separate unavailable-service launch verifies that Today reports Tickets unavailable instead of an empty successful read.
+It also injects search input, captures a Metal frame, and checks through WindowServer that the Pilot window stays off screen while the previously frontmost app remains frontmost. The separate CLI smoke opts into visibility for its native OS-window check.
 
 The existing 38-frame `rendered_shell` suite remains the broader capture-integrity gate. Separate OS acceptance is recorded in `docs/verification/GPUI_PILOT.md`; in-process tests do not prove native menus, OS prompts, screen-reader behavior or IME composition.
 
