@@ -235,13 +235,14 @@ impl ManagedRuntime {
     pub async fn start(root: PathBuf) -> Result<Self> {
         tokio::task::spawn_blocking(move || {
             use std::io::BufRead;
-            let mut child = Command::new(std::env::current_exe()?)
-                .arg("--local-runtime")
-                .arg(root)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::inherit())
-                .spawn()?;
+            let mut child =
+                ainc_release::process::prepare_child(&mut Command::new(std::env::current_exe()?))
+                    .arg("--local-runtime")
+                    .arg(root)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::inherit())
+                    .spawn()?;
             let lifetime = child.stdin.take();
             let output = child.stdout.take().context("runtime identity pipe")?;
             let mut line = String::new();

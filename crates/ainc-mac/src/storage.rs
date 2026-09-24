@@ -68,7 +68,7 @@ pub async fn client() -> Result<Client> {
                 .append(true)
                 .mode(0o600)
                 .open(discovery.with_file_name("daemon.log"))?;
-            command
+            ainc_release::process::prepare_child(&mut command)
                 .process_group(0)
                 .env("AINC_DISCOVERY_FILE", &discovery)
                 .stdin(std::process::Stdio::null())

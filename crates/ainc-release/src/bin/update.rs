@@ -8,7 +8,10 @@ use std::{
     time::{Duration, Instant},
 };
 fn main() {
-    if let Err(error) = install() {
+    if let Err(error) = ainc_release::process::reset_inherited_signals()
+        .map_err(anyhow::Error::from)
+        .and_then(|()| install())
+    {
         eprintln!("Update failed: {error:#}");
         // Restore an app window even when pre-install checks or draining fail.
         if let Some(path) = std::env::args_os().nth(1) {
@@ -32,7 +35,10 @@ fn install() -> Result<()> {
 fn launch(installed: &Path) -> Result<Child> {
     // Launch the exact new executable, preserving the profile environment.
     // LaunchServices can otherwise activate an unrelated copy with the same ID.
-    Ok(Command::new(installed.join("Contents/MacOS/agentinc-os")).spawn()?)
+    Ok(ainc_release::process::prepare_child(&mut Command::new(
+        installed.join("Contents/MacOS/agentinc-os"),
+    ))
+    .spawn()?)
 }
 fn install_from(args: &[std::ffi::OsString], key: &str, current: &str) -> Result<Child> {
     ensure!(

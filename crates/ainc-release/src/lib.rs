@@ -1,4 +1,6 @@
 //! Product release identity, wire compatibility and authenticated update metadata.
+#[cfg(unix)]
+pub mod process;
 use anyhow::{Context, Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};

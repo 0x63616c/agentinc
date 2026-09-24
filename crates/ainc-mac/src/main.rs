@@ -23,6 +23,7 @@ impl log::Log for DiagnosticLog {
     fn flush(&self) {}
 }
 fn main() {
+    ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     #[cfg(feature = "automation")]
     let pilot_directory = {

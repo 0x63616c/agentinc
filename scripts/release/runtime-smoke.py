@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import selectors
+import signal
 import subprocess
 import urllib.request
 import uuid
@@ -16,6 +17,7 @@ parser.add_argument('bundle', type=Path)
 parser.add_argument('profile', type=Path)
 parser.add_argument('--workspace-tests',action='store_true')
 parser.add_argument('--pilot',action='store_true')
+parser.add_argument('--blocked-signals',action='store_true',help='regress inherited blocked/ignored SIGCHLD at daemon startup')
 args=parser.parse_args()
 version=json.loads((args.bundle/'Contents/Resources/release.json').read_text())['version']
 root=args.profile.resolve()
@@ -33,8 +35,21 @@ def request(path,body=None):
   data=response.read()
   return json.loads(data) if data else None
 
+def inherited_signals():
+ signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGCHLD})
+ signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+
+def assert_reaped(daemon):
+ # Readiness requires a successful health-check child. It must have been reaped.
+ rows=subprocess.check_output(['ps','-axo','pid=,ppid=,stat=,command='],text=True).splitlines()
+ entries=[line.strip().split(None,3) for line in rows]
+ children={int(row[0]) for row in entries if int(row[1])==daemon.pid}
+ descendants=[row for row in entries if int(row[1]) in children]
+ assert any('--local-runtime' in row[3] for row in entries if int(row[0]) in children)
+ assert not any('Z' in row[2] for row in descendants), 'runtime helper left a zombie health-check child'
+
 def start():
- child=subprocess.Popen([str(args.bundle.resolve()/'Contents/MacOS/aincd')],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+ child=subprocess.Popen([str(args.bundle.resolve()/'Contents/MacOS/aincd')],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,preexec_fn=inherited_signals if args.blocked_signals else None)
  selector=selectors.DefaultSelector();selector.register(child.stdout,selectors.EVENT_READ)
  while selector.select(timeout=90):
   line=child.stdout.readline()
@@ -42,7 +57,9 @@ def start():
    child.wait();raise RuntimeError('daemon exited: '+str(child.returncode))
   with (root/'daemon.log').open('a') as log:log.write(line)
   if 'AgentInc daemon ready' in line:
-   selector.close();return child
+   selector.close()
+   if args.blocked_signals: assert_reaped(child)
+   return child
  child.terminate();child.wait();raise RuntimeError('daemon readiness deadline')
 
 child=None
@@ -51,7 +68,7 @@ try:
  assert request('/health/ready')['status']=='ready'
  request('/v1/commands',{'operation_id':str(uuid.uuid4()),'command':{'kind':'create_conversation'}})
  first=request('/v1/state')
- print('Fresh bundled runtime ready')
+ print('Fresh bundled runtime ready'+ (' with inherited blocked/ignored SIGCHLD; health-check child reaped' if args.blocked_signals else ''))
  if args.workspace_tests:
   pid=(root/'runtime/postgres/postmaster.pid').read_text().splitlines()
   password=(root/'runtime/postgres-password').read_text()

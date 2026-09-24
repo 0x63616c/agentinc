@@ -9,8 +9,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    ainc_release::process::reset_inherited_signals()?;
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run())
+}
+
+async fn run() -> Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     if args.len() == 2 && args[0] == "--local-runtime" {
         return local_runtime::helper(Path::new(&args[1])).await;

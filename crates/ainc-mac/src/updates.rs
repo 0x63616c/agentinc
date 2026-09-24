@@ -234,14 +234,16 @@ impl UpdateView {
             let discovery = crate::storage::discovery_path()?;
             // The helper verifies the signed feed/archive again after launch.
             let log = std::fs::File::create(self.directory.join("install.log"))?;
-            std::process::Command::new(macos.join("ainc-update"))
-                .arg(app)
-                .arg(&self.directory)
-                .arg(std::process::id().to_string())
-                .arg(discovery)
-                .stdout(log.try_clone()?)
-                .stderr(log)
-                .spawn()?;
+            ainc_release::process::prepare_child(&mut std::process::Command::new(
+                macos.join("ainc-update"),
+            ))
+            .arg(app)
+            .arg(&self.directory)
+            .arg(std::process::id().to_string())
+            .arg(discovery)
+            .stdout(log.try_clone()?)
+            .stderr(log)
+            .spawn()?;
             Ok(())
         })();
         match result {
