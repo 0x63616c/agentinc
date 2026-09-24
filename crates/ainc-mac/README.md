@@ -4,7 +4,7 @@ A native macOS workspace built with Rust and GPUI, following the approved Contro
 
 ## Build and run
 
-Requires macOS, Xcode command-line tools and Rust installed through rustup. `rust-toolchain.toml` selects Rust 1.94.0. GPUI is pinned to 0.2.2 and `Cargo.lock` fixes the dependency graph. Its `font-kit` and `runtime_shaders` features provide macOS text and Metal shaders.
+Requires macOS, Xcode command-line tools and Rust installed through rustup. `rust-toolchain.toml` selects Rust 1.98.1. GPUI comes from Zed commit `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`, pinned in `Cargo.toml` and `Cargo.lock`. This is current upstream source, although Zed still labels its core crate 0.2.2. Core/platform `font-kit` and platform `runtime_shaders` provide macOS text and Metal shaders.
 
 ```sh
 scripts/bundle.sh
@@ -18,6 +18,14 @@ Verify a built bundle with `codesign --verify --deep --strict --verbose=2 'dist/
 ## Development setup
 
 On macOS, run `brew install prek && prek install` once per clone. The pre-commit hook checks Rust formatting; the pre-push hooks run Clippy and tests. CI runs the same hooks on pull requests and pushes to main.
+
+The ordinary GPUI interaction tests run with `cargo test --locked`. On macOS, run the real Metal shell regression with:
+
+```sh
+cargo test --locked --features rendered-tests --test rendered_shell
+```
+
+It captures 38 frames across routes, two window sizes, dialogs and Evee visibility, and asserts that shell regions contain rendered pixels. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
 
 ## Evee and Tasks
 

@@ -31,7 +31,9 @@ impl Profile {
                 .filter(u8::is_ascii_hexdigit)
                 .collect();
             let bytes: Option<Vec<u8>> = hex
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| {
                     Some(
                         (char::from(pair[0]).to_digit(16)? * 16

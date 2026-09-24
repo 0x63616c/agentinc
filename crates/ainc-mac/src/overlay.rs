@@ -42,7 +42,7 @@ impl OverlayHost {
         &mut self,
         overlay: Overlay,
         window: &mut Window,
-        cx: &App,
+        cx: &mut App,
         initial: Option<FocusHandle>,
     ) {
         if self.active.is_none() {
@@ -50,14 +50,14 @@ impl OverlayHost {
         }
         self.active = Some(overlay);
         if let Some(initial) = initial {
-            window.focus(&initial);
+            window.focus(&initial, cx);
         }
     }
-    pub fn dismiss(&mut self, window: &mut Window) -> bool {
+    pub fn dismiss(&mut self, window: &mut Window, cx: &mut App) -> bool {
         let was_open = self.active.is_some();
         self.close();
         if let Some(focus) = self.pending_focus.take() {
-            window.focus(&focus);
+            window.focus(&focus, cx);
         }
         was_open
     }
@@ -69,7 +69,13 @@ impl OverlayHost {
     pub fn take_pending_focus(&mut self) -> Option<FocusHandle> {
         self.pending_focus.take()
     }
-    pub fn cycle_focus(&self, handles: &[FocusHandle], backwards: bool, window: &mut Window) {
+    pub fn cycle_focus(
+        &self,
+        handles: &[FocusHandle],
+        backwards: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         if handles.is_empty() {
             return;
         }
@@ -80,7 +86,7 @@ impl OverlayHost {
             (None, true) => handles.len() - 1,
             (None, false) => 0,
         };
-        window.focus(&handles[next]);
+        window.focus(&handles[next], cx);
     }
 }
 

@@ -89,6 +89,24 @@ impl Shell {
             Ok(store) => (Some(std::rc::Rc::new(store)), None),
             Err(_) => (None, Some("Local storage is unavailable. Check Application Support permissions and restart.".to_owned())),
         };
+        Self::with_state(
+            path,
+            store,
+            storage_error,
+            crate::profile::Profile::local(),
+            window,
+            cx,
+        )
+    }
+
+    fn with_state(
+        path: PathBuf,
+        store: Option<Rc<crate::storage::Store>>,
+        storage_error: Option<String>,
+        profile: crate::profile::Profile,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let overlays = Rc::new(RefCell::new(OverlayHost::default()));
         let assistant = cx.new(|cx| {
             crate::evee::AssistantPage::new(
@@ -124,7 +142,7 @@ impl Shell {
             cx.notify();
         });
         let focus = cx.focus_handle();
-        window.focus(&focus);
+        window.focus(&focus, cx);
         let session = Session::load(&path);
         let evee_progress = if session.evee { 1. } else { 0. };
         let sidebar_width = if session.sidebar { SIDEBAR } else { 0. };
@@ -135,7 +153,7 @@ impl Shell {
             tasks,
             _tasks_subscription: tasks_subscription,
             _assistant_subscriptions: assistant_subscriptions,
-            profile: crate::profile::Profile::local(),
+            profile,
             sidebar_width,
             evee_progress,
             evee_animation: None,
@@ -156,6 +174,31 @@ impl Shell {
             grip_animation: None,
         }
     }
+    #[cfg(test)]
+    pub(crate) fn fixture(path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let store = crate::storage::Store::open(&path.with_extension("sqlite3")).unwrap();
+        Self::with_state(
+            path,
+            Some(Rc::new(store)),
+            None,
+            crate::profile::Profile {
+                name: "QA Profile".into(),
+                photo: None,
+            },
+            window,
+            cx,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture_state(&self) -> (Route, Option<Overlay>, bool) {
+        (
+            self.session.current(),
+            self.overlays.borrow().active(),
+            self.session.evee,
+        )
+    }
+
     fn save(&mut self, cx: &mut Context<Self>) {
         self.save_error = match self.session.save(&self.path) {
             Ok(()) => false,
@@ -169,12 +212,10 @@ impl Shell {
     fn focus_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selected = 0;
         self.input.update(cx, |input, _| input.reset());
-        self.overlays.borrow_mut().open(
-            Overlay::Search,
-            window,
-            cx,
-            Some(self.input.focus_handle(cx)),
-        );
+        let initial_focus = self.input.focus_handle(cx);
+        self.overlays
+            .borrow_mut()
+            .open(Overlay::Search, window, cx, Some(initial_focus));
     }
     fn cycle_focus(&self, backwards: bool, window: &mut Window, cx: &mut Context<Self>) {
         let handles = match self.overlays.borrow().active() {
@@ -197,16 +238,16 @@ impl Shell {
             }
             _ => {
                 if backwards {
-                    window.focus_prev();
+                    window.focus_prev(cx);
                 } else {
-                    window.focus_next();
+                    window.focus_next(cx);
                 }
                 return;
             }
         };
         self.overlays
             .borrow()
-            .cycle_focus(&handles, backwards, window);
+            .cycle_focus(&handles, backwards, window, cx);
     }
     fn dispatch(&mut self, control: Control, window: &mut Window, cx: &mut Context<Self>) {
         let before = self.session.current();
@@ -222,18 +263,18 @@ impl Shell {
         match control {
             Control::Back | Control::Forward => {
                 self.session.go(matches!(control, Control::Forward));
-                self.overlays.borrow_mut().dismiss(window);
-                window.focus(&self.focus);
+                self.overlays.borrow_mut().dismiss(window, cx);
+                window.focus(&self.focus, cx);
             }
             Control::Navigate(route) => {
                 self.session.navigate(route);
-                self.overlays.borrow_mut().dismiss(window);
-                window.focus(&self.focus);
+                self.overlays.borrow_mut().dismiss(window, cx);
+                window.focus(&self.focus, cx);
             }
             Control::Open(route) => {
                 self.session.navigate(route);
-                self.overlays.borrow_mut().dismiss(window);
-                window.focus(&self.focus);
+                self.overlays.borrow_mut().dismiss(window, cx);
+                window.focus(&self.focus, cx);
             }
             Control::Search => {
                 self.palette_transition = Some(Instant::now());
@@ -259,7 +300,7 @@ impl Shell {
             Control::Notifications => {
                 let active = self.overlays.borrow().active();
                 if active == Some(Overlay::Notifications) {
-                    self.overlays.borrow_mut().dismiss(window);
+                    self.overlays.borrow_mut().dismiss(window, cx);
                 } else {
                     self.overlays
                         .borrow_mut()
@@ -272,11 +313,11 @@ impl Shell {
                 }
             }
             Control::Dismiss => {
-                self.overlays.borrow_mut().dismiss(window);
+                self.overlays.borrow_mut().dismiss(window, cx);
             }
         }
         if before != self.session.current() {
-            self.overlays.borrow_mut().dismiss(window);
+            self.overlays.borrow_mut().dismiss(window, cx);
         }
         self.save(cx);
         window.refresh();
@@ -1059,7 +1100,7 @@ impl Render for Shell {
         };
         let palette_progress = progress(&mut self.palette_transition);
         if let Some(focus) = self.overlays.borrow_mut().take_pending_focus() {
-            window.defer(cx, move |window, _| window.focus(&focus));
+            window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
         let active_overlay = self.overlays.borrow().active();
         let content = match self.session.current() {
@@ -1101,7 +1142,7 @@ impl Render for Shell {
                 if active
                     .is_some_and(|overlay| overlay.is_menu() || overlay == Overlay::Notifications)
                 {
-                    this.overlays.borrow_mut().dismiss(window);
+                    this.overlays.borrow_mut().dismiss(window, cx);
                     cx.notify();
                 }
             }))
@@ -1154,8 +1195,8 @@ impl Render for Shell {
                 cx.listener(|this, _: &ToggleEvee, w, cx| this.dispatch(Control::Evee, w, cx)),
             )
             .on_action(cx.listener(|this, _: &Escape, w, cx| {
-                if !this.overlays.borrow_mut().dismiss(w) {
-                    w.focus(&this.focus);
+                if !this.overlays.borrow_mut().dismiss(w, cx) {
+                    w.focus(&this.focus, cx);
                 }
                 cx.notify();
             }))
@@ -1258,7 +1299,7 @@ impl Render for Shell {
                         .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_click(cx.listener(|this, _, window, cx| {
                             cx.stop_propagation();
-                            this.overlays.borrow_mut().dismiss(window);
+                            this.overlays.borrow_mut().dismiss(window, cx);
                             cx.notify();
                         }))
                         .child(
@@ -1289,4 +1330,97 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("shift-tab", FocusPrevious, Some("Control")),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
+}
+
+#[cfg(test)]
+mod interaction_tests {
+    use super::{Shell, bind_keys};
+    use crate::{
+        input,
+        model::{PAGES, Route},
+        overlay::Overlay,
+    };
+    use gpui::{Focusable, TestAppContext};
+
+    #[gpui::test]
+    fn routes_and_history_use_shell_actions(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir_in("target").unwrap();
+        cx.update(bind_keys);
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        for page in PAGES.iter().filter(|page| page.shortcut.is_some()) {
+            cx.simulate_keystrokes(&format!("cmd-{}", page.shortcut.unwrap()));
+            shell.read_with(cx, |shell, _| {
+                assert_eq!(shell.fixture_state().0, page.route)
+            });
+        }
+        cx.simulate_keystrokes("cmd-alt-left");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Apps)
+        });
+        cx.simulate_keystrokes("cmd-alt-right");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Assistant)
+        });
+    }
+
+    #[gpui::test]
+    fn search_filters_selects_and_restores_focus(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir_in("target").unwrap();
+        cx.update(|cx| {
+            bind_keys(cx);
+            input::bind_keys(cx);
+        });
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        cx.simulate_keystrokes("cmd-k");
+        cx.simulate_input("settings");
+        shell.read_with(cx, |shell, cx| {
+            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+            assert_eq!(
+                Route::matching(&shell.input.read(cx).content),
+                vec![Route::Settings]
+            );
+        });
+        cx.simulate_keystrokes("enter");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Settings);
+            assert_eq!(shell.overlays.borrow().active(), None);
+        });
+        cx.simulate_keystrokes("cmd-k");
+        cx.simulate_input("no-such-space");
+        cx.simulate_keystrokes("enter");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Settings)
+        });
+        cx.simulate_keystrokes("escape");
+        let focus = shell.read_with(cx, |shell, _| shell.focus.clone());
+        cx.update(|window, _| assert!(focus.is_focused(window)));
+    }
+
+    #[gpui::test]
+    fn search_focus_wraps_and_escape_dismisses(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir_in("target").unwrap();
+        cx.update(|cx| {
+            bind_keys(cx);
+            input::bind_keys(cx);
+        });
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        cx.simulate_keystrokes("cmd-k shift-tab");
+        let last = shell.read_with(cx, |shell, _| {
+            shell.picker_result_focus.last().unwrap().clone()
+        });
+        cx.update(|window, _| assert!(last.is_focused(window)));
+        cx.simulate_keystrokes("tab");
+        let input = shell.read_with(cx, |shell, cx| shell.input.focus_handle(cx));
+        cx.update(|window, _| assert!(input.is_focused(window)));
+        cx.simulate_keystrokes("escape");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.overlays.borrow().active(), None)
+        });
+    }
 }

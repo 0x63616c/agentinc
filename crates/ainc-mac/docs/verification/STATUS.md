@@ -1,5 +1,7 @@
 # Native Control shell — acceptance report
 
+Current GPUI dependency and regression acceptance: [GPUI_UPGRADE.md](GPUI_UPGRADE.md). The report below is the original 0.2.2 shell milestone and retains its historical commands and scope.
+
 Verified locally on macOS 27.0 (26A428), 23 September 2026. This is a working Rust + GPUI application shell. All destination content is explicitly placeholder content; no tasks, agents, home, media, calendar, library search or live assistant integration is claimed.
 
 ## Reproduce

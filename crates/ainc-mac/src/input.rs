@@ -847,7 +847,14 @@ impl Element for TextElement {
                 window.paint_quad(selection);
             }
             for (_, line, line_bounds) in &prepaint.multiline {
-                let _ = line.paint(line_bounds.origin, window.line_height(), window, cx);
+                let _ = line.paint(
+                    line_bounds.origin,
+                    window.line_height(),
+                    TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                );
             }
             if focus_handle.is_focused(window)
                 && let Some(cursor) = prepaint.cursor.take()
@@ -868,8 +875,15 @@ impl Element for TextElement {
             bounds.origin - point(prepaint.scroll_x, px(0.)),
             bounds.size,
         );
-        line.paint(text_bounds.origin, window.line_height(), window, cx)
-            .unwrap();
+        line.paint(
+            text_bounds.origin,
+            window.line_height(),
+            TextAlign::Left,
+            None,
+            window,
+            cx,
+        )
+        .unwrap();
 
         if focus_handle.is_focused(window)
             && let Some(cursor) = prepaint.cursor.take()
@@ -1066,5 +1080,31 @@ mod tests {
         assert_eq!(word_boundary(text, 5, true), 12);
         assert_eq!(word_boundary("👋 café", 0, true), "👋 café".len());
         assert_eq!(word_boundary("", 0, false), 0);
+    }
+}
+
+#[cfg(test)]
+mod interaction_tests {
+    use super::{TextInput, bind_keys};
+    use gpui::TestAppContext;
+    #[gpui::test]
+    fn simulated_unicode_editing_and_undo(cx: &mut TestAppContext) {
+        cx.update(bind_keys);
+        let (input, cx) = cx.add_window_view(|window, cx| {
+            let input = TextInput::new(cx);
+            window.focus(&input.focus_handle, cx);
+            input
+        });
+        cx.simulate_input("café 👋");
+        input.read_with(cx, |input, _| assert_eq!(input.content.as_ref(), "café 👋"));
+        cx.simulate_keystrokes("backspace");
+        input.read_with(cx, |input, _| assert_eq!(input.content.as_ref(), "café "));
+        cx.simulate_keystrokes("cmd-z");
+        input.read_with(cx, |input, _| assert_eq!(input.content.as_ref(), "café 👋"));
+        cx.simulate_keystrokes("cmd-a");
+        cx.simulate_input("replacement");
+        input.read_with(cx, |input, _| {
+            assert_eq!(input.content.as_ref(), "replacement")
+        });
     }
 }

@@ -4,7 +4,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 - The native shell scope is in `docs/CONTROL_BUILD_HANDOFF.md`; Evee/Tasks setup, storage and acceptance are in `docs/EVEE_ASSISTANT_HANDOFF.md`. `.lavish/` remains the visual reference.
 - Build the native bundle with `scripts/bundle.sh`; the pinned toolchain and dependencies are in `rust-toolchain.toml`, `Cargo.toml`, and `Cargo.lock`.
-- GPUI requires the `font-kit` feature on macOS when default features are disabled; `docs/verification/BLOCKER.md` records the resolved diagnosis.
+- Keep GPUI `font-kit` enabled on macOS. Current upstream pin, native acceptance and the main-thread Metal regression command are documented in `docs/verification/GPUI_UPGRADE.md`; inspect saved full PNGs at logical resolution before diagnosing missing regions from inline previews.
 - Prek hooks and CI enforce fmt, clippy and tests; run `prek install` in a fresh clone, fix failures and never bypass hooks with `--no-verify`.
 - Visual rule: keep control edge insets even, especially top/bottom/right around header icon buttons. No hover tooltips unless explicitly requested. Keep small interactions fluid with brief, restrained transitions. Approved live refinements are recorded in `docs/verification/STATUS.md`.
 

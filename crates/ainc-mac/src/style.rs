@@ -62,7 +62,7 @@ pub struct ButtonSpec {
 }
 
 /// Common focus, activation and disabled contract; callers own layout and hover fades.
-/// GPUI 0.2.2 does not expose this label to macOS accessibility yet.
+/// Accessibility semantics are added separately from the GPUI migration.
 pub fn button_base(spec: ButtonSpec) -> Stateful<Div> {
     let _label = spec.label;
     let filled = matches!(spec.kind, ButtonKind::Primary | ButtonKind::Destructive);

@@ -82,12 +82,10 @@ impl TasksPage {
             input.reset();
             cx.notify();
         });
-        self.overlays.borrow_mut().open(
-            Overlay::AddTask,
-            window,
-            cx,
-            Some(self.input.focus_handle(cx)),
-        );
+        let initial_focus = self.input.focus_handle(cx);
+        self.overlays
+            .borrow_mut()
+            .open(Overlay::AddTask, window, cx, Some(initial_focus));
         cx.notify();
     }
     pub fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
@@ -245,7 +243,7 @@ impl TasksPage {
                     true,
                     ButtonKind::Secondary,
                     |this, window, cx| {
-                        this.overlays.borrow_mut().dismiss(window);
+                        this.overlays.borrow_mut().dismiss(window, cx);
                         cx.notify();
                     },
                     cx,
@@ -291,7 +289,7 @@ impl Render for TasksPage {
             .on_click(cx.listener(|this, _, window, cx| {
                 let active = this.overlays.borrow().active();
                 if active.is_some_and(Overlay::is_menu) {
-                    this.overlays.borrow_mut().dismiss(window);
+                    this.overlays.borrow_mut().dismiss(window, cx);
                     cx.notify();
                 }
             }))
@@ -422,7 +420,7 @@ impl Render for TasksPage {
                                                         if active == Some(Overlay::TaskMenu(id)) {
                                                             this.overlays
                                                                 .borrow_mut()
-                                                                .dismiss(window);
+                                                                .dismiss(window, cx);
                                                         } else {
                                                             this.overlays.borrow_mut().open(
                                                                 Overlay::TaskMenu(id),
@@ -506,5 +504,58 @@ mod tests {
             Some("Use 500 characters or fewer.")
         );
         assert_eq!(TasksPage::title_error(&"A".repeat(500)), None);
+    }
+}
+
+#[cfg(test)]
+mod interaction_tests {
+    use super::TasksPage;
+    use crate::{
+        input,
+        overlay::{Overlay, OverlayHost},
+        storage::Store,
+    };
+    use gpui::{
+        AppContext, Context, Entity, IntoElement, ParentElement, Render, TestAppContext, Window,
+        div,
+    };
+    use std::{cell::RefCell, rc::Rc};
+
+    struct Harness {
+        page: Entity<TasksPage>,
+    }
+    impl Render for Harness {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let overlay = self.page.update(cx, |page, cx| page.overlay(cx));
+            div().child(self.page.clone()).children(overlay)
+        }
+    }
+
+    #[gpui::test]
+    fn task_input_submit_complete_reopen_and_delete(cx: &mut TestAppContext) {
+        cx.update(input::bind_keys);
+        let dir = tempfile::tempdir_in("target").unwrap();
+        let store = Rc::new(Store::open(&dir.path().join("tasks.sqlite3")).unwrap());
+        let overlays = Rc::new(RefCell::new(OverlayHost::default()));
+        let page = cx.new(|cx| TasksPage::new(Some(store.clone()), None, overlays.clone(), cx));
+        let (_, cx) = cx.add_window_view(|_, _| Harness { page: page.clone() });
+        cx.update(|window, cx| page.update(cx, |page, cx| page.open_add(window, cx)));
+        cx.simulate_input("  Ship café 👋  ");
+        cx.simulate_keystrokes("enter");
+        let todos = store.todos().unwrap();
+        assert_eq!(todos.len(), 1);
+        assert_eq!(todos[0].title, "Ship café 👋");
+        assert_eq!(overlays.borrow().active(), None);
+        page.update(cx, |page, cx| page.change(todos[0].id, Some(true), cx));
+        assert!(store.todos().unwrap()[0].completed);
+        page.update(cx, |page, cx| page.change(todos[0].id, Some(false), cx));
+        assert!(!store.todos().unwrap()[0].completed);
+        page.update(cx, |page, cx| page.change(todos[0].id, None, cx));
+        assert!(store.todos().unwrap().is_empty());
+        cx.update(|window, cx| page.update(cx, |page, cx| page.open_add(window, cx)));
+        cx.simulate_input("   ");
+        cx.simulate_keystrokes("enter");
+        assert!(store.todos().unwrap().is_empty());
+        assert_eq!(overlays.borrow().active(), Some(Overlay::AddTask));
     }
 }

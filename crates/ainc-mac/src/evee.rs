@@ -105,17 +105,20 @@ impl AssistantPage {
         let model = store
             .as_ref()
             .and_then(|db| db.setting("model").ok().flatten().filter(|s| !s.is_empty()));
-        let request = cx
-            .background_executor()
-            .spawn(async { assistant::status() });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.apply_status(result);
-                cx.notify();
-            });
-        })
-        .detach();
+        #[cfg(not(test))]
+        {
+            let request = cx
+                .background_executor()
+                .spawn(async { assistant::status() });
+            cx.spawn(async move |this, cx| {
+                let result = request.await;
+                let _ = this.update(cx, |this, cx| {
+                    this.apply_status(result);
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
         Self {
             store,
             overlays,
@@ -130,7 +133,7 @@ impl AssistantPage {
             account: None,
             models: vec![],
             model,
-            credentials_busy: true,
+            credentials_busy: !cfg!(test),
             login_cancel: None,
             connection_error: None,
             active: None,
@@ -569,7 +572,7 @@ impl AssistantPage {
                                 move |this, window, cx| {
                                     let mut host = this.overlays.borrow_mut();
                                     if host.active() == Some(Overlay::ConversationMenu(id)) {
-                                        host.dismiss(window);
+                                        host.dismiss(window, cx);
                                     } else {
                                         host.open(Overlay::ConversationMenu(id), window, cx, None);
                                     }
@@ -613,11 +616,13 @@ impl AssistantPage {
                                                         );
                                                     }
                                                     this.form_error = None;
+                                                    let initial_focus =
+                                                        this.rename_input.focus_handle(cx);
                                                     this.overlays.borrow_mut().open(
                                                         Overlay::RenameConversation(id),
                                                         window,
                                                         cx,
-                                                        Some(this.rename_input.focus_handle(cx)),
+                                                        Some(initial_focus),
                                                     );
                                                     cx.notify();
                                                 },
@@ -750,7 +755,7 @@ impl AssistantPage {
                     None,
                     true,
                     |this, window, cx| {
-                        this.overlays.borrow_mut().dismiss(window);
+                        this.overlays.borrow_mut().dismiss(window, cx);
                         cx.notify();
                     },
                     cx,
