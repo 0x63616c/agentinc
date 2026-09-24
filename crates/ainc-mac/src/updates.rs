@@ -277,7 +277,7 @@ impl UpdateView {
     pub fn settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
         column()
             .gap(px(12.))
-            .child(div().text_size(px(16.)).child("Software updates"))
+            .child(div().text_size(type_size(16.)).child("Software updates"))
             .child(self.message.clone())
             .child(self.button(
                 "updates.check",
@@ -353,8 +353,8 @@ impl Render for UpdateView {
             .gap(px(16.))
             .bg(rgb(0x161616))
             .text_color(rgb(0xeeeeee))
-            .text_size(px(14.))
-            .child(div().text_size(px(22.)).child("Software Update"))
+            .text_size(type_size(14.))
+            .child(div().text_size(type_size(22.)).child("Software Update"))
             .child(self.message.clone());
         if let Some((_, manifest)) = &self.release {
             view = view.child(if self.changelog {

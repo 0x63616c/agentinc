@@ -13,7 +13,7 @@ impl Shell {
                     .h(px(50.))
                     .flex_shrink_0()
                     .gap(px(8.))
-                    .text_size(px(LABEL_SIZE))
+                    .text_size(type_size(LABEL_SIZE))
                     .ml(px(-20.))
                     .mr(px(-20.))
                     .pl(px(10.))
