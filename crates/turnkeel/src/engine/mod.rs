@@ -21,7 +21,7 @@ use temporalio_sdk::{
 
 type ShutdownFn = Box<dyn Fn() + Send + Sync>;
 
-/// Engine behaviour switches. Internal; surfaced through `Agentinc::local()` / `Agentinc::test()`.
+/// Engine behaviour switches. Internal; surfaced through `Runtime::local()` / `Runtime::test()`.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct EngineOptions {
     pub check_idempotency: bool,

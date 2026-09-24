@@ -6,7 +6,7 @@
 //!     .on_tool_result("get_weather", text("It's sunny in Lisbon."));
 //!
 //! let agent = Agent::builder("bot").model(model).tool(get_weather).build();
-//! let run = agentinc::testing::run(&agent, "Weather in Lisbon?").await?;
+//! let run = turnkeel::testing::run(&agent, "Weather in Lisbon?").await?;
 //! run.assert_transcript().user("Weather in Lisbon?").tool_call("get_weather").tool_result().assistant_contains("sunny");
 //! ```
 
@@ -18,7 +18,7 @@ pub use script::{ModelCall, Script, ScriptModel, ScriptTool, ToolCall};
 pub use scripted::{ScriptedModel, text, tool_call};
 pub use transcript::TranscriptAssert;
 
-use crate::{Agent, Agentinc, Error, Message, Run};
+use crate::{Agent, Runtime, Error, Message, Run};
 
 /// A finished run plus its transcript, for asserting on.
 #[derive(Debug)]
@@ -36,11 +36,11 @@ impl TestRun {
 
 /// Spin up a test runtime, run the agent to completion, tear everything down.
 pub async fn run(agent: &Agent, input: impl Into<Message>) -> Result<TestRun, Error> {
-    let agentinc = Agentinc::test().await?;
-    let run = agentinc.start(agent, input).await?;
+    let turnkeel = Runtime::test().await?;
+    let run = turnkeel.start(agent, input).await?;
     let output = run.result().await?;
     let transcript = run.transcript().await?;
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(TestRun {
         run,
         output,

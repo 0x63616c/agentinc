@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/agentinc", "crates/agentinc-macros", "crates/agentinc-os"]
+members = ["crates/turnkeel", "crates/turnkeel-macros", "crates/ainc-mac"]
 
 [workspace.package]
 edition = "2024"
@@ -8,8 +8,8 @@ license = "MIT"
 rust-version = "1.92"
 
 [workspace.dependencies]
-agentinc = { path = "crates/agentinc" }
-agentinc-macros = { path = "crates/agentinc-macros" }
+turnkeel = { path = "crates/turnkeel" }
+turnkeel-macros = { path = "crates/turnkeel-macros" }
 
 anyhow = "1"
 futures = "0.3"

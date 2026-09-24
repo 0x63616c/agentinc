@@ -1,4 +1,4 @@
-//! Proc macros for `agentinc`. Users never depend on this crate directly.
+//! Proc macros for `turnkeel`. Users never depend on this crate directly.
 //!
 
 use proc_macro::TokenStream;
@@ -21,7 +21,7 @@ use syn::{
 /// An optional first parameter `ctx: &ToolCtx` receives the call context.
 /// Arguments must implement `serde::Deserialize` and `schemars::JsonSchema`; the return
 /// value must implement `serde::Serialize`. The function name becomes a value implementing
-/// `agentinc::Tool`, so it can be passed straight to `Agent::builder(..).tool(get_weather)`.
+/// `turnkeel::Tool`, so it can be passed straight to `Agent::builder(..).tool(get_weather)`.
 #[proc_macro_attribute]
 pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attrs = parse_macro_input!(attr with Punctuated::<Meta, Comma>::parse_terminated);
@@ -43,8 +43,8 @@ fn expand(attrs: Punctuated<Meta, Comma>, func: ItemFn) -> syn::Result<proc_macr
     let name = &func.sig.ident;
     let name_str = name.to_string();
     let vis = &func.vis;
-    let inner = format_ident!("__agentinc_tool_impl_{}", name);
-    let args_ty = format_ident!("__AgentincArgs_{}", name);
+    let inner = format_ident!("__turnkeel_tool_impl_{}", name);
+    let args_ty = format_ident!("__RuntimeArgs_{}", name);
 
     let mut description: Option<String> = None;
     let mut idempotent = true;
@@ -144,9 +144,9 @@ fn expand(attrs: Punctuated<Meta, Comma>, func: ItemFn) -> syn::Result<proc_macr
     Ok(quote! {
         #inner_fn
 
-        #[derive(::agentinc::__private::serde::Deserialize, ::agentinc::__private::schemars::JsonSchema)]
-        #[serde(crate = "::agentinc::__private::serde")]
-        #[schemars(crate = "::agentinc::__private::schemars")]
+        #[derive(::turnkeel::__private::serde::Deserialize, ::turnkeel::__private::schemars::JsonSchema)]
+        #[serde(crate = "::turnkeel::__private::serde")]
+        #[schemars(crate = "::turnkeel::__private::schemars")]
         #[allow(non_camel_case_types)]
         struct #args_ty {
             #( #field_idents: #field_tys, )*
@@ -156,29 +156,29 @@ fn expand(attrs: Punctuated<Meta, Comma>, func: ItemFn) -> syn::Result<proc_macr
         #[derive(Clone, Copy)]
         #vis struct #name;
 
-        impl ::agentinc::Tool for #name {
+        impl ::turnkeel::Tool for #name {
             fn name(&self) -> &str { #name_str }
             fn description(&self) -> &str { #description }
-            fn schema(&self) -> ::agentinc::__private::serde_json::Value {
-                ::agentinc::__private::serde_json::to_value(
-                    ::agentinc::__private::schemars::schema_for!(#args_ty)
+            fn schema(&self) -> ::turnkeel::__private::serde_json::Value {
+                ::turnkeel::__private::serde_json::to_value(
+                    ::turnkeel::__private::schemars::schema_for!(#args_ty)
                 ).expect("tool schema serializes")
             }
             fn idempotent(&self) -> bool { #idempotent }
             fn call(
                 &self,
-                ctx: ::agentinc::ToolCtx,
-                args: ::agentinc::__private::serde_json::Value,
-            ) -> ::agentinc::__private::BoxFuture<'static, ::std::result::Result<::agentinc::__private::serde_json::Value, ::agentinc::ToolError>> {
+                ctx: ::turnkeel::ToolCtx,
+                args: ::turnkeel::__private::serde_json::Value,
+            ) -> ::turnkeel::__private::BoxFuture<'static, ::std::result::Result<::turnkeel::__private::serde_json::Value, ::turnkeel::ToolError>> {
                 let _ = &ctx;
                 Box::pin(async move {
-                    let parsed: #args_ty = ::agentinc::__private::serde_json::from_value(args)
-                        .map_err(|e| ::agentinc::ToolError::InvalidArguments(e.to_string()))?;
+                    let parsed: #args_ty = ::turnkeel::__private::serde_json::from_value(args)
+                        .map_err(|e| ::turnkeel::ToolError::InvalidArguments(e.to_string()))?;
                     let out = #inner( #ctx_arg #( parsed.#field_idents ),* )
                         .await
-                        .map_err(|e| ::agentinc::ToolError::Failed(e.to_string()))?;
-                    ::agentinc::__private::serde_json::to_value(out)
-                        .map_err(|e| ::agentinc::ToolError::Failed(e.to_string()))
+                        .map_err(|e| ::turnkeel::ToolError::Failed(e.to_string()))?;
+                    ::turnkeel::__private::serde_json::to_value(out)
+                        .map_err(|e| ::turnkeel::ToolError::Failed(e.to_string()))
                 })
             }
         }

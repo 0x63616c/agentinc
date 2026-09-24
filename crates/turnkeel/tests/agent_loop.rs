@@ -1,5 +1,5 @@
-use agentinc::testing::{ScriptedModel, text, tool_call};
-use agentinc::{Agent, Agentinc, ToolCtx, tool};
+use turnkeel::testing::{ScriptedModel, text, tool_call};
+use turnkeel::{Agent, Runtime, ToolCtx, tool};
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -20,7 +20,7 @@ async fn answers_without_tools() -> anyhow::Result<()> {
     let model = ScriptedModel::new().on_user("hello", text("Hi there."));
     let agent = Agent::builder("greeter").model(model).build();
 
-    let run = agentinc::testing::run(&agent, "hello").await?;
+    let run = turnkeel::testing::run(&agent, "hello").await?;
 
     assert_eq!(run.output, "Hi there.");
     run.assert_transcript()
@@ -43,7 +43,7 @@ async fn calls_a_tool_then_answers() -> anyhow::Result<()> {
         .tool(get_weather)
         .build();
 
-    let run = agentinc::testing::run(&agent, "Weather in Lisbon?").await?;
+    let run = turnkeel::testing::run(&agent, "Weather in Lisbon?").await?;
 
     assert_eq!(run.output, "It's sunny in Lisbon.");
     run.assert_transcript()
@@ -55,7 +55,7 @@ async fn calls_a_tool_then_answers() -> anyhow::Result<()> {
 
     let result = run.transcript[2].content.first().unwrap();
     assert!(
-        matches!(result, agentinc::Content::ToolResult { content, .. } if content == "Lisbon: 22°C, sunny")
+        matches!(result, turnkeel::Content::ToolResult { content, .. } if content == "Lisbon: 22°C, sunny")
     );
     Ok(())
 }
@@ -73,7 +73,7 @@ async fn bad_arguments_are_fed_back_to_the_model() -> anyhow::Result<()> {
         .tool(get_weather)
         .build();
 
-    let run = agentinc::testing::run(&agent, "weather?").await?;
+    let run = turnkeel::testing::run(&agent, "weather?").await?;
 
     run.assert_transcript()
         .tool_call("get_weather")
@@ -87,10 +87,10 @@ async fn failing_non_idempotent_tool_fails_the_run() -> anyhow::Result<()> {
     let model = ScriptedModel::new().otherwise(tool_call("broken", json!({})));
     let agent = Agent::builder("bot").model(model).tool(broken).build();
 
-    let err = agentinc::testing::run(&agent, "go").await.unwrap_err();
+    let err = turnkeel::testing::run(&agent, "go").await.unwrap_err();
 
     assert!(
-        matches!(err, agentinc::Error::RunFailed(ref m) if m.contains("boom")),
+        matches!(err, turnkeel::Error::RunFailed(ref m) if m.contains("boom")),
         "{err}"
     );
     Ok(())
@@ -101,10 +101,10 @@ async fn unscripted_message_fails_loudly() -> anyhow::Result<()> {
     let model = ScriptedModel::new().on_user("something else", text("nope"));
     let agent = Agent::builder("bot").model(model).build();
 
-    let err = agentinc::testing::run(&agent, "hello").await.unwrap_err();
+    let err = turnkeel::testing::run(&agent, "hello").await.unwrap_err();
 
     assert!(
-        matches!(err, agentinc::Error::RunFailed(ref m) if m.contains("no rule")),
+        matches!(err, turnkeel::Error::RunFailed(ref m) if m.contains("no rule")),
         "{err}"
     );
     Ok(())
@@ -117,13 +117,13 @@ async fn runs_are_independent_on_one_runtime() -> anyhow::Result<()> {
         .on_user("two", text("2"));
     let agent = Agent::builder("counter").model(model).build();
 
-    let agentinc = Agentinc::test().await?;
-    let a = agentinc.start(&agent, "one").await?;
-    let b = agentinc.start(&agent, "two").await?;
+    let turnkeel = Runtime::test().await?;
+    let a = turnkeel.start(&agent, "one").await?;
+    let b = turnkeel.start(&agent, "two").await?;
     assert_ne!(a.id(), b.id());
     assert_eq!(a.result().await?, "1");
     assert_eq!(b.result().await?, "2");
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -154,10 +154,10 @@ async fn test_runtime_catches_non_idempotent_tools() -> anyhow::Result<()> {
     let model = ScriptedModel::new().otherwise(tool_call("count", json!({})));
     let agent = Agent::builder("bot").model(model).tool(count).build();
 
-    let err = agentinc::testing::run(&agent, "go").await.unwrap_err();
+    let err = turnkeel::testing::run(&agent, "go").await.unwrap_err();
 
     assert!(
-        matches!(err, agentinc::Error::RunFailed(ref m) if m.contains("\"count\" is not idempotent")),
+        matches!(err, turnkeel::Error::RunFailed(ref m) if m.contains("\"count\" is not idempotent")),
         "{err}"
     );
     Ok(())
@@ -170,7 +170,7 @@ async fn tools_marked_non_idempotent_run_exactly_once() -> anyhow::Result<()> {
         .on_tool_result("send", text("done"));
     let agent = Agent::builder("bot").model(model).tool(send).build();
 
-    let run = agentinc::testing::run(&agent, "go").await?;
+    let run = turnkeel::testing::run(&agent, "go").await?;
 
     assert_eq!(run.output, "done");
     assert_eq!(SENT.load(Ordering::SeqCst), 1);
@@ -184,12 +184,12 @@ async fn idempotency_key_is_stable_across_the_double_call() -> anyhow::Result<()
         .on_tool_result("charge", text("paid"));
     let agent = Agent::builder("bot").model(model).tool(charge).build();
 
-    let run = agentinc::testing::run(&agent, "pay").await?;
+    let run = turnkeel::testing::run(&agent, "pay").await?;
 
     assert_eq!(run.output, "paid");
     run.assert_transcript().tool_call("charge").tool_result();
     let result = &run.transcript[2].content[0];
-    let agentinc::Content::ToolResult { content, .. } = result else {
+    let turnkeel::Content::ToolResult { content, .. } = result else {
         panic!("{result:?}")
     };
     let expected = format!("charged 5 (key {}/t0/c0)", run.run.id());
