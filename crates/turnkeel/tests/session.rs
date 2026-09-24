@@ -1,10 +1,10 @@
-use agentinc::testing::{Script, ScriptedModel, text, tool_call};
-use agentinc::{Agent, Agentinc, Content, Event, Message, Role, SessionId, ToolCtx, tool};
+use turnkeel::testing::{Script, ScriptedModel, text, tool_call};
+use turnkeel::{Agent, Runtime, Content, Event, Message, Role, SessionId, ToolCtx, tool};
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::json;
 
-type Events = BoxStream<'static, Result<Event, agentinc::Error>>;
+type Events = BoxStream<'static, Result<Event, turnkeel::Error>>;
 
 /// Echoes its idempotency key.
 #[tool]
@@ -35,9 +35,9 @@ async fn turns_share_history() -> anyhow::Result<()> {
         .on_user("hello", text("hi"))
         .on_user("again", text("hi again"));
     let agent = Agent::builder("bot").model(model).build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session(&agent).await?;
+    let session = turnkeel.session(&agent).await?;
     let mut events = session.events();
     session.send("hello").await?;
     let first = next_turn(&mut events).await?;
@@ -46,7 +46,7 @@ async fn turns_share_history() -> anyhow::Result<()> {
 
     assert_eq!(texts(&first), ["hello", "hi"]);
     assert_eq!(texts(&second), ["again", "hi again"]);
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -56,9 +56,9 @@ async fn events_include_tool_calls_and_results_in_order() -> anyhow::Result<()> 
         .on_user("go", tool_call("echo_key", json!({})))
         .on_tool_result("echo_key", text("ok"));
     let agent = Agent::builder("bot").model(model).tool(echo_key).build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session(&agent).await?;
+    let session = turnkeel.session(&agent).await?;
     let mut events = session.events();
     session.send("go").await?;
     let turn = next_turn(&mut events).await?;
@@ -68,7 +68,7 @@ async fn events_include_tool_calls_and_results_in_order() -> anyhow::Result<()> 
     assert!(turn[1].tool_call("echo_key").is_some());
     assert!(matches!(turn[2].content[0], Content::ToolResult { .. }));
     assert_eq!(turn[3].text(), "ok");
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -78,9 +78,9 @@ async fn late_subscriber_replays_history_then_continues() -> anyhow::Result<()> 
         .on_user("hello", text("hi"))
         .on_user("again", text("hi again"));
     let agent = Agent::builder("bot").model(model).build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session(&agent).await?;
+    let session = turnkeel.session(&agent).await?;
     let mut live = session.events();
     session.send("hello").await?;
     next_turn(&mut live).await?;
@@ -91,7 +91,7 @@ async fn late_subscriber_replays_history_then_continues() -> anyhow::Result<()> 
     session.send("again").await?;
     assert_eq!(texts(&next_turn(&mut late).await?), ["again", "hi again"]);
     assert_eq!(texts(&next_turn(&mut live).await?), ["again", "hi again"]);
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -102,9 +102,9 @@ async fn message_sent_mid_turn_is_seen_at_the_next_step() -> anyhow::Result<()> 
         .model(script.model())
         .tool(script.tool("wait"))
         .build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session(&agent).await?;
+    let session = turnkeel.session(&agent).await?;
     let mut events = session.events();
     session.send("start").await?;
     script
@@ -123,7 +123,7 @@ async fn message_sent_mid_turn_is_seen_at_the_next_step() -> anyhow::Result<()> 
         texts(&turn),
         ["start", "", "", "actually", "changed course"]
     );
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -134,9 +134,9 @@ async fn events_arrive_while_a_turn_is_still_running() -> anyhow::Result<()> {
         .model(script.model())
         .tool(script.tool("wait"))
         .build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session(&agent).await?;
+    let session = turnkeel.session(&agent).await?;
     let mut events = session.events();
     session.send("start").await?;
     script
@@ -158,7 +158,7 @@ async fn events_arrive_while_a_turn_is_still_running() -> anyhow::Result<()> {
     call.succeed(json!("released"));
     script.next_model_call().await.reply(text("finished"));
     assert_eq!(texts(&next_turn(&mut events).await?), ["", "finished"]);
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -169,9 +169,9 @@ async fn clear_pending_returns_unseen_messages() -> anyhow::Result<()> {
         .model(script.model())
         .tool(script.tool("wait"))
         .build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session(&agent).await?;
+    let session = turnkeel.session(&agent).await?;
     let mut events = session.events();
     session.send("start").await?;
     script
@@ -188,7 +188,7 @@ async fn clear_pending_returns_unseen_messages() -> anyhow::Result<()> {
 
     assert_eq!(texts(&cleared), ["one", "two"]);
     assert_eq!(texts(&turn), ["start", "", "", "finished"]);
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -196,12 +196,12 @@ async fn clear_pending_returns_unseen_messages() -> anyhow::Result<()> {
 async fn clear_pending_with_nothing_pending_is_empty() -> anyhow::Result<()> {
     let model = ScriptedModel::new().otherwise(text("hi"));
     let agent = Agent::builder("bot").model(model).build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session(&agent).await?;
+    let session = turnkeel.session(&agent).await?;
     assert!(session.clear_pending().await?.is_empty());
 
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -212,9 +212,9 @@ async fn back_to_back_messages_are_all_seen_in_order() -> anyhow::Result<()> {
         .on_user("one", text("r1"))
         .on_user("two", text("r2"));
     let agent = Agent::builder("bot").model(model).build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session(&agent).await?;
+    let session = turnkeel.session(&agent).await?;
     let mut events = session.events();
     session.send("one").await?;
     session.send("two").await?;
@@ -230,7 +230,7 @@ async fn back_to_back_messages_are_all_seen_in_order() -> anyhow::Result<()> {
         .collect();
     assert_eq!(users, ["one", "two"]);
     assert_eq!(seen.last().unwrap().text(), "r2");
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -238,15 +238,15 @@ async fn back_to_back_messages_are_all_seen_in_order() -> anyhow::Result<()> {
 async fn session_by_id_reattaches() -> anyhow::Result<()> {
     let model = ScriptedModel::new().on_user("hello", text("hi"));
     let agent = Agent::builder("bot").model(model).build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let id = agentinc.session(&agent).await?.id().clone();
-    let session = agentinc.session_by_id(&agent, id);
+    let id = turnkeel.session(&agent).await?.id().clone();
+    let session = turnkeel.session_by_id(&agent, id);
     let mut events = session.events();
     session.send("hello").await?;
 
     assert_eq!(texts(&next_turn(&mut events).await?), ["hello", "hi"]);
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -254,17 +254,17 @@ async fn session_by_id_reattaches() -> anyhow::Result<()> {
 async fn unknown_session_fails_on_send_and_on_events() -> anyhow::Result<()> {
     let model = ScriptedModel::new().otherwise(text("hi"));
     let agent = Agent::builder("bot").model(model).build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session_by_id(&agent, SessionId::new("agentinc-session-nope"));
+    let session = turnkeel.session_by_id(&agent, SessionId::new("agentinc-session-nope"));
     let err = session.send("hello").await.unwrap_err();
-    assert!(matches!(err, agentinc::Error::Other(_)), "{err}");
+    assert!(matches!(err, turnkeel::Error::Other(_)), "{err}");
 
     let mut events = session.events();
     assert!(events.next().await.unwrap().is_err());
     assert!(events.next().await.is_none(), "stream ends after an error");
 
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
 
@@ -274,9 +274,9 @@ async fn tool_idempotency_keys_are_unique_across_turns() -> anyhow::Result<()> {
         .on_user("go", tool_call("echo_key", json!({})))
         .on_tool_result("echo_key", text("ok"));
     let agent = Agent::builder("bot").model(model).tool(echo_key).build();
-    let agentinc = Agentinc::test().await?;
+    let turnkeel = Runtime::test().await?;
 
-    let session = agentinc.session(&agent).await?;
+    let session = turnkeel.session(&agent).await?;
     let mut events = session.events();
     session.send("go").await?;
     let mut all = next_turn(&mut events).await?;
@@ -294,6 +294,6 @@ async fn tool_idempotency_keys_are_unique_across_turns() -> anyhow::Result<()> {
     assert_eq!(keys.len(), 2);
     assert_ne!(keys[0], keys[1]);
     assert!(keys[0].starts_with(session.id().as_str()), "{}", keys[0]);
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }

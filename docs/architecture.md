@@ -6,7 +6,7 @@ This is the current plan. The contracts are accepted; the components described b
 
 ## Product and workspace
 
-The macOS app is **AgentInc**, bundle ID `co.worldwidewebb.agentinc`. Import the existing GPUI app, its assets and acceptance material into this Rust workspace under `crates/`. Preserve its saved data through a deliberate migration. The current `crates/agentinc-os` stub is not the imported app. All crates stay directly under `crates/`; the SDK is the daemon's agent runtime and the app is its real consumer. Exact SDK and new crate names are placeholders pending the `agentinc-crate-names` job. Existing package names describe today's repository, not the final naming contract.
+The macOS app is **AgentInc**, bundle ID `co.worldwidewebb.agentinc`. Import the existing GPUI app, its assets and acceptance material into this Rust workspace under `crates/`. Preserve its saved data through a deliberate migration. The current `crates/ainc-mac` stub is not the imported app. All crates stay directly under `crates/`; the SDK is the daemon's agent runtime and the app is its real consumer. The SDK crate is `turnkeel`; product packages use the `ainc-` prefix.
 
 The app remains a native GPUI client with our own components. A generated CLI and authorized agent tools use the same daemon commands. Anything a person can do in the UI must be possible through those tools. A `Route` catalogue names destinations; `Page` views render them. Keep the existing single-tab, dark Control shell and add Tickets and Automations there.
 
@@ -75,4 +75,4 @@ One product version drives the app bundle and compatible daemon/client release m
 | **5 — distribution** | Signed releases, Rust updater, compatibility checks and remote daemon validation; then additional users. | Native update, rollback refusal, backup restore and two-user isolation are exercised. |
 | **Later** | Event/webhook triggers, Home, Calendar, Library and isolated worker Environments. | Each addition has a real user flow and permission model. |
 
-**Decided 2026-09-23:** One workspace; AgentInc app naming and bundle ID; own agent loop with personal ChatGPT/Codex subscription access and optional API keys; Ticket-gated autonomous effects; daemon/Postgres/Temporal ownership; remote-capable daemon; version headers and central upgrade handling; Rust updater with Sparkle parity; isolated Tilt + Compose development. Crate names await the separate naming job.
+**Decided 2026-09-23:** One workspace; AgentInc app naming and bundle ID; own agent loop with personal ChatGPT/Codex subscription access and optional API keys; Ticket-gated autonomous effects; daemon/Postgres/Temporal ownership; remote-capable daemon; version headers and central upgrade handling; Rust updater with Sparkle parity; isolated Tilt + Compose development. The SDK is Turnkeel and product packages use the `ainc-` prefix.

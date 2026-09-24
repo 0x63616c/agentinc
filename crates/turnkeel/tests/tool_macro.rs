@@ -1,4 +1,4 @@
-use agentinc::{Tool, ToolCtx, tool};
+use turnkeel::{Tool, ToolCtx, tool};
 use serde_json::json;
 
 /// Adds two numbers.
@@ -43,7 +43,7 @@ async fn macro_derives_name_description_schema_and_call() {
     );
     assert!(matches!(
         add.call(ctx(), json!({"a": 2})).await,
-        Err(agentinc::ToolError::InvalidArguments(_))
+        Err(turnkeel::ToolError::InvalidArguments(_))
     ));
 
     assert_eq!(no_args.description(), "explicit description wins");

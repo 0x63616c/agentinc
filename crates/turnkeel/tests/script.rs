@@ -1,13 +1,13 @@
 //! Tests driven by `testing::Script`: the test decides every model reply and tool result
 //! at the moment it happens.
 
-use agentinc::testing::{Script, text};
-use agentinc::{Agent, Agentinc, Content, Event, Message, ModelResponse, StopReason};
+use turnkeel::testing::{Script, text};
+use turnkeel::{Agent, Runtime, Content, Event, Message, ModelResponse, StopReason};
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::json;
 
-type Events = BoxStream<'static, Result<Event, agentinc::Error>>;
+type Events = BoxStream<'static, Result<Event, turnkeel::Error>>;
 
 async fn next_turn(events: &mut Events) -> anyhow::Result<Vec<Message>> {
     let mut messages = Vec::new();
@@ -44,8 +44,8 @@ async fn three_tool_calls_run_in_the_order_the_model_asked() -> anyhow::Result<(
         .tool(script.tool("b"))
         .tool(script.tool("c"))
         .build();
-    let agentinc = Agentinc::test().await?;
-    let session = agentinc.session(&agent).await?;
+    let turnkeel = Runtime::test().await?;
+    let session = turnkeel.session(&agent).await?;
     let mut events = session.events();
 
     session.send("go").await?;
@@ -67,6 +67,6 @@ async fn three_tool_calls_run_in_the_order_the_model_asked() -> anyhow::Result<(
     assert!(matches!(results[0], Content::ToolResult { content, .. } if content == "result of a"));
     assert!(matches!(results[2], Content::ToolResult { content, .. } if content == "result of c"));
     assert_eq!(turn[3].text(), "done");
-    agentinc.shutdown().await?;
+    turnkeel.shutdown().await?;
     Ok(())
 }
