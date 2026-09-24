@@ -22,8 +22,24 @@ fn regions(
     let mut regions = vec![
         ("header", [150, 10, width - 10, 40], text, 80),
         ("workspace", [15, 65, 165, 100], text, 60),
-        ("profile", [15, height - 44, 170, height - 12], text, 30),
-        ("version", [20, height - 28, 110, height - 10], 25, 12),
+        (
+            "profile avatar",
+            [15, height - 42, 45, height - 10],
+            text,
+            30,
+        ),
+        (
+            "profile name",
+            [45, height - 44, 140, height - 24],
+            text,
+            30,
+        ),
+        (
+            "profile version",
+            [45, height - 24, 140, height - 4],
+            25,
+            12,
+        ),
         (
             "main border",
             [
