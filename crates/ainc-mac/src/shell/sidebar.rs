@@ -3,9 +3,9 @@ use super::*;
 impl Shell {
     pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut nav = column().gap(px(2.));
-        for page in PAGES.iter().filter(|page| page.in_sidebar) {
+        for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             let route = page.route;
-            let index = page.shortcut.expect("sidebar route has shortcut");
+            let index = index + 1;
             nav = nav.child(
                 self.button(
                     ("nav", index as usize),
@@ -18,6 +18,9 @@ impl Shell {
                     route.label().to_lowercase().replace(' ', "-")
                 ))
                 .min_h(type_size(32.))
+                .when(matches!(route, Route::Agents | Route::Home), |s| {
+                    s.mt(px(12.))
+                })
                 .px(px(10.))
                 .gap(px(12.))
                 .debug_selector(move || format!("sidebar-nav-{index}"))
@@ -44,7 +47,7 @@ impl Shell {
                         .debug_selector(move || format!("sidebar-label-{index}"))
                         .child(route.label()),
                 )
-                .when(self.command_held, |s| {
+                .when(self.command_held && index <= 9, |s| {
                     s.child(
                         shortcut_badge(format!("⌘{index}"))
                             .flex_shrink_0()

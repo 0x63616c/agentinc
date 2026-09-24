@@ -55,21 +55,21 @@ fn regions(
             150,
         ),
     ];
-    for (index, name) in [
-        "Today",
-        "Tickets",
-        "Agents",
-        "Automations",
-        "Home",
-        "Calendar",
-        "Library",
-        "My apps",
-        "Assistant",
+    for (index, (name, group_offset)) in [
+        ("Today", 0),
+        ("Tickets", 0),
+        ("Calendar", 0),
+        ("Assistant", 0),
+        ("Agents", 12),
+        ("Automations", 12),
+        ("Home", 24),
+        ("Library", 24),
+        ("My apps", 24),
     ]
     .into_iter()
     .enumerate()
     {
-        let y = 115 + index as u32 * 34;
+        let y = 115 + index as u32 * 34 + group_offset;
         regions.push((name, [20, y, 165, y + 28], text, 35));
     }
     if evee {
@@ -402,12 +402,13 @@ pub fn run() -> Result<()> {
         for (index, route) in [
             Route::Today,
             Route::Tickets,
-            Route::Agents,
-            Route::Home,
             Route::Calendar,
+            Route::Assistant,
+            Route::Agents,
+            Route::Automations,
+            Route::Home,
             Route::Library,
             Route::Apps,
-            Route::Assistant,
         ]
         .into_iter()
         .enumerate()
@@ -429,7 +430,7 @@ pub fn run() -> Result<()> {
         suite.cx.simulate_input(window.into(), "settings");
         suite.capture(
             &format!("search-{round}"),
-            Route::Assistant,
+            Route::Apps,
             Some(Overlay::Search),
             true,
         )?;

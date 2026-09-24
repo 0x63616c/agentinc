@@ -838,8 +838,8 @@ impl Render for Shell {
                 cx.notify();
             }))
             .on_action(cx.listener(|this, action: &NavigateRoute, w, cx| {
-                if let Some(page) = PAGES.iter().find(|page| page.shortcut == Some(action.0)) {
-                    this.dispatch(Control::Navigate(page.route), w, cx);
+                if let Some(route) = Route::from_shortcut(action.0) {
+                    this.dispatch(Control::Navigate(route), w, cx);
                 }
             }))
             .on_mouse_move(
@@ -997,7 +997,7 @@ mod interaction_tests {
     use super::{Shell, bind_keys};
     use crate::{
         input,
-        model::{PAGES, PANE_WIDTHS, Route, Session},
+        model::{PANE_WIDTHS, Route, Session},
         overlay::Overlay,
     };
     use gpui::{
@@ -1170,19 +1170,22 @@ mod interaction_tests {
         let (shell, cx) = cx.add_window_view(|window, cx| {
             Shell::fixture(dir.path().join("session.json"), window, cx)
         });
-        for page in PAGES.iter().filter(|page| page.shortcut.is_some()) {
-            cx.simulate_keystrokes(&format!("cmd-{}", page.shortcut.unwrap()));
+        for number in 1..=9 {
+            cx.simulate_keystrokes(&format!("cmd-{number}"));
             shell.read_with(cx, |shell, _| {
-                assert_eq!(shell.fixture_state().0, page.route)
+                assert_eq!(
+                    shell.fixture_state().0,
+                    Route::from_shortcut(number).unwrap()
+                )
             });
         }
         cx.simulate_keystrokes("cmd-alt-left");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Apps)
+            assert_eq!(shell.session.current(), Route::Library)
         });
         cx.simulate_keystrokes("cmd-alt-right");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Assistant)
+            assert_eq!(shell.session.current(), Route::Apps)
         });
     }
 
