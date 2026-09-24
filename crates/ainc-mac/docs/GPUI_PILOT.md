@@ -7,7 +7,7 @@
 Normal `cargo build` and `crates/ainc-mac/scripts/bundle.sh [release]` omit the library and its host feature. Normal app binaries reject automation arguments before opening a window. `automation` must be explicitly compiled **and** `--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY` must be passed. An automation-enabled binary launched without this argument creates no driver endpoint and does not activate the semantic observer.
 
 ```sh
-# Fresh state; leave this process running. All README isolation variables are set.
+# Start cargo xtask dev first. This uses its isolated daemon and a fresh UI session.
 crates/ainc-mac/scripts/pilot.sh "$PWD/.local/pilot-qa"
 # In another terminal, use the explicit manifest printed at startup.
 target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" snapshot
@@ -63,7 +63,7 @@ cargo test --locked -p agentinc-os --features rendered-tests --test rendered_she
 python3 crates/ainc-mac/tests/pilot_cli_smoke.py
 ```
 
-`pilot_acceptance` launches the actual app executable with four isolated state/title variables and a fresh private driver session. Its only UI operations/assertions use the socket driver. It follows Search → Tasks → Add task → Unicode title → Create, checks the resulting task row, exercises stale refs, overlay rejection, selection/undo, a concurrent wait and a deadline, and checks screenshot pixels in independent shell regions. Artifacts and small-sample latency distributions are written to `target/pilot-acceptance/`. The test process stops only its own child.
+`pilot_acceptance` launches the actual app executable with isolated UI, daemon discovery, import/profile and title variables and a fresh private driver session. Its only UI operations/assertions use the socket driver. It follows Search → Tasks → Add task → Unicode title → Create, checks the resulting task row, exercises stale refs, overlay rejection, selection/undo, a concurrent wait and a deadline, and checks screenshot pixels in independent shell regions. Artifacts and small-sample latency distributions are written to `target/pilot-acceptance/`. The test process stops only its own child.
 
 The existing 38-frame `rendered_shell` suite remains the broader capture-integrity gate. Separate OS acceptance is recorded in `docs/verification/GPUI_PILOT.md`; in-process tests do not prove native menus, OS prompts, screen-reader behavior or IME composition.
 

@@ -1,5 +1,7 @@
 # Evee, Codex connection and conversations
 
+This records the pre-daemon implementation and its historical live-provider acceptance. Current ownership, setup and native evidence are in [the phase 2 guide](../../../docs/phase-2-ownership.md) and [OWNERSHIP.md](verification/OWNERSHIP.md).
+
 Evee uses the installed Codex CLI with a ChatGPT subscription. Settings owns the connection, Assistant owns the conversation library, and the Evee panel opens a conversation for continued chat. Tasks remains a local SQLite to-do list. Other integrations remain placeholders.
 
 ## Supported subscription interface: research, 23 September 2026

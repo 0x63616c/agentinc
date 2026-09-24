@@ -1,6 +1,6 @@
 # AgentInc
 
-A native macOS workspace built with Rust and GPUI, following the approved Control design. It includes a single tab, navigation, search, panel controls, a saved local session, SQLite-backed Tasks and a Codex subscription-backed Evee chat panel and an Assistant conversation library. Agents, home, calendar, library and apps remain intentional placeholders.
+A native macOS workspace built with Rust and GPUI, following the approved Control design. It includes a single tab, navigation, search, panel controls, a saved local session, daemon-backed Tasks and a Codex subscription-backed Evee chat panel and an Assistant conversation library. Agents, home, calendar, library and apps remain intentional placeholders.
 
 ## Build and run
 
@@ -32,9 +32,9 @@ It captures 38 frames across routes, two window sizes, dialogs and Evee visibili
 
 Install the official [Codex CLI](https://developers.openai.com/codex/cli), then open **Settings → Accounts & connections → Sign in with ChatGPT** and complete Codex’s browser sign-in. Evee uses your ChatGPT/Codex subscription; there is no API-key setup. Codex manages credentials in an app-specific profile. Settings shows the real connection status, sign out, and model choices returned by Codex.
 
-Open **Assistant** in the sidebar to start, reopen, rename or delete conversations. Existing single-chat history migrates into “Previous conversation”. Send with Return or the composer’s arrow; Shift+Return inserts a newline. Failed replies remain retryable and conversations persist locally.
+Open **Assistant** in the sidebar to start, reopen, rename or delete conversations. Existing single-chat history migrates into “Previous conversation”. Send with Return or the composer’s arrow; Shift+Return inserts a newline. Failed replies remain retryable and conversations persist on the daemon, including when the app closes.
 
-Tasks supports create, complete/reopen and delete. Chat and tasks still save to `~/Library/Application Support/Agentinc OS/assistant.sqlite3`; credentials are never stored there. This legacy path remains unchanged so the renamed bundle can read existing data. See the [assistant handoff and verification](docs/EVEE_ASSISTANT_HANDOFF.md) for the supported interface, limits and native/live verification evidence.
+Tasks supports create, complete/reopen and delete. Conversations, Tasks and product preferences are owned by `aincd` in Postgres. Its repeat-safe one-way import reads the previous SQLite database without migrating it in place. See [daemon ownership and setup](../../docs/phase-2-ownership.md). See the [assistant handoff and verification](docs/EVEE_ASSISTANT_HANDOFF.md) for the supported interface, limits and native/live verification evidence.
 
 ## Using the shell
 
@@ -58,8 +58,7 @@ For an isolated session without changing the regular app's state:
 ```sh
 mkdir -p .local
 AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
-  AGENTINC_DATABASE_PATH="$PWD/.local/test-assistant.sqlite3" \
-  AGENTINC_CODEX_HOME="$PWD/.local/test-codex" \
+  AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" \
   AGENTINC_WINDOW_TITLE='Agentinc QA' \
   'crates/ainc-mac/dist/AgentInc.app/Contents/MacOS/agentinc-os'
 ```
