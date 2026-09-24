@@ -1,3 +1,4 @@
+use crate::style::{FIELD_LABEL_GAP, PAGE_X, RIGHT_PANE_CONTENT_INSET};
 use crate::{
     input,
     model::{FontSize, PANE_WIDTHS, Route, Session},
@@ -6,7 +7,9 @@ use crate::{
     style::Assets,
 };
 use anyhow::{Result, ensure};
-use gpui::{AppContext, Modifiers, VisualTestAppContext, WindowHandle, point, px, size};
+use gpui::{
+    AppContext, Bounds, Modifiers, Pixels, VisualTestAppContext, WindowHandle, point, px, size,
+};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 // Check actual pixels in independent shell regions, rather than trusting scene/AX nodes.
@@ -113,6 +116,17 @@ fn check_pixels(
     Ok(())
 }
 
+// Metal layout rounds to device pixels; one logical pixel covers that rounding.
+const GEOMETRY_TOLERANCE: f32 = 1.;
+
+fn near(name: &str, actual: f32, expected: f32) -> Result<()> {
+    ensure!(
+        (actual - expected).abs() <= GEOMETRY_TOLERANCE,
+        "{name}: {actual:.2}px, expected {expected:.2}px ±{GEOMETRY_TOLERANCE}px"
+    );
+    Ok(())
+}
+
 struct Suite {
     cx: VisualTestAppContext,
     window: WindowHandle<Shell>,
@@ -168,6 +182,23 @@ impl Suite {
         );
         check_pixels(image.as_raw(), image.width(), scale, &probes)
             .map_err(|e| anyhow::anyhow!("{name}: {e}"))?;
+        if name == "initial" || name == "route-1-0" {
+            self.check_shell_geometry()?;
+        }
+        if name.starts_with("ticket-field-") {
+            self.check_field_geometry("Ticket title")?;
+        }
+        if name.starts_with("automation-fields-") {
+            self.check_field_geometry("Name")?;
+            self.check_field_geometry("Ticket prompt")?;
+            let first = self.bounds("Name.input")?;
+            let second = self.bounds("Ticket prompt.input")?;
+            near(
+                "paired Automation input edge",
+                f32::from(first.origin.x),
+                f32::from(second.origin.x),
+            )?;
+        }
         if self.count == 0 {
             // Negative controls: each missing region must independently fail this gate.
             for probe in &probes {
@@ -242,6 +273,79 @@ impl Suite {
             Modifiers::default(),
         );
     }
+
+    fn click_selector(&mut self, selector: &str) -> Result<()> {
+        let bounds = self.bounds(selector)?;
+        self.click(
+            f32::from(bounds.origin.x) + f32::from(bounds.size.width) / 2.,
+            f32::from(bounds.origin.y) + f32::from(bounds.size.height) / 2.,
+        );
+        Ok(())
+    }
+
+    fn bounds(&mut self, selector: &str) -> Result<Bounds<Pixels>> {
+        self.cx
+            .update_window(self.window.into(), |_, window, _| {
+                window.debug_bounds(selector)
+            })?
+            .ok_or_else(|| anyhow::anyhow!("missing {selector} bounds"))
+    }
+
+    fn check_field_geometry(&mut self, selector: &str) -> Result<()> {
+        let label = self.bounds(&format!("{selector}.label"))?;
+        let input = self.bounds(&format!("{selector}.input"))?;
+        near(
+            &format!("{selector} left edge"),
+            f32::from(label.origin.x),
+            f32::from(input.origin.x),
+        )?;
+        near(
+            &format!("{selector} label gap"),
+            f32::from(input.origin.y) - f32::from(label.origin.y + label.size.height),
+            FIELD_LABEL_GAP,
+        )
+    }
+
+    fn check_shell_geometry(&mut self) -> Result<()> {
+        let button = self.bounds("sidebar")?;
+        let glyph = self.bounds("sidebar.glyph")?;
+        near(
+            "header icon horizontal center",
+            f32::from(glyph.origin.x + glyph.size.width / 2.)
+                - f32::from(button.origin.x + button.size.width / 2.),
+            0.,
+        )?;
+        near(
+            "header icon vertical center",
+            f32::from(glyph.origin.y + glyph.size.height / 2.)
+                - f32::from(button.origin.y + button.size.height / 2.),
+            0.,
+        )?;
+        let main = self.bounds("main-pane")?;
+        let content = self.bounds("main-content")?;
+        near(
+            "main content left inset",
+            f32::from(content.origin.x - main.origin.x),
+            PAGE_X,
+        )?;
+        near(
+            "main content top inset",
+            f32::from(content.origin.y - main.origin.y),
+            PAGE_X,
+        )?;
+        let right = self.bounds("right-pane")?;
+        let body = self.bounds("right-content")?;
+        near(
+            "right content left inset",
+            f32::from(body.origin.x - right.origin.x),
+            RIGHT_PANE_CONTENT_INSET,
+        )?;
+        near(
+            "right content trailing inset",
+            f32::from(right.origin.x + right.size.width - body.origin.x - body.size.width),
+            RIGHT_PANE_CONTENT_INSET,
+        )
+    }
 }
 
 pub fn run() -> Result<()> {
@@ -310,6 +414,16 @@ pub fn run() -> Result<()> {
         {
             suite.keys(&format!("cmd-{}", index + 1));
             suite.capture(&format!("route-{round}-{index}"), route, None, true)?;
+            if round < 2 && route == Route::Tickets {
+                suite.click_selector("tickets.create")?;
+                suite.capture(
+                    &format!("ticket-field-{round}"),
+                    route,
+                    Some(Overlay::AddTicket),
+                    true,
+                )?;
+                suite.keys("escape");
+            }
         }
         suite.keys("cmd-k");
         suite.cx.simulate_input(window.into(), "settings");
@@ -328,6 +442,15 @@ pub fn run() -> Result<()> {
             None,
             true,
         )?;
+        if round < 2 {
+            suite.click_selector("automations.create")?;
+            suite.capture(
+                &format!("automation-fields-{round}"),
+                Route::Automations,
+                None,
+                true,
+            )?;
+        }
     }
     suite.keys("cmd-2");
     suite.settle()?;

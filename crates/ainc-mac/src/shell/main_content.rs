@@ -3,16 +3,27 @@ use crate::components::*;
 
 impl Shell {
     pub(super) fn main_area(&self, content: AnyElement) -> Div {
-        panel().flex_1().min_w_0().h_full().overflow_hidden().child(
-            column()
-                .id("page")
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scroll()
-                .px(px(PAGE_X))
-                .py(px(PAGE_X))
-                .child(div().relative().child(content)),
-        )
+        panel()
+            .debug_selector(|| "main-pane".into())
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .overflow_hidden()
+            .child(
+                column()
+                    .id("page")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .px(px(PAGE_X))
+                    .py(px(PAGE_X))
+                    .child(
+                        div()
+                            .relative()
+                            .debug_selector(|| "main-content".into())
+                            .child(content),
+                    ),
+            )
     }
 
     pub(super) fn static_page(&self, route: Route, cx: &mut Context<Self>) -> impl IntoElement {

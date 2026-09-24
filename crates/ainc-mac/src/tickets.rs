@@ -395,10 +395,8 @@ impl TicketsPage {
                 enabled,
             },
             |button| {
-                button
+                standard_button(button)
                     .justify_center()
-                    .min_h(type_size(CONTROL_HEIGHT))
-                    .px(px(10.))
                     .bg(background)
                     .on_hover(on_hover)
             },
@@ -406,24 +404,8 @@ impl TicketsPage {
             cx,
         )
     }
-    fn field(label: &str, input: Entity<TextInput>) -> impl IntoElement {
-        column()
-            .gap(px(6.))
-            .child(
-                div()
-                    .text_color(rgb(MUTED))
-                    .text_size(type_size(LABEL_SIZE))
-                    .child(label.to_owned()),
-            )
-            .child(
-                row()
-                    .min_h(type_size(FIELD_HEIGHT))
-                    .px(px(12.))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .rounded(px(FIELD_RADIUS))
-                    .child(input),
-            )
+    fn field(label: &'static str, input: Entity<TextInput>) -> impl IntoElement {
+        form_field(label, input, label)
     }
     pub fn overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let active = self.overlays.borrow().active()?;
@@ -436,8 +418,7 @@ impl TicketsPage {
             ),
             Overlay::AddAgent => (
                 "Add agent".into(),
-                column()
-                    .gap(px(16.))
+                column_gap(FORM_STACK_GAP)
                     .child(Self::field("Name", self.agent_name.clone()))
                     .child(Self::field("Instructions", self.agent_instructions.clone()))
                     .child(Self::field("Model", self.agent_model.clone())),
@@ -456,9 +437,8 @@ impl TicketsPage {
         let body = body.when_some(self.form_error.clone(), |s, error| {
             s.child(div().mt(px(12.)).text_color(rgb(ERROR)).child(error))
         });
-        let footer = row()
+        let footer = row_gap(CONTROL_GAP)
             .justify_end()
-            .gap(px(8.))
             .child(
                 self.button(
                     "tickets.cancel",
@@ -623,8 +603,7 @@ impl Render for TicketsPage {
             PageHeader::new("Tickets").description("Tickets, assignees and their work log.");
         if selected.is_none() {
             header = header.actions(
-                row()
-                    .gap(px(8.))
+                row_gap(CONTROL_GAP)
                     .child(
                         self.button(
                             "tickets.refresh",
@@ -646,6 +625,7 @@ impl Render for TicketsPage {
                             cx,
                         )
                         .track_focus(&self.add_focus)
+                        .debug_selector(|| "tickets.create".into())
                         .border_1()
                         .border_color(rgb(SELECTED_BORDER))
                         .text_size(type_size(LABEL_SIZE))

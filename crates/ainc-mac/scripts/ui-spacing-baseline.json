@@ -1,0 +1,31 @@
+{
+  "src/automations.rs": {
+    "gap:16.": 1,
+    "gap:24.": 1,
+    "gap:8.": 4,
+    "p:32.": 1,
+    "py:8.": 1
+  },
+  "src/shell/header.rs": {
+    "gap:7.": 1,
+    "mb:-2.": 1,
+    "mb:9.": 3,
+    "mt:1.": 1,
+    "pl:14.": 1,
+    "pr:9.": 2
+  },
+  "src/shell/right_pane.rs": {
+    "gap:8.": 1
+  },
+  "src/tickets.rs": {
+    "gap:16.": 1,
+    "gap:22.": 1,
+    "gap:24.": 3,
+    "gap:6.": 3,
+    "gap:8.": 4,
+    "mt:12.": 1,
+    "py:10.": 1,
+    "py:12.": 1,
+    "py:24.": 1
+  }
+}

@@ -6809,6 +6809,12 @@ impl Window {
         self.a11y.debug_tree_json()
     }
 
+    /// Bounds recorded by `debug_selector` in the last rendered test frame.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn debug_bounds(&self, selector: &str) -> Option<Bounds<Pixels>> {
+        self.rendered_frame.debug_bounds.get(selector).copied()
+    }
+
     /// Register a listener for an accessibility action on a specific node.
     /// The listener will be called when a screen reader requests the given
     /// action on the node identified by `node_id`.

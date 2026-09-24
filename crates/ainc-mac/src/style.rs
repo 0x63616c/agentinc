@@ -9,8 +9,29 @@ use std::{
 pub const PAGE_X: f32 = 26.;
 pub const PANEL_GAP: f32 = 10.;
 pub const HEADER_CONTROL: f32 = 30.;
+pub const HEADER_ICON_SIZE: f32 = 16.;
 pub const CONTROL_HEIGHT: f32 = 32.;
 pub const FIELD_HEIGHT: f32 = 42.;
+pub const CONTROL_GAP: f32 = 8.;
+pub const CONTROL_INSET_X: f32 = 12.;
+pub const FIELD_LABEL_GAP: f32 = 8.;
+pub const FIELD_INSET_X: f32 = 12.;
+pub const FORM_STACK_GAP: f32 = 16.;
+pub const RIGHT_PANE_CONTENT_INSET: f32 = 20.;
+// The search icon needs 9 px before it to align its visible edge with header text.
+pub const HEADER_SEARCH_LEFT_INSET: f32 = 9.;
+// The shortcut badge needs only 4 px after it to balance the search control.
+pub const HEADER_SEARCH_RIGHT_INSET: f32 = 4.;
+// The workspace mark's left edge uses a half pixel to balance its icon.
+#[allow(dead_code)] // The concurrent sidebar lane owns this call site.
+pub const SIDEBAR_IDENTITY_LEFT_INSET: f32 = 6.5;
+// The workspace label's right edge retains the measured 6 px optical inset.
+#[allow(dead_code)] // The concurrent sidebar lane owns this call site.
+pub const SIDEBAR_IDENTITY_RIGHT_INSET: f32 = 6.;
+// The Evee mark keeps its measured 10 px alignment against the pane edge.
+pub const EVEE_HEADER_LEFT_INSET: f32 = 10.;
+// The close control keeps its measured 9 px alignment against the pane edge.
+pub const EVEE_HEADER_RIGHT_INSET: f32 = 9.;
 pub const PANEL_RADIUS: f32 = 14.;
 pub const DIALOG_RADIUS: f32 = 12.;
 pub const MENU_RADIUS: f32 = 6.;
@@ -117,6 +138,39 @@ pub fn row() -> Div {
 }
 pub fn column() -> Div {
     div().flex().flex_col()
+}
+pub fn row_gap(gap: f32) -> Div {
+    row().gap(px(gap))
+}
+pub fn column_gap(gap: f32) -> Div {
+    column().gap(px(gap))
+}
+
+pub fn standard_button(button: Stateful<Div>) -> Stateful<Div> {
+    button
+        .min_h(type_size(CONTROL_HEIGHT))
+        .px(px(CONTROL_INSET_X))
+}
+
+pub fn form_field(label: &'static str, input: impl IntoElement, selector: &'static str) -> Div {
+    column_gap(FIELD_LABEL_GAP)
+        .child(
+            div()
+                .debug_selector(move || format!("{selector}.label"))
+                .text_color(rgb(MUTED))
+                .text_size(type_size(LABEL_SIZE))
+                .child(label),
+        )
+        .child(
+            row()
+                .debug_selector(move || format!("{selector}.input"))
+                .min_h(type_size(FIELD_HEIGHT))
+                .px(px(FIELD_INSET_X))
+                .border_1()
+                .border_color(rgb(BORDER))
+                .rounded(px(FIELD_RADIUS))
+                .child(input),
+        )
 }
 
 /// Shared heading for a page's title, short description, and title-row actions.
