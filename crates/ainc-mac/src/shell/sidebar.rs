@@ -86,8 +86,8 @@ impl Shell {
             .child(
                 row()
                     .min_w_0()
-                    .pl(px(6.5))
-                    .pr(px(6.))
+                    .pl(px(SIDEBAR_IDENTITY_LEFT_INSET))
+                    .pr(px(SIDEBAR_IDENTITY_RIGHT_INSET))
                     .gap(px(8.5))
                     .mb(px(22.))
                     .child(

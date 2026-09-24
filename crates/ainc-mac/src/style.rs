@@ -23,10 +23,8 @@ pub const HEADER_SEARCH_LEFT_INSET: f32 = 9.;
 // The shortcut badge needs only 4 px after it to balance the search control.
 pub const HEADER_SEARCH_RIGHT_INSET: f32 = 4.;
 // The workspace mark's left edge uses a half pixel to balance its icon.
-#[allow(dead_code)] // The concurrent sidebar lane owns this call site.
 pub const SIDEBAR_IDENTITY_LEFT_INSET: f32 = 6.5;
 // The workspace label's right edge retains the measured 6 px optical inset.
-#[allow(dead_code)] // The concurrent sidebar lane owns this call site.
 pub const SIDEBAR_IDENTITY_RIGHT_INSET: f32 = 6.;
 // The Evee mark keeps its measured 10 px alignment against the pane edge.
 pub const EVEE_HEADER_LEFT_INSET: f32 = 10.;
