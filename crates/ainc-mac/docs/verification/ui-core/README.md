@@ -1,5 +1,7 @@
 # App-owned UI core migration
 
+Archived pre-trim evidence: removed destinations and the Evee right pane in these captures are historical, not current navigation or acceptance targets.
+
 The `src/ui/` module owns the native color, spacing, radius, size, type, button, field, list, Settings, overlay, and small display contracts. This moves the previous `style.rs`, `palette.rs`, `components.rs`, and `overlay.rs` helpers into one app-owned set. The Settings switch, segmented choices, and rows from the Settings redesign and the app identity tooltip retain their behavior. The named header, sidebar, and Evee optical insets remain in `src/ui/tokens.rs`.
 
 The table links settled Metal captures from the same isolated `rendered_shell` fixture before and after the migration. Each frame is a full 2× backing-scale PNG. All 27 paired PNGs are byte-identical, so the consolidation made no visible layout or color changes in these fixtures. The suite also checks shared Button height, Field label alignment and gap, SettingsRow left/right insets, header icon centering, and pane content insets at both viewport sizes.

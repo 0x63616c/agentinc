@@ -22,9 +22,7 @@ impl Shell {
             route.label().to_lowercase().replace(' ', "-")
         ))
         .min_h(type_size(32.))
-        .when(matches!(route, Route::Agents | Route::Home), |s| {
-            s.mt(px(12.))
-        })
+        .when(route == Route::Agents, |s| s.mt(px(12.)))
         .px(px(10.))
         .gap(px(12.))
         .debug_selector(move || match index {

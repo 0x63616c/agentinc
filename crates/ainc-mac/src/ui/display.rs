@@ -85,12 +85,6 @@ pub fn nav_icon(
         .group_hover(hover_group, |s| s.text_color(rgb(TEXT)))
         .flex_shrink_0()
 }
-pub fn evee_logo(size: f32) -> impl IntoElement {
-    img(ImageSource::Resource(Resource::Embedded("evee.png".into())))
-        .size(px(size))
-        .rounded_full()
-        .flex_shrink_0()
-}
 pub fn shortcut_badge(label: impl Into<SharedString>) -> Div {
     row()
         .min_h(type_size(20.))
@@ -125,21 +119,16 @@ impl AssetSource for Assets {
             "arrowRight.svg" => include_bytes!("../../assets/arrowRight.svg"),
             "arrowUpRight.svg" => include_bytes!("../../assets/arrowUpRight.svg"),
             "bell.svg" => include_bytes!("../../assets/bell.svg"),
-            "calendar.svg" => include_bytes!("../../assets/calendar.svg"),
             "chevronLeft.svg" => include_bytes!("../../assets/chevronLeft.svg"),
             "chevronRight.svg" => include_bytes!("../../assets/chevronRight.svg"),
             "close.svg" => include_bytes!("../../assets/close.svg"),
             "evee.png" => include_bytes!("../../assets/evee.png"),
             "evee-outline.svg" => include_bytes!("../../assets/evee-outline.svg"),
-            "grid.svg" => include_bytes!("../../assets/grid.svg"),
-            "home.svg" => include_bytes!("../../assets/home.svg"),
             "panel.svg" => include_bytes!("../../assets/panel.svg"),
-            "photos.svg" => include_bytes!("../../assets/photos.svg"),
             "plus.svg" => include_bytes!("../../assets/plus.svg"),
             "search.svg" => include_bytes!("../../assets/search.svg"),
             "settings.svg" => include_bytes!("../../assets/settings.svg"),
             "spark.svg" => include_bytes!("../../assets/spark.svg"),
-            "sun.svg" => include_bytes!("../../assets/sun.svg"),
             "tasks.svg" => include_bytes!("../../assets/tasks.svg"),
             _ => return Ok(None),
         };
