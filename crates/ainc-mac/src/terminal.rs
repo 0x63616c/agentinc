@@ -17,6 +17,7 @@ mod macos {
         *mut c_void,
         *const std::ffi::c_char,
         *const std::ffi::c_char,
+        u32,
         Option<Navigate>,
         *mut c_void,
     ) -> *mut c_void;
@@ -92,6 +93,7 @@ mod macos {
                     handle.ns_view.as_ptr(),
                     home.as_ptr(),
                     colors.as_ptr(),
+                    crate::ui::BORDER,
                     Some(navigate),
                     (&*navigation as *const Navigation).cast_mut().cast(),
                 )

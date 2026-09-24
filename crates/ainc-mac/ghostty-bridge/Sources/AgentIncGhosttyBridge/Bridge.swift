@@ -98,7 +98,8 @@ private final class TerminalHost: NSObject {
     weak var zoomed: PaneView?
     var shown = false
 
-    init(parent: NSView, home: String, colors: String, navigate: NavigateCallback?,
+    init(parent: NSView, home: String, colors: String, dividerColor: UInt32,
+         navigate: NavigateCallback?,
          context: UnsafeMutableRawPointer?) {
         self.home = home
         self.navigate = navigate
@@ -117,6 +118,12 @@ private final class TerminalHost: NSObject {
         super.init()
         container.wantsLayer = true
         container.layer?.masksToBounds = true
+        container.layer?.backgroundColor = NSColor(
+            calibratedRed: CGFloat((dividerColor >> 16) & 0xff) / 255,
+            green: CGFloat((dividerColor >> 8) & 0xff) / 255,
+            blue: CGFloat(dividerColor & 0xff) / 255,
+            alpha: 1
+        ).cgColor
         parent.addSubview(container)
         zoomIndicator.target = self
         zoomIndicator.action = #selector(restorePanes)
@@ -269,6 +276,7 @@ private final class TerminalHost: NSObject {
 @_cdecl("agentinc_ghostty_create")
 public func agentincGhosttyCreate(_ parent: UnsafeMutableRawPointer?, _ home: UnsafePointer<CChar>?,
                                   _ colors: UnsafePointer<CChar>?,
+                                  _ dividerColor: UInt32,
                                   _ navigate: NavigateCallback?,
                                   _ context: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
     guard let parent, let home, let colors else { return nil }
@@ -279,7 +287,8 @@ public func agentincGhosttyCreate(_ parent: UnsafeMutableRawPointer?, _ home: Un
     let address = MainActor.assumeIsolated { () -> UInt in
         let view = Unmanaged<NSView>.fromOpaque(UnsafeMutableRawPointer(bitPattern: parentAddress)!)
             .takeUnretainedValue()
-        let host = TerminalHost(parent: view, home: homePath, colors: colorConfig, navigate: navigate,
+        let host = TerminalHost(parent: view, home: homePath, colors: colorConfig,
+                                dividerColor: dividerColor, navigate: navigate,
                                 context: contextAddress.flatMap(UnsafeMutableRawPointer.init(bitPattern:)))
         return UInt(bitPattern: Unmanaged.passRetained(host).toOpaque())
     }
