@@ -91,6 +91,14 @@ jobs:
             mv "$tools/codex-aarch64-apple-darwin" "$tools/codex"
             rm "$tools/codex.tar.gz"
           fi
+          if [ ! -x "$tools/protoc/bin/protoc" ]; then
+            curl --fail --location --output "$tools/protoc.zip" https://github.com/protocolbuffers/protobuf/releases/download/v36.2/protoc-36.2-osx-aarch_64.zip
+            test "$(shasum -a 256 "$tools/protoc.zip" | cut -d ' ' -f 1)" = 9cd98a532c5c5e0c4161314de0225de27e4c8a323917b6ea7b1b714d3ae23466
+            mkdir -p "$tools/protoc"
+            unzip -q "$tools/protoc.zip" -d "$tools/protoc"
+            rm "$tools/protoc.zip"
+          fi
+          echo "PROTOC=$tools/protoc/bin/protoc" >> "$GITHUB_ENV"
       - name: Build unsigned native handoff
         run: |
           test "$(git rev-parse HEAD)" = '${{ inputs.commit || github.sha }}'
