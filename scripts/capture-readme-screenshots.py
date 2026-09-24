@@ -161,6 +161,9 @@ def main():
             try:
                 manifest = state / "p/instance.json"
                 wait_for_manifest(app, manifest, state / "app.log")
+                version = node(manifest, "sidebar.version").get("name")
+                if not version or version.endswith("-dev"):
+                    raise RuntimeError(f"README capture needs a production-channel build: {version}")
                 click(manifest, "nav.tickets")
                 wait(manifest, "present", "tickets.create")
                 for title, status in TICKETS:
