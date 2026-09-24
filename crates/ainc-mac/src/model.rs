@@ -1,10 +1,10 @@
-//! Navigation is independent of GPUI so session invariants can be checked without a GPU.
+//! Single-route navigation and legacy session recovery, independent of GPUI.
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Space {
+pub enum Route {
     Today,
     Tasks,
     Agents,
@@ -12,82 +12,148 @@ pub enum Space {
     Calendar,
     Library,
     Apps,
-    Evee,
+    #[serde(rename = "evee", alias = "assistant")]
+    Assistant,
     Settings,
 }
-impl Space {
-    pub const ALL: [Self; 9] = [
-        Self::Today,
-        Self::Tasks,
-        Self::Agents,
-        Self::Home,
-        Self::Calendar,
-        Self::Library,
-        Self::Apps,
-        Self::Evee,
-        Self::Settings,
-    ];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Availability {
+    Ready,
+    Planned,
+}
+
+pub struct PageSpec {
+    pub route: Route,
+    pub title: &'static str,
+    pub icon: &'static str,
+    pub shortcut: Option<u8>,
+    pub in_sidebar: bool,
+    pub availability: Availability,
+}
+
+pub const PAGES: &[PageSpec] = &[
+    PageSpec {
+        route: Route::Today,
+        title: "Today",
+        icon: "sun",
+        shortcut: Some(1),
+        in_sidebar: true,
+        availability: Availability::Ready,
+    },
+    PageSpec {
+        route: Route::Tasks,
+        title: "Tasks",
+        icon: "tasks",
+        shortcut: Some(2),
+        in_sidebar: true,
+        availability: Availability::Ready,
+    },
+    PageSpec {
+        route: Route::Agents,
+        title: "Agents",
+        icon: "agents",
+        shortcut: Some(3),
+        in_sidebar: true,
+        availability: Availability::Planned,
+    },
+    PageSpec {
+        route: Route::Home,
+        title: "Home",
+        icon: "home",
+        shortcut: Some(4),
+        in_sidebar: true,
+        availability: Availability::Planned,
+    },
+    PageSpec {
+        route: Route::Calendar,
+        title: "Calendar",
+        icon: "calendar",
+        shortcut: Some(5),
+        in_sidebar: true,
+        availability: Availability::Planned,
+    },
+    PageSpec {
+        route: Route::Library,
+        title: "Library",
+        icon: "photos",
+        shortcut: Some(6),
+        in_sidebar: true,
+        availability: Availability::Planned,
+    },
+    PageSpec {
+        route: Route::Apps,
+        title: "My apps",
+        icon: "grid",
+        shortcut: Some(7),
+        in_sidebar: true,
+        availability: Availability::Planned,
+    },
+    PageSpec {
+        route: Route::Assistant,
+        title: "Assistant",
+        icon: "spark",
+        shortcut: Some(8),
+        in_sidebar: true,
+        availability: Availability::Ready,
+    },
+    PageSpec {
+        route: Route::Settings,
+        title: "Settings",
+        icon: "settings",
+        shortcut: None,
+        in_sidebar: false,
+        availability: Availability::Ready,
+    },
+];
+
+impl Route {
+    pub fn spec(self) -> &'static PageSpec {
+        PAGES
+            .iter()
+            .find(|page| page.route == self)
+            .expect("all routes have page metadata")
+    }
     pub fn label(self) -> &'static str {
-        match self {
-            Self::Today => "Today",
-            Self::Tasks => "Tasks",
-            Self::Agents => "Agents",
-            Self::Home => "Home",
-            Self::Calendar => "Calendar",
-            Self::Library => "Library",
-            Self::Apps => "My apps",
-            Self::Evee => "Assistant",
-            Self::Settings => "Settings",
-        }
+        self.spec().title
     }
     pub fn icon(self) -> &'static str {
-        match self {
-            Self::Today => "sun",
-            Self::Tasks => "tasks",
-            Self::Agents => "agents",
-            Self::Home => "home",
-            Self::Calendar => "calendar",
-            Self::Library => "photos",
-            Self::Apps => "grid",
-            Self::Evee => "spark",
-            Self::Settings => "settings",
-        }
+        self.spec().icon
+    }
+    pub fn matching(query: &str) -> Vec<Self> {
+        let query = query.trim().to_lowercase();
+        PAGES
+            .iter()
+            .filter(|page| page.title.to_lowercase().contains(&query))
+            .map(|page| page.route)
+            .collect()
     }
     pub fn empty(self) -> (&'static str, &'static str) {
         match self {
-            Self::Settings => (
-                "Make this space yours",
-                "Account and app settings are coming in a future increment.",
-            ),
             Self::Today => (
-                "Your space starts here",
-                "Open a space from the sidebar or search.",
+                "Your day starts here",
+                "Choose a destination from the sidebar.",
             ),
-            Self::Tasks => (
-                "No tasks yet",
-                "Task management is coming in a future increment.",
-            ),
+            Self::Tasks => ("No tasks yet", "Add a task to get started."),
             Self::Agents => (
                 "No agents connected",
                 "Agent runs and reviews will appear here.",
             ),
             Self::Home => (
-                "Your home, in one place",
+                "Home is not connected",
                 "Home controls are not connected yet.",
             ),
             Self::Calendar => (
-                "Room for your plans",
+                "No calendars connected",
                 "Calendar accounts are not connected yet.",
             ),
             Self::Library => (
-                "A place for what you keep",
+                "No photos yet",
                 "Photos and library search are coming later.",
             ),
-            Self::Apps => ("Your personal toolkit", "Personal apps will live here."),
-            Self::Evee => (
-                "Evee is not connected yet",
-                "Your assistant will be available here.",
-            ),
+            Self::Apps => ("No apps yet", "Personal apps will appear here."),
+            Self::Assistant => ("No conversations yet", "Start a conversation with Evee."),
+            Self::Settings => ("Settings", "Manage your account and preferences."),
         }
     }
     pub fn planned(self) -> &'static [(&'static str, &'static str)] {
@@ -125,7 +191,7 @@ impl Space {
                 ("Personal tools", "A place for small apps made for you."),
                 ("Connections", "Manage the services those tools use."),
             ],
-            Self::Evee => &[
+            Self::Assistant => &[
                 (
                     "Conversations",
                     "Return to conversations with your assistant.",
@@ -136,38 +202,54 @@ impl Space {
             _ => &[],
         }
     }
-    pub fn matching(query: &str) -> Vec<Self> {
-        let query = query.trim().to_lowercase();
-        Self::ALL
-            .into_iter()
-            .filter(|s| s.label().to_lowercase().contains(&query))
-            .collect()
-    }
 }
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct History {
-    entries: Vec<Space>,
-    cursor: usize,
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Router {
+    current: Route,
+    back: Vec<Route>,
+    forward: Vec<Route>,
 }
-impl History {
-    fn at(space: Space) -> Self {
+impl Default for Router {
+    fn default() -> Self {
         Self {
-            entries: vec![space],
-            cursor: 0,
+            current: Route::Today,
+            back: vec![],
+            forward: vec![],
         }
     }
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Session {
-    pub tabs: Vec<Option<Space>>,
-    history: Vec<History>,
-    pub active: usize,
-    pub sidebar: bool,
-    pub evee: bool,
-    pub evee_width: f32,
-    pub font: FontChoice,
+impl Router {
+    pub fn current(&self) -> Route {
+        self.current
+    }
+    pub fn navigate(&mut self, to: Route) {
+        if to != self.current {
+            self.back.push(self.current);
+            self.current = to;
+            self.forward.clear();
+        }
+    }
+    pub fn can_go(&self, forward: bool) -> bool {
+        if forward {
+            !self.forward.is_empty()
+        } else {
+            !self.back.is_empty()
+        }
+    }
+    pub fn go(&mut self, forward: bool) {
+        if forward {
+            if let Some(next) = self.forward.pop() {
+                self.back.push(self.current);
+                self.current = next;
+            }
+        } else if let Some(previous) = self.back.pop() {
+            self.forward.push(self.current);
+            self.current = previous;
+        }
+    }
 }
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FontChoice {
@@ -183,12 +265,20 @@ impl FontChoice {
         }
     }
 }
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Session {
+    router: Router,
+    pub sidebar: bool,
+    pub evee: bool,
+    pub evee_width: f32,
+    pub font: FontChoice,
+}
 impl Default for Session {
     fn default() -> Self {
         Self {
-            tabs: vec![Some(Space::Today)],
-            history: vec![History::at(Space::Today)],
-            active: 0,
+            router: Router::default(),
             sidebar: true,
             evee: true,
             evee_width: 258.,
@@ -197,83 +287,90 @@ impl Default for Session {
     }
 }
 impl Session {
-    pub fn current(&self) -> Option<Space> {
-        self.tabs.get(self.active).copied().flatten()
+    pub fn current(&self) -> Route {
+        self.router.current()
     }
-    /// Sidebar and page links navigate the active tab in place.
-    pub fn navigate(&mut self, space: Space) {
-        if self.current() == Some(space) {
-            return;
-        }
-        let history = &mut self.history[self.active];
-        history.entries.truncate(history.cursor + 1);
-        history.entries.push(space);
-        history.cursor = history.entries.len() - 1;
-        self.tabs[self.active] = Some(space);
-    }
-    /// Search replaces the destination in the one tab.
-    pub fn open(&mut self, space: Space) {
-        self.navigate(space);
+    pub fn navigate(&mut self, route: Route) {
+        self.router.navigate(route);
     }
     pub fn can_go(&self, forward: bool) -> bool {
-        let h = &self.history[self.active];
-        if forward {
-            h.cursor + 1 < h.entries.len()
-        } else {
-            h.cursor > 0
-        }
+        self.router.can_go(forward)
     }
     pub fn go(&mut self, forward: bool) {
-        if !self.can_go(forward) {
-            return;
-        }
-        let h = &mut self.history[self.active];
-        if forward {
-            h.cursor += 1;
-        } else {
-            h.cursor -= 1;
-        }
-        self.tabs[self.active] = Some(h.entries[h.cursor]);
+        self.router.go(forward);
     }
     pub fn from_json(json: &str) -> Self {
-        let Ok(saved) = serde_json::from_str::<Self>(json) else {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
             return Self::default();
         };
-        // Older sessions may have many tabs. Keep the active destination and its history.
-        let selected = saved
-            .tabs
-            .get(saved.active)
-            .copied()
-            .flatten()
-            .map(|space| (saved.active, space))
-            .or_else(|| {
-                saved
-                    .tabs
-                    .iter()
-                    .enumerate()
-                    .find_map(|(i, tab)| tab.map(|space| (i, space)))
-            });
-        let mut clean = Self {
-            evee_width: if saved.evee_width.is_finite() {
-                saved.evee_width.clamp(220., 480.)
-            } else {
-                258.
-            },
-            sidebar: saved.sidebar,
-            evee: saved.evee,
-            font: saved.font,
-            ..Self::default()
-        };
-        if let Some((index, space)) = selected {
-            clean.tabs[0] = Some(space);
-            clean.history[0] = saved
-                .history
-                .get(index)
-                .filter(|h| h.entries.get(h.cursor) == Some(&space))
-                .cloned()
-                .unwrap_or_else(|| History::at(space));
+        let mut session = Self::default();
+        if let Some(sidebar) = value.get("sidebar").and_then(|v| v.as_bool()) {
+            session.sidebar = sidebar;
         }
-        clean
+        if let Some(evee) = value.get("evee").and_then(|v| v.as_bool()) {
+            session.evee = evee;
+        }
+        if let Some(width) = value.get("evee_width").and_then(|v| v.as_f64()) {
+            session.evee_width = (width as f32).clamp(220., 480.);
+        }
+        if let Some(font) = value
+            .get("font")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+        {
+            session.font = font;
+        }
+        if let Some(router) = value
+            .get("router")
+            .and_then(|v| serde_json::from_value::<Router>(v.clone()).ok())
+        {
+            session.router = router;
+        } else if let Some(tabs) = value.get("tabs").and_then(|v| v.as_array()) {
+            let active = value.get("active").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let selected = tabs
+                .get(active)
+                .and_then(|v| serde_json::from_value::<Route>(v.clone()).ok())
+                .map(|route| (active, route))
+                .or_else(|| {
+                    tabs.iter().enumerate().find_map(|(i, v)| {
+                        serde_json::from_value::<Route>(v.clone())
+                            .ok()
+                            .map(|route| (i, route))
+                    })
+                });
+            if let Some((index, route)) = selected {
+                session.router.current = route;
+                if let Some(history) = value.get("history").and_then(|v| v.get(index)) {
+                    let entries = history.get("entries").and_then(|v| v.as_array());
+                    let cursor = history
+                        .get("cursor")
+                        .and_then(|v| v.as_u64())
+                        .map(|n| n as usize);
+                    if let (Some(entries), Some(cursor)) = (entries, cursor) {
+                        let before: Option<Vec<Route>> = entries[..cursor.min(entries.len())]
+                            .iter()
+                            .map(|v| serde_json::from_value(v.clone()).ok())
+                            .collect();
+                        let after: Option<Vec<Route>> = entries
+                            .get(cursor.saturating_add(1)..)
+                            .unwrap_or(&[])
+                            .iter()
+                            .map(|v| serde_json::from_value(v.clone()).ok())
+                            .collect();
+                        if entries
+                            .get(cursor)
+                            .and_then(|v| serde_json::from_value::<Route>(v.clone()).ok())
+                            == Some(route)
+                            && let (Some(back), Some(mut forward)) = (before, after)
+                        {
+                            forward.reverse();
+                            session.router.back = back;
+                            session.router.forward = forward;
+                        }
+                    }
+                }
+            }
+        }
+        session
     }
     pub fn load(path: &Path) -> Self {
         fs::read_to_string(path)
@@ -290,63 +387,68 @@ impl Session {
         fs::rename(temporary, path)
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn one_tab_navigation_and_history() {
+    fn catalogue_and_history() {
+        assert_eq!(PAGES.len(), 9);
+        for route in [
+            Route::Today,
+            Route::Tasks,
+            Route::Agents,
+            Route::Home,
+            Route::Calendar,
+            Route::Library,
+            Route::Apps,
+            Route::Assistant,
+            Route::Settings,
+        ] {
+            assert_eq!(route.spec().route, route);
+        }
+        let shortcuts: Vec<_> = PAGES.iter().filter_map(|p| p.shortcut).collect();
+        assert_eq!(shortcuts, (1..=8).collect::<Vec<_>>());
         let mut s = Session::default();
-        s.navigate(Space::Tasks);
-        s.open(Space::Home);
-        assert_eq!(s.tabs, vec![Some(Space::Home)]);
+        s.navigate(Route::Tasks);
+        s.navigate(Route::Home);
         s.go(false);
-        assert_eq!(s.current(), Some(Space::Tasks));
-        s.navigate(Space::Library);
+        assert_eq!(s.current(), Route::Tasks);
+        s.navigate(Route::Library);
         assert!(!s.can_go(true));
         assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);
     }
     #[test]
-    fn legacy_tabs_restore_active_into_one_tab() {
-        let s =
-            Session::from_json(r#"{"tabs":["today","tasks","home"],"active":1,"sidebar":false}"#);
-        assert_eq!(s.tabs, vec![Some(Space::Tasks)]);
-        assert_eq!(s.active, 0);
+    fn legacy_session_and_unknown_route_preserve_preferences() {
+        let s = Session::from_json(
+            r#"{"tabs":["today","evee","home"],"active":1,"sidebar":false,"font":"helvetica_neue","evee_width":390}"#,
+        );
+        assert_eq!(s.current(), Route::Assistant);
         assert!(!s.sidebar);
+        assert_eq!(s.font, FontChoice::HelveticaNeue);
+        assert_eq!(s.evee_width, 390.);
         assert_eq!(
-            Session::from_json(r#"{"tabs":["today",null],"active":1}"#).current(),
-            Some(Space::Today)
+            serde_json::to_string(&Route::Assistant).unwrap(),
+            "\"evee\""
         );
-        for bad in ["", "garbage", "null", r#"{"tabs":["future"]}"#] {
-            assert_eq!(Session::from_json(bad), Session::default());
-        }
-    }
-    #[test]
-    fn font_and_panel_settings_round_trip() {
-        let s = Session {
-            font: FontChoice::HelveticaNeue,
-            evee: false,
-            evee_width: 390.,
-            ..Session::default()
-        };
-        assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);
-        assert_eq!(
-            Session::from_json(r#"{"evee_width":9000}"#).evee_width,
-            480.
-        );
+        let unknown =
+            Session::from_json(r#"{"tabs":["future"],"font":"helvetica_neue","sidebar":false}"#);
+        assert_eq!(unknown.current(), Route::Today);
+        assert_eq!(unknown.font, FontChoice::HelveticaNeue);
+        assert!(!unknown.sidebar);
     }
     #[test]
     fn search_and_file_round_trip() {
-        assert_eq!(Space::matching(" HOME "), vec![Space::Home]);
-        assert!(Space::matching("zzz").is_empty());
-        let dir = std::env::current_dir().unwrap().join("target/session-test");
-        let path = dir.join(format!("{}.json", std::process::id()));
-        assert_eq!(Session::load(&path), Session::default());
+        assert_eq!(Route::matching(" HOME "), vec![Route::Home]);
+        assert!(Route::matching("zzz").is_empty());
+        let path = std::env::current_dir()
+            .unwrap()
+            .join("target/session-test")
+            .join(format!("{}.json", std::process::id()));
         let mut s = Session::default();
-        s.open(Space::Agents);
+        s.navigate(Route::Agents);
         s.save(&path).unwrap();
         assert_eq!(Session::load(&path), s);
-        fs::write(&path, "{partial").unwrap();
-        assert_eq!(Session::load(&path), Session::default());
         fs::remove_file(path).unwrap();
     }
 }

@@ -213,6 +213,15 @@ components:
 
 # Design System: Agentinc OS
 
+## Current native navigation glossary
+
+- **Route:** a place the user can navigate to. `src/model.rs` defines its stable identity and the `PAGES` catalogue.
+- **Page:** the native view that renders a route, such as `TasksPage` or `AssistantPage`.
+- **Router:** the private single-tab current route and back/forward history. Legacy session files retain their saved route IDs.
+- **Overlay:** the one active dialog, menu, search, or popover per window; `src/overlay.rs` owns dismissal and return focus.
+
+The native sidebar is one uninterrupted list with no group heading or replacement concept word. The navigation control says “Go to…”, its result action says “Open”, and empty results say “No matches.” Keep feature-specific empty text. Dialogs share a centred 440px shell with a visible field label, inline error, and right-aligned actions; destructive actions stay in compact menus with confirmation. The browser prototype notes below are historical where they describe multiple tabs or older notification placement.
+
 ## Overview
 
 **Creative North Star: "Control"**

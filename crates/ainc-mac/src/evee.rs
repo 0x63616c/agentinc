@@ -1,11 +1,13 @@
 use crate::{
     assistant,
     input::{Submit, TextInput},
+    overlay::{Overlay, OverlayHost, action_button, dialog_shell, menu_shell},
     storage::{Conversation, Store, Turn},
     style::*,
 };
 use gpui::{prelude::*, *};
 use std::{
+    cell::RefCell,
     rc::Rc,
     sync::{
         Arc,
@@ -14,16 +16,17 @@ use std::{
     time::Instant,
 };
 
-pub struct Evee {
+pub struct AssistantPage {
     store: Option<Rc<Store>>,
+    overlays: Rc<RefCell<OverlayHost>>,
     turns: Vec<Turn>,
     input: Entity<TextInput>,
     conversations: Vec<Conversation>,
     conversation: Option<i64>,
     rename_input: Entity<TextInput>,
-    menu: Option<i64>,
-    renaming: Option<i64>,
-    deleting: Option<i64>,
+    form_error: Option<String>,
+    cancel_focus: FocusHandle,
+    submit_focus: FocusHandle,
     account: Option<String>,
     models: Vec<assistant::Model>,
     model: Option<String>,
@@ -43,11 +46,12 @@ pub enum Navigation {
     Settings,
     Chat,
 }
-impl EventEmitter<Navigation> for Evee {}
-impl Evee {
+impl EventEmitter<Navigation> for AssistantPage {}
+impl AssistantPage {
     pub fn new(
         mut store: Option<Rc<Store>>,
         storage_error: Option<String>,
+        overlays: Rc<RefCell<OverlayHost>>,
         cx: &mut Context<Self>,
     ) -> Self {
         let input = cx.new(TextInput::composer);
@@ -56,6 +60,12 @@ impl Evee {
             cx.subscribe(&input, |this, _, _: &Submit, cx| this.send(cx)),
             cx.observe(&input, |_, _, cx| cx.notify()),
             cx.subscribe(&rename_input, |this, _, _: &Submit, cx| this.rename(cx)),
+            cx.observe(&rename_input, |this, input, cx| {
+                let title = input.read(cx).content.trim().to_owned();
+                this.form_error =
+                    (title.chars().count() > 120).then(|| "Use 120 characters or fewer.".into());
+                cx.notify();
+            }),
         ];
         let loaded = store
             .as_ref()
@@ -95,14 +105,15 @@ impl Evee {
         .detach();
         Self {
             store,
+            overlays,
             turns,
             input,
             conversations,
             conversation,
             rename_input,
-            menu: None,
-            renaming: None,
-            deleting: None,
+            form_error: None,
+            cancel_focus: cx.focus_handle(),
+            submit_focus: cx.focus_handle(),
             account: None,
             models: vec![],
             model,
@@ -346,7 +357,7 @@ impl Evee {
                     self.turns = turns;
                     self.conversation = Some(id);
                     self.error = None;
-                    self.menu = None;
+                    self.overlays.borrow_mut().close();
                     self.input.update(cx, |i, cx| {
                         i.reset();
                         cx.notify();
@@ -375,13 +386,18 @@ impl Evee {
         cx.notify();
     }
     fn rename(&mut self, cx: &mut Context<Self>) {
-        if let (Some(db), Some(id)) = (&self.store, self.renaming) {
+        let active = self.overlays.borrow().active();
+        if let (Some(db), Some(Overlay::RenameConversation(id))) = (&self.store, active) {
+            if self.form_error.is_some() || self.rename_input.read(cx).content.trim().is_empty() {
+                return;
+            }
             match db.rename_conversation(id, &self.rename_input.read(cx).content) {
                 Ok(()) => {
-                    self.renaming = None;
+                    self.overlays.borrow_mut().close();
+                    self.form_error = None;
                     self.reload_conversations();
                 }
-                Err(e) => self.error = Some(e.to_string()),
+                Err(e) => self.form_error = Some(e.to_string()),
             }
         }
         cx.notify();
@@ -390,17 +406,18 @@ impl Evee {
         if self.active.is_some() || self.unsaved.is_some() {
             return;
         }
-        if let (Some(db), Some(id)) = (&self.store, self.deleting) {
+        let active = self.overlays.borrow().active();
+        if let (Some(db), Some(Overlay::DeleteConversation(id))) = (&self.store, active) {
             match db.delete_conversation(id) {
                 Ok(()) => {
-                    self.deleting = None;
+                    self.overlays.borrow_mut().close();
                     if self.conversation == Some(id) {
                         self.conversation = None;
                         self.turns.clear();
                     }
                     self.reload_conversations();
                 }
-                Err(e) => self.error = Some(e.to_string()),
+                Err(e) => self.form_error = Some(e.to_string()),
             }
         }
         cx.notify();
@@ -433,97 +450,10 @@ impl Evee {
                         .child("Your conversations will appear here."),
                 )
             })
-            .when(self.renaming.is_some(), |s| {
-                s.child(
-                    column()
-                        .gap(px(10.))
-                        .p(px(14.))
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(rgb(BORDER))
-                        .child("Rename conversation")
-                        .child(
-                            div()
-                                .p(px(9.))
-                                .rounded(px(6.))
-                                .bg(rgb(0x181818))
-                                .border_1()
-                                .border_color(rgb(BORDER))
-                                .child(self.rename_input.clone()),
-                        )
-                        .child(
-                            row()
-                                .gap(px(8.))
-                                .child(self.action(
-                                    "rename-save",
-                                    "Save",
-                                    enabled,
-                                    Self::rename,
-                                    cx,
-                                ))
-                                .child(self.action(
-                                    "rename-cancel",
-                                    "Cancel",
-                                    true,
-                                    |this, cx| {
-                                        this.renaming = None;
-                                        cx.notify();
-                                    },
-                                    cx,
-                                )),
-                        ),
-                )
-            })
-            .when(self.deleting.is_some(), |s| {
-                s.child(
-                    column()
-                        .gap(px(10.))
-                        .p(px(14.))
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(rgb(BORDER))
-                        .child(format!(
-                            "Delete “{}”?",
-                            self.conversations
-                                .iter()
-                                .find(|c| Some(c.id) == self.deleting)
-                                .map_or("conversation", |c| c.title.as_str())
-                        ))
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(rgb(MUTED))
-                                .child("This permanently removes its messages from this Mac."),
-                        )
-                        .child(
-                            row()
-                                .gap(px(8.))
-                                .child(
-                                    self.action(
-                                        "delete-confirm",
-                                        "Delete conversation",
-                                        enabled,
-                                        Self::delete,
-                                        cx,
-                                    )
-                                    .text_color(rgb(0xdaa7a7)),
-                                )
-                                .child(self.action(
-                                    "delete-cancel",
-                                    "Cancel",
-                                    true,
-                                    |this, cx| {
-                                        this.deleting = None;
-                                        cx.notify();
-                                    },
-                                    cx,
-                                )),
-                        ),
-                )
-            })
             .children(self.conversations.iter().map(|conversation| {
                 let id = conversation.id;
                 column()
+                    .relative()
                     .gap(px(8.))
                     .pb(px(14.))
                     .border_b_1()
@@ -572,61 +502,214 @@ impl Evee {
                                     .text_color(rgb(MUTED))
                                     .child(conversation.updated.clone()),
                             )
-                            .child(self.action(
+                            .child(self.action_window(
                                 ("chat-menu", id as u64),
                                 "…",
                                 enabled,
-                                move |this, cx| {
-                                    this.menu = if this.menu == Some(id) {
-                                        None
+                                move |this, window, cx| {
+                                    let mut host = this.overlays.borrow_mut();
+                                    if host.active() == Some(Overlay::ConversationMenu(id)) {
+                                        host.dismiss(window);
                                     } else {
-                                        Some(id)
-                                    };
+                                        host.open(Overlay::ConversationMenu(id), window, cx, None);
+                                    }
                                     cx.notify();
                                 },
                                 cx,
                             )),
                     )
-                    .when(self.menu == Some(id), |s| {
-                        s.child(
-                            row()
-                                .justify_end()
-                                .gap(px(8.))
-                                .child(self.action(
-                                    ("rename-chat", id as u64),
-                                    "Rename",
-                                    enabled,
-                                    move |this, cx| {
-                                        this.renaming = Some(id);
-                                        this.menu = None;
-                                        if let Some(c) =
-                                            this.conversations.iter().find(|c| c.id == id)
-                                        {
-                                            this.rename_input.update(cx, |input, cx| {
-                                                input.set_text(&c.title, cx)
-                                            });
-                                        }
-                                        cx.notify();
-                                    },
-                                    cx,
-                                ))
-                                .child(
-                                    self.action(
-                                        ("delete-chat", id as u64),
-                                        "Delete",
-                                        enabled,
-                                        move |this, cx| {
-                                            this.deleting = Some(id);
-                                            this.menu = None;
-                                            cx.notify();
-                                        },
-                                        cx,
-                                    )
-                                    .text_color(rgb(0xdaa7a7)),
-                                ),
-                        )
-                    })
+                    .when(
+                        self.overlays.borrow().active() == Some(Overlay::ConversationMenu(id)),
+                        |s| {
+                            s.child(
+                                menu_shell(
+                                    column()
+                                        .child(
+                                            self.action_window(
+                                                ("rename-chat", id as u64),
+                                                "Rename",
+                                                enabled,
+                                                move |this, window, cx| {
+                                                    if let Some(c) = this
+                                                        .conversations
+                                                        .iter()
+                                                        .find(|c| c.id == id)
+                                                    {
+                                                        this.rename_input.update(
+                                                            cx,
+                                                            |input, cx| {
+                                                                input.set_text(&c.title, cx)
+                                                            },
+                                                        );
+                                                    }
+                                                    this.form_error = None;
+                                                    this.overlays.borrow_mut().open(
+                                                        Overlay::RenameConversation(id),
+                                                        window,
+                                                        cx,
+                                                        Some(this.rename_input.focus_handle(cx)),
+                                                    );
+                                                    cx.notify();
+                                                },
+                                                cx,
+                                            )
+                                            .w_full()
+                                            .justify_start(),
+                                        )
+                                        .child(
+                                            self.action_window(
+                                                ("delete-chat", id as u64),
+                                                "Delete",
+                                                enabled,
+                                                move |this, window, cx| {
+                                                    this.form_error = None;
+                                                    this.overlays.borrow_mut().open(
+                                                        Overlay::DeleteConversation(id),
+                                                        window,
+                                                        cx,
+                                                        Some(this.cancel_focus.clone()),
+                                                    );
+                                                    cx.notify();
+                                                },
+                                                cx,
+                                            )
+                                            .w_full()
+                                            .justify_start()
+                                            .text_color(rgb(0xdaa7a7)),
+                                        ),
+                                )
+                                .absolute()
+                                .right(px(0.))
+                                .top(px(34.)),
+                            )
+                        },
+                    )
             }))
+    }
+    pub fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
+        if matches!(
+            self.overlays.borrow().active(),
+            Some(Overlay::RenameConversation(_))
+        ) {
+            vec![
+                self.rename_input.focus_handle(cx),
+                self.cancel_focus.clone(),
+                self.submit_focus.clone(),
+            ]
+        } else {
+            vec![self.cancel_focus.clone(), self.submit_focus.clone()]
+        }
+    }
+    pub fn overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let active = self.overlays.borrow().active()?;
+        let (rename, id) = match active {
+            Overlay::RenameConversation(id) => (true, id),
+            Overlay::DeleteConversation(id) => (false, id),
+            _ => return None,
+        };
+        let conversation = self.conversations.iter().find(|c| c.id == id)?;
+        let title = if rename {
+            "Rename conversation".to_owned()
+        } else {
+            format!("Delete “{}”?", conversation.title)
+        };
+        let body = if rename {
+            column()
+                .gap(px(6.))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(MUTED))
+                        .child("Title"),
+                )
+                .child(
+                    row()
+                        .h(px(42.))
+                        .px(px(12.))
+                        .border_1()
+                        .border_color(rgb(if self.form_error.is_some() {
+                            0xb67171
+                        } else {
+                            BORDER
+                        }))
+                        .rounded(px(7.))
+                        .child(self.rename_input.clone()),
+                )
+                .when_some(self.form_error.clone(), |s, error| {
+                    s.child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(0xe6acac))
+                            .child(error),
+                    )
+                })
+                .into_any_element()
+        } else {
+            column()
+                .gap(px(6.))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(rgb(MUTED))
+                        .child("This permanently removes its messages from this Mac."),
+                )
+                .when_some(self.form_error.clone(), |s, error| {
+                    s.child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(rgb(0xe6acac))
+                            .child(error),
+                    )
+                })
+                .into_any_element()
+        };
+        let enabled = self.store.is_some()
+            && self.active.is_none()
+            && self.unsaved.is_none()
+            && (!rename
+                || (self.form_error.is_none()
+                    && !self.rename_input.read(cx).content.trim().is_empty()));
+        let footer = row()
+            .justify_end()
+            .gap(px(8.))
+            .child(
+                self.action_window(
+                    "conversation-cancel",
+                    "Cancel",
+                    true,
+                    |this, window, cx| {
+                        this.overlays.borrow_mut().dismiss(window);
+                        cx.notify();
+                    },
+                    cx,
+                )
+                .track_focus(&self.cancel_focus)
+                .border_1()
+                .border_color(rgb(BORDER)),
+            )
+            .child(
+                self.action(
+                    "conversation-submit",
+                    if rename {
+                        "Save"
+                    } else {
+                        "Delete conversation"
+                    },
+                    enabled,
+                    move |this, cx| {
+                        if rename {
+                            this.rename(cx)
+                        } else {
+                            this.delete(cx)
+                        }
+                    },
+                    cx,
+                )
+                .track_focus(&self.submit_focus)
+                .bg(rgb(if rename { 0xe8e8e8 } else { 0x5b2b2b }))
+                .text_color(rgb(if rename { 0x141414 } else { TEXT })),
+            );
+        Some(dialog_shell(title, body, footer).into_any_element())
     }
     fn send(&mut self, cx: &mut Context<Self>) {
         if self.active.is_some() || self.unsaved.is_some() || self.credentials_busy {
@@ -746,45 +829,45 @@ impl Evee {
         f: impl Fn(&mut Self, &mut Context<Self>) + Clone + 'static,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        let key_action = f.clone();
+        self.action_window(id, label, enabled, move |this, _, cx| f(this, cx), cx)
+    }
+    fn action_window(
+        &self,
+        id: impl Into<ElementId>,
+        label: &str,
+        enabled: bool,
+        f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + Clone + 'static,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let id = id.into();
         let hover_id = id.clone();
         let background = self.hover.color(&id);
-        row()
-            .id(id)
-            .tab_index(0)
-            .justify_center()
-            .rounded(px(6.))
-            .px(px(10.))
-            .py(px(6.))
-            .text_size(px(11.))
-            .cursor_pointer()
-            .opacity(if enabled { 1. } else { 0.4 })
-            .bg(background)
-            .on_hover(cx.listener(move |this, over, _, cx| {
-                this.hover.set(hover_id.clone(), *over);
-                cx.notify();
-            }))
-            .focus(|s| s.bg(rgb(0x1d2520)))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                cx.stop_propagation();
-                if enabled {
-                    f(this, cx);
-                }
-            }))
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-                if event.keystroke.key == "enter" || event.keystroke.key == "space" {
-                    cx.stop_propagation();
-                    if enabled {
-                        key_action(this, cx);
-                    }
-                }
-            }))
-            .child(label.to_owned())
+        action_button(
+            row()
+                .id(id)
+                .tab_index(0)
+                .justify_center()
+                .rounded(px(6.))
+                .px(px(10.))
+                .py(px(6.))
+                .text_size(px(11.))
+                .cursor_pointer()
+                .opacity(if enabled { 1. } else { 0.4 })
+                .bg(background)
+                .on_hover(cx.listener(move |this, over, _, cx| {
+                    this.hover.set(hover_id.clone(), *over);
+                    cx.notify();
+                }))
+                .focus(|s| s.bg(rgb(0x1d2520)))
+                .child(label.to_owned()),
+            enabled,
+            f,
+            cx,
+        )
     }
 }
 
-impl Render for Evee {
+impl Render for AssistantPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
         let progress = if self.reduced_motion {

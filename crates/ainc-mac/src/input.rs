@@ -978,7 +978,7 @@ impl TextInput {
             scroll_x: px(0.),
             focus_handle: cx.focus_handle(),
             content: "".into(),
-            placeholder: "Find a space…".into(),
+            placeholder: "Go to…".into(),
             selected_range: 0..0,
             selection_reversed: false,
             marked_range: None,

@@ -1,10 +1,11 @@
 use crate::{
     input::TextInput,
-    model::{FontChoice, Session, Space},
+    model::{Availability, FontChoice, PAGES, Route, Session},
+    overlay::{Overlay, OverlayHost},
     style::*,
 };
 use gpui::{prelude::*, *};
-use std::{path::PathBuf, time::Instant};
+use std::{cell::RefCell, path::PathBuf, rc::Rc, time::Instant};
 actions!(
     control,
     [
@@ -24,12 +25,12 @@ actions!(
 );
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = control, no_json)]
-struct NavigateSpace(usize);
+struct NavigateRoute(u8);
 
 #[derive(Clone, Copy)]
 enum Control {
-    Open(Space),
-    Navigate(Space),
+    Open(Route),
+    Navigate(Route),
     Back,
     Forward,
     Search,
@@ -42,8 +43,9 @@ enum Control {
 }
 pub struct Shell {
     session: Session,
-    assistant: Entity<crate::evee::Evee>,
-    tasks: Entity<crate::tasks::Tasks>,
+    overlays: Rc<RefCell<OverlayHost>>,
+    assistant: Entity<crate::evee::AssistantPage>,
+    tasks: Entity<crate::tasks::TasksPage>,
     _tasks_subscription: Subscription,
     _assistant_subscriptions: Vec<Subscription>,
     profile: crate::profile::Profile,
@@ -53,11 +55,9 @@ pub struct Shell {
     picker_result_focus: Vec<FocusHandle>,
     picker_close_focus: FocusHandle,
     _input_subscription: Subscription,
-    command: bool,
     command_held: bool,
     palette_transition: Option<Instant>,
     selected: usize,
-    notifications: bool,
     notification_items: Vec<Notification>,
     save_error: bool,
     resizing_evee: bool,
@@ -89,15 +89,22 @@ impl Shell {
             Ok(store) => (Some(std::rc::Rc::new(store)), None),
             Err(_) => (None, Some("Local storage is unavailable. Check Application Support permissions and restart.".to_owned())),
         };
-        let assistant =
-            cx.new(|cx| crate::evee::Evee::new(store.clone(), storage_error.clone(), cx));
+        let overlays = Rc::new(RefCell::new(OverlayHost::default()));
+        let assistant = cx.new(|cx| {
+            crate::evee::AssistantPage::new(
+                store.clone(),
+                storage_error.clone(),
+                overlays.clone(),
+                cx,
+            )
+        });
         let assistant_subscriptions = vec![
             cx.observe(&assistant, |_, _, cx| cx.notify()),
             cx.subscribe(
                 &assistant,
                 |this, _, event: &crate::evee::Navigation, cx| {
                     match event {
-                        crate::evee::Navigation::Settings => this.session.navigate(Space::Settings),
+                        crate::evee::Navigation::Settings => this.session.navigate(Route::Settings),
                         crate::evee::Navigation::Chat => {
                             this.session.evee = true;
                             this.evee_animation = Some((Instant::now(), this.evee_progress, 1.));
@@ -108,7 +115,8 @@ impl Shell {
                 },
             ),
         ];
-        let tasks = cx.new(|cx| crate::tasks::Tasks::new(store, storage_error, cx));
+        let tasks =
+            cx.new(|cx| crate::tasks::TasksPage::new(store, storage_error, overlays.clone(), cx));
         let tasks_subscription = cx.observe(&tasks, |_, _, cx| cx.notify());
         let input = cx.new(TextInput::new);
         let subscription = cx.observe(&input, |this, _, cx| {
@@ -122,6 +130,7 @@ impl Shell {
         let sidebar_width = if session.sidebar { SIDEBAR } else { 0. };
         Self {
             session,
+            overlays,
             assistant,
             tasks,
             _tasks_subscription: tasks_subscription,
@@ -134,14 +143,12 @@ impl Shell {
             path,
             focus,
             input,
-            picker_result_focus: Space::ALL.iter().map(|_| cx.focus_handle()).collect(),
+            picker_result_focus: PAGES.iter().map(|_| cx.focus_handle()).collect(),
             picker_close_focus: cx.focus_handle(),
             _input_subscription: subscription,
-            command: false,
             command_held: false,
             palette_transition: None,
             selected: 0,
-            notifications: false,
             notification_items: Vec::new(),
             save_error: false,
             resizing_evee: false,
@@ -162,57 +169,74 @@ impl Shell {
     fn focus_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selected = 0;
         self.input.update(cx, |input, _| input.reset());
-        window.focus(&self.input.focus_handle(cx));
+        self.overlays.borrow_mut().open(
+            Overlay::Search,
+            window,
+            cx,
+            Some(self.input.focus_handle(cx)),
+        );
     }
     fn cycle_focus(&self, backwards: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.command {
-            if backwards {
-                window.focus_prev();
-            } else {
-                window.focus_next();
+        let handles = match self.overlays.borrow().active() {
+            Some(Overlay::Search) => {
+                let mut handles =
+                    vec![self.input.focus_handle(cx), self.picker_close_focus.clone()];
+                handles.extend(
+                    self.picker_result_focus
+                        .iter()
+                        .take(Route::matching(&self.input.read(cx).content).len())
+                        .cloned(),
+                );
+                handles
             }
-            return;
-        }
-        // Only rendered picker controls participate, including the empty-results case.
-        let mut handles = vec![self.input.focus_handle(cx)];
-        if self.command {
-            handles.push(self.picker_close_focus.clone());
-        }
-        let count = Space::matching(&self.input.read(cx).content).len();
-        handles.extend(self.picker_result_focus.iter().take(count).cloned());
-        let current = handles.iter().position(|handle| handle.is_focused(window));
-        let next = match (current, backwards) {
-            (Some(index), true) => (index + handles.len() - 1) % handles.len(),
-            (Some(index), false) => (index + 1) % handles.len(),
-            (None, true) => handles.len() - 1,
-            (None, false) => 0,
+            Some(Overlay::AddTask | Overlay::DeleteTask(_)) => {
+                self.tasks.read(cx).focus_handles(cx)
+            }
+            Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => {
+                self.assistant.read(cx).focus_handles(cx)
+            }
+            _ => {
+                if backwards {
+                    window.focus_prev();
+                } else {
+                    window.focus_next();
+                }
+                return;
+            }
         };
-        window.focus(&handles[next]);
+        self.overlays
+            .borrow()
+            .cycle_focus(&handles, backwards, window);
     }
     fn dispatch(&mut self, control: Control, window: &mut Window, cx: &mut Context<Self>) {
-        let before = (self.session.active, self.session.current());
+        let before = self.session.current();
+        if self
+            .overlays
+            .borrow()
+            .active()
+            .is_some_and(Overlay::is_dialog)
+            && !matches!(control, Control::Dismiss)
+        {
+            return;
+        }
         match control {
             Control::Back | Control::Forward => {
                 self.session.go(matches!(control, Control::Forward));
-                self.command = false;
+                self.overlays.borrow_mut().dismiss(window);
                 window.focus(&self.focus);
             }
-            Control::Navigate(space) => {
-                self.session.navigate(space);
-                self.command = false;
-                self.notifications = false;
+            Control::Navigate(route) => {
+                self.session.navigate(route);
+                self.overlays.borrow_mut().dismiss(window);
                 window.focus(&self.focus);
             }
-            Control::Open(space) => {
-                self.session.open(space);
-                self.command = false;
-                self.notifications = false;
+            Control::Open(route) => {
+                self.session.navigate(route);
+                self.overlays.borrow_mut().dismiss(window);
                 window.focus(&self.focus);
             }
             Control::Search => {
-                self.command = true;
                 self.palette_transition = Some(Instant::now());
-                self.notifications = false;
                 self.focus_picker(window, cx);
             }
             Control::Sidebar => {
@@ -232,22 +256,27 @@ impl Shell {
                 ));
             }
             Control::Font(font) => self.session.font = font,
-            Control::Notifications => self.notifications = !self.notifications,
+            Control::Notifications => {
+                let active = self.overlays.borrow().active();
+                if active == Some(Overlay::Notifications) {
+                    self.overlays.borrow_mut().dismiss(window);
+                } else {
+                    self.overlays
+                        .borrow_mut()
+                        .open(Overlay::Notifications, window, cx, None);
+                }
+            }
             Control::MarkAllRead => {
                 for item in &mut self.notification_items {
                     item.unread = false;
                 }
             }
             Control::Dismiss => {
-                self.command = false;
-                self.notifications = false;
-                window.focus(&self.focus);
+                self.overlays.borrow_mut().dismiss(window);
             }
         }
-        if before != (self.session.active, self.session.current()) {
-            self.tasks.update(cx, |tasks, cx| {
-                tasks.dismiss(cx);
-            });
+        if before != self.session.current() {
+            self.overlays.borrow_mut().dismiss(window);
         }
         self.save(cx);
         window.refresh();
@@ -304,7 +333,7 @@ impl Shell {
             .child(icon(name, 16.))
     }
     fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let space = self.session.current().unwrap_or(Space::Today);
+        let route = self.session.current();
         row()
             .h(px(48.))
             .flex_shrink_0()
@@ -369,8 +398,8 @@ impl Shell {
                                 .pl(px(14.))
                                 .gap(px(7.))
                                 .text_size(px(12.))
-                                .child(div().mt(px(1.)).child(icon(space.icon(), 14.)))
-                                .child(space.label()),
+                                .child(div().mt(px(1.)).child(icon(route.icon(), 14.)))
+                                .child(route.label()),
                         ),
                 ),
             )
@@ -381,7 +410,7 @@ impl Shell {
                     .window_control_area(WindowControlArea::Drag),
             )
             .child(
-                self.button("search", "Search spaces · ⌘ K", Control::Search, cx)
+                self.button("search", "Go to · ⌘ K", Control::Search, cx)
                     .flex_shrink_0()
                     .w(px(224.))
                     .h(px(30.))
@@ -394,7 +423,7 @@ impl Shell {
                     .text_color(rgb(MUTED))
                     .text_size(px(12.))
                     .child(icon("search", 14.))
-                    .child("Search")
+                    .child("Go to…")
                     .child(div().flex_1())
                     .child(shortcut_badge("⌘ K").w(px(36.))),
             )
@@ -414,39 +443,32 @@ impl Shell {
     }
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut nav = column().gap(px(2.));
-        for (index, space) in Space::ALL[..8].iter().copied().enumerate() {
-            if index == 3 {
-                nav = nav.child(
-                    div()
-                        .mt(px(24.))
-                        .mb(px(10.))
-                        .px(px(12.))
-                        .text_size(px(11.))
-                        .text_color(rgb(0x888888))
-                        .child("Spaces"),
-                );
-            }
+        for page in PAGES.iter().filter(|page| page.in_sidebar) {
+            let route = page.route;
+            let index = page.shortcut.expect("sidebar route has shortcut");
             nav = nav.child(
-                self.button(("nav", index), space.label(), Control::Navigate(space), cx)
-                    .h(px(32.))
-                    .px(px(10.))
-                    .gap(px(12.))
-                    .text_size(px(12.))
-                    .text_color(rgb(MUTED))
-                    .when(self.session.current() == Some(space), |s| {
-                        s.bg(rgb(0x191919))
-                            .text_color(rgb(TEXT))
-                            .font_weight(FontWeight::MEDIUM)
-                    })
-                    .child(nav_icon(
-                        space.icon(),
-                        self.session.current() == Some(space),
-                    ))
-                    .child(space.label())
-                    .child(div().flex_1())
-                    .when(self.command_held, |s| {
-                        s.child(shortcut_badge(format!("⌘{}", index + 1)))
-                    }),
+                self.button(
+                    ("nav", index as usize),
+                    route.label(),
+                    Control::Navigate(route),
+                    cx,
+                )
+                .h(px(32.))
+                .px(px(10.))
+                .gap(px(12.))
+                .text_size(px(12.))
+                .text_color(rgb(MUTED))
+                .when(self.session.current() == route, |s| {
+                    s.bg(rgb(0x191919))
+                        .text_color(rgb(TEXT))
+                        .font_weight(FontWeight::MEDIUM)
+                })
+                .child(nav_icon(route.icon(), self.session.current() == route))
+                .child(route.label())
+                .child(div().flex_1())
+                .when(self.command_held, |s| {
+                    s.child(shortcut_badge(format!("⌘{index}")))
+                }),
             );
         }
         column()
@@ -481,7 +503,7 @@ impl Shell {
                     self.button(
                         "profile",
                         "Settings",
-                        Control::Navigate(Space::Settings),
+                        Control::Navigate(Route::Settings),
                         cx,
                     )
                     .h(px(40.))
@@ -526,7 +548,7 @@ impl Shell {
             ))
     }
     fn command_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let matches = Space::matching(&self.input.read(cx).content);
+        let matches = Route::matching(&self.input.read(cx).content);
         panel()
             .w(px(520.))
             .overflow_hidden()
@@ -546,37 +568,17 @@ impl Shell {
                     ),
             )
             .child(
-                div()
-                    .px(px(16.))
-                    .pt(px(14.))
-                    .pb(px(8.))
-                    .text_size(px(11.))
-                    .text_color(rgb(MUTED))
-                    .child("Spaces"),
-            )
-            .child(
                 column()
                     .px(px(8.))
                     .pb(px(8.))
                     .when(matches.is_empty(), |s| {
-                        s.child(
-                            column()
-                                .p(px(24.))
-                                .gap(px(6.))
-                                .child("No matching spaces")
-                                .child(
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(rgb(MUTED))
-                                        .child("Try a space name, such as Home or Tasks."),
-                                ),
-                        )
+                        s.child(column().p(px(24.)).gap(px(6.)).child("No matches."))
                     })
-                    .children(matches.iter().copied().enumerate().map(|(index, space)| {
+                    .children(matches.iter().copied().enumerate().map(|(index, route)| {
                         self.button(
                             ("command-result", index),
-                            space.label(),
-                            Control::Open(space),
+                            route.label(),
+                            Control::Open(route),
                             cx,
                         )
                         .track_focus(&self.picker_result_focus[index])
@@ -590,8 +592,8 @@ impl Shell {
                         .px(px(10.))
                         .gap(px(12.))
                         .when(index == self.selected, |s| s.bg(rgb(0x191919)))
-                        .child(icon(space.icon(), 17.))
-                        .child(space.label())
+                        .child(icon(route.icon(), 17.))
+                        .child(route.label())
                         .child(div().flex_1())
                         .child(
                             div()
@@ -613,7 +615,7 @@ impl Shell {
                     .child("Navigate")
                     .child(div().flex_1())
                     .child(shortcut_badge("↵"))
-                    .child("Open space"),
+                    .child("Open"),
             )
     }
     fn notification_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -713,16 +715,16 @@ impl Shell {
                     }),
             )
     }
-    fn empty_page(&self, space: Space, cx: &mut Context<Self>) -> impl IntoElement {
-        let (title, detail) = space.empty();
+    fn static_page(&self, route: Route, cx: &mut Context<Self>) -> impl IntoElement {
+        let (title, detail) = route.empty();
         let mut page = column().gap(px(28.));
-        if space == Space::Today {
-            for (index, destination) in [Space::Tasks, Space::Agents, Space::Calendar, Space::Home]
+        if route == Route::Today {
+            for (index, destination) in [Route::Tasks, Route::Agents, Route::Calendar, Route::Home]
                 .into_iter()
                 .enumerate()
             {
                 let (empty_title, empty_detail) = destination.empty();
-                let (title, detail) = if destination == Space::Tasks {
+                let (title, detail) = if destination == Route::Tasks {
                     (
                         self.tasks.read(cx).summary(),
                         "Open Tasks to add or complete a to-do.".to_owned(),
@@ -767,12 +769,12 @@ impl Shell {
                         ),
                 );
             }
-        } else if !matches!(space, Space::Settings | Space::Evee) {
+        } else if !matches!(route, Route::Settings | Route::Assistant) {
             page = page.child(
                 column()
                     .mt(px(28.))
                     .gap(px(12.))
-                    .child(icon(space.icon(), 26.))
+                    .child(icon(route.icon(), 26.))
                     .child(div().font_weight(FontWeight::MEDIUM).child(title))
                     .child(
                         div()
@@ -782,7 +784,7 @@ impl Shell {
                     ),
             );
         }
-        if space == Space::Settings {
+        if route == Route::Settings {
             page = page.child(
                 column()
                     .gap(px(12.))
@@ -850,12 +852,12 @@ impl Shell {
                     )
                     .child(self.assistant.update(cx, |this, cx| this.settings_view(cx))),
             );
-        } else if space == Space::Evee {
+        } else if route == Route::Assistant {
             page = page.child(
                 self.assistant
                     .update(cx, |this, cx| this.conversations_view(cx)),
             );
-        } else if space != Space::Today {
+        } else if route.spec().availability == Availability::Planned {
             page = page.child(
                 column()
                     .gap(px(16.))
@@ -864,9 +866,9 @@ impl Shell {
                         div()
                             .text_size(px(11.))
                             .text_color(rgb(MUTED))
-                            .child("Planned for this space"),
+                            .child("Not available yet"),
                     )
-                    .children(space.planned().iter().map(|(title, detail)| {
+                    .children(route.planned().iter().map(|(title, detail)| {
                         column()
                             .gap(px(6.))
                             .py(px(16.))
@@ -970,8 +972,8 @@ impl Shell {
     }
 
     fn keys(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.command || self.session.current().is_none() {
-            let matches = Space::matching(&self.input.read(cx).content);
+        if self.overlays.borrow().active() == Some(Overlay::Search) {
+            let matches = Route::matching(&self.input.read(cx).content);
             match event.keystroke.key.as_str() {
                 "down" => {
                     self.selected = (self.selected + 1).min(matches.len().saturating_sub(1));
@@ -982,8 +984,8 @@ impl Shell {
                     cx.stop_propagation();
                 }
                 "enter" => {
-                    if let Some(space) = matches.get(self.selected) {
-                        self.dispatch(Control::Open(*space), window, cx);
+                    if let Some(route) = matches.get(self.selected) {
+                        self.dispatch(Control::Open(*route), window, cx);
                     }
                     cx.stop_propagation();
                 }
@@ -1052,12 +1054,32 @@ impl Render for Shell {
             1. - (1. - t).powi(3)
         };
         let palette_progress = progress(&mut self.palette_transition);
-        let content = if self.session.current() == Some(Space::Tasks) {
-            self.tasks.clone().into_any_element()
-        } else if let Some(space) = self.session.current() {
-            self.empty_page(space, cx).into_any_element()
-        } else {
-            self.empty_page(Space::Today, cx).into_any_element()
+        if let Some(focus) = self.overlays.borrow_mut().take_pending_focus() {
+            window.defer(cx, move |window, _| window.focus(&focus));
+        }
+        let active_overlay = self.overlays.borrow().active();
+        let content = match self.session.current() {
+            Route::Tasks => self.tasks.clone().into_any_element(),
+            Route::Today
+            | Route::Agents
+            | Route::Home
+            | Route::Calendar
+            | Route::Library
+            | Route::Apps
+            | Route::Assistant
+            | Route::Settings => self
+                .static_page(self.session.current(), cx)
+                .into_any_element(),
+        };
+        let dialog_content = match active_overlay {
+            Some(Overlay::Search) => Some(self.command_palette(cx).into_any_element()),
+            Some(Overlay::AddTask | Overlay::DeleteTask(_)) => {
+                self.tasks.update(cx, |tasks, cx| tasks.overlay(cx))
+            }
+            Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => self
+                .assistant
+                .update(cx, |assistant, cx| assistant.overlay(cx)),
+            _ => None,
         };
         column()
             .id("shell")
@@ -1070,14 +1092,23 @@ impl Render for Shell {
             .line_height(relative(1.5))
             .track_focus(&self.focus)
             .key_context("Control")
+            .on_click(cx.listener(|this, _, window, cx| {
+                let active = this.overlays.borrow().active();
+                if active
+                    .is_some_and(|overlay| overlay.is_menu() || overlay == Overlay::Notifications)
+                {
+                    this.overlays.borrow_mut().dismiss(window);
+                    cx.notify();
+                }
+            }))
             .on_key_down(cx.listener(Self::keys))
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
                 this.command_held = event.modifiers.platform;
                 cx.notify();
             }))
-            .on_action(cx.listener(|this, action: &NavigateSpace, w, cx| {
-                if let Some(space) = Space::ALL[..8].get(action.0) {
-                    this.dispatch(Control::Navigate(*space), w, cx);
+            .on_action(cx.listener(|this, action: &NavigateRoute, w, cx| {
+                if let Some(page) = PAGES.iter().find(|page| page.shortcut == Some(action.0)) {
+                    this.dispatch(Control::Navigate(page.route), w, cx);
                 }
             }))
             .on_mouse_move(
@@ -1119,15 +1150,10 @@ impl Render for Shell {
                 cx.listener(|this, _: &ToggleEvee, w, cx| this.dispatch(Control::Evee, w, cx)),
             )
             .on_action(cx.listener(|this, _: &Escape, w, cx| {
-                if this.tasks.update(cx, |tasks, cx| tasks.dismiss(cx)) {
-                    w.focus(&this.focus);
-                    return;
-                }
-                if this.command || this.notifications {
-                    this.dispatch(Control::Dismiss, w, cx)
-                } else {
+                if !this.overlays.borrow_mut().dismiss(w) {
                     w.focus(&this.focus);
                 }
+                cx.notify();
             }))
             .on_action(cx.listener(|this, _: &FocusNext, w, cx| this.cycle_focus(false, w, cx)))
             .on_action(cx.listener(|this, _: &FocusPrevious, w, cx| this.cycle_focus(true, w, cx)))
@@ -1206,38 +1232,39 @@ impl Render for Shell {
                         .child("Session could not be saved. Changes remain in this window."),
                 )
             })
-            .when(self.notifications, |s| s.child(self.notification_panel(cx)))
-            .when_some(
-                self.tasks.update(cx, |tasks, cx| tasks.overlay(cx)),
-                |s, overlay| s.child(overlay),
-            )
-            .when(self.command, |s| {
+            .when(active_overlay == Some(Overlay::Notifications), |s| {
+                s.child(self.notification_panel(cx))
+            })
+            .when_some(dialog_content, |s, content| {
                 s.child(
                     div()
-                        .id("command-backdrop")
+                        .id("overlay-backdrop")
                         .absolute()
                         .inset_0()
                         .cursor_default()
-                        .bg(rgba(0x00000099))
+                        .bg(rgba(0x000000aa))
                         .flex()
+                        .items_center()
                         .justify_center()
-                        .items_start()
-                        .pt(px(80.))
+                        .when(active_overlay == Some(Overlay::Search), |s| {
+                            s.items_start().pt(px(80.))
+                        })
                         .on_mouse_move(|_, _, cx| cx.stop_propagation())
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .on_click(cx.listener(|this, _, w, cx| {
+                        .on_click(cx.listener(|this, _, window, cx| {
                             cx.stop_propagation();
-                            this.dispatch(Control::Dismiss, w, cx);
+                            this.overlays.borrow_mut().dismiss(window);
+                            cx.notify();
                         }))
                         .child(
                             div()
-                                .id("command-dialog")
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .on_click(|_, _, cx| cx.stop_propagation())
-                                .relative()
-                                .opacity(0.65 + 0.35 * palette_progress)
-                                .child(self.command_palette(cx)),
+                                .opacity(if active_overlay == Some(Overlay::Search) {
+                                    0.65 + 0.35 * palette_progress
+                                } else {
+                                    1.
+                                })
+                                .child(content),
                         ),
                 )
             })
@@ -1245,8 +1272,7 @@ impl Render for Shell {
 }
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys(
-        (1..=8)
-            .map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateSpace(n - 1), Some("Control"))),
+        (1..=8).map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateRoute(n), Some("Control"))),
     );
     cx.bind_keys([
         KeyBinding::new("cmd-alt-left", GoBack, Some("Control")),

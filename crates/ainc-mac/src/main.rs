@@ -2,6 +2,7 @@ mod assistant;
 mod evee;
 mod input;
 mod model;
+mod overlay;
 mod profile;
 mod shell;
 mod storage;
@@ -37,7 +38,7 @@ fn main() {
             },
             Menu {
                 name: "File".into(),
-                items: vec![MenuItem::action("Search Spaces…", Search)],
+                items: vec![MenuItem::action("Search…", Search)],
             },
             Menu {
                 name: "View".into(),
