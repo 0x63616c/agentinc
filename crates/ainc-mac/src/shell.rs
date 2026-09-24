@@ -991,7 +991,7 @@ mod interaction_tests {
     use super::{Shell, bind_keys};
     use crate::{
         input,
-        model::{PAGES, Route, Session},
+        model::{PAGES, PANE_WIDTHS, Route, Session},
         overlay::Overlay,
     };
     use gpui::{Focusable, Modifiers, MouseButton, TestAppContext, point, px};
@@ -1002,7 +1002,7 @@ mod interaction_tests {
         let path = dir.path().join("session.json");
         cx.update(bind_keys);
         let (shell, cx) = cx.add_window_view(|window, cx| Shell::fixture(path.clone(), window, cx));
-        let start = point(px(178.), px(200.));
+        let start = point(px(PANE_WIDTHS[0].2), px(200.));
         let end = point(px(260.), px(200.));
         cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
         cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
@@ -1032,7 +1032,7 @@ mod interaction_tests {
         });
         let right =
             |bounds: gpui::Bounds<gpui::Pixels>| f32::from(bounds.origin.x + bounds.size.width);
-        for width in [150., 178.] {
+        for width in [PANE_WIDTHS[0].0, PANE_WIDTHS[0].2] {
             cx.update(|window, cx| {
                 shell.update(cx, |shell, cx| {
                     shell.session.panes[0].width = width;

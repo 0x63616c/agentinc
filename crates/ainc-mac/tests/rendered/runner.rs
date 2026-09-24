@@ -1,6 +1,6 @@
 use crate::{
     input,
-    model::{FontSize, Route, Session},
+    model::{FontSize, PANE_WIDTHS, Route, Session},
     overlay::Overlay,
     shell::{self, Shell},
     style::Assets,
@@ -23,7 +23,17 @@ fn regions(
         ("header", [150, 10, width - 10, 40], text, 80),
         ("workspace", [15, 65, 165, 100], text, 60),
         ("profile", [15, height - 44, 170, height - 12], text, 30),
-        ("main border", [178, 110, 180, height - 30], border, 150),
+        (
+            "main border",
+            [
+                PANE_WIDTHS[0].2 as u32,
+                110,
+                PANE_WIDTHS[0].2 as u32 + 2,
+                height - 30,
+            ],
+            border,
+            150,
+        ),
     ];
     for (index, name) in [
         "Today",

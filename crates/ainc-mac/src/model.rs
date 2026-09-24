@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
-pub const PANE_WIDTHS: [(f32, f32, f32); 2] = [(150., 320., 178.), (220., 480., 258.)];
+pub const PANE_WIDTHS: [(f32, f32, f32); 2] = [(150., 320., 216.), (220., 480., 258.)];
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PanePreference {
