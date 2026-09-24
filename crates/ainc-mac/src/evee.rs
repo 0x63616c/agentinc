@@ -13,8 +13,21 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
+
+fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
+    let age = now.saturating_sub(updated_at);
+    if age < 86_400 {
+        format!("Today, {}", updated.get(11..16).unwrap_or_default())
+    } else if age < 172_800 {
+        "Yesterday".to_owned()
+    } else {
+        let year = updated.get(2..4).unwrap_or_default();
+        let month_day = updated.get(5..10).unwrap_or_default().replace('-', "/");
+        format!("{month_day}/{year}")
+    }
+}
 
 pub struct AssistantPage {
     store: Option<Rc<Store>>,
@@ -207,128 +220,136 @@ impl AssistantPage {
     }
     pub fn settings_view(&self, cx: &mut Context<Self>) -> Div {
         let enabled = !self.credentials_busy && self.active.is_none();
-        column().gap(px(14.)).child(
-            column()
-                .gap(px(12.))
-                .p(px(16.))
-                .rounded(px(8.))
-                .border_1()
-                .border_color(rgb(BORDER))
-                .child(
-                    row()
-                        .gap(px(10.))
-                        .child(icon("spark", 18.))
-                        .child("Codex / ChatGPT"),
-                )
-                .child(div().text_size(px(12.)).text_color(rgb(MUTED)).child(
-                    if self.credentials_busy {
-                        if self.login_cancel.is_some() {
-                            "Complete sign-in in your browser.".to_owned()
-                        } else {
-                            "Checking connection…".to_owned()
-                        }
-                    } else {
-                        self.account.clone().unwrap_or("Not connected".into())
-                    },
-                ))
-                .child(
-                    div().text_size(px(11.)).text_color(rgb(MUTED)).child(
-                        "Use your ChatGPT subscription. Codex manages sign-in for this app.",
-                    ),
-                )
-                .when_some(self.connection_error.clone(), |s, e| {
-                    s.child(div().text_size(px(11.)).text_color(rgb(0xe6acac)).child(e))
-                })
-                .child(
-                    row()
-                        .gap(px(8.))
-                        .child(
-                            self.action(
-                                "codex-sign-in",
-                                if self.account.is_some() {
-                                    "Sign out"
-                                } else {
-                                    "Sign in with ChatGPT"
-                                },
-                                enabled,
-                                |this, cx| {
-                                    if this.account.is_some() {
-                                        this.disconnect(cx)
+        let state = if self.credentials_busy {
+            if self.login_cancel.is_some() {
+                "Complete sign-in in your browser.".to_owned()
+            } else {
+                "Checking connection…".to_owned()
+            }
+        } else if let Some(account) = &self.account {
+            format!("Connected as {account}")
+        } else {
+            "Not connected".to_owned()
+        };
+        column()
+            .gap(px(12.))
+            .child(
+                column()
+                    .gap(px(10.))
+                    .child(
+                        row()
+                            .justify_between()
+                            .gap(px(16.))
+                            .child(column().gap(px(3.)).child("ChatGPT").child(
+                                div().text_size(px(11.)).text_color(rgb(MUTED)).child(state),
+                            ))
+                            .child(
+                                self.action(
+                                    "codex-sign-in",
+                                    if self.account.is_some() {
+                                        "Sign out"
                                     } else {
-                                        this.connect(cx)
-                                    }
-                                },
-                                cx,
-                            )
-                            .border_1()
-                            .border_color(rgb(BORDER)),
+                                        "Sign in with ChatGPT"
+                                    },
+                                    enabled,
+                                    |this, cx| {
+                                        if this.account.is_some() {
+                                            this.disconnect(cx)
+                                        } else {
+                                            this.connect(cx)
+                                        }
+                                    },
+                                    cx,
+                                )
+                                .border_1()
+                                .border_color(rgb(BORDER)),
+                            ),
+                    )
+                    .when_some(self.connection_error.clone(), |s, e| {
+                        s.child(div().text_size(px(11.)).text_color(rgb(0xe6acac)).child(e))
+                    })
+                    .when(self.login_cancel.is_some(), |s| {
+                        s.child(self.action(
+                            "cancel-sign-in",
+                            "Cancel sign-in",
+                            true,
+                            |this, cx| {
+                                if let Some(cancel) = &this.login_cancel {
+                                    cancel.store(true, Ordering::Relaxed);
+                                }
+                                cx.notify();
+                            },
+                            cx,
+                        ))
+                    })
+                    .when(self.account.is_some(), |s| {
+                        s.child(
+                            column()
+                                .gap(px(6.))
+                                .child(
+                                    div()
+                                        .mt(px(8.))
+                                        .text_size(px(11.))
+                                        .text_color(rgb(MUTED))
+                                        .child("Model"),
+                                )
+                                .child(self.action(
+                                    "model-default",
+                                    if self.model.is_none() {
+                                        "✓ Codex default"
+                                    } else {
+                                        "Codex default"
+                                    },
+                                    enabled,
+                                    |this, cx| this.select_model(None, cx),
+                                    cx,
+                                ))
+                                .children(self.models.iter().enumerate().map(|(index, model)| {
+                                    let id = model.id.clone();
+                                    let label = format!(
+                                        "{}{}",
+                                        if self.model.as_ref() == Some(&id) {
+                                            "✓ "
+                                        } else {
+                                            ""
+                                        },
+                                        model.name
+                                    );
+                                    self.action(
+                                        ("codex-model", index),
+                                        &label,
+                                        enabled,
+                                        move |this, cx| this.select_model(Some(id.clone()), cx),
+                                        cx,
+                                    )
+                                })),
                         )
-                        .child(self.action(
+                    }),
+            )
+            .child(
+                row()
+                    .justify_between()
+                    .gap(px(12.))
+                    .pt(px(16.))
+                    .border_t_1()
+                    .border_color(rgb(BORDER))
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(rgb(MUTED))
+                            .child("Uses your ChatGPT subscription."),
+                    )
+                    .child(
+                        self.action(
                             "codex-refresh",
                             "Refresh",
                             enabled,
                             Self::refresh_connection,
                             cx,
-                        )),
-                )
-                .when(self.login_cancel.is_some(), |s| {
-                    s.child(self.action(
-                        "cancel-sign-in",
-                        "Cancel sign-in",
-                        true,
-                        |this, cx| {
-                            if let Some(cancel) = &this.login_cancel {
-                                cancel.store(true, Ordering::Relaxed);
-                            }
-                            cx.notify();
-                        },
-                        cx,
-                    ))
-                })
-                .when(self.account.is_some(), |s| {
-                    s.child(
-                        column()
-                            .gap(px(6.))
-                            .child(
-                                div()
-                                    .mt(px(8.))
-                                    .text_size(px(11.))
-                                    .text_color(rgb(MUTED))
-                                    .child("Model"),
-                            )
-                            .child(self.action(
-                                "model-default",
-                                if self.model.is_none() {
-                                    "✓ Codex default"
-                                } else {
-                                    "Codex default"
-                                },
-                                enabled,
-                                |this, cx| this.select_model(None, cx),
-                                cx,
-                            ))
-                            .children(self.models.iter().enumerate().map(|(index, model)| {
-                                let id = model.id.clone();
-                                let label = format!(
-                                    "{}{}",
-                                    if self.model.as_ref() == Some(&id) {
-                                        "✓ "
-                                    } else {
-                                        ""
-                                    },
-                                    model.name
-                                );
-                                self.action(
-                                    ("codex-model", index),
-                                    &label,
-                                    enabled,
-                                    move |this, cx| this.select_model(Some(id.clone()), cx),
-                                    cx,
-                                )
-                            })),
-                    )
-                }),
-        )
+                        )
+                        .text_color(rgb(MUTED)),
+                    ),
+            )
     }
     fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
         if let Some(db) = &self.store {
@@ -416,6 +437,17 @@ impl AssistantPage {
                         self.turns.clear();
                     }
                     self.reload_conversations();
+                    if self.conversation.is_none()
+                        && let Some(next) = self.conversations.first()
+                    {
+                        self.conversation = Some(next.id);
+                        if let Some(db) = &self.store {
+                            match db.turns(next.id) {
+                                Ok(turns) => self.turns = turns,
+                                Err(error) => self.error = Some(error.to_string()),
+                            }
+                        }
+                    }
                 }
                 Err(e) => self.form_error = Some(e.to_string()),
             }
@@ -424,6 +456,9 @@ impl AssistantPage {
     }
     pub fn conversations_view(&self, cx: &mut Context<Self>) -> Div {
         let enabled = self.active.is_none() && self.unsaved.is_none() && self.store.is_some();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |time| time.as_secs() as i64);
         column()
             .gap(px(16.))
             .child(
@@ -452,15 +487,25 @@ impl AssistantPage {
             })
             .children(self.conversations.iter().map(|conversation| {
                 let id = conversation.id;
+                let selected = self.conversation == Some(id);
+                let snippet = if conversation.snippet.trim().is_empty() {
+                    "No messages yet".to_owned()
+                } else {
+                    conversation
+                        .snippet
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                };
                 column()
                     .relative()
-                    .gap(px(8.))
-                    .pb(px(14.))
-                    .border_b_1()
-                    .border_color(rgb(BORDER))
+                    .rounded(px(7.))
+                    .bg(rgb(if selected { 0x242424 } else { SURFACE }))
                     .child(
                         row()
-                            .gap(px(12.))
+                            .gap(px(8.))
+                            .px(px(12.))
+                            .py(px(10.))
                             .child(
                                 self.action(
                                     ("conversation", id as u64),
@@ -470,38 +515,37 @@ impl AssistantPage {
                                     cx,
                                 )
                                 .flex_1()
+                                .min_w_0()
                                 .justify_start()
+                                .bg(rgb(if selected { 0x242424 } else { SURFACE }))
                                 .child(
                                     column()
-                                        .gap(px(6.))
+                                        .gap(px(3.))
                                         .flex_1()
-                                        .overflow_hidden()
+                                        .min_w_0()
                                         .child(
                                             div()
                                                 .text_size(px(13.))
                                                 .text_color(rgb(TEXT))
+                                                .truncate()
                                                 .child(conversation.title.clone()),
                                         )
                                         .child(
-                                            div().text_size(px(12.)).text_color(rgb(MUTED)).child(
-                                                conversation
-                                                    .snippet
-                                                    .split_whitespace()
-                                                    .collect::<Vec<_>>()
-                                                    .join(" ")
-                                                    .chars()
-                                                    .take(110)
-                                                    .collect::<String>(),
-                                            ),
+                                            div()
+                                                .text_size(px(11.))
+                                                .text_color(rgb(MUTED))
+                                                .truncate()
+                                                .child(snippet),
                                         ),
                                 ),
                             )
-                            .child(
-                                div()
-                                    .text_size(px(10.))
-                                    .text_color(rgb(MUTED))
-                                    .child(conversation.updated.clone()),
-                            )
+                            .child(div().text_size(px(10.)).text_color(rgb(MUTED)).child(
+                                conversation_date(
+                                    &conversation.updated,
+                                    conversation.updated_at,
+                                    now,
+                                ),
+                            ))
                             .child(self.action_window(
                                 ("chat-menu", id as u64),
                                 "…",
@@ -524,6 +568,15 @@ impl AssistantPage {
                             s.child(
                                 menu_shell(
                                     column()
+                                        .child(
+                                            column()
+                                                .px(px(10.))
+                                                .py(px(5.))
+                                                .text_size(px(10.))
+                                                .text_color(rgb(MUTED))
+                                                .child("Updated")
+                                                .child(conversation.updated.clone()),
+                                        )
                                         .child(
                                             self.action_window(
                                                 ("rename-chat", id as u64),
@@ -580,7 +633,7 @@ impl AssistantPage {
                                 )
                                 .absolute()
                                 .right(px(0.))
-                                .top(px(34.)),
+                                .top(px(48.)),
                             )
                         },
                     )
@@ -884,7 +937,8 @@ impl Render for AssistantPage {
             1.
         };
         let latest = self.turns.last().map(|t| t.id);
-        let send_enabled = !self.credentials_busy
+        let send_enabled = self.account.is_some()
+            && !self.credentials_busy
             && self.active.is_none()
             && self.unsaved.is_none()
             && self.store.is_some()
@@ -919,16 +973,21 @@ impl Render for AssistantPage {
                 s.child(
                     column()
                         .gap(px(5.))
+                        .items_start()
                         .text_size(px(11.))
                         .text_color(rgb(MUTED))
-                        .child("Connect ChatGPT to talk with Evee.")
-                        .child(self.action(
-                            "open-settings",
-                            "Open Settings",
-                            true,
-                            |_, cx| cx.emit(Navigation::Settings),
-                            cx,
-                        )),
+                        .child("Connect ChatGPT to chat.")
+                        .child(
+                            self.action(
+                                "open-settings",
+                                "Open Settings",
+                                true,
+                                |_, cx| cx.emit(Navigation::Settings),
+                                cx,
+                            )
+                            .border_1()
+                            .border_color(rgb(BORDER)),
+                        ),
                 )
             })
             .when(self.store.is_none(), |s| {
@@ -958,19 +1017,14 @@ impl Render for AssistantPage {
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .gap(px(16.))
-                    .when(self.turns.is_empty(), |s| {
+                    .when(self.turns.is_empty() && self.account.is_some(), |s| {
                         s.child(
                             column()
                                 .py(px(16.))
                                 .gap(px(8.))
                                 .text_size(px(12.))
                                 .text_color(rgb(MUTED))
-                                .child("What’s on your mind?")
-                                .child(
-                                    div()
-                                        .text_size(px(11.))
-                                        .child("Conversation history stays on this Mac."),
-                                ),
+                                .child("What’s on your mind?"),
                         )
                     })
                     .children(self.turns.iter().map(|turn| {
@@ -1075,5 +1129,24 @@ impl Render for AssistantPage {
                         ),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::conversation_date;
+
+    #[test]
+    fn conversation_dates_keep_the_list_compact() {
+        let precise = "2026-09-23 16:06";
+        assert_eq!(
+            conversation_date(precise, 1_000_000, 1_000_030),
+            "Today, 16:06"
+        );
+        assert_eq!(
+            conversation_date(precise, 1_000_000, 1_100_000),
+            "Yesterday"
+        );
+        assert_eq!(conversation_date(precise, 1_000_000, 1_200_000), "09/23/26");
     }
 }

@@ -634,12 +634,21 @@ impl Shell {
                     .border_color(rgb(BORDER))
                     .child(div().font_weight(FontWeight::MEDIUM).child("Notifications"))
                     .child(div().flex_1())
-                    .child(
-                        self.button("mark-all-read", "Mark all read", Control::MarkAllRead, cx)
-                            .text_size(px(11.))
-                            .text_color(rgb(MUTED))
-                            .when(self.notification_items.is_empty(), |s| s.opacity(0.35))
-                            .child("Mark all read"),
+                    .when(
+                        self.notification_items.iter().any(|item| item.unread),
+                        |s| {
+                            s.child(
+                                self.button(
+                                    "mark-all-read",
+                                    "Mark all read",
+                                    Control::MarkAllRead,
+                                    cx,
+                                )
+                                .text_size(px(11.))
+                                .text_color(rgb(MUTED))
+                                .child("Mark all read"),
+                            )
+                        },
                     )
                     .child(
                         self.button(
@@ -656,17 +665,16 @@ impl Shell {
             .when(self.notification_items.is_empty(), |s| {
                 s.child(
                     column()
-                        .py(px(36.))
+                        .py(px(24.))
                         .px(px(16.))
                         .items_center()
                         .gap(px(8.))
-                        .child(icon("bell", 22.))
-                        .child(div().font_weight(FontWeight::MEDIUM).child("All caught up"))
+                        .child(icon("bell", 16.))
                         .child(
                             div()
                                 .text_size(px(12.))
-                                .text_color(rgb(MUTED))
-                                .child("New notifications will appear here."),
+                                .font_weight(FontWeight::MEDIUM)
+                                .child("No notifications yet"),
                         ),
                 )
             })
@@ -785,9 +793,9 @@ impl Shell {
             );
         }
         if route == Route::Settings {
-            page = page.child(
+            page = page.w_full().max_w(px(640.)).child(
                 column()
-                    .gap(px(12.))
+                    .gap(px(16.))
                     .child(
                         div()
                             .text_size(px(16.))
@@ -795,55 +803,58 @@ impl Shell {
                             .child("Appearance"),
                     )
                     .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(rgb(MUTED))
-                            .child("Font"),
-                    )
-                    .child(
                         row()
-                            .gap(px(8.))
+                            .justify_between()
+                            .gap(px(16.))
+                            .child(div().child("Font"))
                             .child(
-                                self.button(
-                                    "font-system",
-                                    "System font",
-                                    Control::Font(FontChoice::System),
-                                    cx,
-                                )
-                                .h(px(36.))
-                                .px(px(12.))
-                                .border_1()
-                                .border_color(rgb(if self.session.font == FontChoice::System {
-                                    FOCUS
-                                } else {
-                                    BORDER
-                                }))
-                                .child("System · SF Pro"),
-                            )
-                            .child(
-                                self.button(
-                                    "font-helvetica",
-                                    "Helvetica Neue",
-                                    Control::Font(FontChoice::HelveticaNeue),
-                                    cx,
-                                )
-                                .h(px(36.))
-                                .px(px(12.))
-                                .border_1()
-                                .border_color(rgb(
-                                    if self.session.font == FontChoice::HelveticaNeue {
-                                        FOCUS
-                                    } else {
-                                        BORDER
-                                    },
-                                ))
-                                .child("Helvetica Neue"),
+                                row()
+                                    .p(px(4.))
+                                    .gap(px(2.))
+                                    .rounded(px(8.))
+                                    .bg(rgb(0x1b1b1b))
+                                    .border_1()
+                                    .border_color(rgb(BORDER))
+                                    .child(
+                                        self.button(
+                                            "font-system",
+                                            "System font",
+                                            Control::Font(FontChoice::System),
+                                            cx,
+                                        )
+                                        .h(px(32.))
+                                        .px(px(11.))
+                                        .bg(rgb(if self.session.font == FontChoice::System {
+                                            0x333333
+                                        } else {
+                                            0x1b1b1b
+                                        }))
+                                        .child("System · SF Pro"),
+                                    )
+                                    .child(
+                                        self.button(
+                                            "font-helvetica",
+                                            "Helvetica Neue",
+                                            Control::Font(FontChoice::HelveticaNeue),
+                                            cx,
+                                        )
+                                        .h(px(32.))
+                                        .px(px(11.))
+                                        .bg(rgb(
+                                            if self.session.font == FontChoice::HelveticaNeue {
+                                                0x333333
+                                            } else {
+                                                0x1b1b1b
+                                            },
+                                        ))
+                                        .child("Helvetica Neue"),
+                                    ),
                             ),
                     )
                     .child(
                         div()
-                            .mt(px(28.))
-                            .pt(px(24.))
+                            .mt(px(8.))
+                            .pt(px(28.))
                             .border_t_1()
                             .border_color(rgb(BORDER))
                             .text_size(px(16.))

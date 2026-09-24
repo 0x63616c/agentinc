@@ -27,6 +27,7 @@ pub struct Conversation {
     pub title: String,
     pub snippet: String,
     pub updated: String,
+    pub updated_at: i64,
 }
 pub struct Store(Connection);
 impl Store {
@@ -154,8 +155,8 @@ impl Store {
         })
     }
     pub fn conversations(&self) -> Result<Vec<Conversation>> {
-        Ok(self.0.prepare("SELECT c.id,c.title,COALESCE((SELECT COALESCE(response,prompt) FROM turns WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1),''),strftime('%Y-%m-%d %H:%M',c.updated_at,'unixepoch','localtime') FROM conversations c ORDER BY updated_at DESC,id DESC")?
-            .query_map([], |row| Ok(Conversation{id:row.get(0)?,title:row.get(1)?,snippet:row.get(2)?,updated:row.get::<_,Option<String>>(3)?.unwrap_or_default()}))?.collect::<rusqlite::Result<_>>()?)
+        Ok(self.0.prepare("SELECT c.id,c.title,COALESCE((SELECT COALESCE(response,prompt) FROM turns WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1),''),strftime('%Y-%m-%d %H:%M',c.updated_at,'unixepoch','localtime'),c.updated_at FROM conversations c ORDER BY updated_at DESC,id DESC")?
+            .query_map([], |row| Ok(Conversation{id:row.get(0)?,title:row.get(1)?,snippet:row.get(2)?,updated:row.get::<_,Option<String>>(3)?.unwrap_or_default(),updated_at:row.get(4)?}))?.collect::<rusqlite::Result<_>>()?)
     }
     pub fn new_conversation(&self) -> Result<i64> {
         self.0.execute(
