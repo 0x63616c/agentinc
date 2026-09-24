@@ -29,7 +29,7 @@ impl Shell {
             .gap(px(12.))
             .border_b_1()
             .border_color(rgb(0x1a1a1a))
-            .text_size(px(CAPTION_SIZE))
+            .text_size(type_size(CAPTION_SIZE))
             .text_color(rgb(MUTED))
             .child(div().flex_1())
             .child(self.icon_button(
@@ -101,7 +101,7 @@ impl Shell {
                                     .child(div().flex_1())
                                     .child(
                                         div()
-                                            .text_size(px(CAPTION_SIZE))
+                                            .text_size(type_size(CAPTION_SIZE))
                                             .text_color(rgb(MUTED))
                                             .child(status),
                                     )
@@ -139,7 +139,7 @@ impl Shell {
                                 .child(
                                     column().gap(px(5.)).child(title).child(
                                         div()
-                                            .text_size(px(LABEL_SIZE))
+                                            .text_size(type_size(LABEL_SIZE))
                                             .text_color(rgb(MUTED))
                                             .child(detail),
                                     ),
@@ -156,7 +156,7 @@ impl Shell {
                     .child(div().font_weight(FontWeight::MEDIUM).child(title))
                     .child(
                         div()
-                            .text_size(px(LABEL_SIZE))
+                            .text_size(type_size(LABEL_SIZE))
                             .text_color(rgb(MUTED))
                             .child(detail),
                     ),
@@ -168,7 +168,7 @@ impl Shell {
                     .gap(px(16.))
                     .child(
                         div()
-                            .text_size(px(16.))
+                            .text_size(type_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .child("Appearance"),
                     )
@@ -192,7 +192,7 @@ impl Shell {
                                             Control::Font(FontChoice::System),
                                             cx,
                                         )
-                                        .h(px(32.))
+                                        .min_h(type_size(32.))
                                         .px(px(11.))
                                         .bg(rgb(if self.session.font == FontChoice::System {
                                             0x333333
@@ -208,7 +208,7 @@ impl Shell {
                                             Control::Font(FontChoice::HelveticaNeue),
                                             cx,
                                         )
-                                        .h(px(32.))
+                                        .min_h(type_size(32.))
                                         .px(px(11.))
                                         .bg(rgb(
                                             if self.session.font == FontChoice::HelveticaNeue {
@@ -219,6 +219,39 @@ impl Shell {
                                         ))
                                         .child("Helvetica Neue"),
                                     ),
+                            ),
+                    )
+                    .child(
+                        row()
+                            .justify_between()
+                            .gap(px(16.))
+                            .child(div().child("Font size"))
+                            .child(
+                                row()
+                                    .p(px(4.))
+                                    .gap(px(2.))
+                                    .rounded(px(8.))
+                                    .bg(rgb(0x1b1b1b))
+                                    .border_1()
+                                    .border_color(rgb(BORDER))
+                                    .children(FontSize::ALL.into_iter().enumerate().map(
+                                        |(index, (size, label))| {
+                                            self.button(
+                                                ("font-size", index),
+                                                label,
+                                                Control::FontSize(size),
+                                                cx,
+                                            )
+                                            .min_h(type_size(32.))
+                                            .px(px(11.))
+                                            .bg(rgb(if self.session.font_size == size {
+                                                0x333333
+                                            } else {
+                                                0x1b1b1b
+                                            }))
+                                            .child(label)
+                                        },
+                                    )),
                             ),
                     )
                     .when_some(
@@ -240,7 +273,7 @@ impl Shell {
                             .pt(px(28.))
                             .border_t_1()
                             .border_color(rgb(BORDER))
-                            .text_size(px(16.))
+                            .text_size(type_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .child("Accounts & connections"),
                     )
@@ -258,7 +291,7 @@ impl Shell {
                     .mt(px(12.))
                     .child(
                         div()
-                            .text_size(px(CAPTION_SIZE))
+                            .text_size(type_size(CAPTION_SIZE))
                             .text_color(rgb(MUTED))
                             .child("Not available yet"),
                     )
@@ -271,7 +304,7 @@ impl Shell {
                             .child(*title)
                             .child(
                                 div()
-                                    .text_size(px(LABEL_SIZE))
+                                    .text_size(type_size(LABEL_SIZE))
                                     .text_color(rgb(MUTED))
                                     .child(*detail),
                             )
