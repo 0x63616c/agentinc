@@ -177,6 +177,322 @@ pub mod types {
             value.parse()
         }
     }
+    ///`Automation`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "agent_id",
+    ///    "applied_revision",
+    ///    "every_minutes",
+    ///    "id",
+    ///    "missed",
+    ///    "name",
+    ///    "overlap_skipped",
+    ///    "paused",
+    ///    "prompt",
+    ///    "revision"
+    ///  ],
+    ///  "properties": {
+    ///    "agent_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "applied_revision": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "error": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "every_minutes": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "id": {
+    ///      "type": "string"
+    ///    },
+    ///    "missed": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "name": {
+    ///      "type": "string"
+    ///    },
+    ///    "overlap_skipped": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "paused": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "prompt": {
+    ///      "type": "string"
+    ///    },
+    ///    "revision": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct Automation {
+        pub agent_id: ::std::string::String,
+        pub applied_revision: i64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub error: ::std::option::Option<::std::string::String>,
+        pub every_minutes: i64,
+        pub id: ::std::string::String,
+        pub missed: i64,
+        pub name: ::std::string::String,
+        pub overlap_skipped: i64,
+        pub paused: bool,
+        pub prompt: ::std::string::String,
+        pub revision: i64,
+    }
+    impl Automation {
+        pub fn builder() -> builder::Automation {
+            Default::default()
+        }
+    }
+    ///`AutomationCommand`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "every_minutes",
+    ///        "kind",
+    ///        "name",
+    ///        "proposal"
+    ///      ],
+    ///      "properties": {
+    ///        "every_minutes": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "id": {
+    ///          "type": [
+    ///            "string",
+    ///            "null"
+    ///          ]
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "save"
+    ///          ]
+    ///        },
+    ///        "name": {
+    ///          "type": "string"
+    ///        },
+    ///        "proposal": {
+    ///          "$ref": "#/components/schemas/TicketProposal"
+    ///        },
+    ///        "revision": {
+    ///          "type": [
+    ///            "integer",
+    ///            "null"
+    ///          ],
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "paused",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "string"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "pause"
+    ///          ]
+    ///        },
+    ///        "paused": {
+    ///          "type": "boolean"
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "string"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "run_now"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    #[serde(tag = "kind")]
+    pub enum AutomationCommand {
+        #[serde(rename = "save")]
+        Save {
+            every_minutes: i64,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            id: ::std::option::Option<::std::string::String>,
+            name: ::std::string::String,
+            proposal: TicketProposal,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            revision: ::std::option::Option<i64>,
+        },
+        #[serde(rename = "pause")]
+        Pause {
+            id: ::std::string::String,
+            paused: bool,
+            revision: i64,
+        },
+        #[serde(rename = "run_now")]
+        RunNow {
+            id: ::std::string::String,
+            revision: i64,
+        },
+    }
+    ///`AutomationReceipt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "result_id"
+    ///  ],
+    ///  "properties": {
+    ///    "result_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct AutomationReceipt {
+        pub result_id: ::std::string::String,
+    }
+    impl AutomationReceipt {
+        pub fn builder() -> builder::AutomationReceipt {
+            Default::default()
+        }
+    }
+    ///`AutomationRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "command",
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "command": {
+    ///      "$ref": "#/components/schemas/AutomationCommand"
+    ///    },
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct AutomationRequest {
+        pub command: AutomationCommand,
+        pub operation_id: ::std::string::String,
+    }
+    impl AutomationRequest {
+        pub fn builder() -> builder::AutomationRequest {
+            Default::default()
+        }
+    }
+    ///`AutomationSnapshot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "history",
+    ///    "occurrences",
+    ///    "rules"
+    ///  ],
+    ///  "properties": {
+    ///    "history": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/HistoryEntry"
+    ///      }
+    ///    },
+    ///    "occurrences": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/OccurrenceView"
+    ///      }
+    ///    },
+    ///    "rules": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Automation"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct AutomationSnapshot {
+        pub history: ::std::vec::Vec<HistoryEntry>,
+        pub occurrences: ::std::vec::Vec<OccurrenceView>,
+        pub rules: ::std::vec::Vec<Automation>,
+    }
+    impl AutomationSnapshot {
+        pub fn builder() -> builder::AutomationSnapshot {
+            Default::default()
+        }
+    }
     ///`Command`
     ///
     /// <details><summary>JSON schema</summary>
@@ -662,6 +978,56 @@ pub mod types {
             Default::default()
         }
     }
+    ///`HistoryEntry`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "automation_id",
+    ///    "count",
+    ///    "id",
+    ///    "kind",
+    ///    "observed_at"
+    ///  ],
+    ///  "properties": {
+    ///    "automation_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "count": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "kind": {
+    ///      "type": "string"
+    ///    },
+    ///    "observed_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct HistoryEntry {
+        pub automation_id: ::std::string::String,
+        pub count: i64,
+        pub id: i64,
+        pub kind: ::std::string::String,
+        pub observed_at: i64,
+    }
+    impl HistoryEntry {
+        pub fn builder() -> builder::HistoryEntry {
+            Default::default()
+        }
+    }
     ///`Model`
     ///
     /// <details><summary>JSON schema</summary>
@@ -691,6 +1057,66 @@ pub mod types {
     }
     impl Model {
         pub fn builder() -> builder::Model {
+            Default::default()
+        }
+    }
+    ///`OccurrenceView`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "automation_id",
+    ///    "id",
+    ///    "scheduled_at",
+    ///    "state"
+    ///  ],
+    ///  "properties": {
+    ///    "automation_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "detail": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "id": {
+    ///      "type": "string"
+    ///    },
+    ///    "scheduled_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "state": {
+    ///      "type": "string"
+    ///    },
+    ///    "ticket_id": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct OccurrenceView {
+        pub automation_id: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub detail: ::std::option::Option<::std::string::String>,
+        pub id: ::std::string::String,
+        pub scheduled_at: i64,
+        pub state: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub ticket_id: ::std::option::Option<i64>,
+    }
+    impl OccurrenceView {
+        pub fn builder() -> builder::OccurrenceView {
             Default::default()
         }
     }
@@ -857,6 +1283,24 @@ pub mod types {
     /// ```json
     ///{
     ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "proposal"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "create_assigned"
+    ///          ]
+    ///        },
+    ///        "proposal": {
+    ///          "$ref": "#/components/schemas/TicketProposal"
+    ///        }
+    ///      }
+    ///    },
     ///    {
     ///      "type": "object",
     ///      "required": [
@@ -1067,6 +1511,8 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
     #[serde(tag = "kind")]
     pub enum TicketCommand {
+        #[serde(rename = "create_assigned")]
+        CreateAssigned { proposal: TicketProposal },
         #[serde(rename = "create")]
         Create { title: ::std::string::String },
         #[serde(rename = "delete")]
@@ -1160,6 +1606,40 @@ pub mod types {
     }
     impl TicketContract {
         pub fn builder() -> builder::TicketContract {
+            Default::default()
+        }
+    }
+    /*A bounded proposal to create one actionable Ticket for a registered agent.
+    The command boundary authorizes and commits it with a durable receipt.*/
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "A bounded proposal to create one actionable Ticket for a registered agent.\nThe command boundary authorizes and commits it with a durable receipt.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "agent_id",
+    ///    "title"
+    ///  ],
+    ///  "properties": {
+    ///    "agent_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "title": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TicketProposal {
+        pub agent_id: ::std::string::String,
+        pub title: ::std::string::String,
+    }
+    impl TicketProposal {
+        pub fn builder() -> builder::TicketProposal {
             Default::default()
         }
     }
@@ -1650,6 +2130,355 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct Automation {
+            agent_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            applied_revision: ::std::result::Result<i64, ::std::string::String>,
+            error: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            every_minutes: ::std::result::Result<i64, ::std::string::String>,
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            missed: ::std::result::Result<i64, ::std::string::String>,
+            name: ::std::result::Result<::std::string::String, ::std::string::String>,
+            overlap_skipped: ::std::result::Result<i64, ::std::string::String>,
+            paused: ::std::result::Result<bool, ::std::string::String>,
+            prompt: ::std::result::Result<::std::string::String, ::std::string::String>,
+            revision: ::std::result::Result<i64, ::std::string::String>,
+        }
+        impl ::std::default::Default for Automation {
+            fn default() -> Self {
+                Self {
+                    agent_id: Err("no value supplied for agent_id".to_string()),
+                    applied_revision: Err("no value supplied for applied_revision".to_string()),
+                    error: Ok(Default::default()),
+                    every_minutes: Err("no value supplied for every_minutes".to_string()),
+                    id: Err("no value supplied for id".to_string()),
+                    missed: Err("no value supplied for missed".to_string()),
+                    name: Err("no value supplied for name".to_string()),
+                    overlap_skipped: Err("no value supplied for overlap_skipped".to_string()),
+                    paused: Err("no value supplied for paused".to_string()),
+                    prompt: Err("no value supplied for prompt".to_string()),
+                    revision: Err("no value supplied for revision".to_string()),
+                }
+            }
+        }
+        impl Automation {
+            pub fn agent_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.agent_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for agent_id: {e}"));
+                self
+            }
+            pub fn applied_revision<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.applied_revision = value.try_into().map_err(|e| {
+                    format!("error converting supplied value for applied_revision: {e}")
+                });
+                self
+            }
+            pub fn error<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.error = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for error: {e}"));
+                self
+            }
+            pub fn every_minutes<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.every_minutes = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for every_minutes: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn missed<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.missed = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for missed: {e}"));
+                self
+            }
+            pub fn name<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.name = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for name: {e}"));
+                self
+            }
+            pub fn overlap_skipped<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.overlap_skipped = value.try_into().map_err(|e| {
+                    format!("error converting supplied value for overlap_skipped: {e}")
+                });
+                self
+            }
+            pub fn paused<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.paused = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for paused: {e}"));
+                self
+            }
+            pub fn prompt<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.prompt = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for prompt: {e}"));
+                self
+            }
+            pub fn revision<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.revision = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for revision: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<Automation> for super::Automation {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: Automation,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    agent_id: value.agent_id?,
+                    applied_revision: value.applied_revision?,
+                    error: value.error?,
+                    every_minutes: value.every_minutes?,
+                    id: value.id?,
+                    missed: value.missed?,
+                    name: value.name?,
+                    overlap_skipped: value.overlap_skipped?,
+                    paused: value.paused?,
+                    prompt: value.prompt?,
+                    revision: value.revision?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::Automation> for Automation {
+            fn from(value: super::Automation) -> Self {
+                Self {
+                    agent_id: Ok(value.agent_id),
+                    applied_revision: Ok(value.applied_revision),
+                    error: Ok(value.error),
+                    every_minutes: Ok(value.every_minutes),
+                    id: Ok(value.id),
+                    missed: Ok(value.missed),
+                    name: Ok(value.name),
+                    overlap_skipped: Ok(value.overlap_skipped),
+                    paused: Ok(value.paused),
+                    prompt: Ok(value.prompt),
+                    revision: Ok(value.revision),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct AutomationReceipt {
+            result_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for AutomationReceipt {
+            fn default() -> Self {
+                Self {
+                    result_id: Err("no value supplied for result_id".to_string()),
+                }
+            }
+        }
+        impl AutomationReceipt {
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<AutomationReceipt> for super::AutomationReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: AutomationReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::AutomationReceipt> for AutomationReceipt {
+            fn from(value: super::AutomationReceipt) -> Self {
+                Self {
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct AutomationRequest {
+            command: ::std::result::Result<super::AutomationCommand, ::std::string::String>,
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for AutomationRequest {
+            fn default() -> Self {
+                Self {
+                    command: Err("no value supplied for command".to_string()),
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                }
+            }
+        }
+        impl AutomationRequest {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::AutomationCommand>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<AutomationRequest> for super::AutomationRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: AutomationRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    command: value.command?,
+                    operation_id: value.operation_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::AutomationRequest> for AutomationRequest {
+            fn from(value: super::AutomationRequest) -> Self {
+                Self {
+                    command: Ok(value.command),
+                    operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct AutomationSnapshot {
+            history:
+                ::std::result::Result<::std::vec::Vec<super::HistoryEntry>, ::std::string::String>,
+            occurrences: ::std::result::Result<
+                ::std::vec::Vec<super::OccurrenceView>,
+                ::std::string::String,
+            >,
+            rules: ::std::result::Result<::std::vec::Vec<super::Automation>, ::std::string::String>,
+        }
+        impl ::std::default::Default for AutomationSnapshot {
+            fn default() -> Self {
+                Self {
+                    history: Err("no value supplied for history".to_string()),
+                    occurrences: Err("no value supplied for occurrences".to_string()),
+                    rules: Err("no value supplied for rules".to_string()),
+                }
+            }
+        }
+        impl AutomationSnapshot {
+            pub fn history<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::HistoryEntry>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.history = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for history: {e}"));
+                self
+            }
+            pub fn occurrences<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::OccurrenceView>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.occurrences = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for occurrences: {e}"));
+                self
+            }
+            pub fn rules<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Automation>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.rules = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for rules: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<AutomationSnapshot> for super::AutomationSnapshot {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: AutomationSnapshot,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    history: value.history?,
+                    occurrences: value.occurrences?,
+                    rules: value.rules?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::AutomationSnapshot> for AutomationSnapshot {
+            fn from(value: super::AutomationSnapshot) -> Self {
+                Self {
+                    history: Ok(value.history),
+                    occurrences: Ok(value.occurrences),
+                    rules: Ok(value.rules),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct CommandRequest {
             command: ::std::result::Result<super::Command, ::std::string::String>,
             operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
@@ -2095,6 +2924,102 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct HistoryEntry {
+            automation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            count: ::std::result::Result<i64, ::std::string::String>,
+            id: ::std::result::Result<i64, ::std::string::String>,
+            kind: ::std::result::Result<::std::string::String, ::std::string::String>,
+            observed_at: ::std::result::Result<i64, ::std::string::String>,
+        }
+        impl ::std::default::Default for HistoryEntry {
+            fn default() -> Self {
+                Self {
+                    automation_id: Err("no value supplied for automation_id".to_string()),
+                    count: Err("no value supplied for count".to_string()),
+                    id: Err("no value supplied for id".to_string()),
+                    kind: Err("no value supplied for kind".to_string()),
+                    observed_at: Err("no value supplied for observed_at".to_string()),
+                }
+            }
+        }
+        impl HistoryEntry {
+            pub fn automation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.automation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for automation_id: {e}"));
+                self
+            }
+            pub fn count<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.count = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for count: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn kind<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.kind = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for kind: {e}"));
+                self
+            }
+            pub fn observed_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.observed_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for observed_at: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<HistoryEntry> for super::HistoryEntry {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: HistoryEntry,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    automation_id: value.automation_id?,
+                    count: value.count?,
+                    id: value.id?,
+                    kind: value.kind?,
+                    observed_at: value.observed_at?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::HistoryEntry> for HistoryEntry {
+            fn from(value: super::HistoryEntry) -> Self {
+                Self {
+                    automation_id: Ok(value.automation_id),
+                    count: Ok(value.count),
+                    id: Ok(value.id),
+                    kind: Ok(value.kind),
+                    observed_at: Ok(value.observed_at),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct Model {
             id: ::std::result::Result<::std::string::String, ::std::string::String>,
             name: ::std::result::Result<::std::string::String, ::std::string::String>,
@@ -2145,6 +3070,119 @@ pub mod types {
                 Self {
                     id: Ok(value.id),
                     name: Ok(value.name),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct OccurrenceView {
+            automation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            detail: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            scheduled_at: ::std::result::Result<i64, ::std::string::String>,
+            state: ::std::result::Result<::std::string::String, ::std::string::String>,
+            ticket_id: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        }
+        impl ::std::default::Default for OccurrenceView {
+            fn default() -> Self {
+                Self {
+                    automation_id: Err("no value supplied for automation_id".to_string()),
+                    detail: Ok(Default::default()),
+                    id: Err("no value supplied for id".to_string()),
+                    scheduled_at: Err("no value supplied for scheduled_at".to_string()),
+                    state: Err("no value supplied for state".to_string()),
+                    ticket_id: Ok(Default::default()),
+                }
+            }
+        }
+        impl OccurrenceView {
+            pub fn automation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.automation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for automation_id: {e}"));
+                self
+            }
+            pub fn detail<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.detail = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for detail: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn scheduled_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.scheduled_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for scheduled_at: {e}"));
+                self
+            }
+            pub fn state<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.state = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for state: {e}"));
+                self
+            }
+            pub fn ticket_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.ticket_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for ticket_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<OccurrenceView> for super::OccurrenceView {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: OccurrenceView,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    automation_id: value.automation_id?,
+                    detail: value.detail?,
+                    id: value.id?,
+                    scheduled_at: value.scheduled_at?,
+                    state: value.state?,
+                    ticket_id: value.ticket_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::OccurrenceView> for OccurrenceView {
+            fn from(value: super::OccurrenceView) -> Self {
+                Self {
+                    automation_id: Ok(value.automation_id),
+                    detail: Ok(value.detail),
+                    id: Ok(value.id),
+                    scheduled_at: Ok(value.scheduled_at),
+                    state: Ok(value.state),
+                    ticket_id: Ok(value.ticket_id),
                 }
             }
         }
@@ -2503,6 +3541,60 @@ pub mod types {
         impl ::std::convert::From<super::TicketContract> for TicketContract {
             fn from(value: super::TicketContract) -> Self {
                 Self {
+                    title: Ok(value.title),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TicketProposal {
+            agent_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            title: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for TicketProposal {
+            fn default() -> Self {
+                Self {
+                    agent_id: Err("no value supplied for agent_id".to_string()),
+                    title: Err("no value supplied for title".to_string()),
+                }
+            }
+        }
+        impl TicketProposal {
+            pub fn agent_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.agent_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for agent_id: {e}"));
+                self
+            }
+            pub fn title<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.title = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for title: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TicketProposal> for super::TicketProposal {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TicketProposal,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    agent_id: value.agent_id?,
+                    title: value.title?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TicketProposal> for TicketProposal {
+            fn from(value: super::TicketProposal) -> Self {
+                Self {
+                    agent_id: Ok(value.agent_id),
                     title: Ok(value.title),
                 }
             }
@@ -3070,6 +4162,27 @@ impl Client {
     pub fn health_ready(&self) -> builder::HealthReady<'_> {
         builder::HealthReady::new(self)
     }
+    /*Sends a `GET` request to `/v1/automations`
+
+    ```ignore
+    let response = client.automations_state()
+        .send()
+        .await;
+    ```*/
+    pub fn automations_state(&self) -> builder::AutomationsState<'_> {
+        builder::AutomationsState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/automations/commands`
+
+    ```ignore
+    let response = client.automations_command()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn automations_command(&self) -> builder::AutomationsCommand<'_> {
+        builder::AutomationsCommand::new(self)
+    }
     /*Sends a `POST` request to `/v1/commands`
 
     ```ignore
@@ -3274,6 +4387,150 @@ pub mod builder {
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
                 503u16 => Err(Error::ErrorResponse(ResponseValue::empty(response))),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::automations_state`]
+
+    [`Client::automations_state`]: super::Client::automations_state*/
+    #[derive(Debug, Clone)]
+    pub struct AutomationsState<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> AutomationsState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `GET` request to `/v1/automations`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::AutomationSnapshot>, Error<types::ErrorBody>> {
+            let Self { client } = self;
+            let url = format!("{}/v1/automations", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "automations_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::automations_command`]
+
+    [`Client::automations_command`]: super::Client::automations_command*/
+    #[derive(Debug, Clone)]
+    pub struct AutomationsCommand<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::AutomationRequest, String>,
+    }
+    impl<'a> AutomationsCommand<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::AutomationRequest>,
+            <V as std::convert::TryInto<types::AutomationRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value
+                .try_into()
+                .map(From::from)
+                .map_err(|s| format!("conversion to `AutomationRequest` for body failed: {}", s));
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(
+                    types::builder::AutomationRequest,
+                ) -> types::builder::AutomationRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/automations/commands`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::AutomationReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::AutomationRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/automations/commands", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "automations_command",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 _ => Err(Error::UnexpectedResponse(response)),
             }
         }

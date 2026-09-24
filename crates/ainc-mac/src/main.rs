@@ -1,4 +1,5 @@
 mod assistant;
+mod automations;
 mod evee;
 mod input;
 mod model;

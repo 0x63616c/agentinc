@@ -46,6 +46,8 @@ pub struct Shell {
     overlays: Rc<RefCell<OverlayHost>>,
     assistant: Entity<crate::evee::AssistantPage>,
     tickets: Entity<crate::tickets::TicketsPage>,
+    automations: Entity<crate::automations::AutomationsPage>,
+    _automation_subscriptions: Vec<Subscription>,
     _tickets_subscription: Subscription,
     _assistant_subscriptions: Vec<Subscription>,
     profile: crate::profile::Profile,
@@ -146,8 +148,29 @@ impl Shell {
                 },
             ),
         ];
-        let tickets = cx
-            .new(|cx| crate::tickets::TicketsPage::new(store, storage_error, overlays.clone(), cx));
+        let tickets = cx.new(|cx| {
+            crate::tickets::TicketsPage::new(
+                store.clone(),
+                storage_error.clone(),
+                overlays.clone(),
+                cx,
+            )
+        });
+        let automations =
+            cx.new(|cx| crate::automations::AutomationsPage::new(store, storage_error, cx));
+        let automation_subscriptions = vec![
+            cx.observe(&automations, |_, _, cx| cx.notify()),
+            cx.subscribe(
+                &automations,
+                |this, _, event: &crate::automations::OpenTicket, cx| {
+                    this.tickets
+                        .update(cx, |tickets, cx| tickets.select(event.0, cx));
+                    this.session.navigate(Route::Tickets);
+                    this.save(cx);
+                    cx.notify();
+                },
+            ),
+        ];
         let tickets_subscription = cx.observe(&tickets, |_, _, cx| cx.notify());
         let input = cx.new(TextInput::new);
         let subscription = cx.observe(&input, |this, _, cx| {
@@ -166,6 +189,8 @@ impl Shell {
             overlays,
             assistant,
             tickets,
+            automations,
+            _automation_subscriptions: automation_subscriptions,
             _tickets_subscription: tickets_subscription,
             _assistant_subscriptions: assistant_subscriptions,
             profile,
@@ -1216,6 +1241,7 @@ impl Render for Shell {
         }
         let active_overlay = self.overlays.borrow().active();
         let content = match self.session.current() {
+            Route::Automations => self.automations.clone().into_any_element(),
             Route::Tickets => self.tickets.clone().into_any_element(),
             Route::Agents => self.tickets.update(cx, |tickets, cx| tickets.agents(cx)),
             Route::Today

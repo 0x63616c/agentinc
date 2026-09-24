@@ -4,6 +4,8 @@
 #![allow(dead_code, unused_imports)]
 #[path = "../src/assistant.rs"]
 mod assistant;
+#[path = "../src/automations.rs"]
+mod automations;
 #[path = "../src/evee.rs"]
 mod evee;
 #[path = "../src/input.rs"]

@@ -41,6 +41,33 @@ impl Runtime {
         })
     }
 
+    /// Connect a dedicated worker for recurring actions. Use a distinct worker
+    /// group from ordinary agent workers and retain the same handler on restart.
+    pub async fn recurring(
+        config: RuntimeConfig,
+        action: std::sync::Arc<dyn crate::RecurringAction>,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            engine: Engine::configured_recurring(config, &[], Some(action)).await?,
+        })
+    }
+
+    /// Reconcile a recurring rule. Overlap is skipped; catch-up is limited to ten
+    /// seconds. Acknowledgement means the durable definition has been applied.
+    pub async fn apply_rule(&self, rule: crate::RecurringRule) -> Result<(), Error> {
+        self.engine.apply_rule(rule).await
+    }
+
+    /// Read counters and recent occurrences, even when no action worker is online.
+    pub async fn recurring_state(&self, id: &str) -> Result<crate::RecurringState, Error> {
+        self.engine.recurring_state(id).await
+    }
+
+    /// Request an immediate occurrence once under a retained caller-owned ID.
+    pub async fn run_occurrence(&self, occurrence: crate::Occurrence) -> Result<(), Error> {
+        self.engine.run_occurrence(occurrence).await
+    }
+
     /// An isolated runtime for tests. Like [`Runtime::local`], plus checks that would be too
     /// expensive in production: every idempotent tool is called twice and must agree.
     pub async fn test() -> Result<Self, Error> {

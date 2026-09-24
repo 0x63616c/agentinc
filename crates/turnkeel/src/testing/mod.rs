@@ -67,6 +67,12 @@ impl Server {
         self.0.replay(id).await
     }
 
+    /// Fire a retained recurring rule through the real server, including while
+    /// its worker is stopped. This does not bypass the rule's overlap policy.
+    pub async fn fire_rule(&self, id: &str) -> Result<(), Error> {
+        self.0.fire_rule(id).await
+    }
+
     pub async fn shutdown(self) -> Result<(), Error> {
         self.0.shutdown().await
     }

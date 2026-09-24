@@ -2,6 +2,7 @@
 
 mod activities;
 mod conversation;
+mod recurring;
 mod session;
 mod test_server;
 mod workflow;
@@ -58,6 +59,7 @@ impl Engine {
             options,
             format!("agentinc-{}", uuid::Uuid::new_v4()),
             &[],
+            None,
         )
         .await
     }
@@ -75,6 +77,14 @@ impl Engine {
     }
 
     pub(crate) async fn configured(config: RuntimeConfig, agents: &[Agent]) -> Result<Self, Error> {
+        Self::configured_recurring(config, agents, None).await
+    }
+
+    pub(crate) async fn configured_recurring(
+        config: RuntimeConfig,
+        agents: &[Agent],
+        action: Option<Arc<dyn crate::RecurringAction>>,
+    ) -> Result<Self, Error> {
         if config.scope.trim().is_empty() || config.worker_group.trim().is_empty() {
             return Err(Error::Connection(
                 "runtime scope and worker group must be nonempty".into(),
@@ -96,6 +106,7 @@ impl Engine {
             EngineOptions::default(),
             config.worker_group,
             agents,
+            action,
         )
         .await
     }
@@ -106,6 +117,7 @@ impl Engine {
         options: EngineOptions,
         task_queue: String,
         agents: &[Agent],
+        action: Option<Arc<dyn crate::RecurringAction>>,
     ) -> Result<Self, Error> {
         let registry = Registry::default();
         for agent in agents {
@@ -131,8 +143,13 @@ impl Engine {
                     }
                 };
                 rt.block_on(async move {
-                    let worker =
-                        build_worker(worker_client, worker_queue, worker_registry, options);
+                    let worker = build_worker(
+                        worker_client,
+                        worker_queue,
+                        worker_registry,
+                        options,
+                        action,
+                    );
                     let mut worker = match worker {
                         Ok(w) => w,
                         Err(e) => {
@@ -291,6 +308,7 @@ fn build_worker(
     task_queue: String,
     registry: Registry,
     options: EngineOptions,
+    action: Option<Arc<dyn crate::RecurringAction>>,
 ) -> Result<Worker, String> {
     let runtime = Runtime::from_current_tokio(Default::default()).map_err(|e| e.to_string())?;
     let options = WorkerOptions::new(task_queue)
@@ -298,6 +316,9 @@ fn build_worker(
         .map_err(|e| e.to_string())?
         .register_workflow::<SessionWorkflow>()
         .map_err(|e| e.to_string())?
+        .register_workflow::<recurring::OccurrenceWorkflow>()
+        .map_err(|e| e.to_string())?
+        .register_activities(recurring::RecurringActivities(action))
         .register_activities(AgentActivities {
             registry,
             check_idempotency: options.check_idempotency,

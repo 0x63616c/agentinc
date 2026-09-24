@@ -12,6 +12,8 @@ impl<T: CliConfig> Cli<T> {
         match cmd {
             CliCommand::HealthLive => Self::cli_health_live(),
             CliCommand::HealthReady => Self::cli_health_ready(),
+            CliCommand::AutomationsState => Self::cli_automations_state(),
+            CliCommand::AutomationsCommand => Self::cli_automations_command(),
             CliCommand::ProductCommand => Self::cli_product_command(),
             CliCommand::ConnectionStatus => Self::cli_connection_status(),
             CliCommand::ConnectionCancel => Self::cli_connection_cancel(),
@@ -29,6 +31,32 @@ impl<T: CliConfig> Cli<T> {
     }
     pub fn cli_health_ready() -> ::clap::Command {
         ::clap::Command::new("")
+    }
+    pub fn cli_automations_state() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_automations_command() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("operation-id")
+                    .long("operation-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
     }
     pub fn cli_product_command() -> ::clap::Command {
         ::clap::Command::new("")
@@ -128,6 +156,8 @@ impl<T: CliConfig> Cli<T> {
         match cmd {
             CliCommand::HealthLive => self.execute_health_live(matches).await,
             CliCommand::HealthReady => self.execute_health_ready(matches).await,
+            CliCommand::AutomationsState => self.execute_automations_state(matches).await,
+            CliCommand::AutomationsCommand => self.execute_automations_command(matches).await,
             CliCommand::ProductCommand => self.execute_product_command(matches).await,
             CliCommand::ConnectionStatus => self.execute_connection_status(matches).await,
             CliCommand::ConnectionCancel => self.execute_connection_cancel(matches).await,
@@ -158,6 +188,54 @@ impl<T: CliConfig> Cli<T> {
     pub async fn execute_health_ready(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
         let mut request = self.client.health_ready();
         self.config.execute_health_ready(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_automations_state(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.automations_state();
+        self.config
+            .execute_automations_state(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_automations_command(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.automations_command();
+        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
+            request = request.body_map(|body| body.operation_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::AutomationRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config
+            .execute_automations_command(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -410,6 +488,20 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_automations_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::AutomationsState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_automations_command(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::AutomationsCommand,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_product_command(
         &self,
         matches: &::clap::ArgMatches,
@@ -485,6 +577,8 @@ pub trait CliConfig {
 pub enum CliCommand {
     HealthLive,
     HealthReady,
+    AutomationsState,
+    AutomationsCommand,
     ProductCommand,
     ConnectionStatus,
     ConnectionCancel,
@@ -501,6 +595,8 @@ impl CliCommand {
         vec![
             CliCommand::HealthLive,
             CliCommand::HealthReady,
+            CliCommand::AutomationsState,
+            CliCommand::AutomationsCommand,
             CliCommand::ProductCommand,
             CliCommand::ConnectionStatus,
             CliCommand::ConnectionCancel,
@@ -518,6 +614,8 @@ impl CliCommand {
         match self {
             CliCommand::HealthLive => "health_live",
             CliCommand::HealthReady => "health_ready",
+            CliCommand::AutomationsState => "automations_state",
+            CliCommand::AutomationsCommand => "automations_command",
             CliCommand::ProductCommand => "product_command",
             CliCommand::ConnectionStatus => "connection_status",
             CliCommand::ConnectionCancel => "connection_cancel",

@@ -157,7 +157,7 @@ fn assign_tool_use_ids(response: &mut ModelResponse) {
 
 /// Heartbeats detect a dead worker and deliver cancellation to live I/O futures.
 /// Dropping a future must stop its owned processes; tools still fence/receipt effects.
-async fn cancellable<T>(
+pub(super) async fn cancellable<T>(
     ctx: &ActivityContext,
     future: impl std::future::Future<Output = T>,
 ) -> Result<T, ActivityError> {

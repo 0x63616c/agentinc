@@ -9,6 +9,7 @@ pub enum Route {
     #[serde(alias = "tasks")]
     Tickets,
     Agents,
+    Automations,
     Home,
     Calendar,
     Library,
@@ -55,6 +56,14 @@ pub const PAGES: &[PageSpec] = &[
         title: "Agents",
         icon: "agents",
         shortcut: Some(3),
+        in_sidebar: true,
+        availability: Availability::Ready,
+    },
+    PageSpec {
+        route: Route::Automations,
+        title: "Automations",
+        icon: "refresh",
+        shortcut: None,
         in_sidebar: true,
         availability: Availability::Ready,
     },
@@ -135,6 +144,7 @@ impl Route {
                 "Your day starts here",
                 "Choose a destination from the sidebar.",
             ),
+            Self::Automations => ("No Automations yet", "Create a recurring Ticket rule."),
             Self::Tickets => ("No Tickets yet", "Add a Ticket to get started."),
             Self::Agents => (
                 "No agents connected",
@@ -412,7 +422,7 @@ mod tests {
     use super::*;
     #[test]
     fn catalogue_and_history() {
-        assert_eq!(PAGES.len(), 9);
+        assert_eq!(PAGES.len(), 10);
         for route in [
             Route::Today,
             Route::Tickets,
