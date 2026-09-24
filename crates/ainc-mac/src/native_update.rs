@@ -1,14 +1,15 @@
 //! AppKit presentation for the Rust updater. All calls run on the app's main thread.
 use ainc_release::Manifest;
+#[cfg(any(test, target_os = "macos"))]
 use pulldown_cmark::{Event, Options, Parser, html};
-use std::{
-    ffi::CString,
-    sync::atomic::{AtomicBool, AtomicI32, Ordering},
-};
+#[cfg(target_os = "macos")]
+use std::ffi::CString;
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 static ACTION: AtomicI32 = AtomicI32::new(0);
 static AUTOMATIC: AtomicBool = AtomicBool::new(false);
 
+#[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn ainc_update_offer(
         version: *const i8,
@@ -37,10 +38,12 @@ pub fn take_action() -> Option<(i32, bool)> {
     (action != 0).then(|| (action, AUTOMATIC.load(Ordering::Relaxed)))
 }
 
+#[cfg(target_os = "macos")]
 fn cstring(text: &str) -> CString {
     CString::new(text.replace('\0', "")).expect("NUL stripped")
 }
 
+#[cfg(any(test, target_os = "macos"))]
 pub fn notes_html(markdown: &str) -> String {
     let parser =
         Parser::new_ext(markdown, Options::ENABLE_STRIKETHROUGH).map(|event| match event {
@@ -60,6 +63,7 @@ pub fn notes_html(markdown: &str) -> String {
     )
 }
 
+#[cfg(target_os = "macos")]
 pub fn offer(manifest: &Manifest, automatic: bool, ready: bool, changelog: bool) {
     let version = cstring(&manifest.version.to_string());
     let current = cstring(ainc_release::VERSION);
@@ -79,21 +83,36 @@ pub fn offer(manifest: &Manifest, automatic: bool, ready: bool, changelog: bool)
     }
 }
 
+#[cfg(not(target_os = "macos"))]
+pub fn offer(_: &Manifest, _: bool, _: bool, _: bool) {}
+
+#[cfg(target_os = "macos")]
 pub fn status(message: &str) {
     let message = cstring(message);
     unsafe { ainc_update_status(message.as_ptr()) }
 }
 
+#[cfg(not(target_os = "macos"))]
+pub fn status(_: &str) {}
+
+#[cfg(target_os = "macos")]
 pub fn progress(received: u64, total: u64) {
     let message = cstring("Downloading update...");
     unsafe { ainc_update_progress(message.as_ptr(), received, total) }
 }
 
+#[cfg(not(target_os = "macos"))]
+pub fn progress(_: u64, _: u64) {}
+
+#[cfg(target_os = "macos")]
 pub fn close() {
     unsafe { ainc_update_close() }
 }
 
-#[cfg(feature = "automation")]
+#[cfg(not(target_os = "macos"))]
+pub fn close() {}
+
+#[cfg(all(feature = "automation", target_os = "macos"))]
 pub fn smoke(manifest: &Manifest, directory: &std::path::Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(directory)?;
     unsafe { ainc_update_smoke_init() };

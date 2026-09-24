@@ -50,7 +50,7 @@ fn main_window_options(
 fn main() {
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    #[cfg(feature = "automation")]
+    #[cfg(all(feature = "automation", target_os = "macos"))]
     if args.len() == 3 && args[0] == "--update-ui-smoke" {
         let manifest: ainc_release::Manifest =
             serde_json::from_slice(&std::fs::read(&args[1]).expect("smoke manifest"))
