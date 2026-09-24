@@ -87,10 +87,25 @@
  
          #[cfg(feature = "profiler")]
          {
-@@ -9289,3 +9298,56 @@
-         .expect("closed inspector has no bookkeeping and no style overrides");
+@@ -6800,6 +6809,12 @@
+         self.a11y.debug_tree_json()
      }
- }
+ 
++    /// Bounds recorded by `debug_selector` in the last rendered test frame.
++    #[cfg(any(test, feature = "test-support"))]
++    pub fn debug_bounds(&self, selector: &str) -> Option<Bounds<Pixels>> {
++        self.rendered_frame.debug_bounds.get(selector).copied()
++    }
++
+     /// Register a listener for an accessibility action on a specific node.
+     /// The listener will be called when a screen reader requests the given
+     /// action on the node identified by `node_id`.
+@@ -9287,5 +9302,58 @@
+             }
+         })
+         .expect("closed inspector has no bookkeeping and no style overrides");
++    }
++}
 +
 +/// Minimal opt-in, process-local automation seam. No transport lives in GPUI.
 +#[cfg(feature = "pilot")]
@@ -112,7 +127,7 @@
 +    /// Whether application changes require a new committed frame.
 +    pub fn pilot_needs_draw(&self) -> bool {
 +        self.invalidator.is_dirty() || self.a11y.pilot_frame == 0
-+    }
+     }
 +
 +    /// Test a semantic element's actual clipped hitbox against the rendered frame.
 +    pub fn pilot_hit_test(&self, node: accesskit::NodeId, point: Point<Pixels>) -> bool {
@@ -143,13 +158,14 @@
 +            false
 +        }
 +    }
-+}
+ }
 --- a/src/elements/div.rs
 +++ b/src/elements/div.rs
-@@ -2387,6 +2387,16 @@
+@@ -2386,6 +2386,16 @@
+                             } else {
                                  None
                              };
- 
++
 +                            #[cfg(feature = "pilot")]
 +                            if window.a11y.pilot_active {
 +                                if let (Some(id), Some(hitbox)) = (global_id, hitbox.as_ref()) {
@@ -159,7 +175,6 @@
 +                                        .insert(id.accesskit_node_id(), hitbox.clone());
 +                                }
 +                            }
-+
+ 
                              let scroll_offset =
                                  self.clamp_scroll_position(bounds, &style, window, cx);
-                             let result = f(&style, scroll_offset, hitbox, window, cx);

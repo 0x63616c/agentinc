@@ -103,8 +103,8 @@ impl Shell {
                     .w(px(224.))
                     .h(px(30.))
                     .mb(px(9.))
-                    .pl(px(9.))
-                    .pr(px(4.))
+                    .pl(px(HEADER_SEARCH_LEFT_INSET))
+                    .pr(px(HEADER_SEARCH_RIGHT_INSET))
                     .bg(rgb(SURFACE_SEARCH))
                     .border_1()
                     .border_color(rgb(BORDER))
@@ -118,7 +118,7 @@ impl Shell {
             .child(
                 div()
                     .flex_shrink_0()
-                    .ml(px(8.))
+                    .ml(px(CONTROL_GAP))
                     .mb(px(9.))
                     .child(self.icon_button(
                         "toggle-evee",
@@ -131,7 +131,7 @@ impl Shell {
             .child(
                 div()
                     .flex_shrink_0()
-                    .ml(px(8.))
+                    .ml(px(CONTROL_GAP))
                     .mb(px(9.))
                     .child(self.icon_button(
                         "notifications",

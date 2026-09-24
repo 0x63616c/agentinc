@@ -10,7 +10,8 @@ checkout and expands workspace dependency declarations into a standalone
 manifest. Sibling Zed dependencies still resolve to that same revision.
 No Cargo registry/git cache source is modified.
 
-The source patch changes only three files and is gated by the nondefault `pilot`
-feature. The transport/CLI/app logic lives outside this directory. Review the
-patch alongside the upstream source; do not edit generated vendor files without
+The source patch changes only three files; its automation seam is gated by the
+nondefault `pilot` feature, and the layout bounds probe by `test-support`.
+The transport/CLI/app logic lives outside this directory. Review the patch
+alongside the upstream source; do not edit generated vendor files without
 also updating the patch and testing regeneration.

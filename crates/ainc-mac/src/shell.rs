@@ -501,7 +501,13 @@ impl Shell {
             .debug_selector(move || id.into())
             .size(px(HEADER_CONTROL))
             .justify_center()
-            .child(icon(name, 16.))
+            .child(
+                row()
+                    .size(px(HEADER_ICON_SIZE))
+                    .justify_center()
+                    .debug_selector(move || format!("{id}.glyph"))
+                    .child(icon(name, HEADER_ICON_SIZE)),
+            )
     }
     fn command_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let matches = Route::matching(&self.input.read(cx).content);

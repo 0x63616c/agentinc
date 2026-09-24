@@ -272,9 +272,7 @@ impl AutomationsPage {
                 enabled,
             },
             |button| {
-                button
-                    .min_h(type_size(CONTROL_HEIGHT))
-                    .px(px(12.))
+                standard_button(button)
                     .bg(background)
                     .border_1()
                     .border_color(rgb(BORDER))
@@ -284,24 +282,8 @@ impl AutomationsPage {
             cx,
         )
     }
-    fn field(label: &str, input: Entity<TextInput>) -> impl IntoElement {
-        column()
-            .gap(px(8.))
-            .child(
-                div()
-                    .text_size(type_size(LABEL_SIZE))
-                    .text_color(rgb(MUTED))
-                    .child(label.to_owned()),
-            )
-            .child(
-                row()
-                    .min_h(type_size(FIELD_HEIGHT))
-                    .px(px(12.))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .rounded(px(FIELD_RADIUS))
-                    .child(input),
-            )
+    fn field(label: &'static str, input: Entity<TextInput>) -> impl IntoElement {
+        form_field(label, input, label)
     }
 }
 impl Render for AutomationsPage {
@@ -329,8 +311,7 @@ impl Render for AutomationsPage {
                 PageHeader::new("Automations")
                     .description("Recurring Tickets for your agents.")
                     .actions(
-                        row()
-                            .gap(px(8.))
+                        row_gap(CONTROL_GAP)
                             .child(
                                 self.button(
                                     "automations.refresh",
@@ -349,6 +330,7 @@ impl Render for AutomationsPage {
                                     |this, _, cx| this.edit(None, cx),
                                     cx,
                                 )
+                                .debug_selector(|| "automations.create".into())
                                 .child("Create Automation"),
                             ),
                     )
@@ -378,12 +360,12 @@ impl Render for AutomationsPage {
                 .as_ref()
                 .map(|s| s.tickets().assignees)
                 .unwrap_or_default();
-            content=content.child(column().gap(px(16.)).child(Self::field("Name",self.name.clone())).child(Self::field("Ticket prompt",self.prompt.clone())).child(Self::field("Every (minutes)",self.minutes.clone()))
+            content=content.child(column_gap(FORM_STACK_GAP).child(Self::field("Name",self.name.clone())).child(Self::field("Ticket prompt",self.prompt.clone())).child(Self::field("Every (minutes)",self.minutes.clone()))
                 .child(column().gap(px(8.)).child(div().text_color(rgb(MUTED)).child("Assign to"))
                     .when(!agents.iter().any(|a|a.kind==AssigneeKind::Agent),|s|s.child("Register an agent on the Agents page first."))
                     .child(row().gap(px(8.)).flex_wrap().children(agents.into_iter().filter(|a|a.kind==AssigneeKind::Agent).map(|a|{let id=a.id.clone();self.button(SharedString::from(format!("automations.agent.{}",a.id)),a.name.clone(),true,move|this,_,cx|{this.agent=Some(id.clone());cx.notify();},cx).border_color(rgb(if self.agent.as_ref()==Some(&a.id){SELECTED_BORDER}else{BORDER})).child(a.name)}))))
                 .child(div().text_color(rgb(MUTED)).text_size(type_size(CAPTION_SIZE)).child("Saving authorizes this rule to create and assign a new Ticket on each firing."))
-                .child(row().gap(px(8.)).child(self.button("automations.save","Save rule",true,|this,_,cx|this.save(cx),cx).child("Save rule")).child(self.button("automations.cancel","Cancel",true,|this,_,cx|{this.editing=false;cx.notify();},cx).child("Cancel"))));
+                .child(row_gap(CONTROL_GAP).child(self.button("automations.save","Save rule",true,|this,_,cx|this.save(cx),cx).child("Save rule")).child(self.button("automations.cancel","Cancel",true,|this,_,cx|{this.editing=false;cx.notify();},cx).child("Cancel"))));
         } else if let Some(rule) = selected {
             let edit = rule.clone();
             let pause = rule.clone();
