@@ -166,7 +166,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     client.call(Command::Hello)?;
     let initial = snap(&mut client)?;
     ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Search"));
-    ensure!(initial.by_id("sidebar.version")?.name.as_deref() == Some("0.1.0-dev"));
+    ensure!(initial.by_id("sidebar.version")?.name.as_deref() == Some("0.2.0-dev"));
     fs::write(
         output.join("initial.json"),
         serde_json::to_vec_pretty(&initial)?,
