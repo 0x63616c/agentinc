@@ -36,8 +36,11 @@ For the accepted product plan, see [docs/architecture.md](docs/architecture.md) 
   `src/engine/`. Test helpers at `src/testing/`.
 - `crates/turnkeel-macros` — the `#[tool]` attribute. Re-exported from `turnkeel`; users
   never depend on it directly.
-- `crates/ainc-mac` — the AgentInc app placeholder (see below). The app is the SDK's
-  example: every public SDK feature should be used there.
+- `crates/ainc-mac` — the imported native GPUI AgentInc app. Build its signed bundle
+  with `crates/ainc-mac/scripts/bundle.sh`; see its README for isolated validation.
+- `crates/gpui-pilot`, `crates/gpui-pilot-cli` — opt-in app automation. The GPUI
+  patch and regeneration instructions are in `vendor/` and
+  `crates/ainc-mac/scripts/vendor-pilot-gpui.py`.
 
 Expected to grow: provider crates, and possibly a core crate if the engine ever
 needs to become its own crate.
@@ -46,9 +49,10 @@ needs to become its own crate.
 
 - **SDK** (`turnkeel`) runs *one agent* durably. Boundary test: does this make
   sense with a single agent and no UI? If yes, it belongs in the SDK.
-- **AgentInc** is a personal life-OS app; its current stub is at `crates/ainc-mac`.
-  Rule: anything a
-  human can do in its UI, an agent can do through the same tools.
+- **AgentInc** is a personal life-OS app; its native client is at `crates/ainc-mac`.
+  Its legacy support paths remain under `~/Library/Application Support/Agentinc OS/`
+  until the planned daemon storage migration. Rule: anything a human can do in
+  its UI, an agent can do through the same tools.
 
 There is no framework layer yet. Extract one from the OS later, once the generic parts
 are obvious. Do not start it early.

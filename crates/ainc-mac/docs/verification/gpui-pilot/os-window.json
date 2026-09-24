@@ -1,0 +1,12 @@
+{
+  "bounds" : {
+    "Height" : 828,
+    "Width" : 1360,
+    "X" : 184,
+    "Y" : 118
+  },
+  "check" : "native WindowServer identity and visible dimensions",
+  "pid" : 69049,
+  "title" : "Agentinc Pilot CLI QA",
+  "window_number" : 19400
+}
