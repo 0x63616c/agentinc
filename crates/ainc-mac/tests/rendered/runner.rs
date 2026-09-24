@@ -8,7 +8,8 @@ use crate::{
 };
 use anyhow::{Result, ensure};
 use gpui::{
-    AppContext, Bounds, Modifiers, Pixels, VisualTestAppContext, WindowHandle, point, px, size,
+    AppContext, Bounds, Modifiers, MouseButton, Pixels, VisualTestAppContext, WindowHandle, point,
+    px, size,
 };
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
@@ -381,6 +382,19 @@ pub fn run() -> Result<()> {
     };
     suite.capture("initial", Route::Today, None, true)?;
     suite.capture_version_tooltip()?;
+    suite.cx.simulate_mouse_move(
+        suite.window.into(),
+        point(px(125.), px(167.)),
+        None::<MouseButton>,
+        Modifiers::default(),
+    );
+    suite.capture("hover-tickets", Route::Today, None, true)?;
+    suite.cx.simulate_mouse_move(
+        suite.window.into(),
+        point(px(500.), px(500.)),
+        None::<MouseButton>,
+        Modifiers::default(),
+    );
     for round in 0..3 {
         if round == 1 {
             // AppKit resize is asynchronous without its native event loop. Use a second
@@ -427,6 +441,9 @@ pub fn run() -> Result<()> {
             }
         }
         suite.keys("cmd-k");
+        if round == 0 {
+            suite.capture("search-empty", Route::Apps, Some(Overlay::Search), true)?;
+        }
         suite.cx.simulate_input(window.into(), "settings");
         suite.capture(
             &format!("search-{round}"),
@@ -470,6 +487,8 @@ pub fn run() -> Result<()> {
     suite.capture("today-evee-hidden", Route::Today, None, false)?;
     suite.keys("cmd-shift-e");
     suite.capture("evee-restored", Route::Today, None, true)?;
+    suite.keys("cmd-,");
+    suite.capture("settings-shortcut", Route::Settings, None, true)?;
     println!(
         "{} real Metal frames passed, including region-removal negative controls",
         suite.count

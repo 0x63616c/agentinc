@@ -242,7 +242,12 @@ pub fn icon(name: &'static str, size: f32) -> Svg {
         .text_color(rgb(MUTED))
         .flex_shrink_0()
 }
-pub fn nav_icon(name: &'static str, selected: bool) -> Svg {
+pub fn nav_icon(
+    name: &'static str,
+    selected: bool,
+    tint: u32,
+    hover_group: impl Into<SharedString>,
+) -> Svg {
     svg()
         .path(if selected {
             format!("selected/{name}.svg")
@@ -250,7 +255,8 @@ pub fn nav_icon(name: &'static str, selected: bool) -> Svg {
             format!("{name}.svg")
         })
         .size(px(17.))
-        .text_color(rgb(if selected { TEXT } else { MUTED }))
+        .text_color(rgb(tint))
+        .group_hover(hover_group, |s| s.text_color(rgb(TEXT)))
         .flex_shrink_0()
 }
 pub fn evee_logo(size: f32) -> impl IntoElement {

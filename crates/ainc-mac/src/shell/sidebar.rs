@@ -1,60 +1,80 @@
 use super::*;
 
 impl Shell {
+    fn sidebar_item(
+        &self,
+        route: Route,
+        index: Option<usize>,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let selected = self.session.current() == route;
+        let tint = if selected { TEXT } else { MUTED };
+        let hover_group = format!("sidebar-item-{}", index.unwrap_or(0));
+        self.button(
+            ("nav", index.unwrap_or(0)),
+            route.label(),
+            Control::Navigate(route),
+            cx,
+        )
+        .group(hover_group.clone())
+        .accessibility_id(format!(
+            "nav.{}",
+            route.label().to_lowercase().replace(' ', "-")
+        ))
+        .min_h(type_size(32.))
+        .when(matches!(route, Route::Agents | Route::Home), |s| {
+            s.mt(px(12.))
+        })
+        .px(px(10.))
+        .gap(px(12.))
+        .debug_selector(move || match index {
+            Some(index) => format!("sidebar-nav-{index}"),
+            None => "sidebar-settings".into(),
+        })
+        .text_size(type_size(LABEL_SIZE))
+        .text_color(rgb(tint))
+        .when(selected, |s| {
+            s.bg(rgb(HOVER)).font_weight(FontWeight::MEDIUM)
+        })
+        .child(nav_icon(
+            if route == Route::Assistant {
+                "evee-outline"
+            } else {
+                route.icon()
+            },
+            selected,
+            tint,
+            hover_group,
+        ))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .when_some(index, |s, index| {
+                    s.debug_selector(move || format!("sidebar-label-{index}"))
+                })
+                .child(route.label()),
+        )
+        .when_some(
+            index.filter(|index| self.command_held && *index <= 9),
+            |s, index| {
+                s.child(
+                    shortcut_badge(format!("⌘{index}"))
+                        .flex_shrink_0()
+                        .debug_selector(move || format!("sidebar-badge-{index}")),
+                )
+            },
+        )
+        .when(index.is_none() && self.command_held, |s| {
+            s.child(shortcut_badge("⌘,").flex_shrink_0())
+        })
+    }
+
     pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut nav = column().gap(px(2.));
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
-            let route = page.route;
-            let index = index + 1;
-            nav = nav.child(
-                self.button(
-                    ("nav", index as usize),
-                    route.label(),
-                    Control::Navigate(route),
-                    cx,
-                )
-                .accessibility_id(format!(
-                    "nav.{}",
-                    route.label().to_lowercase().replace(' ', "-")
-                ))
-                .min_h(type_size(32.))
-                .when(matches!(route, Route::Agents | Route::Home), |s| {
-                    s.mt(px(12.))
-                })
-                .px(px(10.))
-                .gap(px(12.))
-                .debug_selector(move || format!("sidebar-nav-{index}"))
-                .text_size(type_size(LABEL_SIZE))
-                .text_color(rgb(MUTED))
-                .when(self.session.current() == route, |s| {
-                    s.bg(rgb(HOVER))
-                        .text_color(rgb(TEXT))
-                        .font_weight(FontWeight::MEDIUM)
-                })
-                .child(nav_icon(
-                    if route == Route::Assistant {
-                        "evee-outline"
-                    } else {
-                        route.icon()
-                    },
-                    self.session.current() == route,
-                ))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .debug_selector(move || format!("sidebar-label-{index}"))
-                        .child(route.label()),
-                )
-                .when(self.command_held && index <= 9, |s| {
-                    s.child(
-                        shortcut_badge(format!("⌘{index}"))
-                            .flex_shrink_0()
-                            .debug_selector(move || format!("sidebar-badge-{index}")),
-                    )
-                }),
-            );
+            nav = nav.child(self.sidebar_item(page.route, Some(index + 1), cx));
         }
         column()
             .w_full()
@@ -110,6 +130,7 @@ impl Shell {
             )
             .child(nav)
             .child(div().flex_1())
+            .child(self.sidebar_item(Route::Settings, None, cx).mb(px(8.)))
             .child(
                 self.button(
                     "profile",

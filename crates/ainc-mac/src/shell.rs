@@ -33,6 +33,7 @@ actions!(
         Choose,
         FocusNext,
         FocusPrevious,
+        OpenSettings,
         Quit
     ]
 );
@@ -530,8 +531,7 @@ impl Shell {
             )
             .child(
                 column()
-                    .px(px(8.))
-                    .pb(px(8.))
+                    .p(px(8.))
                     .when(matches.is_empty(), |s| {
                         s.child(column().p(px(24.)).gap(px(6.)).child("No matches."))
                     })
@@ -842,6 +842,9 @@ impl Render for Shell {
                     this.dispatch(Control::Navigate(route), w, cx);
                 }
             }))
+            .on_action(cx.listener(|this, _: &OpenSettings, w, cx| {
+                this.dispatch(Control::Navigate(Route::Settings), w, cx);
+            }))
             .on_mouse_move(
                 cx.listener(move |this, event: &MouseMoveEvent, window, cx| {
                     if this.resizing.is_some() {
@@ -983,6 +986,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-alt-left", GoBack, Some("Control")),
         KeyBinding::new("cmd-alt-right", GoForward, Some("Control")),
         KeyBinding::new("cmd-k", Search, Some("Control")),
+        KeyBinding::new("cmd-,", OpenSettings, Some("Control")),
         KeyBinding::new("cmd-b", ToggleSidebar, Some("Control")),
         KeyBinding::new("cmd-shift-e", ToggleEvee, Some("Control")),
         KeyBinding::new("escape", Escape, Some("Control")),
@@ -1186,6 +1190,17 @@ mod interaction_tests {
         cx.simulate_keystrokes("cmd-alt-right");
         shell.read_with(cx, |shell, _| {
             assert_eq!(shell.session.current(), Route::Apps)
+        });
+        cx.simulate_keystrokes("cmd-,");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Settings)
+        });
+        cx.simulate_keystrokes("cmd-1");
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let settings = cx.debug_bounds("sidebar-settings").unwrap().center();
+        cx.simulate_click(settings, Modifiers::default());
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Settings)
         });
     }
 
