@@ -43,3 +43,13 @@ pub fn panel() -> Div {
         .border_color(rgb(BORDER))
         .rounded(px(PANEL_RADIUS))
 }
+
+pub fn status_bar() -> Div {
+    panel()
+        .debug_selector(|| "status-bar".into())
+        .flex_row()
+        .items_center()
+        .justify_between()
+        .h(px(10.))
+        .rounded(px(5.))
+}

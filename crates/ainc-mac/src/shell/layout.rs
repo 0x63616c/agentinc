@@ -32,7 +32,15 @@ impl Shell {
                     .min_w_0()
                     .h_full()
                     .gap(px(PANEL_GAP * right_width / right_saved))
-                    .child(center)
+                    .child(
+                        column()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .gap(px(8.))
+                            .child(center)
+                            .child(status_bar()),
+                    )
                     .when(right_width > 0., |row| {
                         row.child(self.pane(right_side, right, right_width))
                     }),
