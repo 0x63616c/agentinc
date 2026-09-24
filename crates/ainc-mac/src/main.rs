@@ -23,6 +23,22 @@ impl log::Log for DiagnosticLog {
     }
     fn flush(&self) {}
 }
+
+fn main_window_options(bounds: Bounds<Pixels>, title: SharedString) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: Some(TitlebarOptions {
+            title: Some(title),
+            appears_transparent: true,
+            traffic_light_position: Some(point(px(18.), px(18.))),
+        }),
+        app_owns_titlebar_drag: true,
+        window_min_size: Some(size(px(800.), px(600.))),
+        app_id: Some("co.worldwidewebb.agentinc".into()),
+        ..Default::default()
+    }
+}
+
 fn main() {
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     let args: Vec<_> = std::env::args_os().skip(1).collect();
@@ -101,21 +117,12 @@ fn main() {
             ]);
             let bounds = Bounds::centered(None, size(px(1360.), px(828.)), cx);
             let result = cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some(
-                            std::env::var("AGENTINC_WINDOW_TITLE")
-                                .unwrap_or_else(|_| "AgentInc".into())
-                                .into(),
-                        ),
-                        appears_transparent: true,
-                        traffic_light_position: Some(point(px(18.), px(18.))),
-                    }),
-                    window_min_size: Some(size(px(800.), px(600.))),
-                    app_id: Some("co.worldwidewebb.agentinc".into()),
-                    ..Default::default()
-                },
+                main_window_options(
+                    bounds,
+                    std::env::var("AGENTINC_WINDOW_TITLE")
+                        .unwrap_or_else(|_| "AgentInc".into())
+                        .into(),
+                ),
                 |window, cx| cx.new(|cx| Shell::new(window, cx)),
             );
             let window = match result {
