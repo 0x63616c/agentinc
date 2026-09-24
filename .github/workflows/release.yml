@@ -1,48 +1,141 @@
 name: Distribution
 on:
   push:
-    branches: [main, fm/agentinc-phase5-distribution]
+    branches: [main]
   workflow_dispatch:
     inputs:
       commit:
-        description: Exact commit with a staged build-COMMIT draft release
+        description: Exact commit to distribute
         required: true
       test:
         type: boolean
         default: true
         description: Sign and notarize into a draft only
-permissions:
-  contents: write
+      build:
+        type: boolean
+        default: true
+        description: Build on homelab-mini (disable to use an existing build-COMMIT draft)
 concurrency:
   group: distribution-${{ inputs.commit || github.sha }}
   cancel-in-progress: false
 jobs:
-  distribute:
+  prepare:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.actor == '0x63616c')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.version.outputs.ready }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
+      - name: Check release trigger
+        id: version
+        env:
+          COMMIT: ${{ inputs.commit || github.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            changed=$(python3 scripts/release/version-changed.py "$BEFORE")
+            echo "ready=$changed" >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          fi
+  native:
+    needs: prepare
+    if: needs.prepare.outputs.ready == 'true' && (github.event_name == 'push' || inputs.build != false)
+    runs-on: [self-hosted, macOS, ARM64, agentinc-release]
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    env:
+      CARGO_BUILD_JOBS: 4
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare pinned build tools inside runner work directory
+        run: |
+          export CARGO_HOME="$RUNNER_WORKSPACE/.cargo"
+          export RUSTUP_HOME="$RUNNER_WORKSPACE/.rustup"
+          export CARGO_TARGET_DIR="$RUNNER_WORKSPACE/.cargo-target"
+          {
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+            echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+          } >> "$GITHUB_ENV"
+          {
+            echo "$HOME/.cargo/bin"
+            echo "$RUNNER_WORKSPACE/release-tools"
+          } >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install 1.98.1 --profile minimal
+          tools="$RUNNER_WORKSPACE/release-tools"
+          mkdir -p "$tools"
+          if [ ! -x "$tools/temporal" ]; then
+            curl --fail --location --output "$tools/temporal.tar.gz" https://github.com/temporalio/cli/releases/download/v1.9.1/temporal_cli_1.9.1_darwin_arm64.tar.gz
+            test "$(shasum -a 256 "$tools/temporal.tar.gz" | cut -d ' ' -f 1)" = 41e0425378fcb4fb5766340b97435e20fe47bbff2d7bf644ec2d51f7662b7c56
+            tar -xzf "$tools/temporal.tar.gz" -C "$tools" temporal
+            rm "$tools/temporal.tar.gz"
+          fi
+          if [ ! -x "$tools/codex" ]; then
+            curl --fail --location --output "$tools/codex.tar.gz" https://github.com/openai/codex/releases/download/rust-v0.155.1/codex-aarch64-apple-darwin.tar.gz
+            test "$(shasum -a 256 "$tools/codex.tar.gz" | cut -d ' ' -f 1)" = 5e5a51470dce2423f9d96bd191d0bbc4cc0e2848a6833df5178eaf47a07a3768
+            tar -xzf "$tools/codex.tar.gz" -C "$tools"
+            mv "$tools/codex-aarch64-apple-darwin" "$tools/codex"
+            rm "$tools/codex.tar.gz"
+          fi
+      - name: Build unsigned native handoff
+        run: |
+          test "$(git rev-parse HEAD)" = '${{ inputs.commit || github.sha }}'
+          python3 scripts/release/measure-build.py cargo xtask release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-${{ inputs.commit || github.sha }}
+          path: .local/release/${{ inputs.commit || github.sha }}/unsigned.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Remove per-release files
+        if: always()
+        run: rm -rf .local/release .local/release-inputs
+  distribute:
+    needs: [prepare, native]
+    if: always() && needs.prepare.outputs.ready == 'true' && (needs.native.result == 'success' || (needs.native.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.build == false))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        if: needs.native.result == 'success'
+        with:
+          name: unsigned-${{ inputs.commit || github.sha }}
+          path: .local/distribution
       - name: Require native handoff
         id: handoff
         env:
           GH_TOKEN: ${{ github.token }}
           COMMIT: ${{ inputs.commit || github.sha }}
-          BEFORE: ${{ github.event.before }}
+          NATIVE_RESULT: ${{ needs.native.result }}
         run: |
-          if [ "$GITHUB_REF" = refs/heads/main ] && [ "$GITHUB_EVENT_NAME" = push ]; then
-            changed=$(python3 scripts/release/version-changed.py "$BEFORE")
-            if [ "$changed" = false ]; then
-              echo 'ready=false' >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          if gh release view "build-$COMMIT" >/dev/null 2>&1; then
+          if [ "$NATIVE_RESULT" = success ]; then
+            test -s .local/distribution/unsigned.tar.gz
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          elif gh release view "build-$COMMIT" >/dev/null 2>&1; then
             echo 'ready=true' >> "$GITHUB_OUTPUT"
           else
             echo 'ready=false' >> "$GITHUB_OUTPUT"
-            echo 'Run cargo xtask release on this commit, upload unsigned.tar.gz to a build-COMMIT draft, then rerun Distribution.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Upload unsigned.tar.gz to a build-COMMIT draft, then rerun Distribution with build=false.' >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Install rcodesign
         if: steps.handoff.outputs.ready == 'true'
@@ -57,6 +150,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           COMMIT: ${{ inputs.commit || github.sha }}
+          NATIVE_RESULT: ${{ needs.native.result }}
           TEST_RELEASE: ${{ github.ref != 'refs/heads/main' || inputs.test == true }}
           APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
           APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
@@ -66,8 +160,13 @@ jobs:
           NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
           UPDATE_SIGNING_KEY_ED25519_PEM: ${{ secrets.UPDATE_SIGNING_KEY_ED25519_PEM }}
         run: |
-          if [ "$TEST_RELEASE" = true ]; then
-            python3 scripts/release/distribute.py --commit "$COMMIT" --test
+          if [ "$NATIVE_RESULT" = success ]; then
+            archive=(--archive .local/distribution/unsigned.tar.gz)
           else
-            python3 scripts/release/distribute.py --commit "$COMMIT"
+            archive=()
+          fi
+          if [ "$TEST_RELEASE" = true ]; then
+            python3 scripts/release/distribute.py --commit "$COMMIT" "${archive[@]}" --test
+          else
+            python3 scripts/release/distribute.py --commit "$COMMIT" "${archive[@]}"
           fi
