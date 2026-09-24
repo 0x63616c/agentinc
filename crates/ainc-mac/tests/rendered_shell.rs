@@ -2,6 +2,8 @@
 // The custom harness imports production modules; their ordinary #[test] functions
 // are not registered here, so test-only imports and native startup code are unused.
 #![allow(dead_code, unused_imports)]
+#[path = "../src/about.rs"]
+mod about;
 #[path = "../src/assistant.rs"]
 mod assistant;
 #[path = "../src/automations.rs"]

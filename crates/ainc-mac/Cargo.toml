@@ -27,6 +27,11 @@ pulldown-cmark = "0.13"
 [build-dependencies]
 cc = "1"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.2"
+objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSResponder"] }
+objc2-foundation = { version = "0.3.2", features = ["NSDictionary", "NSString"] }
+
 [features]
 automation = ["dep:gpui-pilot", "gpui/pilot", "gpui/test-support", "gpui_platform/test-support"]
 rendered-tests = ["gpui/test-support", "gpui_platform/test-support"]

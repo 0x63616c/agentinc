@@ -98,7 +98,7 @@ fn screenshot(client: &mut Client, name: &str, output: &std::path::Path) -> Resu
     for (region, [x0, y0, x1, y1]) in [
         ("header", [150, 10, 1350, 40]),
         ("sidebar", [20, 110, 165, 390]),
-        ("profile", [15, 784, 170, 816]),
+        ("profile", [15, 735, 170, 812]),
         ("Evee", [1110, 56, 1340, 90]),
     ] {
         let mut bright = 0;
@@ -166,6 +166,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     client.call(Command::Hello)?;
     let initial = snap(&mut client)?;
     ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Search"));
+    ensure!(initial.by_id("sidebar.version")?.name.as_deref() == Some("0.1.0-dev"));
     fs::write(
         output.join("initial.json"),
         serde_json::to_vec_pretty(&initial)?,
@@ -444,6 +445,12 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     client.call(Command::Press {
         key: "cmd-k".into(),
     })?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "search.dialog".into(),
+        },
+    )?;
     act(&mut client, "search.input", Some("temporary"))?;
     client.call(Command::Press {
         key: "cmd-a".into(),

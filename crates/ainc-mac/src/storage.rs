@@ -28,10 +28,7 @@ pub(crate) fn discovery_path() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("AINC_DISCOVERY_FILE") {
         return Ok(path.into());
     }
-    Ok(
-        PathBuf::from(std::env::var_os("HOME").context("Home directory unavailable")?)
-            .join("Library/Application Support/Agentinc OS/daemon/api-url"),
-    )
+    Ok(ainc_release::identity::support_dir().join("daemon/api-url"))
 }
 pub async fn client() -> Result<Client> {
     let discovery = discovery_path()?;

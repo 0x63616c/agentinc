@@ -59,10 +59,7 @@ async fn run() -> Result<()> {
         .context("migrate product database")?;
     let legacy = env::var_os("AINC_LEGACY_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env::var_os("HOME").unwrap_or_default())
-                .join("Library/Application Support/Agentinc OS")
-        });
+        .unwrap_or_else(ainc_release::identity::support_dir);
     ainc_daemon::legacy::import(&pool, &legacy)
         .await
         .context("import legacy app data")?;

@@ -132,6 +132,19 @@ pub fn menu_shell(content: impl IntoElement) -> Div {
         .child(content)
 }
 
+pub fn tooltip_shell(content: impl IntoElement) -> Div {
+    div()
+        .px(px(8.))
+        .py(px(6.))
+        .bg(rgb(MENU_SURFACE))
+        .border_1()
+        .border_color(rgb(OVERLAY_BORDER))
+        .rounded(px(MENU_RADIUS))
+        .text_color(rgb(TEXT_MUTED))
+        .text_size(type_size(CAPTION_SIZE))
+        .child(content)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Overlay, OverlayHost};

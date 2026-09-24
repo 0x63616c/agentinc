@@ -1,3 +1,4 @@
+mod about;
 mod assistant;
 mod automations;
 mod components;
@@ -40,7 +41,7 @@ fn main_window_options(
         }),
         app_owns_titlebar_drag: true,
         window_min_size: Some(size(px(800.), px(600.))),
-        app_id: Some("co.worldwidewebb.agentinc".into()),
+        app_id: Some(ainc_release::identity::BUNDLE_ID.into()),
         focus: visible,
         show: visible,
         ..Default::default()
@@ -103,6 +104,7 @@ fn main() {
     gpui_platform::application()
         .with_assets(style::Assets)
         .run(move |cx| {
+            cx.on_action(|_: &about::About, _| about::show());
             updates::init(cx);
             input::bind_keys(cx);
             shell::bind_keys(cx);
@@ -112,6 +114,8 @@ fn main() {
                     disabled: false,
                     name: "AgentInc".into(),
                     items: vec![
+                        MenuItem::action("About AgentInc", about::About),
+                        MenuItem::separator(),
                         MenuItem::action("Check for Updates…", updates::CheckForUpdates),
                         MenuItem::action("Changelog", updates::ShowChangelog),
                         MenuItem::separator(),

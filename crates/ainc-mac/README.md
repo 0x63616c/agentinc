@@ -8,13 +8,13 @@ Requires macOS, Xcode command-line tools and Rust installed through rustup. `rus
 
 ```sh
 crates/ainc-mac/scripts/bundle.sh
-open 'crates/ainc-mac/dist/AgentInc.app'
+open 'crates/ainc-mac/dist/AgentInc Dev.app'
 ```
 
 Run commands from the workspace root. The script builds and ad hoc signs a normal `.app` bundle. Use `crates/ainc-mac/scripts/bundle.sh release` for an optimized build.
 For isolated native automation, `crates/ainc-mac/scripts/bundle.sh automation` builds the opt-in pilot variant; run the script without arguments afterward to restore the ordinary bundle.
 
-Verify a built bundle with `codesign --verify --deep --strict --verbose=2 'crates/ainc-mac/dist/AgentInc.app'`.
+Verify a built bundle with `codesign --verify --deep --strict --verbose=2 'crates/ainc-mac/dist/AgentInc Dev.app'`.
 
 The updater uses AppKit windows for the release offer and download progress. To smoke
 both windows with the checked-in test manifest, without downloading or installing:
@@ -66,7 +66,7 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 
 Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag either side pane's divider to resize it; focus a divider and use Left/Right in 20-point steps or Home to reset its width. The profile opens Settings, including persisted font family and size controls that update the whole app immediately. Default type is two points larger than the original Control scale. The notification bell opens an empty notification panel until notifications are connected.
 
-Sessions still save to `~/Library/Application Support/Agentinc OS/session.json`: the single destination, its history, font family and size, and both side panes' visibility and widths. Older multi-tab sessions restore the active destination into the single space view; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
+Development sessions save to `~/Library/Application Support/AgentInc Development/session.json`; installed production sessions retain `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/phase-5-distribution.md). Older multi-tab sessions restore the active destination into the single space view; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
 
 For an isolated session without changing the regular app's state:
 
@@ -75,7 +75,7 @@ mkdir -p .local
 AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
   AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" \
   AGENTINC_WINDOW_TITLE='Agentinc QA' \
-  'crates/ainc-mac/dist/AgentInc.app/Contents/MacOS/agentinc-os'
+  'crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc'
 ```
 
 ## Source and verification

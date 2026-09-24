@@ -98,12 +98,7 @@ impl Shell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let path = std::env::var_os("AGENTINC_SESSION_PATH")
             .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                std::env::var_os("HOME")
-                    .map(PathBuf::from)
-                    .unwrap_or_default()
-                    .join("Library/Application Support/Agentinc OS/session.json")
-            });
+            .unwrap_or_else(|| ainc_release::identity::support_dir().join("session.json"));
         let store = Some(std::sync::Arc::new(crate::storage::Store::new()));
         let storage_error = None;
         let request = cx

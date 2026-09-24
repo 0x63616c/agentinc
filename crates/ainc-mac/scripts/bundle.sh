@@ -12,9 +12,9 @@ case "$profile" in
     ;;
   *) echo 'usage: crates/ainc-mac/scripts/bundle.sh [debug|release|automation]' >&2; exit 2 ;;
 esac
-bundle='crates/ainc-mac/dist/AgentInc.app'
+bundle='crates/ainc-mac/dist/AgentInc Dev.app'
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
-cp "target/$profile/agentinc-os" "$bundle/Contents/MacOS/agentinc-os"
+cp "target/$profile/agentinc-os" "$bundle/Contents/MacOS/AgentInc"
 cp "target/$profile/aincd" "$bundle/Contents/MacOS/aincd"
 cp "target/$profile/ainc-update" "$bundle/Contents/MacOS/ainc-update"
 codesign --force --sign - "$bundle/Contents/MacOS/aincd"
@@ -27,12 +27,13 @@ cat > "$bundle/Contents/Info.plist" <<PLIST
 <plist version="1.0"><dict>
 <key>CFBundleName</key><string>AgentInc</string>
 <key>CFBundleDisplayName</key><string>AgentInc</string>
-<key>CFBundleIdentifier</key><string>co.worldwidewebb.agentinc</string>
-<key>CFBundleExecutable</key><string>agentinc-os</string>
+<key>CFBundleIdentifier</key><string>co.worldwidewebb.agentinc.dev</string>
+<key>CFBundleExecutable</key><string>AgentInc</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>$version</string>
+<key>CFBundleShortVersionString</key><string>$version-dev</string>
 <key>CFBundleVersion</key><string>$build</string>
+<key>NSHumanReadableCopyright</key><string>Copyright © 2026 Calum Webb</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
