@@ -11,11 +11,16 @@ accesskit = "0.24.0"
 gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit"] }
 gpui_platform = { version = "=0.1.0", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit", "runtime_shaders"] }
 anyhow = "1"
+chrono = "0.4"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-segmentation = "1"
-rusqlite = { version = "0.32", features = ["bundled"] }
+ainc-client = { path = "../ainc-client" }
+reqwest = { version = "0.13", features = ["json"] }
+progenitor-client = "0.14"
+tokio.workspace = true
+uuid.workspace = true
 
 [features]
 automation = ["dep:gpui-pilot", "gpui/pilot", "gpui/test-support", "gpui_platform/test-support"]

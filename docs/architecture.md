@@ -6,7 +6,7 @@ This is the current plan. The contracts are accepted; the components described b
 
 ## Product and workspace
 
-The macOS app is **AgentInc**, bundle ID `co.worldwidewebb.agentinc`. Its GPUI app, assets and acceptance material are imported under `crates/`. Its existing local data path remains in use until a deliberate daemon migration. All crates stay directly under `crates/`; the SDK is the daemon's agent runtime and the app is its real consumer. The SDK crate is `turnkeel`; product packages use the `ainc-` prefix.
+The macOS app is **AgentInc**, bundle ID `co.worldwidewebb.agentinc`. Its GPUI app, assets and acceptance material are imported under `crates/`. The daemon now imports its legacy SQLite product data into Postgres; UI-only preferences remain at the existing support path. See [phase 2 ownership](phase-2-ownership.md) for the implemented boundary and execution limits. All crates stay directly under `crates/`; the SDK is the daemon's agent runtime and the app is its real consumer. The SDK crate is `turnkeel`; product packages use the `ainc-` prefix.
 
 The app remains a native GPUI client with our own components. A generated CLI and authorized agent tools use the same daemon commands. Anything a person can do in the UI must be possible through those tools. A `Route` catalogue names destinations; `Page` views render them. Keep the existing single-tab, dark Control shell and add Tickets and Automations there.
 

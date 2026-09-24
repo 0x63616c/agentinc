@@ -1,3 +1,8 @@
+mod codex;
+mod connection;
+pub mod conversations;
+pub mod legacy;
+pub mod product;
 use axum::{
     Json, Router,
     extract::State,
@@ -61,13 +66,25 @@ async fn ticket_contract(Json(ticket): Json<TicketContract>) -> Json<TicketContr
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(live, ready, version, ticket_contract),
+    paths(
+        live,
+        ready,
+        version,
+        ticket_contract,
+        product::state,
+        product::command
+    ),
     components(schemas(Health, Version, TicketContract))
 )]
 struct Api;
 
 pub fn openapi() -> serde_json::Value {
-    serde_json::to_value(Api::openapi()).expect("OpenAPI serialization")
+    serde_json::to_value({
+        let mut api = Api::openapi();
+        api.merge(connection::openapi());
+        api
+    })
+    .expect("OpenAPI serialization")
 }
 
 pub fn router(pool: PgPool) -> Router {
@@ -90,4 +107,11 @@ async fn server_version_header(mut response: Response) -> Response {
 
 pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     sqlx::migrate!().run(pool).await
+}
+
+pub fn product_router(product: product::Product) -> Router {
+    router(product.pool.clone())
+        .merge(product::router(product.clone()))
+        .merge(connection::router(product))
+        .layer(axum::middleware::map_response(server_version_header))
 }

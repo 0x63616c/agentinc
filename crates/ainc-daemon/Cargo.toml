@@ -15,11 +15,15 @@ anyhow.workspace = true
 axum = "0.8"
 serde.workspace = true
 serde_json.workspace = true
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate"] }
-tokio = { workspace = true, features = ["net"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate", "json"] }
+tokio = { workspace = true, features = ["net", "process", "io-util"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid.workspace = true
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 utoipa = { version = "5.5", features = ["axum_extras"] }
 
 [dev-dependencies]
+reqwest = { version = "0.13", features = ["json"] }
+tempfile = "3"
 tower = { version = "0.5", features = ["util"] }

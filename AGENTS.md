@@ -50,8 +50,8 @@ needs to become its own crate.
 - **SDK** (`turnkeel`) runs *one agent* durably. Boundary test: does this make
   sense with a single agent and no UI? If yes, it belongs in the SDK.
 - **AgentInc** is a personal life-OS app; its native client is at `crates/ainc-mac`.
-  Its legacy support paths remain under `~/Library/Application Support/Agentinc OS/`
-  until the planned daemon storage migration. Rule: anything a human can do in
+  The daemon owns product state; migration, isolated profile overrides and local
+  companion setup are documented in `docs/phase-2-ownership.md`. Rule: anything a human can do in
   its UI, an agent can do through the same tools.
 
 There is no framework layer yet. Extract one from the OS later, once the generic parts

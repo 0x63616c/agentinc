@@ -269,6 +269,7 @@ impl FontChoice {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Session {
+    pub schema_version: u32,
     router: Router,
     pub sidebar: bool,
     pub evee: bool,
@@ -278,6 +279,7 @@ pub struct Session {
 impl Default for Session {
     fn default() -> Self {
         Self {
+            schema_version: 1,
             router: Router::default(),
             sidebar: true,
             evee: true,
@@ -372,10 +374,26 @@ impl Session {
         }
         session
     }
+    pub fn load_checked(path: &Path) -> io::Result<Self> {
+        let text = match fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(error) => return Err(error),
+        };
+        let value: serde_json::Value = serde_json::from_str(&text)?;
+        if value
+            .get("schema_version")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            > 1
+        {
+            return Err(io::Error::other("UI preferences require a newer app"));
+        }
+        Ok(Self::from_json(&text))
+    }
+    #[cfg(test)]
     pub fn load(path: &Path) -> Self {
-        fs::read_to_string(path)
-            .map(|s| Self::from_json(&s))
-            .unwrap_or_default()
+        Self::load_checked(path).unwrap()
     }
     pub fn save(&self, path: &Path) -> io::Result<()> {
         if let Some(parent) = path.parent() {
@@ -436,6 +454,15 @@ mod tests {
         assert_eq!(unknown.current(), Route::Today);
         assert_eq!(unknown.font, FontChoice::HelveticaNeue);
         assert!(!unknown.sidebar);
+    }
+    #[test]
+    fn future_preferences_are_unavailable_and_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.json");
+        let text = r#"{"schema_version":99,"font":"helvetica_neue"}"#;
+        std::fs::write(&path, text).unwrap();
+        assert!(Session::load_checked(&path).is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), text);
     }
     #[test]
     fn search_and_file_round_trip() {

@@ -114,17 +114,22 @@ name = "agentinc-os"
 version = "0.1.0"
 dependencies = [
  "accesskit",
+ "ainc-client",
  "anyhow",
+ "chrono",
  "gpui",
  "gpui-pilot",
  "gpui_platform",
  "image",
  "log",
- "rusqlite",
+ "progenitor-client",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "unicode-segmentation",
+ "uuid",
 ]
 
 [[package]]
@@ -155,6 +160,7 @@ dependencies = [
  "ainc-client",
  "anyhow",
  "clap",
+ "reqwest",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -182,14 +188,18 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "sqlx",
+ "tempfile",
  "tokio",
  "tower",
  "tracing",
  "tracing-subscriber",
  "utoipa",
+ "uuid",
 ]
 
 [[package]]

@@ -60,6 +60,7 @@ pub struct Shell {
     selected: usize,
     notification_items: Vec<Notification>,
     save_error: bool,
+    session_writable: bool,
     resizing_evee: bool,
     grip_opacity: f32,
     grip_animation: Option<(Instant, f32, f32)>,
@@ -85,15 +86,27 @@ impl Shell {
                     .unwrap_or_default()
                     .join("Library/Application Support/Agentinc OS/session.json")
             });
-        let (store, storage_error) = match crate::storage::Store::default_path().and_then(|path| crate::storage::Store::open(&path)) {
-            Ok(store) => (Some(std::rc::Rc::new(store)), None),
-            Err(_) => (None, Some("Local storage is unavailable. Check Application Support permissions and restart.".to_owned())),
-        };
+        let store = Some(std::sync::Arc::new(crate::storage::Store::new()));
+        let storage_error = None;
+        let request = cx
+            .background_executor()
+            .spawn(async { crate::profile::Profile::local() });
+        cx.spawn(async move |this, cx| {
+            let profile = request.await;
+            let _ = this.update(cx, |this, cx| {
+                this.profile = profile;
+                cx.notify();
+            });
+        })
+        .detach();
         Self::with_state(
             path,
             store,
             storage_error,
-            crate::profile::Profile::local(),
+            crate::profile::Profile {
+                name: "Profile".into(),
+                photo: None,
+            },
             window,
             cx,
         )
@@ -101,7 +114,7 @@ impl Shell {
 
     fn with_state(
         path: PathBuf,
-        store: Option<Rc<crate::storage::Store>>,
+        store: Option<std::sync::Arc<crate::storage::Store>>,
         storage_error: Option<String>,
         profile: crate::profile::Profile,
         window: &mut Window,
@@ -143,7 +156,9 @@ impl Shell {
         });
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        let session = Session::load(&path);
+        let loaded = Session::load_checked(&path);
+        let session_writable = loaded.is_ok();
+        let session = loaded.unwrap_or_default();
         let evee_progress = if session.evee { 1. } else { 0. };
         let sidebar_width = if session.sidebar { SIDEBAR } else { 0. };
         Self {
@@ -168,7 +183,8 @@ impl Shell {
             palette_transition: None,
             selected: 0,
             notification_items: Vec::new(),
-            save_error: false,
+            save_error: !session_writable,
+            session_writable,
             resizing_evee: false,
             grip_opacity: 0.,
             grip_animation: None,
@@ -179,7 +195,7 @@ impl Shell {
         let store = crate::storage::Store::open(&path.with_extension("sqlite3")).unwrap();
         Self::with_state(
             path,
-            Some(Rc::new(store)),
+            Some(std::sync::Arc::new(store)),
             None,
             crate::profile::Profile {
                 name: "QA Profile".into(),
@@ -200,6 +216,9 @@ impl Shell {
     }
 
     fn save(&mut self, cx: &mut Context<Self>) {
+        if !self.session_writable {
+            return;
+        }
         self.save_error = match self.session.save(&self.path) {
             Ok(()) => false,
             Err(error) => {

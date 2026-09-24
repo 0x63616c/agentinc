@@ -264,6 +264,8 @@ fn daemon(instance: &Instance) -> Result<()> {
         .args(["run", "-p", "ainc-daemon", "--bin", "aincd"])
         .env("DATABASE_URL", db)
         .env("AINC_DISCOVERY_FILE", discovery)
+        .env("AINC_LEGACY_DIR", local(instance).join("legacy"))
+        .env("AGENTINC_CODEX_HOME", local(instance).join("codex"))
         .status()?;
     if !status.success() {
         bail!("aincd exited with {status}");
@@ -306,6 +308,34 @@ fn generate(root: &Path, check: bool) -> Result<()> {
         }
         Ok(())
     }
+    // Utoipa represents nullable primitives as a JSON Schema type array.
+    // Convert exactly that shape to the OpenAPI 3.0 nullable keyword.
+    fn nullable(value: &mut serde_json::Value) -> Result<()> {
+        match value {
+            serde_json::Value::Object(map) => {
+                if let Some(serde_json::Value::Array(types)) = map.get("type") {
+                    let non_null: Vec<_> =
+                        types.iter().filter(|v| **v != "null").cloned().collect();
+                    if types.len() != 2 || non_null.len() != 1 {
+                        bail!("unsupported schema type union");
+                    }
+                    map.insert("type".into(), non_null[0].clone());
+                    map.insert("nullable".into(), true.into());
+                }
+                for child in map.values_mut() {
+                    nullable(child)?;
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for child in items {
+                    nullable(child)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    nullable(&mut spec)?;
     compatible(&spec)?;
     if let Some(license) = spec["info"]["license"].as_object_mut() {
         license.remove("identifier"); // OpenAPI 3.1 field; name remains for 3.0.3.

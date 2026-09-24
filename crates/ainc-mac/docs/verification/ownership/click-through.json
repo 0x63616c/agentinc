@@ -1,0 +1,47 @@
+{
+  "conversations": [
+    {
+      "id": 4,
+      "title": "New conversation",
+      "snippet": "",
+      "updated": "2026-09-24 04:31",
+      "updated_at": 1790224315
+    },
+    {
+      "id": 3,
+      "title": "Preserved after quit",
+      "snippet": "Daemon completed this reply after the app closed.",
+      "updated": "2026-09-24 04:30",
+      "updated_at": 1790224257
+    }
+  ],
+  "turns": [
+    {
+      "id": 1,
+      "conversation_id": 3,
+      "prompt": "Legacy prompt",
+      "response": "Legacy reply",
+      "error": null,
+      "state": "completed"
+    },
+    {
+      "id": 2,
+      "conversation_id": 3,
+      "prompt": "Finish this after I quit the app.",
+      "response": "Daemon completed this reply after the app closed.",
+      "error": null,
+      "state": "completed"
+    }
+  ],
+  "todos": [
+    {
+      "id": 7,
+      "title": "Imported fixture task",
+      "completed": true
+    }
+  ],
+  "settings": {
+    "model": "fixture",
+    "selected_conversation": 4
+  }
+}

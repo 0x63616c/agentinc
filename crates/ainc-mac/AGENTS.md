@@ -2,6 +2,7 @@
 
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
+- Product ownership and daemon configuration: `../../docs/phase-2-ownership.md`. Native tests must use an isolated daemon discovery file; never import the regular Application Support profile.
 - The native shell scope is in `docs/CONTROL_BUILD_HANDOFF.md`; Evee/Tasks setup, storage and acceptance are in `docs/EVEE_ASSISTANT_HANDOFF.md`. `.lavish/` remains the visual reference.
 - From the workspace root, build the native bundle with `crates/ainc-mac/scripts/bundle.sh`; the pinned toolchain and lockfile are at the workspace root.
 - The opt-in driver setup, protocol, upstream seam and acceptance commands are in `docs/GPUI_PILOT.md`; normal bundles must keep `automation` off.

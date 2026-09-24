@@ -29,7 +29,8 @@ fn main() {
         } else if args.len() == 2 && args[0] == "--gpui-pilot-session" {
             for name in [
                 "AGENTINC_SESSION_PATH",
-                "AGENTINC_DATABASE_PATH",
+                "AINC_DISCOVERY_FILE",
+                "AINC_LEGACY_DIR",
                 "AGENTINC_CODEX_HOME",
                 "AGENTINC_WINDOW_TITLE",
             ] {

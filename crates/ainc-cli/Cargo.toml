@@ -11,6 +11,7 @@ name = "ainc"
 path = "src/main.rs"
 
 [dependencies]
+reqwest = { version = "0.13", features = ["json"] }
 ainc-client = { path = "../ainc-client" }
 anyhow.workspace = true
 clap = { version = "4", features = ["derive"] }

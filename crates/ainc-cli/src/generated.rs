@@ -12,6 +12,12 @@ impl<T: CliConfig> Cli<T> {
         match cmd {
             CliCommand::HealthLive => Self::cli_health_live(),
             CliCommand::HealthReady => Self::cli_health_ready(),
+            CliCommand::ProductCommand => Self::cli_product_command(),
+            CliCommand::ConnectionStatus => Self::cli_connection_status(),
+            CliCommand::ConnectionCancel => Self::cli_connection_cancel(),
+            CliCommand::ConnectionLogin => Self::cli_connection_login(),
+            CliCommand::ConnectionLogout => Self::cli_connection_logout(),
+            CliCommand::ProductState => Self::cli_product_state(),
             CliCommand::TicketContract => Self::cli_ticket_contract(),
             CliCommand::GetVersion => Self::cli_get_version(),
         }
@@ -20,6 +26,44 @@ impl<T: CliConfig> Cli<T> {
         ::clap::Command::new("")
     }
     pub fn cli_health_ready() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_product_command() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("operation-id")
+                    .long("operation-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
+    pub fn cli_connection_status() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_connection_cancel() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_connection_login() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_connection_logout() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_product_state() -> ::clap::Command {
         ::clap::Command::new("")
     }
     pub fn cli_ticket_contract() -> ::clap::Command {
@@ -56,6 +100,12 @@ impl<T: CliConfig> Cli<T> {
         match cmd {
             CliCommand::HealthLive => self.execute_health_live(matches).await,
             CliCommand::HealthReady => self.execute_health_ready(matches).await,
+            CliCommand::ProductCommand => self.execute_product_command(matches).await,
+            CliCommand::ConnectionStatus => self.execute_connection_status(matches).await,
+            CliCommand::ConnectionCancel => self.execute_connection_cancel(matches).await,
+            CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
+            CliCommand::ConnectionLogout => self.execute_connection_logout(matches).await,
+            CliCommand::ProductState => self.execute_product_state(matches).await,
             CliCommand::TicketContract => self.execute_ticket_contract(matches).await,
             CliCommand::GetVersion => self.execute_get_version(matches).await,
         }
@@ -78,6 +128,125 @@ impl<T: CliConfig> Cli<T> {
     pub async fn execute_health_ready(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
         let mut request = self.client.health_ready();
         self.config.execute_health_ready(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_product_command(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.product_command();
+        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
+            request = request.body_map(|body| body.operation_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::CommandRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config.execute_product_command(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_connection_status(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.connection_status();
+        self.config
+            .execute_connection_status(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_connection_cancel(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.connection_cancel();
+        self.config
+            .execute_connection_cancel(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_connection_login(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.connection_login();
+        self.config
+            .execute_connection_login(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_connection_logout(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.connection_logout();
+        self.config
+            .execute_connection_logout(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_product_state(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.product_state();
+        self.config.execute_product_state(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -168,6 +337,48 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_product_command(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ProductCommand,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_connection_status(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ConnectionStatus,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_connection_cancel(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ConnectionCancel,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_connection_login(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ConnectionLogin,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_connection_logout(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ConnectionLogout,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_product_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ProductState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_ticket_contract(
         &self,
         matches: &::clap::ArgMatches,
@@ -187,6 +398,12 @@ pub trait CliConfig {
 pub enum CliCommand {
     HealthLive,
     HealthReady,
+    ProductCommand,
+    ConnectionStatus,
+    ConnectionCancel,
+    ConnectionLogin,
+    ConnectionLogout,
+    ProductState,
     TicketContract,
     GetVersion,
 }
@@ -195,6 +412,12 @@ impl CliCommand {
         vec![
             CliCommand::HealthLive,
             CliCommand::HealthReady,
+            CliCommand::ProductCommand,
+            CliCommand::ConnectionStatus,
+            CliCommand::ConnectionCancel,
+            CliCommand::ConnectionLogin,
+            CliCommand::ConnectionLogout,
+            CliCommand::ProductState,
             CliCommand::TicketContract,
             CliCommand::GetVersion,
         ]
@@ -204,6 +427,12 @@ impl CliCommand {
         match self {
             CliCommand::HealthLive => "health_live",
             CliCommand::HealthReady => "health_ready",
+            CliCommand::ProductCommand => "product_command",
+            CliCommand::ConnectionStatus => "connection_status",
+            CliCommand::ConnectionCancel => "connection_cancel",
+            CliCommand::ConnectionLogin => "connection_login",
+            CliCommand::ConnectionLogout => "connection_logout",
+            CliCommand::ProductState => "product_state",
             CliCommand::TicketContract => "ticket_contract",
             CliCommand::GetVersion => "get_version",
         }
