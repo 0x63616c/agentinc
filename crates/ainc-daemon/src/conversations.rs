@@ -76,7 +76,14 @@ impl Runner {
             models,
         })
     }
-    pub async fn run(mut self) -> Result<()> {
+    pub async fn run(self) -> Result<()> {
+        self.run_until(std::future::pending()).await
+    }
+    pub async fn run_until(
+        mut self,
+        shutdown: impl std::future::Future<Output = ()>,
+    ) -> Result<()> {
+        tokio::pin!(shutdown);
         let mut active = HashSet::new();
         let mut turns = tokio::task::JoinSet::new();
         loop {
@@ -111,6 +118,12 @@ impl Runner {
                 }
             }
             tokio::select! {
+                _ = &mut shutdown => {
+                    turns.shutdown().await;
+                    std::sync::Arc::try_unwrap(self.runtime).map_err(|_| anyhow::anyhow!("runtime still owned during drain"))?.shutdown().await?;
+                    return Ok(());
+                }
+
                 result=self.listener.recv()=>{result?;}
                 Some(result)=turns.join_next(),if !turns.is_empty()=>{active.remove(&result??);}
                 _=tokio::time::sleep(Duration::from_secs(1))=>{sqlx::query("SELECT 1").execute(&mut self.owner).await?;}

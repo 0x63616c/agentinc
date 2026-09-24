@@ -49,6 +49,7 @@ pub struct Shell {
     automations: Entity<crate::automations::AutomationsPage>,
     _automation_subscriptions: Vec<Subscription>,
     _tickets_subscription: Subscription,
+    _update_subscription: Option<Subscription>,
     _assistant_subscriptions: Vec<Subscription>,
     profile: crate::profile::Profile,
     path: PathBuf,
@@ -184,7 +185,11 @@ impl Shell {
         let session = loaded.unwrap_or_default();
         let evee_progress = if session.evee { 1. } else { 0. };
         let sidebar_width = if session.sidebar { SIDEBAR } else { 0. };
-        Self {
+        let update_subscription = cx
+            .try_global::<crate::updates::Updates>()
+            .cloned()
+            .map(|updates| cx.observe(&updates.0, |_, _, cx| cx.notify()));
+        let mut shell = Self {
             session,
             overlays,
             assistant,
@@ -192,6 +197,7 @@ impl Shell {
             automations,
             _automation_subscriptions: automation_subscriptions,
             _tickets_subscription: tickets_subscription,
+            _update_subscription: update_subscription,
             _assistant_subscriptions: assistant_subscriptions,
             profile,
             sidebar_width,
@@ -213,7 +219,9 @@ impl Shell {
             resizing_evee: false,
             grip_opacity: 0.,
             grip_animation: None,
-        }
+        };
+        shell.restore_update_drafts(cx);
+        shell
     }
     #[cfg(test)]
     pub(crate) fn fixture(path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -240,6 +248,42 @@ impl Shell {
         )
     }
 
+    pub(crate) fn flush_for_update(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.session_writable,
+            "Session is not writable; update postponed"
+        );
+        self.session.save(&self.path)?;
+        let drafts = serde_json::json!({
+            "assistant":self.assistant.read(cx).update_drafts(cx)?,
+            "tickets":self.tickets.read(cx).update_drafts(cx)?,
+            "automations":self.automations.read(cx).update_drafts(cx)?,
+        });
+        let path = self.path.with_extension("update-drafts.json");
+        let temporary = path.with_extension("tmp");
+        std::fs::write(&temporary, serde_json::to_vec_pretty(&drafts)?)?;
+        std::fs::rename(temporary, path)?;
+        Ok(())
+    }
+    fn restore_update_drafts(&mut self, cx: &mut Context<Self>) {
+        let path = self.path.with_extension("update-drafts.json");
+        if let Ok(bytes) = std::fs::read(&path) {
+            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                self.assistant.update(cx, |view, cx| {
+                    view.restore_update_drafts(&value["assistant"], cx)
+                });
+                self.tickets.update(cx, |view, cx| {
+                    view.restore_update_drafts(&value["tickets"], cx)
+                });
+                self.automations.update(cx, |view, cx| {
+                    view.restore_update_drafts(&value["automations"], cx)
+                });
+                let _ = std::fs::remove_file(path);
+            } else {
+                self.save_error = true;
+            }
+        }
+    }
     fn save(&mut self, cx: &mut Context<Self>) {
         if !self.session_writable {
             return;
@@ -1022,6 +1066,19 @@ impl Shell {
                                     ),
                             ),
                     )
+                    .when_some(
+                        cx.try_global::<crate::updates::Updates>().cloned(),
+                        |view, updates| {
+                            view.child(
+                                div()
+                                    .mt(px(12.))
+                                    .pt(px(20.))
+                                    .border_t_1()
+                                    .border_color(rgb(BORDER))
+                                    .child(updates.0.update(cx, |this, cx| this.settings(cx))),
+                            )
+                        },
+                    )
                     .child(
                         div()
                             .mt(px(8.))
@@ -1179,6 +1236,29 @@ impl Shell {
 }
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if ainc_client::update_required() {
+            return column()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .gap(px(20.))
+                .bg(rgb(SHELL))
+                .text_color(rgb(TEXT))
+                .child(div().text_size(px(24.)).child("Update to continue"))
+                .child(
+                    div()
+                        .id("required-update")
+                        .role(accesskit::Role::Button)
+                        .aria_label("Check for Updates")
+                        .cursor_pointer()
+                        .px(px(16.))
+                        .py(px(10.))
+                        .bg(rgb(0x292929))
+                        .on_click(|_, _, cx| crate::updates::open(cx, true))
+                        .child("Check for Updates"),
+                )
+                .into_any_element();
+        }
         if reduced_motion() {
             if let Some((_, _, to)) = self.grip_animation.take() {
                 self.grip_opacity = to;
@@ -1403,6 +1483,29 @@ impl Render for Shell {
                     .right_0()
                     .child(self.header(cx)),
             )
+            .when(
+                cx.try_global::<crate::updates::Updates>()
+                    .is_some_and(|updates| updates.0.read(cx).is_ready()),
+                |view| {
+                    view.child(
+                        div()
+                            .id("update-ready")
+                            .accessibility_id("updates.ready")
+                            .role(accesskit::Role::Button)
+                            .aria_label("Update ready")
+                            .absolute()
+                            .bottom(px(16.))
+                            .left(px(220.))
+                            .px(px(16.))
+                            .py(px(10.))
+                            .rounded(px(8.))
+                            .bg(rgb(0x292929))
+                            .cursor_pointer()
+                            .on_click(|_, _, cx| crate::updates::open(cx, false))
+                            .child("Update ready · View update"),
+                    )
+                },
+            )
             .when(self.save_error, |s| {
                 s.child(
                     div()
@@ -1452,6 +1555,7 @@ impl Render for Shell {
                         ),
                 )
             })
+            .into_any_element()
     }
 }
 pub fn bind_keys(cx: &mut App) {

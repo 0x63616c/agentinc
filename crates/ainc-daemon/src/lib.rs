@@ -13,7 +13,7 @@ use axum::{
     Json, Router,
     extract::State,
     http::{HeaderValue, StatusCode},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -59,8 +59,8 @@ async fn ready(State(pool): State<PgPool>) -> Result<Json<Health>, StatusCode> {
 async fn version() -> Json<Version> {
     Json(Version {
         product: "AgentInc".into(),
-        version: env!("CARGO_PKG_VERSION").into(),
-        api: 1,
+        version: ainc_release::VERSION.into(),
+        api: ainc_release::API,
     })
 }
 
@@ -104,13 +104,14 @@ pub fn router(pool: PgPool) -> Router {
         .route("/version", get(version))
         .route("/v1/tickets/contract", post(ticket_contract))
         .with_state(pool)
+        .layer(axum::middleware::from_fn(compatibility))
         .layer(axum::middleware::map_response(server_version_header))
 }
 
 async fn server_version_header(mut response: Response) -> Response {
     response.headers_mut().insert(
         "agent-inc-server",
-        HeaderValue::from_static(concat!("aincd/", env!("CARGO_PKG_VERSION"), " (api 1)")),
+        HeaderValue::from_str(&ainc_release::server_header()).expect("valid product header"),
     );
     response
 }
@@ -125,5 +126,66 @@ pub fn product_router(product: product::Product) -> Router {
         .merge(connection::router(product.clone()))
         .merge(tickets::router(product.clone()))
         .merge(automations::router(product))
+        .layer(axum::middleware::from_fn(compatibility))
         .layer(axum::middleware::map_response(server_version_header))
+}
+
+async fn compatibility(request: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    if request.uri().path().starts_with("/v1/") {
+        let header = request
+            .headers()
+            .get("agent-inc-client")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        if let Err(error) =
+            ainc_release::check_client(header, ainc_release::MIN_CLIENT, ainc_release::API)
+        {
+            return (
+                StatusCode::UPGRADE_REQUIRED,
+                Json(serde_json::json!({"code":error,"message":"Update to continue"})),
+            )
+                .into_response();
+        }
+    }
+    next.run(request).await
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
+    use tower::ServiceExt;
+    #[tokio::test]
+    async fn rejects_before_handler_and_always_returns_server_version() {
+        let app = Router::new()
+            .route("/v1/probe", get(|| async { "accepted" }))
+            .layer(axum::middleware::from_fn(compatibility))
+            .layer(axum::middleware::map_response(server_version_header));
+        for (header, status) in [
+            ("mac/0.0.1 (api 1)", 426),
+            ("mac/9.0.0 (api 2)", 426),
+            ("", 426),
+            (&ainc_release::client_header(), 200),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::get("/v1/probe")
+                        .header("agent-inc-client", header)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status().as_u16(), status);
+            assert!(response.headers().contains_key("agent-inc-server"));
+            if status == 426 {
+                let body = to_bytes(response.into_body(), 4096).await.unwrap();
+                assert!(String::from_utf8_lossy(&body).contains("Update to continue"));
+            }
+        }
+    }
 }

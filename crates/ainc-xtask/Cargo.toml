@@ -11,6 +11,7 @@ name = "xtask"
 path = "src/main.rs"
 
 [dependencies]
+ainc-release = { path = "../ainc-release" }
 ainc-daemon = { path = "../ainc-daemon" }
 anyhow.workspace = true
 openapiv3 = "2"

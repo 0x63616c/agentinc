@@ -1,6 +1,6 @@
+mod local_runtime;
 use anyhow::{Context, Result};
 use sqlx::postgres::PgPoolOptions;
-use std::future::IntoFuture;
 use std::{
     env, fs,
     io::Write,
@@ -9,12 +9,23 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    ainc_release::process::reset_inherited_signals()?;
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run())
+}
+
+async fn run() -> Result<()> {
+    let args: Vec<_> = env::args_os().skip(1).collect();
+    if args.len() == 2 && args[0] == "--local-runtime" {
+        return local_runtime::helper(Path::new(&args[1])).await;
+    }
+    anyhow::ensure!(args.is_empty(), "usage: aincd");
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let database_url = env::var("DATABASE_URL").context("DATABASE_URL is required")?;
     let discovery = env::var("AINC_DISCOVERY_FILE").context("AINC_DISCOVERY_FILE is required")?;
     let lock_path = Path::new(&discovery).with_extension("lock");
     fs::create_dir_all(lock_path.parent().context("discovery directory")?)?;
@@ -27,6 +38,18 @@ async fn main() -> Result<()> {
         .open(lock_path)?;
     lock.try_lock()
         .context("another daemon owns this discovery file")?;
+    let local = if env::var_os("DATABASE_URL").is_none() {
+        Some(
+            local_runtime::ManagedRuntime::start(Path::new(&discovery).with_file_name("runtime"))
+                .await?,
+        )
+    } else {
+        None
+    };
+    let database_url = match &local {
+        Some(local) => local.database_url.clone(),
+        None => env::var("DATABASE_URL")?,
+    };
     let pool = PgPoolOptions::new()
         .connect(&database_url)
         .await
@@ -62,7 +85,9 @@ async fn main() -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     let product = ainc_daemon::product::Product::new(pool.clone(), token.trim().into())?;
-    let config: turnkeel::RuntimeConfig = if let Ok(config) = env::var("AINC_RUNTIME_CONFIG") {
+    let config: turnkeel::RuntimeConfig = if let Some(local) = &local {
+        local.config.clone()
+    } else if let Ok(config) = env::var("AINC_RUNTIME_CONFIG") {
         serde_json::from_str(&config).context("parse AINC_RUNTIME_CONFIG")?
     } else {
         serde_json::from_slice(
@@ -89,12 +114,45 @@ async fn main() -> Result<()> {
     let address = listener.local_addr()?;
     publish_address(Path::new(&discovery), address)?;
     tracing::info!(%address, "AgentInc daemon ready");
-    tokio::select! {
-        result = axum::serve(listener, ainc_daemon::product_router(product)).into_future() => result?,
-        result = runner.run() => result?,
-        result = tickets.run() => result?,
-        result = automations.run() => result?,
-    }
+    let (shutdown, receiver) = tokio::sync::watch::channel(false);
+    let drain_signal = shutdown.clone();
+    let auth = format!("Bearer {}", token.trim());
+    let drain = axum::routing::post(move |headers: axum::http::HeaderMap| {
+        let shutdown = drain_signal.clone();
+        let auth = auth.clone();
+        async move {
+            if headers.get("authorization").and_then(|h| h.to_str().ok()) != Some(auth.as_str()) {
+                return axum::http::StatusCode::UNAUTHORIZED;
+            }
+            let _ = shutdown.send(true);
+            axum::http::StatusCode::ACCEPTED
+        }
+    });
+    let signal_task = tokio::spawn(async move {
+        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = term.recv() => {} }
+        let _ = shutdown.send(true);
+        anyhow::Ok(())
+    });
+    let result = tokio::try_join!(
+        async {
+            axum::serve(
+                listener,
+                ainc_daemon::product_router(product).route("/internal/drain", drain),
+            )
+            .with_graceful_shutdown(stopping(receiver.clone()))
+            .await
+            .map_err(anyhow::Error::from)
+        },
+        runner.run_until(stopping(receiver.clone())),
+        tickets.run_until(stopping(receiver.clone())),
+        automations.run_until(stopping(receiver.clone())),
+    );
+    signal_task.abort();
+    let _ = fs::remove_file(&discovery);
+    result?;
+    pool.close().await;
+    drop(local);
     Ok(())
 }
 
@@ -105,4 +163,8 @@ fn publish_address(path: &Path, address: SocketAddr) -> Result<()> {
     fs::write(&temporary, format!("http://{address}\n"))?;
     fs::rename(temporary, path)?;
     Ok(())
+}
+
+async fn stopping(mut receiver: tokio::sync::watch::Receiver<bool>) {
+    let _ = receiver.wait_for(|stopping| *stopping).await;
 }

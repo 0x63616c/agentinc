@@ -4,10 +4,10 @@ cd "$(dirname "$0")/../../.."
 # Debug is sufficient for a local, inspectable first increment. Pass release for optimization.
 profile=${1:-debug}
 case "$profile" in
-  debug) cargo build --locked -p agentinc-os -p ainc-daemon ;;
-  release) cargo build --locked -p agentinc-os -p ainc-daemon --release ;;
+  debug) cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release --bins ;;
+  release) cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release --bins --release ;;
   automation)
-    cargo build --locked -p agentinc-os -p ainc-daemon -p gpui-pilot-cli --features agentinc-os/automation
+    cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release --bins -p gpui-pilot-cli --features agentinc-os/automation
     profile=debug
     ;;
   *) echo 'usage: crates/ainc-mac/scripts/bundle.sh [debug|release|automation]' >&2; exit 2 ;;
@@ -16,9 +16,12 @@ bundle='crates/ainc-mac/dist/AgentInc.app'
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 cp "target/$profile/agentinc-os" "$bundle/Contents/MacOS/agentinc-os"
 cp "target/$profile/aincd" "$bundle/Contents/MacOS/aincd"
+cp "target/$profile/ainc-update" "$bundle/Contents/MacOS/ainc-update"
 codesign --force --sign - "$bundle/Contents/MacOS/aincd"
 cp crates/ainc-mac/assets/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
-cat > "$bundle/Contents/Info.plist" <<'PLIST'
+version=$(cargo metadata --no-deps --format-version=1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ainc-release"))')
+build=$(git rev-list --count HEAD)
+cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -28,8 +31,8 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <key>CFBundleExecutable</key><string>agentinc-os</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>$version</string>
+<key>CFBundleVersion</key><string>$build</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>

@@ -1,0 +1,35 @@
+[package]
+name = "ainc-release"
+# Authoritative product version. SDK versions are independent.
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+semver = { version = "1", features = ["serde"] }
+ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
+base64 = "0.22"
+sha2 = "0.10"
+
+reqwest = { version = "0.13", features = ["json", "stream"] }
+futures.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+flate2 = "1"
+tar = "0.4"
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "ainc-update"
+path = "src/bin/update.rs"
+
+[[bin]]
+name = "ainc-release-manifest"
+path = "src/bin/manifest.rs"

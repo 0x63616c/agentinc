@@ -68,6 +68,32 @@ pub enum Navigation {
 }
 impl EventEmitter<Navigation> for AssistantPage {}
 impl AssistantPage {
+    pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
+        anyhow::ensure!(
+            !self.pending,
+            "Wait for the current change to finish before installing"
+        );
+        Ok(
+            serde_json::json!({"conversation":self.conversation,"input": self.input.read(cx).content.to_string(), "rename_input": self.rename_input.read(cx).content.to_string()}),
+        )
+    }
+    pub(crate) fn restore_update_drafts(
+        &mut self,
+        value: &serde_json::Value,
+        cx: &mut Context<Self>,
+    ) {
+        if let Ok(value) = serde_json::from_value(value["conversation"].clone()) {
+            self.conversation = value;
+        }
+        if let Some(text) = value["input"].as_str() {
+            self.input.update(cx, |input, cx| input.set_text(text, cx));
+        }
+        if let Some(text) = value["rename_input"].as_str() {
+            self.rename_input
+                .update(cx, |input, cx| input.set_text(text, cx));
+        }
+    }
+
     pub fn new(
         store: Option<Arc<Store>>,
         storage_error: Option<String>,

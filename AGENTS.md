@@ -104,6 +104,8 @@ wants. To wait for a session to finish a turn, read `session.events()` until
 Add a test for every behaviour change in the loop. The test should not mention Temporal;
 if it has to, the public API has leaked.
 
+Personal packaging, update signing and bundled runtime ownership: [docs/phase-5-distribution.md](docs/phase-5-distribution.md).
+
 Stable runtime deployment and process-recovery checks: [docs/phase-3-runtime.md](docs/phase-3-runtime.md).
 
 Verify with `cargo test` and `cargo clippy --all-targets`. Both should be clean.

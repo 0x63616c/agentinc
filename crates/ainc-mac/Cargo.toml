@@ -6,6 +6,7 @@ rust-version = "1.98"
 publish = false
 
 [dependencies]
+ainc-release = { path = "../ainc-release" }
 gpui-pilot = { path = "../gpui-pilot", optional = true, features = ["host"] }
 accesskit = "0.24.0"
 gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit"] }

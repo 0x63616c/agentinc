@@ -9,6 +9,7 @@ mod shell;
 mod storage;
 mod style;
 mod tickets;
+mod updates;
 use gpui::*;
 use shell::*;
 struct DiagnosticLog;
@@ -22,6 +23,7 @@ impl log::Log for DiagnosticLog {
     fn flush(&self) {}
 }
 fn main() {
+    ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     #[cfg(feature = "automation")]
     let pilot_directory = {
@@ -63,6 +65,7 @@ fn main() {
     gpui_platform::application()
         .with_assets(style::Assets)
         .run(move |cx| {
+            updates::init(cx);
             input::bind_keys(cx);
             shell::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
@@ -71,6 +74,9 @@ fn main() {
                     disabled: false,
                     name: "AgentInc".into(),
                     items: vec![
+                        MenuItem::action("Check for Updates…", updates::CheckForUpdates),
+                        MenuItem::action("Changelog", updates::ShowChangelog),
+                        MenuItem::separator(),
                         MenuItem::os_submenu("Services", SystemMenuType::Services),
                         MenuItem::separator(),
                         MenuItem::action("Quit AgentInc", Quit),
@@ -119,6 +125,7 @@ fn main() {
                     return;
                 }
             };
+            cx.set_global(updates::UpdateHost(window));
             #[cfg(feature = "automation")]
             if let Some(directory) = pilot_directory {
                 let title = std::env::var("AGENTINC_WINDOW_TITLE").expect("validated pilot title");

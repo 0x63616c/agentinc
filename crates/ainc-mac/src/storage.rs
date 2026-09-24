@@ -13,7 +13,7 @@ use anyhow::bail;
 use anyhow::{Context, Result};
 use std::{
     future::Future,
-    os::unix::process::CommandExt,
+    os::unix::{fs::OpenOptionsExt, process::CommandExt},
     path::PathBuf,
     sync::{Mutex, OnceLock},
 };
@@ -24,7 +24,7 @@ pub fn background<T>(future: impl Future<Output = Result<T>>) -> Result<T> {
         .get_or_init(|| tokio::runtime::Runtime::new().expect("HTTP runtime"))
         .block_on(future)
 }
-fn discovery_path() -> Result<PathBuf> {
+pub(crate) fn discovery_path() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("AINC_DISCOVERY_FILE") {
         return Ok(path.into());
     }
@@ -58,18 +58,24 @@ pub async fn client() -> Result<Client> {
                 binary.exists(),
                 "Companion daemon missing. Start the development stack or reinstall AgentInc."
             );
-            let database = std::env::var("AINC_DATABASE_URL").context(
-                "Daemon unavailable. Start the local stack or configure AINC_DATABASE_URL.",
-            )?;
-            std::process::Command::new(binary)
+            let mut command = std::process::Command::new(binary);
+            if let Ok(database) = std::env::var("AINC_DATABASE_URL") {
+                command.env("DATABASE_URL", database);
+            }
+            std::fs::create_dir_all(discovery.parent().context("discovery directory")?)?;
+            let log = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .mode(0o600)
+                .open(discovery.with_file_name("daemon.log"))?;
+            ainc_release::process::prepare_child(&mut command)
                 .process_group(0)
-                .env("DATABASE_URL", database)
                 .env("AINC_DISCOVERY_FILE", &discovery)
                 .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+                .stdout(log.try_clone()?)
+                .stderr(log)
                 .spawn()?;
-            for _ in 0..100 {
+            for _ in 0..1200 {
                 if let Ok(url) = std::fs::read_to_string(&discovery)
                     && probe
                         .get(format!("{}/health/ready", url.trim()))

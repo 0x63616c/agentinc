@@ -469,6 +469,39 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     ensure!(
         matches!(timeout.result, Reply::Error { error, snapshot: Some(_) } if error.code == "deadline_exceeded")
     );
+    act(&mut client, "profile", None)?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "updates.check".into(),
+        },
+    )?;
+    act(&mut client, "updates.auto", None)?;
+    wait(
+        &mut client,
+        Condition::Name {
+            author_id: "updates.auto".into(),
+            equals: "Automatic checks: Off".into(),
+        },
+    )?;
+    act(&mut client, "updates.auto", None)?;
+    wait(
+        &mut client,
+        Condition::Name {
+            author_id: "updates.auto".into(),
+            equals: "Automatic checks: On".into(),
+        },
+    )?;
+    act(&mut client, "updates.interval", None)?;
+    wait(
+        &mut client,
+        Condition::Name {
+            author_id: "updates.interval".into(),
+            equals: "Check weekly".into(),
+        },
+    )?;
+    act(&mut client, "updates.interval", None)?;
+    screenshot(&mut client, "update-settings", &output)?;
     let metrics = serde_json::json!({
         "snapshot": latency(&mut client, Command::Snapshot, 100)?,
         "press_and_committed_frame": latency(&mut client, Command::Press { key: "escape".into() }, 50)?,
