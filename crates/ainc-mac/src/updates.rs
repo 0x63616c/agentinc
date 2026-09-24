@@ -1,5 +1,5 @@
 //! App-owned update UI. It remains available when the product backend is down.
-use crate::style::*;
+use crate::{components::*, style::*};
 use ainc_release::{
     Manifest, SignedManifest,
     updater::{self, Preferences},
@@ -275,69 +275,100 @@ impl UpdateView {
             .child(label)
     }
     pub fn settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        column()
-            .gap(px(12.))
-            .child(div().text_size(type_size(16.)).child("Software updates"))
-            .child(self.message.clone())
-            .child(self.button(
-                "updates.check",
-                "Check for Updates",
-                |this, _, cx| this.check(true, cx),
-                cx,
-            ))
-            .child(self.button(
-                "updates.auto",
-                if self.preferences.automatic_checks {
-                    "Automatic checks: On"
-                } else {
-                    "Automatic checks: Off"
-                },
-                |this, _, cx| {
-                    this.preferences.automatic_checks = !this.preferences.automatic_checks;
-                    this.save();
-                    cx.notify();
-                },
-                cx,
-            ))
-            .child(self.button(
-                "updates.interval",
-                if self.preferences.interval_hours == 24 {
-                    "Check daily"
-                } else {
-                    "Check weekly"
-                },
-                |this, _, cx| {
-                    this.preferences.interval_hours = if this.preferences.interval_hours == 24 {
-                        168
-                    } else {
-                        24
-                    };
-                    this.save();
-                    cx.notify();
-                },
-                cx,
-            ))
-            .child(self.button(
-                "updates.download",
-                if self.preferences.automatic_download {
-                    "Automatic download: On"
-                } else {
-                    "Automatic download: Off"
-                },
-                |this, _, cx| {
-                    this.preferences.automatic_download = !this.preferences.automatic_download;
-                    this.save();
-                    cx.notify();
-                },
-                cx,
-            ))
-            .child(self.button(
-                "updates.notes",
-                "Release Notes and Changelog",
-                |_, _, cx| open(cx, false),
-                cx,
-            ))
-            .into_any_element()
+        settings_section(
+            "Software updates",
+            column()
+                .child(settings_row(
+                    "Updates",
+                    self.message.clone(),
+                    settings_button(
+                        "updates.check",
+                        "Check Now",
+                        !self.busy,
+                        |this: &mut Self, _, cx| this.check(true, cx),
+                        cx,
+                    ),
+                ))
+                .child(settings_divider())
+                .child(settings_row(
+                    "Automatic checks",
+                    "Check for new versions in the background.",
+                    settings_switch(
+                        "updates.auto",
+                        "Automatic checks",
+                        self.preferences.automatic_checks,
+                        true,
+                        |this: &mut Self, _, cx| {
+                            this.preferences.automatic_checks = !this.preferences.automatic_checks;
+                            this.save();
+                            cx.notify();
+                        },
+                        cx,
+                    ),
+                ))
+                .child(settings_divider())
+                .child(settings_row(
+                    "Check frequency",
+                    "Choose how often AgentInc checks for updates.",
+                    settings_segments([
+                        settings_segment(
+                            "updates.daily",
+                            "Daily",
+                            self.preferences.interval_hours == 24,
+                            true,
+                            |this: &mut Self, _, cx| {
+                                this.preferences.interval_hours = 24;
+                                this.save();
+                                cx.notify();
+                            },
+                            cx,
+                        ),
+                        settings_segment(
+                            "updates.weekly",
+                            "Weekly",
+                            self.preferences.interval_hours != 24,
+                            true,
+                            |this: &mut Self, _, cx| {
+                                this.preferences.interval_hours = 168;
+                                this.save();
+                                cx.notify();
+                            },
+                            cx,
+                        ),
+                    ]),
+                ))
+                .child(settings_divider())
+                .child(settings_row(
+                    "Automatic download",
+                    "Download new versions when they become available.",
+                    settings_switch(
+                        "updates.download",
+                        "Automatic download",
+                        self.preferences.automatic_download,
+                        true,
+                        |this: &mut Self, _, cx| {
+                            this.preferences.automatic_download =
+                                !this.preferences.automatic_download;
+                            this.save();
+                            cx.notify();
+                        },
+                        cx,
+                    ),
+                ))
+                .child(settings_divider())
+                .child(settings_row(
+                    "Release notes",
+                    "See what changed in the latest version.",
+                    settings_button(
+                        "updates.notes",
+                        "View Changelog",
+                        true,
+                        |_: &mut Self, _, cx| open(cx, false),
+                        cx,
+                    ),
+                )),
+        )
+        .into_any_element()
     }
 }
 impl Render for UpdateView {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::*;
 
 impl Shell {
     pub(super) fn main_area(&self, content: AnyElement, cx: &mut Context<Self>) -> Div {
@@ -163,121 +164,76 @@ impl Shell {
             );
         }
         if route == Route::Settings {
-            page = page.w_full().max_w(px(640.)).child(
+            page = page.w_full().max_w(px(760.)).child(
                 column()
-                    .gap(px(16.))
-                    .child(
-                        div()
-                            .text_size(type_size(16.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Appearance"),
-                    )
-                    .child(
-                        row()
-                            .justify_between()
-                            .gap(px(16.))
-                            .child(div().child("Font"))
-                            .child(
-                                row()
-                                    .p(px(4.))
-                                    .gap(px(2.))
-                                    .rounded(px(8.))
-                                    .bg(rgb(SURFACE_SEGMENT))
-                                    .border_1()
-                                    .border_color(rgb(BORDER))
-                                    .child(
-                                        self.button(
-                                            "font-system",
-                                            "System font",
-                                            Control::Font(FontChoice::System),
-                                            cx,
-                                        )
-                                        .min_h(type_size(32.))
-                                        .px(px(11.))
-                                        .bg(rgb(if self.session.font == FontChoice::System {
-                                            SELECTED_SEGMENT
-                                        } else {
-                                            SURFACE_SEGMENT
-                                        }))
-                                        .child("System · SF Pro"),
-                                    )
-                                    .child(
-                                        self.button(
-                                            "font-helvetica",
-                                            "Helvetica Neue",
-                                            Control::Font(FontChoice::HelveticaNeue),
-                                            cx,
-                                        )
-                                        .min_h(type_size(32.))
-                                        .px(px(11.))
-                                        .bg(rgb(
-                                            if self.session.font == FontChoice::HelveticaNeue {
-                                                SELECTED_SEGMENT
-                                            } else {
-                                                SURFACE_SEGMENT
-                                            },
-                                        ))
-                                        .child("Helvetica Neue"),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        row()
-                            .justify_between()
-                            .gap(px(16.))
-                            .child(div().child("Font size"))
-                            .child(
-                                row()
-                                    .p(px(4.))
-                                    .gap(px(2.))
-                                    .rounded(px(8.))
-                                    .bg(rgb(SURFACE_SEGMENT))
-                                    .border_1()
-                                    .border_color(rgb(BORDER))
-                                    .children(FontSize::ALL.into_iter().enumerate().map(
-                                        |(index, (size, label))| {
-                                            self.button(
-                                                ("font-size", index),
-                                                label,
-                                                Control::FontSize(size),
+                    .gap(px(18.))
+                    .child(settings_section(
+                        "Appearance",
+                        column()
+                            .child(settings_row(
+                                "Font",
+                                "Choose the typeface used throughout AgentInc.",
+                                settings_segments([
+                                    settings_segment(
+                                        "font-system",
+                                        "System · SF Pro",
+                                        self.session.font == FontChoice::System,
+                                        true,
+                                        |this: &mut Self, window, cx| {
+                                            this.dispatch(
+                                                Control::Font(FontChoice::System),
+                                                window,
                                                 cx,
                                             )
-                                            .min_h(type_size(32.))
-                                            .px(px(11.))
-                                            .bg(rgb(if self.session.font_size == size {
-                                                SELECTED_SEGMENT
-                                            } else {
-                                                SURFACE_SEGMENT
-                                            }))
-                                            .child(label)
                                         },
-                                    )),
-                            ),
-                    )
+                                        cx,
+                                    ),
+                                    settings_segment(
+                                        "font-helvetica",
+                                        "Helvetica Neue",
+                                        self.session.font == FontChoice::HelveticaNeue,
+                                        true,
+                                        |this: &mut Self, window, cx| {
+                                            this.dispatch(
+                                                Control::Font(FontChoice::HelveticaNeue),
+                                                window,
+                                                cx,
+                                            )
+                                        },
+                                        cx,
+                                    ),
+                                ]),
+                            ))
+                            .child(settings_divider())
+                            .child(settings_row(
+                                "Font size",
+                                "Set the scale of text across the app.",
+                                settings_segments(FontSize::ALL.into_iter().enumerate().map(
+                                    |(index, (size, label))| {
+                                        settings_segment(
+                                            ("font-size", index),
+                                            label,
+                                            self.session.font_size == size,
+                                            true,
+                                            move |this: &mut Self, window, cx| {
+                                                this.dispatch(Control::FontSize(size), window, cx)
+                                            },
+                                            cx,
+                                        )
+                                    },
+                                )),
+                            )),
+                    ))
                     .when_some(
                         cx.try_global::<crate::updates::Updates>().cloned(),
                         |view, updates| {
-                            view.child(
-                                div()
-                                    .mt(px(12.))
-                                    .pt(px(20.))
-                                    .border_t_1()
-                                    .border_color(rgb(BORDER))
-                                    .child(updates.0.update(cx, |this, cx| this.settings(cx))),
-                            )
+                            view.child(updates.0.update(cx, |this, cx| this.settings(cx)))
                         },
                     )
-                    .child(
-                        div()
-                            .mt(px(8.))
-                            .pt(px(28.))
-                            .border_t_1()
-                            .border_color(rgb(BORDER))
-                            .text_size(type_size(16.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Accounts & connections"),
-                    )
-                    .child(self.assistant.update(cx, |this, cx| this.settings_view(cx))),
+                    .child(settings_section(
+                        "Accounts & connections",
+                        self.assistant.update(cx, |this, cx| this.settings_view(cx)),
+                    )),
             );
         } else if route == Route::Assistant {
             page = page.child(

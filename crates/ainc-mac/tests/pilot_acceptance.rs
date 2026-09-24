@@ -477,30 +477,13 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         },
     )?;
     act(&mut client, "updates.auto", None)?;
-    wait(
-        &mut client,
-        Condition::Name {
-            author_id: "updates.auto".into(),
-            equals: "Automatic checks: Off".into(),
-        },
-    )?;
+    ensure!(snap(&mut client)?.by_id("updates.auto")?.checked == Some(false));
     act(&mut client, "updates.auto", None)?;
-    wait(
-        &mut client,
-        Condition::Name {
-            author_id: "updates.auto".into(),
-            equals: "Automatic checks: On".into(),
-        },
-    )?;
-    act(&mut client, "updates.interval", None)?;
-    wait(
-        &mut client,
-        Condition::Name {
-            author_id: "updates.interval".into(),
-            equals: "Check weekly".into(),
-        },
-    )?;
-    act(&mut client, "updates.interval", None)?;
+    ensure!(snap(&mut client)?.by_id("updates.auto")?.checked == Some(true));
+    act(&mut client, "updates.weekly", None)?;
+    ensure!(snap(&mut client)?.by_id("updates.weekly")?.checked == Some(true));
+    act(&mut client, "updates.daily", None)?;
+    ensure!(snap(&mut client)?.by_id("updates.daily")?.checked == Some(true));
     screenshot(&mut client, "update-settings", &output)?;
     let metrics = serde_json::json!({
         "snapshot": latency(&mut client, Command::Snapshot, 100)?,

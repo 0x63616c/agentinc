@@ -6,6 +6,8 @@
 mod assistant;
 #[path = "../src/automations.rs"]
 mod automations;
+#[path = "../src/components.rs"]
+mod components;
 #[path = "../src/evee.rs"]
 mod evee;
 #[path = "../src/input.rs"]
