@@ -2,6 +2,14 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
+pub const PANE_WIDTHS: [(f32, f32, f32); 2] = [(150., 320., 178.), (220., 480., 258.)];
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PanePreference {
+    pub open: bool,
+    pub width: f32,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Route {
@@ -282,9 +290,7 @@ impl FontChoice {
 pub struct Session {
     pub schema_version: u32,
     router: Router,
-    pub sidebar: bool,
-    pub evee: bool,
-    pub evee_width: f32,
+    pub panes: [PanePreference; 2],
     pub font: FontChoice,
 }
 impl Default for Session {
@@ -292,9 +298,16 @@ impl Default for Session {
         Self {
             schema_version: 1,
             router: Router::default(),
-            sidebar: true,
-            evee: true,
-            evee_width: 258.,
+            panes: [
+                PanePreference {
+                    open: true,
+                    width: PANE_WIDTHS[0].2,
+                },
+                PanePreference {
+                    open: true,
+                    width: PANE_WIDTHS[1].2,
+                },
+            ],
             font: FontChoice::System,
         }
     }
@@ -317,14 +330,30 @@ impl Session {
             return Self::default();
         };
         let mut session = Self::default();
-        if let Some(sidebar) = value.get("sidebar").and_then(|v| v.as_bool()) {
-            session.sidebar = sidebar;
-        }
-        if let Some(evee) = value.get("evee").and_then(|v| v.as_bool()) {
-            session.evee = evee;
-        }
-        if let Some(width) = value.get("evee_width").and_then(|v| v.as_f64()) {
-            session.evee_width = (width as f32).clamp(220., 480.);
+        if let Some(panes) = value.get("panes").and_then(|v| v.as_array()) {
+            for (index, pane) in session.panes.iter_mut().enumerate() {
+                if let Some(saved) = panes.get(index) {
+                    if let Some(open) = saved.get("open").and_then(|v| v.as_bool()) {
+                        pane.open = open;
+                    }
+                    if let Some(width) = saved.get("width").and_then(|v| v.as_f64()) {
+                        pane.width =
+                            (width as f32).clamp(PANE_WIDTHS[index].0, PANE_WIDTHS[index].1);
+                    }
+                }
+            }
+        } else {
+            for (index, open_key, width_key) in
+                [(0, "sidebar", "sidebar_width"), (1, "evee", "evee_width")]
+            {
+                if let Some(open) = value.get(open_key).and_then(|v| v.as_bool()) {
+                    session.panes[index].open = open;
+                }
+                if let Some(width) = value.get(width_key).and_then(|v| v.as_f64()) {
+                    session.panes[index].width =
+                        (width as f32).clamp(PANE_WIDTHS[index].0, PANE_WIDTHS[index].1);
+                }
+            }
         }
         if let Some(font) = value
             .get("font")
@@ -454,9 +483,9 @@ mod tests {
             r#"{"tabs":["today","evee","home"],"active":1,"sidebar":false,"font":"helvetica_neue","evee_width":390}"#,
         );
         assert_eq!(s.current(), Route::Assistant);
-        assert!(!s.sidebar);
+        assert!(!s.panes[0].open);
         assert_eq!(s.font, FontChoice::HelveticaNeue);
-        assert_eq!(s.evee_width, 390.);
+        assert_eq!(s.panes[1].width, 390.);
         assert_eq!(
             serde_json::to_string(&Route::Assistant).unwrap(),
             "\"evee\""
@@ -465,7 +494,7 @@ mod tests {
             Session::from_json(r#"{"tabs":["future"],"font":"helvetica_neue","sidebar":false}"#);
         assert_eq!(unknown.current(), Route::Today);
         assert_eq!(unknown.font, FontChoice::HelveticaNeue);
-        assert!(!unknown.sidebar);
+        assert!(!unknown.panes[0].open);
     }
     #[test]
     fn future_preferences_are_unavailable_and_preserved() {
@@ -475,6 +504,24 @@ mod tests {
         std::fs::write(&path, text).unwrap();
         assert!(Session::load_checked(&path).is_err());
         assert_eq!(std::fs::read_to_string(path).unwrap(), text);
+    }
+    #[test]
+    fn sidebar_width_is_ui_session_state_and_clamped_on_restore() {
+        let mut session = Session::default();
+        assert_eq!(session.panes[0].width, PANE_WIDTHS[0].2);
+        session.panes[0].width = 286.;
+        session.panes[0].open = false;
+        let restored = Session::from_json(&serde_json::to_string(&session).unwrap());
+        assert_eq!(restored.panes[0].width, 286.);
+        assert!(!restored.panes[0].open);
+        assert_eq!(
+            Session::from_json(r#"{"sidebar_width":100}"#).panes[0].width,
+            PANE_WIDTHS[0].0
+        );
+        assert_eq!(
+            Session::from_json(r#"{"sidebar_width":900}"#).panes[0].width,
+            PANE_WIDTHS[0].1
+        );
     }
     #[test]
     fn search_and_file_round_trip() {
