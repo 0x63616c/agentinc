@@ -117,7 +117,14 @@ impl Runner {
             owner,
         })
     }
-    pub async fn run(mut self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<()> {
+        self.run_until(std::future::pending()).await
+    }
+    pub async fn run_until(
+        mut self,
+        shutdown: impl std::future::Future<Output = ()>,
+    ) -> anyhow::Result<()> {
+        tokio::pin!(shutdown);
         let mut active = HashSet::new();
         let mut results = tokio::task::JoinSet::new();
         loop {
@@ -143,6 +150,12 @@ impl Runner {
                 }
             }
             tokio::select! {
+                _ = &mut shutdown => {
+                    results.shutdown().await;
+                    std::sync::Arc::try_unwrap(self.runtime).map_err(|_| anyhow::anyhow!("runtime still owned during drain"))?.shutdown().await?;
+                    return Ok(());
+                }
+
                 notification=self.listener.recv()=> {notification?;}
                 Some(result)=results.join_next(),if !results.is_empty()=> {active.remove(&result??);}
                 _=tokio::time::sleep(std::time::Duration::from_secs(1))=> {

@@ -362,7 +362,8 @@ fn generate(root: &Path, check: bool) -> Result<()> {
     settings
         .with_interface(InterfaceStyle::Builder)
         .with_derive("schemars::JsonSchema")
-        .with_pre_hook_async(syn::parse_quote!(crate::client_header));
+        .with_pre_hook_async(syn::parse_quote!(crate::client_header))
+        .with_post_hook_async(syn::parse_quote!(crate::server_compatibility));
     let mut generator = Generator::new(&settings);
     fn format(source: String) -> Result<String> {
         // Progenitor emits block-doc examples whose fences rustfmt indents into
@@ -415,6 +416,14 @@ fn main() -> Result<()> {
     let root = root()?;
     let instance = identity(&root)?;
     match operation.as_str() {
+        "release" => {
+            let status = Command::new("python3")
+                .arg(root.join("scripts/release/prepare.py"))
+                .args(args)
+                .status()?;
+            anyhow::ensure!(status.success(), "release preparation failed");
+            Ok(())
+        }
         "generate" => generate(&root, args.next().as_deref() == Some("--check")),
         "dev" => {
             let mut instance = write_instance(&instance)?;

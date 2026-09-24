@@ -9,6 +9,7 @@ mod shell;
 mod storage;
 mod style;
 mod tickets;
+mod updates;
 use gpui::*;
 use shell::*;
 struct DiagnosticLog;
@@ -63,6 +64,7 @@ fn main() {
     gpui_platform::application()
         .with_assets(style::Assets)
         .run(move |cx| {
+            updates::init(cx);
             input::bind_keys(cx);
             shell::bind_keys(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
@@ -71,6 +73,9 @@ fn main() {
                     disabled: false,
                     name: "AgentInc".into(),
                     items: vec![
+                        MenuItem::action("Check for Updates…", updates::CheckForUpdates),
+                        MenuItem::action("Changelog", updates::ShowChangelog),
+                        MenuItem::separator(),
                         MenuItem::os_submenu("Services", SystemMenuType::Services),
                         MenuItem::separator(),
                         MenuItem::action("Quit AgentInc", Quit),

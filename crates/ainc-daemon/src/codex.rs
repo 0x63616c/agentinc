@@ -26,6 +26,12 @@ fn executable() -> PathBuf {
     if let Some(path) = std::env::var_os("AGENTINC_CODEX_PATH") {
         return path.into();
     }
+    if let Ok(exe) = std::env::current_exe() {
+        let bundled = exe.with_file_name("../Resources/runtime/codex");
+        if bundled.is_file() {
+            return bundled;
+        }
+    }
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_default();

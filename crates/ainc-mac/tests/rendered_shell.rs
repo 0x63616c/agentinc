@@ -24,6 +24,8 @@ mod storage;
 mod style;
 #[path = "../src/tickets.rs"]
 mod tickets;
+#[path = "../src/updates.rs"]
+mod updates;
 
 #[cfg(target_os = "macos")]
 #[path = "rendered/runner.rs"]

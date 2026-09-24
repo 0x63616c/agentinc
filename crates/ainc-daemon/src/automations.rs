@@ -356,11 +356,20 @@ impl Runner {
             owner,
         })
     }
-    pub async fn run(mut self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<()> {
+        self.run_until(std::future::pending()).await
+    }
+    pub async fn run_until(
+        mut self,
+        shutdown: impl std::future::Future<Output = ()>,
+    ) -> anyhow::Result<()> {
+        tokio::pin!(shutdown);
         loop {
             sqlx::query("SELECT 1").execute(&mut self.owner).await?;
             self.reconcile().await?;
-            tokio::select! { result=self.listener.recv()=> { result?; }, _=tokio::time::sleep(Duration::from_secs(2))=>{} }
+            tokio::select! {
+                           _ = &mut shutdown => { self.runtime.shutdown().await?; return Ok(()); }
+            result=self.listener.recv()=> { result?; }, _=tokio::time::sleep(Duration::from_secs(2))=>{} }
         }
     }
     async fn reconcile(&self) -> anyhow::Result<()> {

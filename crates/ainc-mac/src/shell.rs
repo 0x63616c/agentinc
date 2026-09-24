@@ -1034,6 +1034,16 @@ impl Shell {
                     )
                     .child(self.assistant.update(cx, |this, cx| this.settings_view(cx))),
             );
+            if let Some(updates) = cx.try_global::<crate::updates::Updates>().cloned() {
+                page = page.child(
+                    div()
+                        .mt(px(28.))
+                        .pt(px(20.))
+                        .border_t_1()
+                        .border_color(rgb(BORDER))
+                        .child(updates.0.update(cx, |this, cx| this.settings(cx))),
+                );
+            }
         } else if route == Route::Assistant {
             page = page.child(
                 self.assistant

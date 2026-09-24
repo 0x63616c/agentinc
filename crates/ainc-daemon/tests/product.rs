@@ -69,6 +69,7 @@ async fn closing_client_does_not_drop_acknowledged_turn_or_completed_reply(pool:
         .clone()
         .oneshot(
             Request::post("/v1/commands")
+                .header("agent-inc-client", ainc_release::client_header())
                 .header("authorization", "Bearer fixture")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&command).unwrap()))
