@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 
 
 def run(*args, **kwargs):
@@ -31,9 +32,15 @@ def main():
     if commit != args.commit or run('git', 'rev-parse', 'HEAD') != commit:
         raise SystemExit('release checkout does not match requested commit')
     repo = os.environ['GITHUB_REPOSITORY']
-    checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{commit}/check-runs'))['check_runs']
-    if not any(check['name'] == 'rust' and check['conclusion'] == 'success' for check in checks):
-        raise SystemExit('release refused: workspace CI must pass for this exact commit first')
+    while True:
+        checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{commit}/check-runs'))['check_runs']
+        rust = [check for check in checks if check['name'] == 'rust']
+        if any(check['conclusion'] == 'success' for check in rust):
+            break
+        if rust and all(check['status'] == 'completed' for check in rust):
+            raise SystemExit('release refused: workspace CI failed for this exact commit')
+        print('Waiting for workspace CI on the release commit', flush=True)
+        time.sleep(15)
     if not args.test:
         subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
     handoff_tag = 'build-' + commit

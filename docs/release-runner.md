@@ -29,8 +29,9 @@ The Mac job caps Cargo at four build jobs, has a three-hour timeout, and keeps
 one Cargo target directory and its toolchain under the runner workspace for
 reuse. It downloads checksum-pinned Temporal 1.9.1 and Codex 0.155.1 into the
 same workspace. It removes per-release bundles and archives after artifact
-upload. The Linux job verifies the handoff's commit, version, and file hashes
-before signing. Check free space in `~/actions-runner/_work`; the persistent
+upload. The Linux job waits for the exact commit's Rust CI check, then verifies
+the handoff's commit, version, and file hashes before signing. Check free space
+in `~/actions-runner/_work`; the persistent
 `.cargo-target` may be removed **only while the runner is idle** if space is
 needed, at the cost of a full rebuild.
 
