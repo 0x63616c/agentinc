@@ -1,8 +1,8 @@
-use turnkeel::testing::{Script, ScriptedModel, text, tool_call};
-use turnkeel::{Agent, Runtime, Content, Event, Message, Role, SessionId, ToolCtx, tool};
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::json;
+use turnkeel::testing::{Script, ScriptedModel, text, tool_call};
+use turnkeel::{Agent, Content, Event, Message, Role, Runtime, SessionId, ToolCtx, tool};
 
 type Events = BoxStream<'static, Result<Event, turnkeel::Error>>;
 

@@ -1,7 +1,7 @@
-use turnkeel::testing::{ScriptedModel, text, tool_call};
-use turnkeel::{Agent, Runtime, ToolCtx, tool};
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use turnkeel::testing::{ScriptedModel, text, tool_call};
+use turnkeel::{Agent, Runtime, ToolCtx, tool};
 
 /// Get the current weather for a city.
 #[tool]
