@@ -540,28 +540,26 @@ impl TicketsPage {
         column()
             .gap(px(24.))
             .child(
-                row().justify_end().child(
-                    self.button(
-                        "agents.create",
-                        "Add agent",
-                        true,
-                        ButtonKind::Secondary,
-                        Self::open_agent,
-                        cx,
+                PageHeader::new("Agents")
+                    .description("Assign a Ticket to an agent to start its work.")
+                    .actions(
+                        self.button(
+                            "agents.create",
+                            "Add agent",
+                            true,
+                            ButtonKind::Secondary,
+                            Self::open_agent,
+                            cx,
+                        )
+                        .border_1()
+                        .border_color(rgb(BORDER))
+                        .child("Add agent"),
                     )
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .child("Add agent"),
-                ),
+                    .build(),
             )
             .when_some(self.error.clone(), |s, error| {
                 s.child(div().text_color(rgb(ERROR)).child(error))
             })
-            .child(
-                div()
-                    .text_color(rgb(MUTED))
-                    .child("Assign a Ticket to an agent to start its work."),
-            )
             .children(
                 self.state
                     .assignees
@@ -621,10 +619,45 @@ impl Render for TicketsPage {
         let selected = self
             .selected
             .and_then(|id| self.state.tickets.iter().find(|t| t.id == id));
+        let mut header =
+            PageHeader::new("Tickets").description("Tickets, assignees and their work log.");
+        if selected.is_none() {
+            header = header.actions(
+                row()
+                    .gap(px(8.))
+                    .child(
+                        self.button(
+                            "tickets.refresh",
+                            "Refresh Tickets",
+                            true,
+                            ButtonKind::Quiet,
+                            |this, _, cx| this.refresh(cx),
+                            cx,
+                        )
+                        .child("Refresh"),
+                    )
+                    .child(
+                        self.button(
+                            "tickets.create",
+                            "Add Ticket",
+                            self.store.is_some(),
+                            ButtonKind::Secondary,
+                            Self::open_add,
+                            cx,
+                        )
+                        .track_focus(&self.add_focus)
+                        .border_1()
+                        .border_color(rgb(SELECTED_BORDER))
+                        .text_size(type_size(LABEL_SIZE))
+                        .child("Add Ticket"),
+                    ),
+            );
+        }
         column()
             .id("tickets-page")
             .track_focus(&self.page_focus)
             .gap(px(24.))
+            .child(header.build())
             .when_some(self.error.clone(), |s, error| {
                 s.child(div().text_color(rgb(ERROR)).child(error))
             })
@@ -636,36 +669,6 @@ impl Render for TicketsPage {
             } else {
                 column()
                     .gap(px(24.))
-                    .child(
-                        row()
-                            .child(
-                                self.button(
-                                    "tickets.refresh",
-                                    "Refresh Tickets",
-                                    true,
-                                    ButtonKind::Quiet,
-                                    |this, _, cx| this.refresh(cx),
-                                    cx,
-                                )
-                                .child("Refresh"),
-                            )
-                            .child(div().flex_1())
-                            .child(
-                                self.button(
-                                    "tickets.create",
-                                    "Add Ticket",
-                                    self.store.is_some(),
-                                    ButtonKind::Secondary,
-                                    Self::open_add,
-                                    cx,
-                                )
-                                .track_focus(&self.add_focus)
-                                .border_1()
-                                .border_color(rgb(SELECTED_BORDER))
-                                .text_size(type_size(LABEL_SIZE))
-                                .child("Add Ticket"),
-                            ),
-                    )
                     .when(
                         self.loaded && self.state.tickets.is_empty() && self.error.is_none(),
                         |s| {

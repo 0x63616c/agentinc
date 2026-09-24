@@ -1,48 +1,25 @@
 use super::*;
 
 impl Shell {
-    pub(super) fn main_area(&self, content: AnyElement, cx: &mut Context<Self>) -> Div {
-        panel()
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .overflow_hidden()
-            .child(self.toolbar(cx))
-            .child(
-                column()
-                    .id("page")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .px(px(PAGE_X))
-                    .py(px(PAGE_Y))
-                    .child(div().relative().child(content)),
-            )
+    pub(super) fn main_area(&self, content: AnyElement) -> Div {
+        panel().flex_1().min_w_0().h_full().overflow_hidden().child(
+            column()
+                .id("page")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .px(px(PAGE_X))
+                .py(px(PAGE_X))
+                .child(div().relative().child(content)),
+        )
     }
 
-    pub(super) fn toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        row()
-            .h(px(50.))
-            .flex_shrink_0()
-            .pl(px(PAGE_X))
-            .pr(px(9.))
-            .gap(px(12.))
-            .border_b_1()
-            .border_color(rgb(BORDER_SUBTLE))
-            .text_size(type_size(CAPTION_SIZE))
-            .text_color(rgb(MUTED))
-            .child(div().flex_1())
-            .child(self.icon_button(
-                "toggle-evee",
-                "Toggle Evee panel · ⌘ ⇧ E",
-                "panel",
-                Control::Evee,
-                cx,
-            ))
-    }
     pub(super) fn static_page(&self, route: Route, cx: &mut Context<Self>) -> impl IntoElement {
         let (title, detail) = route.empty();
-        let mut page = column().gap(px(28.));
+        let mut page = column().gap(px(24.));
+        if route != Route::Assistant {
+            page = page.child(PageHeader::new(route.label()).build());
+        }
         if route == Route::Today {
             for (index, destination) in
                 [Route::Tickets, Route::Agents, Route::Calendar, Route::Home]
@@ -150,7 +127,6 @@ impl Shell {
         } else if !matches!(route, Route::Settings | Route::Assistant) {
             page = page.child(
                 column()
-                    .mt(px(28.))
                     .gap(px(12.))
                     .child(icon(route.icon(), 26.))
                     .child(div().font_weight(FontWeight::MEDIUM).child(title))
@@ -288,7 +264,6 @@ impl Shell {
             page = page.child(
                 column()
                     .gap(px(16.))
-                    .mt(px(12.))
                     .child(
                         div()
                             .text_size(type_size(CAPTION_SIZE))
