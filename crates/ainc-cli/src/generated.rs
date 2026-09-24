@@ -18,6 +18,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionLogin => Self::cli_connection_login(),
             CliCommand::ConnectionLogout => Self::cli_connection_logout(),
             CliCommand::ProductState => Self::cli_product_state(),
+            CliCommand::TicketsState => Self::cli_tickets_state(),
+            CliCommand::TicketsCommand => Self::cli_tickets_command(),
             CliCommand::TicketContract => Self::cli_ticket_contract(),
             CliCommand::GetVersion => Self::cli_get_version(),
         }
@@ -66,6 +68,32 @@ impl<T: CliConfig> Cli<T> {
     pub fn cli_product_state() -> ::clap::Command {
         ::clap::Command::new("")
     }
+    pub fn cli_tickets_state() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_tickets_command() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("operation-id")
+                    .long("operation-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
     pub fn cli_ticket_contract() -> ::clap::Command {
         ::clap::Command::new("")
             .arg(
@@ -106,6 +134,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
             CliCommand::ConnectionLogout => self.execute_connection_logout(matches).await,
             CliCommand::ProductState => self.execute_product_state(matches).await,
+            CliCommand::TicketsState => self.execute_tickets_state(matches).await,
+            CliCommand::TicketsCommand => self.execute_tickets_command(matches).await,
             CliCommand::TicketContract => self.execute_ticket_contract(matches).await,
             CliCommand::GetVersion => self.execute_get_version(matches).await,
         }
@@ -259,6 +289,49 @@ impl<T: CliConfig> Cli<T> {
             }
         }
     }
+    pub async fn execute_tickets_state(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.tickets_state();
+        self.config.execute_tickets_state(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_tickets_command(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.tickets_command();
+        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
+            request = request.body_map(|body| body.operation_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::TicketCommandRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config.execute_tickets_command(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
     pub async fn execute_ticket_contract(
         &self,
         matches: &::clap::ArgMatches,
@@ -379,6 +452,20 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_tickets_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::TicketsState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_tickets_command(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::TicketsCommand,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_ticket_contract(
         &self,
         matches: &::clap::ArgMatches,
@@ -404,6 +491,8 @@ pub enum CliCommand {
     ConnectionLogin,
     ConnectionLogout,
     ProductState,
+    TicketsState,
+    TicketsCommand,
     TicketContract,
     GetVersion,
 }
@@ -418,6 +507,8 @@ impl CliCommand {
             CliCommand::ConnectionLogin,
             CliCommand::ConnectionLogout,
             CliCommand::ProductState,
+            CliCommand::TicketsState,
+            CliCommand::TicketsCommand,
             CliCommand::TicketContract,
             CliCommand::GetVersion,
         ]
@@ -433,6 +524,8 @@ impl CliCommand {
             CliCommand::ConnectionLogin => "connection_login",
             CliCommand::ConnectionLogout => "connection_logout",
             CliCommand::ProductState => "product_state",
+            CliCommand::TicketsState => "tickets_state",
+            CliCommand::TicketsCommand => "tickets_command",
             CliCommand::TicketContract => "ticket_contract",
             CliCommand::GetVersion => "get_version",
         }

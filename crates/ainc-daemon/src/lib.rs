@@ -4,6 +4,7 @@ pub mod conversations;
 pub mod inference;
 pub mod legacy;
 pub mod product;
+pub mod tickets;
 use axum::{
     Json, Router,
     extract::State,
@@ -73,7 +74,9 @@ async fn ticket_contract(Json(ticket): Json<TicketContract>) -> Json<TicketContr
         version,
         ticket_contract,
         product::state,
-        product::command
+        product::command,
+        tickets::state,
+        tickets::command
     ),
     components(schemas(Health, Version, TicketContract))
 )]
@@ -113,6 +116,7 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
 pub fn product_router(product: product::Product) -> Router {
     router(product.pool.clone())
         .merge(product::router(product.clone()))
-        .merge(connection::router(product))
+        .merge(connection::router(product.clone()))
+        .merge(tickets::router(product))
         .layer(axum::middleware::map_response(server_version_header))
 }
