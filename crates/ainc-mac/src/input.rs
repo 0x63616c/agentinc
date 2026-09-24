@@ -1,7 +1,7 @@
 // Adapted from GPUI 0.2.2 examples/input.rs (Apache-2.0). See THIRD_PARTY.md.
 use std::ops::Range;
 
-use crate::style::{FOCUS, TEXT, TEXT_PLACEHOLDER, TEXT_SELECTION, type_size};
+use crate::ui::{FOCUS, TEXT, TEXT_PLACEHOLDER, TEXT_SELECTION, type_size};
 use gpui::prelude::*;
 use gpui::*;
 use unicode_segmentation::*;

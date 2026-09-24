@@ -1,5 +1,5 @@
 //! One active overlay and one return-focus target per native window.
-use crate::style::*;
+use super::{layout::*, tokens::*};
 use gpui::{prelude::*, *};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -102,7 +102,7 @@ pub fn dialog_shell(
         .accessibility_id("dialog")
         .role(accesskit::Role::Dialog)
         .aria_label(title.clone())
-        .w(px(440.))
+        .w(px(DIALOG_WIDTH))
         .p(px(DIALOG_PADDING))
         .gap(px(20.))
         .bg(rgb(DIALOG_SURFACE))
@@ -123,8 +123,8 @@ pub fn dialog_shell(
 
 pub fn menu_shell(content: impl IntoElement) -> Div {
     column()
-        .w(px(146.))
-        .p(px(4.))
+        .w(px(MENU_WIDTH))
+        .p(px(MENU_INSET))
         .bg(rgb(MENU_SURFACE))
         .border_1()
         .border_color(rgb(OVERLAY_BORDER))
@@ -134,8 +134,8 @@ pub fn menu_shell(content: impl IntoElement) -> Div {
 
 pub fn tooltip_shell(content: impl IntoElement) -> Div {
     div()
-        .px(px(8.))
-        .py(px(6.))
+        .px(px(TOOLTIP_INSET_X))
+        .py(px(TOOLTIP_INSET_Y))
         .bg(rgb(MENU_SURFACE))
         .border_1()
         .border_color(rgb(OVERLAY_BORDER))

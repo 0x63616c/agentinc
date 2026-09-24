@@ -1,5 +1,44 @@
 use super::*;
 
+// One continuous contour avoids vertical border tails at the inverse shoulders.
+// The current space label is 142px wide; its shoulders meet the panel border.
+pub fn current_space_contour() -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        move |bounds, _, window, _| {
+            let p = |x: f32, y: f32| bounds.origin + point(px(x), px(y));
+            let contour = |path: &mut PathBuilder| {
+                path.move_to(p(0., 38.));
+                path.cubic_bezier_to(p(12., 26.), p(8., 38.), p(12., 34.));
+                path.line_to(p(12., 10.));
+                path.cubic_bezier_to(p(22., 0.), p(12., 4.477), p(16.477, 0.));
+                path.line_to(p(144., 0.));
+                path.cubic_bezier_to(p(154., 10.), p(149.523, 0.), p(154., 4.477));
+                path.line_to(p(154., 26.));
+                path.cubic_bezier_to(p(166., 38.), p(154., 34.), p(158., 38.));
+            };
+            let mut fill = PathBuilder::fill();
+            contour(&mut fill);
+            fill.line_to(p(166., 40.));
+            fill.line_to(p(0., 40.));
+            fill.close();
+            if let Ok(path) = fill.build() {
+                window.paint_path(path, rgb(SURFACE));
+            }
+            let mut line = PathBuilder::stroke(px(1.));
+            contour(&mut line);
+            if let Ok(path) = line.build() {
+                window.paint_path(path, rgb(BORDER));
+            }
+        },
+    )
+    .absolute()
+    .top_0()
+    .left(px(-12.))
+    .w(px(166.))
+    .h(px(40.))
+}
+
 impl Shell {
     fn titlebar_space(&self, id: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
         div()

@@ -1,10 +1,8 @@
 use crate::{
     assistant,
-    components::*,
     input::{Submit, TextInput},
-    overlay::{Overlay, OverlayHost, dialog_shell, menu_shell},
     storage::{Command, Conversation, Store, Turn},
-    style::*,
+    ui::*,
 };
 use gpui::{prelude::*, *};
 use std::{
@@ -983,11 +981,7 @@ impl AssistantPage {
                 enabled,
             },
             |button| {
-                button
-                    .justify_center()
-                    .px(px(10.))
-                    .py(px(6.))
-                    .text_size(type_size(CAPTION_SIZE))
+                compact_button(button)
                     .bg(background)
                     .on_hover(on_hover)
                     .child(label.to_owned())

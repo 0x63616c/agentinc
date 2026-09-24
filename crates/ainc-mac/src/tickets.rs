@@ -1,8 +1,7 @@
 use crate::{
     input::{Submit, TextInput},
-    overlay::{Overlay, OverlayHost, dialog_shell},
     storage::{AssigneeKind, Store, Ticket, TicketCommand, TicketSnapshot, TicketStatus},
-    style::*,
+    ui::*,
 };
 use gpui::{prelude::*, *};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -404,24 +403,21 @@ impl TicketsPage {
             cx,
         )
     }
-    fn field(label: &'static str, input: Entity<TextInput>) -> impl IntoElement {
-        form_field(label, input, label)
-    }
     pub fn overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let active = self.overlays.borrow().active()?;
         let (title, body, enabled) = match active {
             Overlay::AddTicket => (
                 "Add Ticket".into(),
-                column().child(Self::field("Ticket title", self.input.clone())),
+                column().child(text_field("Ticket title", self.input.clone())),
                 !self.input.read(cx).content.trim().is_empty()
                     && Self::title_error(&self.input.read(cx).content).is_none(),
             ),
             Overlay::AddAgent => (
                 "Add agent".into(),
                 column_gap(FORM_STACK_GAP)
-                    .child(Self::field("Name", self.agent_name.clone()))
-                    .child(Self::field("Instructions", self.agent_instructions.clone()))
-                    .child(Self::field("Model", self.agent_model.clone())),
+                    .child(text_field("Name", self.agent_name.clone()))
+                    .child(text_field("Instructions", self.agent_instructions.clone()))
+                    .child(text_field("Model", self.agent_model.clone())),
                 !self.agent_name.read(cx).content.trim().is_empty(),
             ),
             Overlay::DeleteTicket(id) => {
@@ -546,15 +542,13 @@ impl TicketsPage {
                     .iter()
                     .filter(|a| a.kind == AssigneeKind::Agent)
                     .map(|agent| {
-                        row()
-                            .id(SharedString::from(format!("agent.{}", agent.id)))
-                            .accessibility_id(format!("agent.{}", agent.id))
-                            .aria_label(agent.name.clone())
-                            .role(accesskit::Role::ListItem)
-                            .min_h(px(48.))
-                            .border_b_1()
-                            .border_color(rgb(BORDER))
-                            .child(agent.name.clone())
+                        list_row(
+                            SharedString::from(format!("agent.{}", agent.id)),
+                            agent.name.clone(),
+                            false,
+                        )
+                        .accessibility_id(format!("agent.{}", agent.id))
+                        .child(agent.name.clone())
                     }),
             )
             .into_any_element()
@@ -572,19 +566,19 @@ impl TicketsPage {
                 .when(running,|s|s.child(self.button("tickets.stop","Cancel work",true,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Cancel{id,revision},cx),cx).border_1().border_color(rgb(BORDER)).child("Cancel work")))
                 .when(!self.state.runs.iter().any(|r|r.ticket_id==id),|s|s.child(self.button("tickets.delete","Delete Ticket",true,ButtonKind::Quiet,move|this,window,cx|{this.overlays.borrow_mut().open(Overlay::DeleteTicket(id),window,cx,Some(this.cancel_focus.clone()));cx.notify();},cx).text_color(rgb(DESTRUCTIVE_TEXT)).child("Delete"))))
             .child(div().text_size(type_size(20.)).font_weight(FontWeight::MEDIUM).child(ticket.title.clone()))
-            .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Status")).child(row().flex_wrap().gap(px(6.)).children(STATUSES.into_iter().map(|status|self.button(SharedString::from(format!("tickets.status.{status}")),status_name(status),status!=ticket.status,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::SetStatus{id,revision,status},cx),cx).border_1().border_color(rgb(if status==ticket.status{SELECTED_BORDER}else{BORDER})).child(status_name(status))))))
+            .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Status")).child(row().flex_wrap().gap(px(6.)).children(STATUSES.into_iter().map(|status|choice_button(self.button(SharedString::from(format!("tickets.status.{status}")),status_name(status),status!=ticket.status,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::SetStatus{id,revision,status},cx),cx), status==ticket.status).child(status_name(status))))))
             .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Assignee")).child(row().flex_wrap().gap(px(6.)).children(self.state.assignees.iter().map(|assignee|{
                 let assignee_id=assignee.id.clone();let assignee_kind=assignee.kind;
-                self.button(SharedString::from(format!("tickets.assign.{}",assignee.id)),assignee.name.clone(),assignee.id!=ticket.assignee_id,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Assign{id,revision,assignee_id:assignee_id.clone(),assignee_kind},cx),cx).border_1().border_color(rgb(if assignee.id==ticket.assignee_id{SELECTED_BORDER}else{BORDER})).child(assignee.name.clone())
+                choice_button(self.button(SharedString::from(format!("tickets.assign.{}",assignee.id)),assignee.name.clone(),assignee.id!=ticket.assignee_id,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Assign{id,revision,assignee_id:assignee_id.clone(),assignee_kind},cx),cx), assignee.id==ticket.assignee_id).child(assignee.name.clone())
             }))))
             .children(self.state.runs.iter().filter(|r|r.ticket_id==id && r.generation==ticket.generation).map(|run|div().text_size(type_size(LABEL_SIZE)).text_color(rgb(MUTED)).child(run.error.as_ref().map_or_else(||format!("Work {}",run.state),|error|format!("Work stopped: {error}")))))
             .child(column().gap(px(16.)).child(div().font_weight(FontWeight::MEDIUM).child("Comments"))
                 .when(!self.state.comments.iter().any(|c|c.ticket_id==id),|s|s.child(div().text_color(rgb(MUTED)).child("Comments are the work log. Add context, decisions and evidence here.")))
                 .children(self.state.comments.iter().filter(|c|c.ticket_id==id).map(|comment|{
                     let author=self.state.assignees.iter().find(|a|a.id==comment.author_id).map_or("Agent",|a|a.name.as_str());
-                    column().id(("comment",comment.id as u64)).accessibility_id(format!("comment.{}",comment.id)).role(accesskit::Role::ListItem).aria_label(comment.body.clone()).gap(px(6.)).py(px(12.)).border_b_1().border_color(rgb(BORDER)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child(author.to_owned())).child(div().text_size(type_size(BODY_SIZE)).child(comment.body.clone()))
+                    list_item(("comment",comment.id as u64), comment.body.clone()).flex_col().items_start().accessibility_id(format!("comment.{}",comment.id)).gap(px(6.)).py(px(12.)).border_b_1().border_color(rgb(BORDER)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child(author.to_owned())).child(div().text_size(type_size(BODY_SIZE)).child(comment.body.clone()))
                 }))
-                .child(Self::field("Add a Comment",self.comment.clone()))
+                .child(text_field("Add a Comment",self.comment.clone()))
                 .child(row().justify_end().child(self.button("tickets.post","Post Comment",!self.comment.read(cx).content.trim().is_empty(),ButtonKind::Primary,|this,_,cx|this.add_comment(cx),cx).child("Post Comment"))))
             .into_any_element()
     }

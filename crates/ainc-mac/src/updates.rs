@@ -1,6 +1,6 @@
 //! App-owned update state. Native AppKit windows remain available when the backend is down.
 use crate::native_update;
-use crate::{components::*, style::*};
+use crate::ui::*;
 use ainc_release::{
     Manifest, SignedManifest,
     updater::{self, Preferences},

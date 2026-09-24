@@ -14,8 +14,7 @@ mod sidebar;
 use crate::{
     input::TextInput,
     model::{Availability, FontChoice, FontSize, PAGES, Route, Session},
-    overlay::{Overlay, OverlayHost},
-    style::*,
+    ui::*,
 };
 use gpui::{prelude::*, *};
 use std::{cell::RefCell, path::PathBuf, rc::Rc, time::Instant};
@@ -493,17 +492,17 @@ impl Shell {
         control: Control,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        self.button(id, label, control, cx)
-            .debug_selector(move || id.into())
-            .size(px(HEADER_CONTROL))
-            .justify_center()
-            .child(
-                row()
-                    .size(px(HEADER_ICON_SIZE))
-                    .justify_center()
-                    .debug_selector(move || format!("{id}.glyph"))
-                    .child(icon(name, HEADER_ICON_SIZE)),
-            )
+        icon_control(
+            self.button(id, label, control, cx)
+                .debug_selector(move || id.into()),
+        )
+        .child(
+            row()
+                .size(px(HEADER_ICON_SIZE))
+                .justify_center()
+                .debug_selector(move || format!("{id}.glyph"))
+                .child(icon(name, HEADER_ICON_SIZE)),
+        )
     }
     fn command_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let matches = Route::matching(&self.input.read(cx).content);
@@ -647,7 +646,7 @@ impl Shell {
                     .iter()
                     .enumerate()
                     .map(|(index, item)| {
-                        row()
+                        list_item(("notification", index), item.title.clone())
                             .gap(px(12.))
                             .px(px(16.))
                             .py(px(14.))
@@ -722,18 +721,23 @@ impl Render for Shell {
                 .bg(rgb(SHELL))
                 .text_color(rgb(TEXT))
                 .child(div().text_size(type_size(24.)).child("Update to continue"))
-                .child(
-                    div()
-                        .id("required-update")
-                        .role(accesskit::Role::Button)
-                        .aria_label("Check for Updates")
-                        .cursor_pointer()
-                        .px(px(16.))
-                        .py(px(10.))
-                        .bg(rgb(HOVER_CONTROL))
-                        .on_click(|_, _, cx| crate::updates::open(cx, true))
-                        .child("Check for Updates"),
-                )
+                .child(action_button(
+                    ButtonSpec {
+                        id: "required-update".into(),
+                        label: "Check for Updates".into(),
+                        kind: ButtonKind::Secondary,
+                        enabled: true,
+                    },
+                    |button| {
+                        button
+                            .px(px(16.))
+                            .py(px(10.))
+                            .bg(rgb(HOVER_CONTROL))
+                            .child("Check for Updates")
+                    },
+                    |_, _, cx| crate::updates::open(cx, true),
+                    cx,
+                ))
                 .into_any_element();
         }
         if reduced_motion() {
@@ -907,23 +911,28 @@ impl Render for Shell {
                 cx.try_global::<crate::updates::Updates>()
                     .is_some_and(|updates| updates.0.read(cx).is_ready()),
                 |view| {
-                    view.child(
-                        div()
-                            .id("update-ready")
-                            .accessibility_id("updates.ready")
-                            .role(accesskit::Role::Button)
-                            .aria_label("Update ready")
-                            .absolute()
-                            .bottom(px(16.))
-                            .left(px(220.))
-                            .px(px(16.))
-                            .py(px(10.))
-                            .rounded(px(8.))
-                            .bg(rgb(HOVER_CONTROL))
-                            .cursor_pointer()
-                            .on_click(|_, _, cx| crate::updates::open(cx, false))
-                            .child("Update ready · View update"),
-                    )
+                    view.child(action_button(
+                        ButtonSpec {
+                            id: "update-ready".into(),
+                            label: "Update ready".into(),
+                            kind: ButtonKind::Secondary,
+                            enabled: true,
+                        },
+                        |button| {
+                            button
+                                .accessibility_id("updates.ready")
+                                .absolute()
+                                .bottom(px(16.))
+                                .left(px(220.))
+                                .px(px(16.))
+                                .py(px(10.))
+                                .rounded(px(8.))
+                                .bg(rgb(HOVER_CONTROL))
+                                .child("Update ready · View update")
+                        },
+                        |_, _, cx| crate::updates::open(cx, false),
+                        cx,
+                    ))
                 },
             )
             .when(self.save_error, |s| {
@@ -1002,7 +1011,7 @@ mod interaction_tests {
     use crate::{
         input,
         model::{PANE_WIDTHS, Route, Session},
-        overlay::Overlay,
+        ui::Overlay,
     };
     use gpui::{
         Focusable, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Point,

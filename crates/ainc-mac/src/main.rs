@@ -1,18 +1,15 @@
 mod about;
 mod assistant;
 mod automations;
-mod components;
 mod evee;
 mod input;
 mod model;
 mod native_update;
-mod overlay;
-mod palette;
 mod profile;
 mod shell;
 mod storage;
-mod style;
 mod tickets;
+mod ui;
 mod updates;
 use gpui::*;
 use shell::*;
@@ -102,7 +99,7 @@ fn main() {
     let _ = log::set_logger(&DiagnosticLog);
     log::set_max_level(log::LevelFilter::Warn);
     gpui_platform::application()
-        .with_assets(style::Assets)
+        .with_assets(ui::Assets)
         .run(move |cx| {
             cx.on_action(|_: &about::About, _| about::show());
             updates::init(cx);

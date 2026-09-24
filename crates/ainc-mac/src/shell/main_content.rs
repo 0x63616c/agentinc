@@ -1,5 +1,5 @@
 use super::*;
-use crate::components::*;
+use crate::ui::*;
 
 impl Shell {
     pub(super) fn main_area(&self, content: AnyElement) -> Div {

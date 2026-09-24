@@ -8,8 +8,6 @@ mod about;
 mod assistant;
 #[path = "../src/automations.rs"]
 mod automations;
-#[path = "../src/components.rs"]
-mod components;
 #[path = "../src/evee.rs"]
 mod evee;
 #[path = "../src/input.rs"]
@@ -18,20 +16,16 @@ mod input;
 mod model;
 #[path = "../src/native_update.rs"]
 mod native_update;
-#[path = "../src/overlay.rs"]
-mod overlay;
-#[path = "../src/palette.rs"]
-mod palette;
 #[path = "../src/profile.rs"]
 mod profile;
 #[path = "../src/shell.rs"]
 mod shell;
 #[path = "../src/storage.rs"]
 mod storage;
-#[path = "../src/style.rs"]
-mod style;
 #[path = "../src/tickets.rs"]
 mod tickets;
+#[path = "../src/ui/mod.rs"]
+mod ui;
 #[path = "../src/updates.rs"]
 mod updates;
 

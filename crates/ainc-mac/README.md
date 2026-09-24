@@ -84,7 +84,7 @@ AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
 - [Native acceptance report and screenshots](docs/verification/STATUS.md)
 - [Workspace import and native flow evidence](docs/verification/IMPORT.md)
 - `src/model.rs`: navigation and persistence, independent of the UI.
-- `src/shell.rs`, `src/shell/`, `src/style.rs`: GPUI shell, its header/content/pane views, shared styling and interactions.
+- `src/shell.rs`, `src/shell/`, `src/ui/`: GPUI shell and the app-owned native component set.
 - `src/input.rs`: native text input adapted from the official GPUI example.
 - [Third-party sources](THIRD_PARTY.md), [current GPUI acceptance](docs/verification/GPUI_UPGRADE.md).
 

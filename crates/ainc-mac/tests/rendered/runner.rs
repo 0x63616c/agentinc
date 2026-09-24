@@ -1,10 +1,13 @@
-use crate::style::{FIELD_LABEL_GAP, PAGE_X, RIGHT_PANE_CONTENT_INSET};
+use crate::ui::{
+    CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, RIGHT_PANE_CONTENT_INSET, SETTINGS_INSET,
+    SETTINGS_ROW_HEIGHT, type_size,
+};
 use crate::{
     input,
     model::{FontSize, PANE_WIDTHS, Route, Session},
-    overlay::Overlay,
     shell::{self, Shell},
-    style::Assets,
+    ui::Assets,
+    ui::Overlay,
 };
 use anyhow::{Result, ensure};
 use gpui::{
@@ -200,6 +203,18 @@ impl Suite {
                 f32::from(second.origin.x),
             )?;
         }
+        if name == "route-0-1" || name == "route-1-1" {
+            let button = self.bounds("tickets.create")?;
+            near(
+                "shared regular Button height",
+                f32::from(button.size.height),
+                f32::from(type_size(CONTROL_HEIGHT)),
+            )?;
+        }
+        if name == "settings-0" || name == "settings-1" {
+            self.check_settings_row_geometry("Font")?;
+            self.check_settings_row_geometry("Font size")?;
+        }
         if self.count == 0 {
             // Negative controls: each missing region must independently fail this gate.
             for probe in &probes {
@@ -304,6 +319,26 @@ impl Suite {
             &format!("{selector} label gap"),
             f32::from(input.origin.y) - f32::from(label.origin.y + label.size.height),
             FIELD_LABEL_GAP,
+        )
+    }
+
+    fn check_settings_row_geometry(&mut self, label: &str) -> Result<()> {
+        let row = self.bounds(&format!("settings.row.{label}"))?;
+        let text = self.bounds(&format!("settings.row.{label}.label"))?;
+        let control = self.bounds(&format!("settings.row.{label}.control"))?;
+        ensure!(
+            f32::from(row.size.height) >= SETTINGS_ROW_HEIGHT - GEOMETRY_TOLERANCE,
+            "{label}: SettingsRow is shorter than its shared minimum"
+        );
+        near(
+            &format!("{label} SettingsRow label inset"),
+            f32::from(text.origin.x - row.origin.x),
+            SETTINGS_INSET,
+        )?;
+        near(
+            &format!("{label} SettingsRow control inset"),
+            f32::from(row.origin.x + row.size.width - control.origin.x - control.size.width),
+            SETTINGS_INSET,
         )
     }
 
