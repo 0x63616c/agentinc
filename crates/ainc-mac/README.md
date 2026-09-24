@@ -77,3 +77,7 @@ AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
 The portable browser prototype remains in `.lavish/agentinc-os-standalone.html`; open it directly in a browser. Editable sources are `.lavish/agentinc-os.{html,css,js}`. `PRODUCT.md`, `DESIGN.md`, `.impeccable/design.json` and `docs/control-reference/` record its product and visual direction.
 
 The browser's sample tasks, agents, controls, events and conversations are illustrative. Its concept selector and review toolbar are excluded from the native app. Browser interaction checks remain in `tests/preview-smoke.js`.
+
+## Opt-in GPUI automation
+
+The unpublished `gpui-pilot` library and `gpui-pilot-cli` command provide typed snapshots, frame-scoped refs, GPUI input dispatch, condition waits and full Metal captures. Normal app/bundle builds exclude the driver. See [launch, protocol and validation](docs/GPUI_PILOT.md) for the explicit `automation` feature and isolated `scripts/pilot.sh` launch.

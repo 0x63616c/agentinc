@@ -12,14 +12,14 @@ repos:
         always_run: true
       - id: cargo-clippy
         name: cargo clippy
-        entry: cargo clippy --locked --all-targets -- -D warnings
+        entry: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
         language: system
         stages: [pre-push]
         pass_filenames: false
         always_run: true
       - id: cargo-test
         name: cargo test
-        entry: cargo test --locked
+        entry: cargo test --locked --workspace
         language: system
         stages: [pre-push]
         pass_filenames: false

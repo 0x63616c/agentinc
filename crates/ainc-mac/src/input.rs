@@ -72,6 +72,7 @@ pub struct Submit;
 impl EventEmitter<Submit> for TextInput {}
 
 pub struct TextInput {
+    author_id: SharedString,
     secret: bool,
     multiline: bool,
     multiline_layout: Vec<(usize, ShapedLine, Bounds<Pixels>)>,
@@ -374,6 +375,10 @@ impl TextInput {
             .unwrap_or(self.content.len())
     }
 
+    pub fn identified(mut self, id: &'static str) -> Self {
+        self.author_id = id.into();
+        self
+    }
     pub fn field(placeholder: &str, secret: bool, cx: &mut Context<Self>) -> Self {
         let mut input = Self::new(cx);
         input.placeholder = placeholder.to_owned().into();
@@ -902,6 +907,18 @@ impl Element for TextElement {
 impl Render for TextInput {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
+            .id("text-input")
+            .accessibility_id(self.author_id.clone())
+            .role(if self.secret {
+                accesskit::Role::PasswordInput
+            } else if self.multiline {
+                accesskit::Role::MultilineTextInput
+            } else {
+                accesskit::Role::TextInput
+            })
+            .aria_label(self.placeholder.clone())
+            .aria_placeholder(self.placeholder.clone())
+            .when(!self.secret, |s| s.aria_value(self.content.clone()))
             .flex()
             .key_context("TextInput")
             .track_focus(&self.focus_handle(cx))
@@ -986,6 +1003,7 @@ impl Focusable for TextInput {
 impl TextInput {
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
+            author_id: "search.input".into(),
             secret: false,
             multiline: false,
             multiline_layout: vec![],

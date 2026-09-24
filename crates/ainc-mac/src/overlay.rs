@@ -95,8 +95,12 @@ pub fn dialog_shell(
     body: impl IntoElement,
     footer: impl IntoElement,
 ) -> Stateful<Div> {
+    let title = title.into();
     column()
         .id("shared-dialog")
+        .accessibility_id("dialog")
+        .role(accesskit::Role::Dialog)
+        .aria_label(title.clone())
         .w(px(440.))
         .p(px(DIALOG_PADDING))
         .gap(px(20.))
@@ -110,7 +114,7 @@ pub fn dialog_shell(
             div()
                 .text_size(px(DIALOG_TITLE_SIZE))
                 .font_weight(FontWeight::MEDIUM)
-                .child(title.into()),
+                .child(title),
         )
         .child(body)
         .child(footer)

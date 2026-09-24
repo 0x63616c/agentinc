@@ -329,10 +329,18 @@ impl Shell {
         control: Control,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        action_button(
+        let id = id.into();
+        let label: SharedString = label.into();
+        let spoken: SharedString = label
+            .split(" · ")
+            .next()
+            .unwrap_or(&label)
+            .to_owned()
+            .into();
+        let button = action_button(
             ButtonSpec {
-                id: id.into(),
-                label: label.into(),
+                id,
+                label: spoken,
                 kind: ButtonKind::Quiet,
                 enabled: true,
             },
@@ -347,7 +355,28 @@ impl Shell {
             },
             move |this: &mut Self, window, cx| this.dispatch(control, window, cx),
             cx,
-        )
+        );
+        match control {
+            Control::Sidebar | Control::Evee => button.role(accesskit::Role::Switch).aria_toggled(
+                if if matches!(control, Control::Sidebar) {
+                    self.session.sidebar
+                } else {
+                    self.session.evee
+                } {
+                    accesskit::Toggled::True
+                } else {
+                    accesskit::Toggled::False
+                },
+            ),
+            Control::Font(font) => button.role(accesskit::Role::RadioButton).aria_toggled(
+                if self.session.font == font {
+                    accesskit::Toggled::True
+                } else {
+                    accesskit::Toggled::False
+                },
+            ),
+            _ => button,
+        }
     }
     fn icon_button(
         &self,
@@ -440,7 +469,7 @@ impl Shell {
                     .window_control_area(WindowControlArea::Drag),
             )
             .child(
-                self.button("search", "Go to · ⌘ K", Control::Search, cx)
+                self.button("shell.search", "Search · ⌘ K", Control::Search, cx)
                     .flex_shrink_0()
                     .w(px(224.))
                     .h(px(30.))
@@ -483,6 +512,10 @@ impl Shell {
                     Control::Navigate(route),
                     cx,
                 )
+                .accessibility_id(format!(
+                    "nav.{}",
+                    route.label().to_lowercase().replace(' ', "-")
+                ))
                 .h(px(32.))
                 .px(px(10.))
                 .gap(px(12.))
@@ -584,6 +617,10 @@ impl Shell {
     fn command_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let matches = Route::matching(&self.input.read(cx).content);
         panel()
+            .id("search.dialog")
+            .accessibility_id("search.dialog")
+            .role(accesskit::Role::Dialog)
+            .aria_label("Search spaces")
             .w(px(520.))
             .overflow_hidden()
             .child(
@@ -610,7 +647,10 @@ impl Shell {
                     })
                     .children(matches.iter().copied().enumerate().map(|(index, route)| {
                         self.button(
-                            ("command-result", index),
+                            SharedString::from(format!(
+                                "search.result.{}",
+                                route.label().to_lowercase().replace(' ', "-")
+                            )),
                             route.label(),
                             Control::Open(route),
                             cx,
@@ -1284,6 +1324,7 @@ impl Render for Shell {
                 s.child(
                     div()
                         .id("overlay-backdrop")
+                        .occlude()
                         .absolute()
                         .inset_0()
                         .cursor_default()

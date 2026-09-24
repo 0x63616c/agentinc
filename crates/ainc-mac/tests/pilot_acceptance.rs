@@ -1,0 +1,281 @@
+//! Actual isolated app + authenticated socket + real Metal. Never runs on Linux.
+#![cfg(target_os = "macos")]
+use anyhow::{Context, Result, bail, ensure};
+use gpui_pilot::{protocol::*, transport::Client};
+use std::{
+    fs,
+    path::PathBuf,
+    process::{Child, Command as Process, Stdio},
+    time::{Duration, Instant},
+};
+
+struct App(Child);
+impl Drop for App {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+fn snap(client: &mut Client) -> Result<Snapshot> {
+    Ok(client
+        .call(Command::Snapshot)?
+        .snapshot()
+        .context("snapshot reply")?
+        .clone())
+}
+fn act(client: &mut Client, id: &str, text: Option<&str>) -> Result<Snapshot> {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let snapshot = snap(client)?;
+        let reference = snapshot.by_id(id)?.reference.clone();
+        let command = match text {
+            Some(text) => Command::Type {
+                reference,
+                text: text.into(),
+            },
+            None => Command::Click { reference },
+        };
+        match client.request(command)?.result {
+            Reply::Ok { output } => return Ok(output.snapshot().context("acted frame")?.clone()),
+            Reply::Error { error, .. }
+                if error.code == "stale_ref" && Instant::now() < deadline =>
+            {
+                continue;
+            }
+            Reply::Error { error, .. } => bail!(error),
+        }
+    }
+}
+fn wait(client: &mut Client, condition: Condition) -> Result<Snapshot> {
+    Ok(client
+        .call(Command::Wait {
+            condition,
+            timeout_ms: 3000,
+        })?
+        .snapshot()
+        .context("wait frame")?
+        .clone())
+}
+fn screenshot(client: &mut Client, name: &str, output: &std::path::Path) -> Result<()> {
+    let Output::Screenshot {
+        path,
+        width,
+        height,
+        frame,
+        scale,
+        ..
+    } = client.call(Command::Screenshot)?
+    else {
+        bail!("screenshot reply")
+    };
+    let image = image::open(&path)?.into_rgba8();
+    ensure!(image.dimensions() == (width, height), "dimensions");
+    ensure!(
+        frame > 0 && width == (1360. * scale) as u32 && height == (828. * scale) as u32,
+        "frame/viewport"
+    );
+    for (region, [x0, y0, x1, y1]) in [
+        ("header", [150, 10, 1350, 40]),
+        ("sidebar", [20, 110, 165, 390]),
+        ("profile", [15, 784, 170, 816]),
+        ("Evee", [1110, 56, 1340, 90]),
+    ] {
+        let mut bright = 0;
+        for y in (y0 as f32 * scale) as u32..(y1 as f32 * scale) as u32 {
+            for x in (x0 as f32 * scale) as u32..(x1 as f32 * scale) as u32 {
+                if image.get_pixel(x, y).0[..3].iter().any(|c| *c > 60) {
+                    bright += 1;
+                }
+            }
+        }
+        ensure!(bright > 100, "{region} missing from capture: {bright}");
+    }
+    image::imageops::resize(&image, 1360, 828, image::imageops::FilterType::Lanczos3)
+        .save(output.join(format!("{name}.png")))?;
+    Ok(())
+}
+fn latency(client: &mut Client, command: Command, count: usize) -> Result<serde_json::Value> {
+    let mut samples = Vec::new();
+    for _ in 0..count {
+        let start = Instant::now();
+        client.call(command.clone())?;
+        samples.push(start.elapsed().as_secs_f64() * 1000.);
+    }
+    samples.sort_by(f64::total_cmp);
+    Ok(
+        serde_json::json!({"samples": count, "median_ms": samples[count/2], "p95_ms": samples[(count*95).div_ceil(100)-1]}),
+    )
+}
+#[test]
+fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
+    fs::create_dir_all(".local")?;
+    let temporary = tempfile::Builder::new().prefix("p").tempdir_in(".local")?;
+    let directory = temporary.path().canonicalize()?;
+    let pilot = directory.join("s");
+    let output = PathBuf::from("target/pilot-acceptance");
+    fs::create_dir_all(&output)?;
+    let log = fs::File::create(output.join("app.log"))?;
+    let mut app = App(Process::new(env!("CARGO_BIN_EXE_agentinc-os"))
+        .args(["--gpui-pilot-session", pilot.to_str().unwrap()])
+        .env("AGENTINC_SESSION_PATH", directory.join("session.json"))
+        .env(
+            "AGENTINC_DATABASE_PATH",
+            directory.join("assistant.sqlite3"),
+        )
+        .env("AGENTINC_CODEX_HOME", directory.join("codex"))
+        .env("AGENTINC_WINDOW_TITLE", "Agentinc Pilot Acceptance")
+        .stdout(Stdio::null())
+        .stderr(log)
+        .spawn()?);
+    let manifest = pilot.join("instance.json");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !manifest.exists() {
+        ensure!(
+            app.0.try_wait()?.is_none(),
+            "app exited: see target/pilot-acceptance/app.log"
+        );
+        ensure!(Instant::now() < deadline, "app startup timed out");
+        std::thread::sleep(Duration::from_millis(20)); // Process readiness only; UI waits use the protocol.
+    }
+    let mut client = Client::connect(&manifest)?;
+    client.call(Command::Hello)?;
+    let initial = snap(&mut client)?;
+    ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Search"));
+    fs::write(
+        output.join("initial.json"),
+        serde_json::to_vec_pretty(&initial)?,
+    )?;
+    screenshot(&mut client, "initial", &output)?;
+    act(&mut client, "shell.search", None)?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "search.dialog".into(),
+        },
+    )?;
+    // The overlay must reject a fresh ref to the obscured sidebar.
+    let behind = snap(&mut client)?.by_id("nav.tasks")?.reference.clone();
+    let blocked = client.request(Command::Click { reference: behind })?;
+    ensure!(
+        matches!(blocked.result, Reply::Error { error, .. } if error.code == "target_occluded" || error.code == "stale_ref")
+    );
+    act(&mut client, "search.input", Some("Tasks"))?;
+    let filtered = wait(
+        &mut client,
+        Condition::Value {
+            author_id: "search.input".into(),
+            equals: "Tasks".into(),
+        },
+    )?;
+    ensure!(
+        filtered
+            .nodes
+            .iter()
+            .filter(|n| n
+                .author_id
+                .as_deref()
+                .is_some_and(|id| id.starts_with("search.result.")))
+            .count()
+            == 1
+    );
+    act(&mut client, "search.result.tasks", None)?;
+    wait(
+        &mut client,
+        Condition::Absent {
+            author_id: "search.dialog".into(),
+        },
+    )?;
+    let stale = client.request(Command::Click {
+        reference: filtered.by_id("search.result.tasks")?.reference.clone(),
+    })?;
+    ensure!(matches!(stale.result, Reply::Error { error, .. } if error.code == "stale_ref"));
+    act(&mut client, "tasks.create", None)?;
+    let empty = snap(&mut client)?;
+    ensure!(!empty.by_id("tasks.submit")?.enabled);
+    act(&mut client, "tasks.title", Some("Pilot café 👋"))?;
+    wait(
+        &mut client,
+        Condition::Value {
+            author_id: "tasks.title".into(),
+            equals: "Pilot café 👋".into(),
+        },
+    )?;
+    // A concurrent wait must not hold the mutation lane.
+    let mut observer = Client::connect(&manifest)?;
+    let waiting = std::thread::spawn(move || {
+        observer.call(Command::Wait {
+            condition: Condition::Absent {
+                author_id: "tasks.title".into(),
+            },
+            timeout_ms: 3000,
+        })
+    });
+    act(&mut client, "tasks.submit", None)?;
+    waiting.join().unwrap()?;
+    let created = wait(
+        &mut client,
+        Condition::Name {
+            author_id: "task.1".into(),
+            equals: "Pilot café 👋".into(),
+        },
+    )?;
+    ensure!(created.by_id("task.1.complete")?.checked == Some(false));
+    screenshot(&mut client, "created", &output)?;
+    fs::write(
+        output.join("created.json"),
+        serde_json::to_vec_pretty(&created)?,
+    )?;
+    // Typing through GPUI preserves normal selection and undo handling.
+    client.call(Command::Press {
+        key: "cmd-k".into(),
+    })?;
+    act(&mut client, "search.input", Some("temporary"))?;
+    client.call(Command::Press {
+        key: "cmd-a".into(),
+    })?;
+    act(&mut client, "search.input", Some("Tasks"))?;
+    client.call(Command::Press {
+        key: "cmd-z".into(),
+    })?;
+    wait(
+        &mut client,
+        Condition::Value {
+            author_id: "search.input".into(),
+            equals: "temporary".into(),
+        },
+    )?;
+    client.call(Command::Press {
+        key: "escape".into(),
+    })?;
+    let timeout = client.request(Command::Wait {
+        condition: Condition::Present {
+            author_id: "never-mounted".into(),
+        },
+        timeout_ms: 50,
+    })?;
+    ensure!(
+        matches!(timeout.result, Reply::Error { error, snapshot: Some(_) } if error.code == "deadline_exceeded")
+    );
+    let metrics = serde_json::json!({
+        "snapshot": latency(&mut client, Command::Snapshot, 100)?,
+        "press_and_committed_frame": latency(&mut client, Command::Press { key: "escape".into() }, 50)?,
+        "retina_png": latency(&mut client, Command::Screenshot, 10)?
+    });
+    fs::write(
+        output.join("latency.json"),
+        serde_json::to_vec_pretty(&metrics)?,
+    )?;
+    println!("Search → Tasks → create task passed via socket + GPUI dispatch. {metrics}");
+    client
+        .call(Command::Press {
+            key: "cmd-q".into(),
+        })
+        .ok();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.0.try_wait()?.is_none() {
+        ensure!(Instant::now() < deadline, "owned app did not quit");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    ensure!(!manifest.exists(), "normal quit left session endpoints");
+    Ok(())
+}

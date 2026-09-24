@@ -62,12 +62,24 @@ pub struct ButtonSpec {
 }
 
 /// Common focus, activation and disabled contract; callers own layout and hover fades.
-/// Accessibility semantics are added separately from the GPUI migration.
 pub fn button_base(spec: ButtonSpec) -> Stateful<Div> {
-    let _label = spec.label;
+    // Only authored names/business keys become public IDs, never allocation IDs.
+    let author_id = match &spec.id {
+        ElementId::Name(name) => Some(name.clone()),
+        ElementId::NamedInteger(name, key) => Some(format!("{name}.{key}").into()),
+        _ => None,
+    };
     let filled = matches!(spec.kind, ButtonKind::Primary | ButtonKind::Destructive);
     row()
         .id(spec.id)
+        .role(accesskit::Role::Button)
+        .aria_label(spec.label)
+        .when_some(author_id, |s, id| s.accessibility_id(id))
+        .a11y_synthetic_children(move |builder| {
+            if !spec.enabled {
+                builder.parent_node().set_disabled();
+            }
+        })
         .when(spec.enabled, |s| s.tab_index(0).cursor_pointer())
         .rounded(px(CONTROL_RADIUS))
         .opacity(if spec.enabled { 1. } else { DISABLED_OPACITY })

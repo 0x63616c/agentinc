@@ -28,7 +28,8 @@ impl TasksPage {
         overlays: Rc<RefCell<OverlayHost>>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input = cx.new(|cx| TextInput::field("Task title", false, cx));
+        let input =
+            cx.new(|cx| TextInput::field("Task title", false, cx).identified("tasks.title"));
         let subscriptions = vec![
             cx.subscribe(&input, |this, _, _: &Submit, cx| this.add(cx)),
             cx.observe(&input, |this, input, cx| {
@@ -238,7 +239,7 @@ impl TasksPage {
             .gap(px(8.))
             .child(
                 self.button(
-                    "task-cancel",
+                    "tasks.cancel",
                     "Cancel",
                     true,
                     ButtonKind::Secondary,
@@ -255,7 +256,7 @@ impl TasksPage {
             )
             .child(
                 self.button(
-                    "task-submit",
+                    "tasks.submit",
                     if is_add { "Create task" } else { "Delete task" },
                     !invalid,
                     if is_add {
@@ -296,7 +297,7 @@ impl Render for TasksPage {
             .child(
                 row().child(div().flex_1()).child(
                     self.button(
-                        "add-task",
+                        "tasks.create",
                         "Add task",
                         true,
                         ButtonKind::Secondary,
@@ -349,6 +350,9 @@ impl Render for TasksPage {
                                             == Some(Overlay::TaskMenu(id));
                                         row()
                                             .id(("task-row", id as u64))
+                                            .accessibility_id(format!("task.{id}"))
+                                            .role(accesskit::Role::ListItem)
+                                            .aria_label(todo.title.clone())
                                             .on_hover(cx.listener(move |this, hovered, _, cx| {
                                                 if *hovered {
                                                     this.hovered_row = Some(id);
@@ -378,6 +382,14 @@ impl Render for TasksPage {
                                                     },
                                                     cx,
                                                 )
+                                                .accessibility_id(format!("task.{id}.complete"))
+                                                .role(accesskit::Role::CheckBox)
+                                                .aria_label(todo.title.clone())
+                                                .aria_toggled(if completed {
+                                                    accesskit::Toggled::True
+                                                } else {
+                                                    accesskit::Toggled::False
+                                                })
                                                 .w(px(32.))
                                                 .px_0()
                                                 .child(

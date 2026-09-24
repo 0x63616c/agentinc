@@ -67,8 +67,10 @@ impl AssistantPage {
         overlays: Rc<RefCell<OverlayHost>>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input = cx.new(TextInput::composer);
-        let rename_input = cx.new(|cx| TextInput::field("Conversation title", false, cx));
+        let input = cx.new(|cx| TextInput::composer(cx).identified("evee.composer"));
+        let rename_input = cx.new(|cx| {
+            TextInput::field("Conversation title", false, cx).identified("evee.conversation.title")
+        });
         let subscriptions = vec![
             cx.subscribe(&input, |this, _, _: &Submit, cx| this.send(cx)),
             cx.observe(&input, |_, _, cx| cx.notify()),

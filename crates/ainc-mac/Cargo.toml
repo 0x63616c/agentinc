@@ -6,6 +6,8 @@ rust-version = "1.98"
 publish = false
 
 [dependencies]
+gpui-pilot = { path = "crates/gpui-pilot", optional = true, features = ["host"] }
+accesskit = "0.24.0"
 gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit"] }
 gpui_platform = { version = "=0.1.0", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit", "runtime_shaders"] }
 anyhow = "1"
@@ -22,9 +24,11 @@ debug = 0
 strip = true
 
 [features]
+automation = ["dep:gpui-pilot", "gpui/pilot", "gpui/test-support", "gpui_platform/test-support"]
 rendered-tests = ["gpui/test-support", "gpui_platform/test-support"]
 
 [dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
 gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit", "test-support"] }
 tempfile = "3"
 
@@ -33,3 +37,17 @@ name = "rendered_shell"
 path = "tests/rendered_shell.rs"
 harness = false
 required-features = ["rendered-tests"]
+
+[workspace]
+members = ["crates/gpui-pilot", "crates/gpui-pilot-cli"]
+default-members = ["."]
+exclude = ["vendor/gpui"]
+resolver = "3"
+
+[patch."https://github.com/zed-industries/zed"]
+gpui = { path = "vendor/gpui" }
+
+[[test]]
+name = "pilot_acceptance"
+path = "tests/pilot_acceptance.rs"
+required-features = ["automation"]

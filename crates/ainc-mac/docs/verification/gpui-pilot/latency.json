@@ -1,0 +1,17 @@
+{
+  "snapshot": {
+    "samples": 100,
+    "median_ms": 1.966959,
+    "p95_ms": 3.439416
+  },
+  "press_and_committed_frame": {
+    "samples": 50,
+    "median_ms": 12.034417000000001,
+    "p95_ms": 14.125209
+  },
+  "retina_png": {
+    "samples": 10,
+    "median_ms": 936.9840409999999,
+    "p95_ms": 946.458083
+  }
+}

@@ -9,3 +9,7 @@ Outline icon paths in `assets/` are taken from this repository's approved `.lavi
 `assets/AppIcon.png` and `.icns` retain the same Evee artwork on an opaque black canvas, allowing macOS to apply the rounded icon mask without exposing a light backing at the edge. They are bundled locally; the user's profile photo is read at runtime and is not an app asset.
 
 The current GPUI core/platform/macOS/Apple sources are pinned to Zed commit `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8` (Apache-2.0). Their upstream license declarations and notices remain in the dependency sources. This replaces the published framework dependency without changing the original input/example attribution above. See `docs/verification/GPUI_UPGRADE.md` for resolved versions and validation.
+
+## Vendored GPUI pilot seam
+
+`vendor/gpui` is the Apache-2.0 core GPUI crate from Zed revision `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`, with the opt-in adapter changes recorded in `vendor/gpui-pilot.patch`. Its license is retained at `vendor/gpui/LICENSE-APACHE`; `scripts/vendor-pilot-gpui.py` reproduces the source and standalone manifest. Other GPUI platform packages remain pinned upstream git dependencies.
