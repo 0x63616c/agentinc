@@ -29,6 +29,7 @@ pub const TEXT_ACCENT: u32 = 0xc6c6c6;
 pub const STATUS_UNREAD: u32 = TEXT_ACCENT;
 pub const TEXT_ON_PRIMARY: u32 = 0x141414;
 pub const PRIMARY: u32 = 0xe8e8e8;
+pub const ACCENT: u32 = 0x0a84ff;
 pub const ERROR: u32 = 0xe6acac;
 pub const ERROR_BORDER: u32 = 0xb67171;
 pub const DESTRUCTIVE: u32 = 0x5b2b2b;

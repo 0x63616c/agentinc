@@ -1,5 +1,6 @@
 use crate::{
     assistant,
+    components::*,
     input::{Submit, TextInput},
     overlay::{Overlay, OverlayHost, dialog_shell, menu_shell},
     storage::{Command, Conversation, Store, Turn},
@@ -270,137 +271,105 @@ impl AssistantPage {
         } else if let Some(account) = &self.account {
             format!("Connected as {account}")
         } else {
-            "Not connected".to_owned()
+            "Not connected · Uses your ChatGPT subscription.".to_owned()
         };
         column()
-            .gap(px(12.))
-            .child(
-                column()
-                    .gap(px(10.))
-                    .child(
-                        row()
-                            .justify_between()
-                            .gap(px(16.))
-                            .child(
-                                column().gap(px(3.)).child("ChatGPT").child(
-                                    div()
-                                        .text_size(type_size(CAPTION_SIZE))
-                                        .text_color(rgb(MUTED))
-                                        .child(state),
-                                ),
-                            )
-                            .child(
-                                self.action(
-                                    "codex-sign-in",
-                                    if self.account.is_some() {
-                                        "Sign out"
-                                    } else {
-                                        "Sign in with ChatGPT"
-                                    },
-                                    enabled,
-                                    |this, cx| {
-                                        if this.account.is_some() {
-                                            this.disconnect(cx)
-                                        } else {
-                                            this.connect(cx)
-                                        }
-                                    },
-                                    cx,
-                                )
-                                .border_1()
-                                .border_color(rgb(BORDER)),
-                            ),
+            .child(settings_row(
+                "ChatGPT",
+                state,
+                if self.account.is_some() {
+                    settings_button(
+                        "codex-sign-in",
+                        "Sign out",
+                        enabled,
+                        |this: &mut Self, _, cx| this.disconnect(cx),
+                        cx,
                     )
-                    .when_some(self.connection_error.clone(), |s, e| {
-                        s.child(
-                            div()
-                                .text_size(type_size(CAPTION_SIZE))
-                                .text_color(rgb(ERROR))
-                                .child(e),
-                        )
-                    })
-                    .when(self.login_cancel.is_some(), |s| {
-                        s.child(self.action(
-                            "cancel-sign-in",
-                            "Cancel sign-in",
-                            true,
-                            |this, cx| {
-                                if let Some(cancel) = &this.login_cancel {
-                                    cancel.store(true, Ordering::Relaxed);
-                                }
-                                cx.notify();
-                            },
+                } else {
+                    settings_icon_button(
+                        "codex-sign-in",
+                        "Sign in with ChatGPT",
+                        "openai",
+                        enabled,
+                        |this: &mut Self, _, cx| this.connect(cx),
+                        cx,
+                    )
+                },
+            ))
+            .when_some(self.connection_error.clone(), |s, error| {
+                s.child(settings_divider()).child(settings_row(
+                    "Connection issue",
+                    error,
+                    settings_button(
+                        "codex-refresh-error",
+                        "Retry",
+                        enabled,
+                        |this: &mut Self, _, cx| this.refresh_connection(cx),
+                        cx,
+                    ),
+                ))
+            })
+            .when(self.login_cancel.is_some(), |s| {
+                s.child(settings_divider()).child(settings_row(
+                    "Sign-in in progress",
+                    "Waiting for your browser to complete sign-in.",
+                    settings_button(
+                        "cancel-sign-in",
+                        "Cancel",
+                        true,
+                        |this: &mut Self, _, cx| {
+                            if let Some(cancel) = &this.login_cancel {
+                                cancel.store(true, Ordering::Relaxed);
+                            }
+                            cx.notify();
+                        },
+                        cx,
+                    ),
+                ))
+            })
+            .when(self.account.is_some(), |s| {
+                s.child(settings_divider()).child(settings_row(
+                    "Model",
+                    "Choose the Codex model for conversations.",
+                    settings_segments(
+                        std::iter::once(settings_segment(
+                            "model-default",
+                            "Codex default",
+                            self.model.is_none(),
+                            enabled,
+                            |this: &mut Self, _, cx| this.select_model(None, cx),
                             cx,
                         ))
-                    })
-                    .when(self.account.is_some(), |s| {
-                        s.child(
-                            column()
-                                .gap(px(6.))
-                                .child(
-                                    div()
-                                        .mt(px(8.))
-                                        .text_size(type_size(CAPTION_SIZE))
-                                        .text_color(rgb(MUTED))
-                                        .child("Model"),
-                                )
-                                .child(self.action(
-                                    "model-default",
-                                    if self.model.is_none() {
-                                        "✓ Codex default"
-                                    } else {
-                                        "Codex default"
-                                    },
+                        .chain(self.models.iter().enumerate().map(
+                            |(index, model)| {
+                                let id = model.id.clone();
+                                settings_segment(
+                                    ("codex-model", index),
+                                    model.name.clone(),
+                                    self.model.as_ref() == Some(&id),
                                     enabled,
-                                    |this, cx| this.select_model(None, cx),
+                                    move |this: &mut Self, _, cx| {
+                                        this.select_model(Some(id.clone()), cx)
+                                    },
                                     cx,
-                                ))
-                                .children(self.models.iter().enumerate().map(|(index, model)| {
-                                    let id = model.id.clone();
-                                    let label = format!(
-                                        "{}{}",
-                                        if self.model.as_ref() == Some(&id) {
-                                            "✓ "
-                                        } else {
-                                            ""
-                                        },
-                                        model.name
-                                    );
-                                    self.action(
-                                        ("codex-model", index),
-                                        &label,
-                                        enabled,
-                                        move |this, cx| this.select_model(Some(id.clone()), cx),
-                                        cx,
-                                    )
-                                })),
-                        )
-                    }),
-            )
-            .child(
-                row()
-                    .justify_between()
-                    .gap(px(12.))
-                    .pt(px(16.))
-                    .border_t_1()
-                    .border_color(rgb(BORDER))
-                    .child(
-                        div()
-                            .text_size(type_size(CAPTION_SIZE))
-                            .text_color(rgb(MUTED))
-                            .child("Uses your ChatGPT subscription."),
-                    )
-                    .child(
-                        self.action(
-                            "codex-refresh",
-                            "Refresh",
-                            enabled,
-                            Self::refresh_connection,
-                            cx,
-                        )
-                        .text_color(rgb(MUTED)),
+                                )
+                            },
+                        )),
                     ),
-            )
+                ))
+            })
+            .child(settings_divider())
+            .child(settings_row(
+                "Connection status",
+                "Refresh your ChatGPT account and available models.",
+                settings_button(
+                    "codex-refresh",
+                    "Refresh",
+                    enabled,
+                    |this: &mut Self, _, cx| this.refresh_connection(cx),
+                    cx,
+                ),
+            ))
     }
     fn mutate<R: Send + 'static>(
         &mut self,
