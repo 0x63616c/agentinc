@@ -13,7 +13,7 @@ use anyhow::bail;
 use anyhow::{Context, Result};
 use std::{
     future::Future,
-    os::unix::process::CommandExt,
+    os::unix::{fs::OpenOptionsExt, process::CommandExt},
     path::PathBuf,
     sync::{Mutex, OnceLock},
 };
@@ -62,12 +62,18 @@ pub async fn client() -> Result<Client> {
             if let Ok(database) = std::env::var("AINC_DATABASE_URL") {
                 command.env("DATABASE_URL", database);
             }
+            std::fs::create_dir_all(discovery.parent().context("discovery directory")?)?;
+            let log = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .mode(0o600)
+                .open(discovery.with_file_name("daemon.log"))?;
             command
                 .process_group(0)
                 .env("AINC_DISCOVERY_FILE", &discovery)
                 .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+                .stdout(log.try_clone()?)
+                .stderr(log)
                 .spawn()?;
             for _ in 0..1200 {
                 if let Ok(url) = std::fs::read_to_string(&discovery)

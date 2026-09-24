@@ -163,7 +163,7 @@ pub fn verify_bundle(bundle: &Path, manifest: &Manifest) -> Result<()> {
         "bundle does not match signed release identity"
     );
     let requirement = format!(
-        "anchor apple generic and certificate leaf[subject.OU] = \"{TEAM_ID}\" and identifier \"co.worldwidewebb.agentinc\""
+        "=anchor apple generic and certificate leaf[subject.OU] = \"{TEAM_ID}\" and identifier \"co.worldwidewebb.agentinc\""
     );
     ensure!(
         Command::new("/usr/bin/codesign")
