@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Seed an isolated AgentInc stack and capture one real macOS window.
+"""Seed an isolated AgentInc stack and capture one real app frame.
 
 Run after `cargo xtask dev` and `crates/ainc-mac/scripts/bundle.sh automation`.
-The capture includes native controls, corners and WindowServer shadow. No
-desktop input is synthesized and the app is closed immediately afterward.
+GPUI Pilot reads the running app's retina Metal frame. No desktop input is
+synthesized and the app is closed immediately afterward.
 """
 import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import time
@@ -18,6 +19,15 @@ APP = ROOT / "crates/ainc-mac/dist/AgentInc.app/Contents/MacOS/agentinc-os"
 PILOT = ROOT / "target/debug/gpui-pilot"
 DISCOVERY = ROOT / ".local/dev/api-url"
 TITLE = "AgentInc README Capture"
+TICKETS = (
+    ("Explore offline onboarding", "backlog"),
+    ("Map connector permissions", "backlog"),
+    ("Draft first-run checklist", "to_do"),
+    ("Review sync error copy", "to_do"),
+    ("Stabilize ticket import", "in_progress"),
+    ("Polish keyboard navigation", "in_progress"),
+    ("Ship updater smoke test", "done"),
+)
 
 
 def pilot(manifest, *args, typed=None):
@@ -103,6 +113,15 @@ def create_ticket(manifest, title, status):
     wait(manifest, "present", "tickets.create")
 
 
+def wait_for_manifest(app, manifest, log_path):
+    deadline = time.monotonic() + 20
+    while not manifest.is_file():
+        if app.poll() is not None or time.monotonic() >= deadline:
+            raise RuntimeError(log_path.read_text())
+        time.sleep(0.05)  # Wait only for process startup; UI uses Pilot gates.
+    pilot(manifest, "hello")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="raw PNG path under ignored .local/")
@@ -127,38 +146,44 @@ def main():
         })
         with (state / "app.log").open("w") as log:
             app = subprocess.Popen(
-                [str(APP), "--gpui-pilot-session", str(state / "pilot")],
+                [str(APP), "--gpui-pilot-session", str(state / "p")],
                 env=env, stdout=log, stderr=log,
             )
             try:
-                manifest = state / "pilot/instance.json"
-                deadline = time.monotonic() + 20
-                while not manifest.is_file():
-                    if app.poll() is not None or time.monotonic() >= deadline:
-                        raise RuntimeError((state / "app.log").read_text())
-                    time.sleep(0.05)  # Wait only for process startup; UI uses Pilot gates.
-                pilot(manifest, "hello")
+                manifest = state / "p/instance.json"
+                wait_for_manifest(app, manifest, state / "app.log")
                 click(manifest, "nav.tickets")
                 wait(manifest, "present", "tickets.create")
-                for title, status in (
-                    ("Explore offline onboarding", "backlog"),
-                    ("Map connector permissions", "backlog"),
-                    ("Draft first-run checklist", "to_do"),
-                    ("Review sync error copy", "to_do"),
-                    ("Stabilize ticket import", "in_progress"),
-                    ("Polish keyboard navigation", "in_progress"),
-                    ("Ship updater smoke test", "done"),
-                ):
+                for title, status in TICKETS:
                     create_ticket(manifest, title, status)
-                click(manifest, "close-evee")
-                wait(manifest, "absent", "close-evee")
-                window = subprocess.check_output(
-                    ["swift", str(ROOT / "scripts/readme-window.swift"),
-                     str(app.pid)], text=True,
+                app.terminate()
+                app.wait(timeout=5)
+                app = subprocess.Popen(
+                    [str(APP), "--gpui-pilot-session", str(state / "q")],
+                    env=env, stdout=log, stderr=log,
                 )
-                window_id = json.loads(window)["id"]
-                subprocess.run(["screencapture", "-x", f"-l{window_id}", str(output)], check=True)
-                print(f"Captured native window {window_id}: {output}")
+                manifest = state / "q/instance.json"
+                wait_for_manifest(app, manifest, state / "app.log")
+                click(manifest, "nav.tickets")
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    if any(n.get("name") == "Ship updater smoke test"
+                           for n in snapshot(manifest)["nodes"]):
+                        break
+                else:
+                    raise TimeoutError("Seeded Tickets did not load")
+                visible = [n.get("name") for n in snapshot(manifest)["nodes"]
+                           if (n.get("author_id") or "").startswith("ticket.")]
+                if sorted(visible) != sorted(title for title, _ in TICKETS):
+                    raise RuntimeError(f"Capture stack contains unexpected Tickets: {visible}")
+                if any(n.get("author_id") == "close-evee" for n in snapshot(manifest)["nodes"]):
+                    click(manifest, "close-evee")
+                    wait(manifest, "absent", "close-evee")
+                capture = pilot(manifest, "screenshot")
+                if (capture["width"], capture["height"]) != (2720, 1656):
+                    raise RuntimeError(f"Unexpected retina frame: {capture}")
+                shutil.copyfile(capture["path"], output)
+                print(f"Captured real app frame {capture['frame']}: {output}")
             finally:
                 app.terminate()
                 try:
