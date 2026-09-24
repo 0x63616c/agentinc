@@ -94,7 +94,38 @@ fn install() -> Result<()> {
         let _ = Command::new("/usr/bin/open").arg(&installed).status();
         anyhow::bail!("relaunch failed; previous installation restored");
     }
-    // Retain the previous bundle for explicit recovery. Database rollback is never automatic.
+    // The new app must reconnect to a compatible, ready daemon before retiring
+    // the previous bundle. Keep it on failure; never roll back migrated data.
+    runtime.block_on(async {
+        let deadline = Instant::now() + Duration::from_secs(90);
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()?;
+        loop {
+            if let Ok(url) = fs::read_to_string(&discovery) {
+                let version = http.get(format!("{}/version", url.trim())).send().await;
+                if let Ok(response) = version
+                    && let Ok(identity) = response.json::<serde_json::Value>().await
+                    && identity["version"] == manifest.version.to_string()
+                {
+                    let ready = http
+                        .get(format!("{}/health/ready", url.trim()))
+                        .send()
+                        .await;
+                    if ready.is_ok_and(|response| response.status().is_success()) {
+                        break;
+                    }
+                }
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "new runtime did not become ready; previous bundle retained for recovery"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        anyhow::Ok(())
+    })?;
+    fs::remove_dir_all(backup)?;
     fs::remove_dir_all(stage)?;
     Ok(())
 }

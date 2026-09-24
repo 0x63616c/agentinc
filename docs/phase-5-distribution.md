@@ -42,10 +42,13 @@ directory, and never passed as secret values on command lines. Required secrets:
 
 ## Personal runtime
 
-The bundle includes Postgres 16, the Temporal CLI's persistent local server and the
-Codex executable. Build inputs come from the local developer tools and are recorded
-by hash in the handoff. Non-system dynamic libraries are copied and rewritten into the
-bundle so a fresh Mac does not need Homebrew, Docker, Tilt or a manual database setup.
+The Apple Silicon bundle (macOS 15 or later) includes portable Postgres 16.15, the Temporal CLI's persistent local server and the
+Codex executable. Postgres comes from the pinned Theseus 16.15.0 archive and SHA-256 in
+`scripts/release/prepare.py`. Temporal and Codex are taken from the build machine and
+recorded by hash in the handoff. Required portable libraries travel with Postgres;
+development headers and test executables are excluded. Every Mach-O is audited with
+`otool -L` before packaging: only system paths, `@loader_path` and `@rpath` are allowed.
+A fresh Mac does not need Homebrew, Docker, Tilt or a manual database setup.
 
 The daemon discovery lock owns startup. Without a configured `DATABASE_URL`, `aincd`
 initializes its private runtime directory beside discovery, protected mode 0700.

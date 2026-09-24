@@ -124,6 +124,7 @@ fn main() {
                     return;
                 }
             };
+            cx.set_global(updates::UpdateHost(window));
             #[cfg(feature = "automation")]
             if let Some(directory) = pilot_directory {
                 let title = std::env::var("AGENTINC_WINDOW_TITLE").expect("validated pilot title");

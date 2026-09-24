@@ -88,16 +88,7 @@ impl LocalRuntime {
         let postgres = command(&bin.join("postgres"), root, "postgres.log")?
             .arg("-D")
             .arg(&data)
-            .args([
-                "-h",
-                "127.0.0.1",
-                "-p",
-                &pg_port.to_string(),
-                "-k",
-                "",
-                "-c",
-                "max_connections=40",
-            ])
+            .args(["-h", "127.0.0.1", "-p", &pg_port.to_string(), "-k", ""])
             .spawn()
             .context("start bundled database")?;
         let runtime_port = port()?;

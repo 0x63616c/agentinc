@@ -13,6 +13,14 @@ fn main() -> Result<()> {
         "publish refused: UPDATE_SIGNING_KEY_ED25519_PEM is missing"
     );
     let key = SigningKey::from_pkcs8_pem(&pem).context("invalid Ed25519 signing key")?;
+    if env::var("AINC_RELEASE_TEST_KEY").as_deref() != Ok("1") {
+        use base64::Engine;
+        ensure!(
+            base64::engine::general_purpose::STANDARD.encode(key.verifying_key().to_bytes())
+                == ainc_release::UPDATE_PUBLIC_KEY,
+            "publish refused: signing key does not match embedded production public key"
+        );
+    }
     let args: Vec<_> = env::args().skip(1).collect();
     ensure!(
         args.len() == 6,

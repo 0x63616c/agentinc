@@ -125,6 +125,10 @@ for line in sys.stdin:
             "authorization",
             format!("Bearer {}", token.trim()).parse().unwrap(),
         );
+        headers.insert(
+            "agent-inc-client",
+            ainc_release::client_header().parse().unwrap(),
+        );
         (
             reqwest::Client::builder()
                 .default_headers(headers)

@@ -24,6 +24,8 @@ def main():
     if platform.system() != 'Darwin':
         raise SystemExit('GPUI/Metal requires the macOS SDK: run cargo xtask release on a Mac. CI remains Linux-only.')
     os.chdir(ROOT)
+    if run('git', 'status', '--porcelain', '--untracked-files=no'):
+        raise SystemExit('Commit tracked changes before preparing a release handoff')
     metadata = json.loads(run('cargo', 'metadata', '--no-deps', '--format-version=1'))
     product = next(p for p in metadata['packages'] if p['name'] == 'ainc-release')
     version = product['version']
@@ -50,60 +52,55 @@ def main():
     shutil.copy2(ROOT / 'crates/ainc-mac/assets/AppIcon.icns', resources / 'AppIcon.icns')
     runtime = resources / 'runtime'
     runtime.mkdir()
-    # Versioned runtime inputs are pinned by their hashes in the handoff record.
-    pg = Path(run('brew', '--prefix', 'postgresql@16'))
-    (runtime / 'postgres/bin').mkdir(parents=True)
-    for binary in ['postgres', 'initdb']:
-        shutil.copy2(pg / 'bin' / binary, runtime / 'postgres/bin' / binary)
-    shutil.copytree(pg / 'share/postgresql@16', runtime / 'postgres/share', symlinks=False)
-    shutil.copytree(pg / 'lib/postgresql', runtime / 'postgres/lib/postgresql', symlinks=False)
+    # Portable by construction; never relocate a developer's Homebrew install.
+    if platform.machine() != 'arm64':
+        raise SystemExit('This release currently supports Apple Silicon only')
+    pg_version = '16.15.0'
+    pg_name = f'postgresql-{pg_version}-aarch64-apple-darwin'
+    pg_sha256 = '46f6382024d9b633d1f4b4903ffef8c2404e00ae83098d628c00591048cb0512'
+    cache = ROOT / '.local/release-inputs'
+    cache.mkdir(parents=True, exist_ok=True)
+    pg_archive = cache / (pg_name + '.tar.gz')
+    if not pg_archive.exists():
+        subprocess.run(['curl', '--fail', '--location', '--output', str(pg_archive),
+            f'https://github.com/theseus-rs/postgresql-binaries/releases/download/{pg_version}/{pg_name}.tar.gz'], check=True)
+    if hashlib.sha256(pg_archive.read_bytes()).hexdigest() != pg_sha256:
+        raise SystemExit('portable Postgres checksum mismatch')
+    import tempfile
+    with tempfile.TemporaryDirectory(dir=cache) as unpack:
+        with tarfile.open(pg_archive) as tar:
+            tar.extractall(unpack, filter='data')
+        pg = Path(unpack) / pg_name
+        destination = runtime / 'postgres'
+        (destination / 'bin').mkdir(parents=True)
+        for binary in ['postgres', 'initdb']:
+            shutil.copy2(pg / 'bin' / binary, destination / 'bin' / binary)
+        shutil.copytree(pg / 'share', destination / 'share', symlinks=True)
+        shutil.copytree(pg / 'lib', destination / 'lib', symlinks=True,
+            ignore=shutil.ignore_patterns('pgxs', '*.a', '*.pc'))
+        for license_file in ['LICENSE', 'COPYRIGHT', 'README.md']:
+            shutil.copy2(pg / license_file, destination / license_file)
     for binary in ['temporal', 'codex']:
         source = shutil.which(binary)
         if not source:
             raise SystemExit(f'{binary} binary required for the self-contained bundle')
         shutil.copy2(Path(source).resolve(), runtime / binary)
-    # Rewrite every non-system dylib dependency into this bundle. This includes
-    # transitive Homebrew dependencies; fresh Macs never resolve /opt/homebrew.
-    framework = contents / 'Frameworks'
-    framework.mkdir()
-    queue = [(p, p) for p in bundle.rglob('*') if p.is_file() and run('file', '-b', str(p)).startswith('Mach-O')]
-    copied = {}
-    checked = set()
-    while queue:
-        binary, original = queue.pop()
-        if binary in checked:
+    # Audit every Mach-O, including dylibs. A packaging regression fails before
+    # the artifact reaches signing; no machine-local paths are tolerated.
+    for binary in bundle.rglob('*'):
+        if not binary.is_file() or not run('file', '-b', str(binary)).startswith('Mach-O'):
             continue
-        checked.add(binary)
-        deps = run('otool', '-L', str(binary)).splitlines()[1:]
-        for line in deps:
+        for line in run('otool', '-L', str(binary)).splitlines()[1:]:
             dependency = line.strip().split(' (compatibility')[0]
-            if dependency.startswith(('/usr/lib/', '/System/Library/')):
-                continue
+            if not dependency.startswith(('/usr/lib/', '/System/', '@loader_path/', '@rpath/')):
+                raise SystemExit(f'nonportable dependency {dependency} in {binary}')
             if dependency.startswith('@loader_path/'):
-                source = (original.parent / dependency.removeprefix('@loader_path/')).resolve()
-                if source.is_relative_to(bundle) and source.is_file():
-                    continue
-            elif dependency.startswith('@'):
-                raise SystemExit(f'unresolved dynamic library {dependency} in {binary}')
-            else:
-                source = Path(dependency).resolve()
-            if source == binary.resolve():
-                continue
-            if not source.is_file():
-                raise SystemExit(f'missing dynamic library {source}')
-            if source not in copied:
-                name = hashlib.sha256(str(source).encode()).hexdigest()[:8] + '-' + source.name
-                destination = framework / name
-                shutil.copy2(source, destination)
-                copied[source] = destination
-                subprocess.run(['install_name_tool', '-id', '@loader_path/' + name, str(destination)], check=True)
-                queue.append((destination, source))
-            destination = copied[source]
-            relative = os.path.relpath(destination, binary.parent)
-            subprocess.run(['install_name_tool', '-change', dependency, '@loader_path/' + relative, str(binary)], check=True)
+                target = (binary.parent / dependency.removeprefix('@loader_path/')).resolve()
+                if not target.is_relative_to(bundle) or not target.is_file():
+                    raise SystemExit(f'unresolved bundle dependency {dependency} in {binary}')
     identity = dict(version=version, build=build, commit=commit, architecture=platform.machine().replace('arm64','aarch64'), api=1, minimum_client='0.1.0', schema=1)
     (resources / 'release.json').write_text(json.dumps(identity, indent=2) + '\n')
-    plist = dict(CFBundleName='AgentInc', CFBundleDisplayName='AgentInc', CFBundleIdentifier='co.worldwidewebb.agentinc', CFBundleExecutable='agentinc-os', CFBundleIconFile='AppIcon', CFBundlePackageType='APPL', CFBundleShortVersionString=version, CFBundleVersion=build, LSMinimumSystemVersion='12.0', NSHighResolutionCapable=True, NSPrincipalClass='NSApplication')
+    plist = dict(CFBundleName='AgentInc', CFBundleDisplayName='AgentInc', CFBundleIdentifier='co.worldwidewebb.agentinc', CFBundleExecutable='agentinc-os', CFBundleIconFile='AppIcon', CFBundlePackageType='APPL', CFBundleShortVersionString=version, CFBundleVersion=build, LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, NSPrincipalClass='NSApplication')
     (contents / 'Info.plist').write_bytes(plistlib.dumps(plist))
     # The runtime input inventory makes local build provenance reviewable.
     inventory = {str(p.relative_to(bundle)): hashlib.sha256(p.read_bytes()).hexdigest() for p in bundle.rglob('*') if p.is_file()}

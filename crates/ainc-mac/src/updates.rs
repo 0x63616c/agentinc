@@ -17,6 +17,9 @@ use std::{
 actions!(updates, [CheckForUpdates, ShowChangelog]);
 #[derive(Clone)]
 pub struct Updates(pub Entity<UpdateView>);
+#[derive(Clone)]
+pub struct UpdateHost(pub WindowHandle<crate::shell::Shell>);
+impl Global for UpdateHost {}
 impl Global for Updates {}
 pub struct UpdateView {
     preferences: Preferences,
@@ -25,6 +28,7 @@ pub struct UpdateView {
     release: Option<(SignedManifest, Manifest)>,
     busy: bool,
     ready: bool,
+    available: bool,
     progress: Arc<AtomicU64>,
     changelog: bool,
 }
@@ -69,6 +73,7 @@ impl UpdateView {
             release: None,
             busy: false,
             ready: false,
+            available: false,
             progress: Arc::new(AtomicU64::new(0)),
             changelog: false,
         }
@@ -110,13 +115,15 @@ impl UpdateView {
                             this.message = format!("AgentInc {} is available", manifest.version);
                             this.release = Some((signed, manifest));
                             this.ready = false;
+                            this.available = true;
                             if !manual && this.preferences.automatic_download {
                                 this.download(cx);
                             }
                         }
                         Ok(_) => {
                             this.message = "You’re up to date".into();
-                            this.release = None;
+                            this.available = false;
+                            this.release = Some((signed, manifest));
                         }
                         Err(error) => this.message = error.to_string(),
                     },
@@ -148,7 +155,20 @@ impl UpdateView {
                 &manifest,
                 &directory.join("app.tar.gz"),
                 progress,
-            ))
+            ))?;
+            let stage = directory.join("verified");
+            if stage.exists() {
+                std::fs::remove_dir_all(&stage)?;
+            }
+            let verified = updater::extract(
+                &signed,
+                ainc_release::UPDATE_PUBLIC_KEY,
+                &directory.join("app.tar.gz"),
+                &stage,
+            )?;
+            let result = updater::verify_bundle(&stage.join("AgentInc.app"), &verified);
+            std::fs::remove_dir_all(stage)?;
+            result
         });
         cx.spawn(async move |this, cx| {
             let result = request.await;
@@ -168,6 +188,8 @@ impl UpdateView {
     fn install(&mut self, cx: &mut Context<Self>) {
         let result = (|| -> anyhow::Result<()> {
             anyhow::ensure!(self.ready, "download is not verified");
+            let host = cx.global::<UpdateHost>().0;
+            host.update(cx, |shell, _, cx| shell.flush_for_update(cx))??;
             let executable = std::env::current_exe()?;
             let macos = executable
                 .parent()
@@ -311,7 +333,7 @@ impl Render for UpdateView {
                     manifest.archive_bytes / 1_000_000
                 ));
             }
-            if !self.busy {
+            if !self.busy && self.available {
                 view = view.child(
                     row()
                         .gap(px(8.))
@@ -370,7 +392,7 @@ impl Render for UpdateView {
 }
 pub fn open(cx: &mut App, check: bool) {
     let view = cx.global::<Updates>().0.clone();
-    if check {
+    if check || view.read(cx).release.is_none() {
         view.update(cx, |this, cx| this.check(true, cx));
     }
     let bounds = Bounds::centered(None, size(px(660.), px(520.)), cx);

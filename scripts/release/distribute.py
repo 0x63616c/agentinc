@@ -29,6 +29,11 @@ def main():
     if commit != args.commit or run('git', 'rev-parse', 'HEAD') != commit:
         raise SystemExit('release checkout does not match requested commit')
     repo = os.environ['GITHUB_REPOSITORY']
+    checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{commit}/check-runs'))['check_runs']
+    if not any(check['name'] == 'rust' and check['conclusion'] == 'success' for check in checks):
+        raise SystemExit('release refused: workspace CI must pass for this exact commit first')
+    if not args.test:
+        subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
     handoff_tag = 'build-' + commit
     out = Path('.local/distribution').resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -81,7 +86,9 @@ def main():
         with tarfile.open(archive, 'w:gz') as tar:
             tar.add(bundle, arcname='AgentInc.app')
         env = dict(os.environ)
+        env.pop('AINC_RELEASE_TEST_KEY', None)
         if args.test:
+            env['AINC_RELEASE_TEST_KEY'] = '1'
             # Throwaway key, never used by the production channel.
             run('openssl', 'genpkey', '-algorithm', 'ED25519', '-out', str(private / 'update.pem'))
             env['UPDATE_SIGNING_KEY_ED25519_PEM'] = (private / 'update.pem').read_text()

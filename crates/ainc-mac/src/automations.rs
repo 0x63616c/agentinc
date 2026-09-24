@@ -40,6 +40,44 @@ pub struct AutomationsPage {
 }
 impl EventEmitter<OpenTicket> for AutomationsPage {}
 impl AutomationsPage {
+    pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
+        anyhow::ensure!(
+            !self.pending,
+            "Wait for the current change to finish before installing"
+        );
+        Ok(
+            serde_json::json!({"editing":self.editing,"selected":self.selected,"editing_revision":self.editing_revision,"agent":self.agent,"name": self.name.read(cx).content.to_string(), "prompt": self.prompt.read(cx).content.to_string(), "minutes": self.minutes.read(cx).content.to_string()}),
+        )
+    }
+    pub(crate) fn restore_update_drafts(
+        &mut self,
+        value: &serde_json::Value,
+        cx: &mut Context<Self>,
+    ) {
+        if let Ok(value) = serde_json::from_value(value["editing"].clone()) {
+            self.editing = value;
+        }
+        if let Ok(value) = serde_json::from_value(value["selected"].clone()) {
+            self.selected = value;
+        }
+        if let Ok(value) = serde_json::from_value(value["editing_revision"].clone()) {
+            self.editing_revision = value;
+        }
+        if let Ok(value) = serde_json::from_value(value["agent"].clone()) {
+            self.agent = value;
+        }
+        if let Some(text) = value["name"].as_str() {
+            self.name.update(cx, |input, cx| input.set_text(text, cx));
+        }
+        if let Some(text) = value["prompt"].as_str() {
+            self.prompt.update(cx, |input, cx| input.set_text(text, cx));
+        }
+        if let Some(text) = value["minutes"].as_str() {
+            self.minutes
+                .update(cx, |input, cx| input.set_text(text, cx));
+        }
+    }
+
     pub fn new(store: Option<Arc<Store>>, error: Option<String>, cx: &mut Context<Self>) -> Self {
         let name =
             cx.new(|cx| TextInput::field("Rule name", false, cx).identified("automations.name"));

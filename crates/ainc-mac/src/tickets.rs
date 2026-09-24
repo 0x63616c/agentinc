@@ -45,6 +45,44 @@ pub struct TicketsPage {
     _subscriptions: Vec<Subscription>,
 }
 impl TicketsPage {
+    pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
+        anyhow::ensure!(
+            !self.pending,
+            "Wait for the current change to finish before installing"
+        );
+        Ok(
+            serde_json::json!({"selected":self.selected,"input": self.input.read(cx).content.to_string(), "comment": self.comment.read(cx).content.to_string(), "agent_name": self.agent_name.read(cx).content.to_string(), "agent_instructions": self.agent_instructions.read(cx).content.to_string(), "agent_model": self.agent_model.read(cx).content.to_string()}),
+        )
+    }
+    pub(crate) fn restore_update_drafts(
+        &mut self,
+        value: &serde_json::Value,
+        cx: &mut Context<Self>,
+    ) {
+        if let Ok(value) = serde_json::from_value(value["selected"].clone()) {
+            self.selected = value;
+        }
+        if let Some(text) = value["input"].as_str() {
+            self.input.update(cx, |input, cx| input.set_text(text, cx));
+        }
+        if let Some(text) = value["comment"].as_str() {
+            self.comment
+                .update(cx, |input, cx| input.set_text(text, cx));
+        }
+        if let Some(text) = value["agent_name"].as_str() {
+            self.agent_name
+                .update(cx, |input, cx| input.set_text(text, cx));
+        }
+        if let Some(text) = value["agent_instructions"].as_str() {
+            self.agent_instructions
+                .update(cx, |input, cx| input.set_text(text, cx));
+        }
+        if let Some(text) = value["agent_model"].as_str() {
+            self.agent_model
+                .update(cx, |input, cx| input.set_text(text, cx));
+        }
+    }
+
     pub fn new(
         store: Option<Arc<Store>>,
         storage_error: Option<String>,

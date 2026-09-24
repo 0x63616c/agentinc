@@ -11,6 +11,11 @@ pub async fn client_header(request: &mut reqwest::Request) -> Result<(), std::co
     Ok(())
 }
 
+static UPDATE_REQUIRED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub fn update_required() -> bool {
+    UPDATE_REQUIRED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Central response gate used by every generated operation.
 pub async fn server_compatibility(
     result: &Result<reqwest::Response, reqwest::Error>,
@@ -18,15 +23,19 @@ pub async fn server_compatibility(
     let Ok(response) = result else {
         return Ok(());
     };
-    if response.status() == reqwest::StatusCode::UPGRADE_REQUIRED {
-        return Err(ainc_release::CompatibilityError::UpgradeRequired);
-    }
-    if let Some(header) = response.headers().get("agent-inc-server") {
-        let header = header
-            .to_str()
-            .map_err(|_| ainc_release::CompatibilityError::ServerTooOld)?;
-        ainc_release::check_client(header, ainc_release::MIN_CLIENT, ainc_release::API)
-            .map_err(|_| ainc_release::CompatibilityError::ServerTooOld)?;
-    }
-    Ok(())
+    let checked = (|| {
+        if response.status() == reqwest::StatusCode::UPGRADE_REQUIRED {
+            return Err(ainc_release::CompatibilityError::UpgradeRequired);
+        }
+        if let Some(header) = response.headers().get("agent-inc-server") {
+            let header = header
+                .to_str()
+                .map_err(|_| ainc_release::CompatibilityError::ServerTooOld)?;
+            ainc_release::check_client(header, ainc_release::MIN_CLIENT, ainc_release::API)
+                .map_err(|_| ainc_release::CompatibilityError::ServerTooOld)?;
+        }
+        Ok(())
+    })();
+    UPDATE_REQUIRED.store(checked.is_err(), std::sync::atomic::Ordering::Relaxed);
+    checked
 }
