@@ -185,7 +185,7 @@ impl Suite {
 }
 
 pub fn run() -> Result<()> {
-    let temporary = tempfile::tempdir_in("target")?;
+    let temporary = tempfile::tempdir()?;
     let output = std::env::var_os("AGENTINC_RENDER_OUTPUT")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("target/rendered-shell"));

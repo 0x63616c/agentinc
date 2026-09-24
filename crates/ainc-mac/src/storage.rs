@@ -214,10 +214,8 @@ mod tests {
     use super::*;
     #[test]
     fn migration_preserves_legacy_turns_and_conversations_are_isolated() -> Result<()> {
-        let path = std::env::current_dir()?.join(format!(
-            "target/migration-test-{}.sqlite3",
-            std::process::id()
-        ));
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("migration.sqlite3");
         let legacy = Connection::open(&path)?;
         legacy.execute_batch("CREATE TABLE turns(id INTEGER PRIMARY KEY,prompt TEXT NOT NULL,response TEXT,error TEXT); INSERT INTO turns VALUES(1,'Legacy question','Legacy reply',NULL); PRAGMA user_version=1;")?;
         drop(legacy);
@@ -245,8 +243,8 @@ mod tests {
     #[test]
     fn newer_schema_is_preserved_and_new_files_are_private() -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
-        let path = std::env::current_dir()?
-            .join(format!("target/schema-test-{}.sqlite3", std::process::id()));
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("schema.sqlite3");
         let store = Store::open(&path)?;
         assert_eq!(fs::metadata(&path)?.permissions().mode() & 0o777, 0o600);
         store.0.execute_batch("PRAGMA user_version=3;")?;
@@ -263,10 +261,8 @@ mod tests {
     }
     #[test]
     fn durable_tasks_chat_and_interrupted_retry() -> Result<()> {
-        let path = std::env::current_dir()?.join(format!(
-            "target/assistant-test-{}.sqlite3",
-            std::process::id()
-        ));
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("assistant.sqlite3");
         let store = Store::open(&path)?;
         store
             .0

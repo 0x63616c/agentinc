@@ -546,7 +546,7 @@ mod interaction_tests {
     #[gpui::test]
     fn task_input_submit_complete_reopen_and_delete(cx: &mut TestAppContext) {
         cx.update(input::bind_keys);
-        let dir = tempfile::tempdir_in("target").unwrap();
+        let dir = tempfile::tempdir().unwrap();
         let store = Rc::new(Store::open(&dir.path().join("tasks.sqlite3")).unwrap());
         let overlays = Rc::new(RefCell::new(OverlayHost::default()));
         let page = cx.new(|cx| TasksPage::new(Some(store.clone()), None, overlays.clone(), cx));

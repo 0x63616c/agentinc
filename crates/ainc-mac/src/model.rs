@@ -441,10 +441,8 @@ mod tests {
     fn search_and_file_round_trip() {
         assert_eq!(Route::matching(" HOME "), vec![Route::Home]);
         assert!(Route::matching("zzz").is_empty());
-        let path = std::env::current_dir()
-            .unwrap()
-            .join("target/session-test")
-            .join(format!("{}.json", std::process::id()));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.json");
         let mut s = Session::default();
         s.navigate(Route::Agents);
         s.save(&path).unwrap();

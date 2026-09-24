@@ -1443,7 +1443,7 @@ mod interaction_tests {
 
     #[gpui::test]
     fn search_focus_wraps_and_escape_dismisses(cx: &mut TestAppContext) {
-        let dir = tempfile::tempdir_in("target").unwrap();
+        let dir = tempfile::tempdir().unwrap();
         cx.update(|cx| {
             bind_keys(cx);
             input::bind_keys(cx);
