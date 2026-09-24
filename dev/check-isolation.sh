@@ -31,20 +31,26 @@ cleanup() {
   for pid in "$pid_a" "$pid_b"; do
     if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
   done
-  (cd "$a" && cargo xtask down >/dev/null) || true
-  (cd "$b" && cargo xtask down >/dev/null) || true
+  (cd "$a" && TILT_DEV_DIR="$a/.local/dev/tilt" cargo xtask down >/dev/null) || true
+  (cd "$b" && TILT_DEV_DIR="$b/.local/dev/tilt" cargo xtask down >/dev/null) || true
 }
 trap cleanup EXIT
 
 start() {
   local tree=$1 port=$2
-  (cd "$tree" && exec tilt up --file Tiltfile --host 127.0.0.1 --port "$port") >"$tree/.local/dev/tilt-isolation.log" 2>&1 &
+  (cd "$tree" && TILT_DEV_DIR="$tree/.local/dev/tilt" exec tilt up --file Tiltfile --host 127.0.0.1 --port "$port") >"$tree/.local/dev/tilt-isolation.log" 2>&1 &
   started_pid=$!
 }
 
 ready() {
   local tree=$1 port=$2
-  tilt wait --host 127.0.0.1 --port "$port" --timeout 5m --for=condition=Ready uiresource/aincd
+  local log="$tree/.local/dev/tilt-isolation.log"
+  if ! rg -q 'Successfully loaded Tiltfile' "$log"; then
+    tail -n +1 -F "$log" | while IFS= read -r line; do
+      case "$line" in *'Successfully loaded Tiltfile'*) break;; esac
+    done || true
+  fi
+  TILT_DEV_DIR="$tree/.local/dev/tilt" tilt wait --host 127.0.0.1 --port "$port" --timeout 5m --for=condition=Ready uiresource/aincd
   curl -fsS "$(cat "$tree/.local/dev/api-url")/health/ready" >/dev/null
 }
 
@@ -78,7 +84,7 @@ temporal --address "$temporal_b" operator namespace describe --namespace "$id_b"
 kill "$pid_a"
 wait "$pid_a" 2>/dev/null || true
 pid_a=
-(cd "$a" && cargo xtask down >/dev/null)
+(cd "$a" && TILT_DEV_DIR="$a/.local/dev/tilt" cargo xtask down >/dev/null)
 ready "$b" "$port_b"
 test "$(psql "$pg_b" -Atc 'SELECT marker FROM isolation_probe')" = "$id_b"
 start "$a" "$port_a"

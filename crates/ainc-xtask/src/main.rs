@@ -93,7 +93,8 @@ fn cmd(instance: &Instance, program: &str) -> Command {
     let mut command = Command::new(program);
     command
         .current_dir(&instance.path)
-        .env("AINC_INSTANCE", &instance.id);
+        .env("AINC_INSTANCE", &instance.id)
+        .env("TILT_DEV_DIR", local(instance).join("tilt"));
     command
 }
 
