@@ -157,7 +157,12 @@ async fn owner_credential_required_for_reads_and_writes(pool: PgPool) {
     use tower::ServiceExt;
     let app = ainc_daemon::product_router(Product::new(pool, "fixture".into()).unwrap());
     let response = app
-        .oneshot(Request::get("/v1/state").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::get("/v1/state")
+                .header("agent-inc-client", ainc_release::client_header())
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(response.status(), 401);

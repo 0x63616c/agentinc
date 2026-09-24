@@ -49,6 +49,7 @@ pub struct Shell {
     automations: Entity<crate::automations::AutomationsPage>,
     _automation_subscriptions: Vec<Subscription>,
     _tickets_subscription: Subscription,
+    _update_subscription: Option<Subscription>,
     _assistant_subscriptions: Vec<Subscription>,
     profile: crate::profile::Profile,
     path: PathBuf,
@@ -184,6 +185,10 @@ impl Shell {
         let session = loaded.unwrap_or_default();
         let evee_progress = if session.evee { 1. } else { 0. };
         let sidebar_width = if session.sidebar { SIDEBAR } else { 0. };
+        let update_subscription = cx
+            .try_global::<crate::updates::Updates>()
+            .cloned()
+            .map(|updates| cx.observe(&updates.0, |_, _, cx| cx.notify()));
         let mut shell = Self {
             session,
             overlays,
@@ -192,6 +197,7 @@ impl Shell {
             automations,
             _automation_subscriptions: automation_subscriptions,
             _tickets_subscription: tickets_subscription,
+            _update_subscription: update_subscription,
             _assistant_subscriptions: assistant_subscriptions,
             profile,
             sidebar_width,
@@ -1060,6 +1066,19 @@ impl Shell {
                                     ),
                             ),
                     )
+                    .when_some(
+                        cx.try_global::<crate::updates::Updates>().cloned(),
+                        |view, updates| {
+                            view.child(
+                                div()
+                                    .mt(px(12.))
+                                    .pt(px(20.))
+                                    .border_t_1()
+                                    .border_color(rgb(BORDER))
+                                    .child(updates.0.update(cx, |this, cx| this.settings(cx))),
+                            )
+                        },
+                    )
                     .child(
                         div()
                             .mt(px(8.))
@@ -1072,16 +1091,6 @@ impl Shell {
                     )
                     .child(self.assistant.update(cx, |this, cx| this.settings_view(cx))),
             );
-            if let Some(updates) = cx.try_global::<crate::updates::Updates>().cloned() {
-                page = page.child(
-                    div()
-                        .mt(px(28.))
-                        .pt(px(20.))
-                        .border_t_1()
-                        .border_color(rgb(BORDER))
-                        .child(updates.0.update(cx, |this, cx| this.settings(cx))),
-                );
-            }
         } else if route == Route::Assistant {
             page = page.child(
                 self.assistant

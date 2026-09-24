@@ -14,7 +14,9 @@ parser=argparse.ArgumentParser()
 parser.add_argument('bundle', type=Path)
 parser.add_argument('profile', type=Path)
 parser.add_argument('--workspace-tests',action='store_true')
+parser.add_argument('--pilot',action='store_true')
 args=parser.parse_args()
+version=json.loads((args.bundle/'Contents/Resources/release.json').read_text())['version']
 root=args.profile.resolve()
 root.mkdir(parents=True,exist_ok=False)
 env=dict(os.environ,AINC_DISCOVERY_FILE=str(root/'api-url'),AINC_LEGACY_DIR=str(root/'legacy'),AGENTINC_CODEX_HOME=str(root/'codex'),RUST_LOG='info')
@@ -24,7 +26,7 @@ for name in ['DATABASE_URL','AINC_RUNTIME_CONFIG','AINC_DATABASE_URL']:
 def request(path,body=None):
  token=(root/'owner-token').read_text().strip()
  url=(root/'api-url').read_text().strip()+path
- headers={'Authorization':'Bearer '+token,'Agent-Inc-Client':'mac/0.1.0 (api 1)','Content-Type':'application/json'}
+ headers={'Authorization':'Bearer '+token,'Agent-Inc-Client':f'mac/{version} (api 1)','Content-Type':'application/json'}
  req=urllib.request.Request(url,data=None if body is None else json.dumps(body).encode(),headers=headers,method='GET' if body is None else 'POST')
  with urllib.request.urlopen(req,timeout=10) as response:
   data=response.read()
@@ -54,6 +56,12 @@ try:
   testenv=dict(os.environ,DATABASE_URL=f'postgres://agentinc:{password}@127.0.0.1:{pid[3]}/postgres',CARGO_INCREMENTAL='0')
   with (root/'workspace-tests.log').open('w') as log:
    subprocess.run(['cargo','test','--locked','--workspace'],env=testenv,stdout=log,stderr=subprocess.STDOUT,check=True)
+ if args.pilot:
+  pilotenv=dict(os.environ,AINC_DISCOVERY_FILE=str(root/'api-url'),CARGO_INCREMENTAL='0')
+  with (root/'pilot.log').open('w') as log:
+   subprocess.run(['cargo','build','--locked','-p','agentinc-os','-p','gpui-pilot-cli','--features','agentinc-os/automation'],env=pilotenv,stdout=log,stderr=subprocess.STDOUT,check=True)
+   subprocess.run(['cargo','test','--locked','-p','agentinc-os','--features','automation','--test','pilot_acceptance','--','--nocapture'],env=pilotenv,stdout=log,stderr=subprocess.STDOUT,check=True)
+  first=request('/v1/state')
  request('/internal/drain',{})
  assert child.wait(timeout=120)==0
  child=None

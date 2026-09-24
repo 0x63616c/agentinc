@@ -228,6 +228,7 @@ impl UpdateView {
     ) -> impl IntoElement {
         div()
             .id(id)
+            .accessibility_id(id)
             .cursor_pointer()
             .px(px(12.))
             .py(px(8.))

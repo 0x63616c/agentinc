@@ -72,6 +72,7 @@ fn http() -> Result<reqwest::Client> {
         .build()?)
 }
 pub async fn check(feed: &str, key: &str) -> Result<(SignedManifest, Manifest)> {
+    ensure!(!key.is_empty(), "update public key is not configured");
     let response = http()?.get(feed).send().await?.error_for_status()?;
     let mut stream = response.bytes_stream();
     let mut bytes = Vec::new();

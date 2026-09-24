@@ -19,6 +19,7 @@ def run(*args, **kwargs):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--upload', action='store_true', help='Hand the artifact to Linux Distribution through a draft release')
     parser.add_argument('--profile', choices=['debug', 'release'], default='release')
     args = parser.parse_args()
     if platform.system() != 'Darwin':
@@ -110,6 +111,16 @@ def main():
         tar.add(bundle, arcname='AgentInc.app')
         tar.add(out / 'handoff.json', arcname='handoff.json')
     print(archive)
+    if args.upload:
+        tag = 'build-' + commit
+        existing = subprocess.run(['gh-axi', 'release', 'view', tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if existing.returncode:
+            subprocess.run(['gh-axi', 'release', 'create', tag, '--draft', '--target', commit,
+                '--title', f'AgentInc {version} build input', '--notes', 'Native signing input. Do not publish.'], check=True)
+        subprocess.run(['gh-axi', 'release', 'upload', tag, str(archive), '--clobber'], check=True)
+        testing = run('git', 'branch', '--show-current') != 'main'
+        subprocess.run(['gh-axi', 'workflow', 'run', 'release.yml', '--ref', 'main',
+            '-f', f'commit={commit}', '-f', 'test=' + str(testing).lower()], check=True)
 
 if __name__ == '__main__':
     main()
