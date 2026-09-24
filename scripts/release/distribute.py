@@ -7,9 +7,11 @@ import base64
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 
 
 def run(*args, **kwargs):
@@ -20,6 +22,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--commit', required=True)
     parser.add_argument('--test', action='store_true')
+    parser.add_argument('--archive', type=Path, help='Unsigned artifact from this workflow run')
     args = parser.parse_args()
     if not args.test and not os.environ.get('UPDATE_SIGNING_KEY_ED25519_PEM', '').strip():
         raise SystemExit('publish refused: UPDATE_SIGNING_KEY_ED25519_PEM is missing')
@@ -29,15 +32,25 @@ def main():
     if commit != args.commit or run('git', 'rev-parse', 'HEAD') != commit:
         raise SystemExit('release checkout does not match requested commit')
     repo = os.environ['GITHUB_REPOSITORY']
-    checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{commit}/check-runs'))['check_runs']
-    if not any(check['name'] == 'rust' and check['conclusion'] == 'success' for check in checks):
-        raise SystemExit('release refused: workspace CI must pass for this exact commit first')
+    while True:
+        checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{commit}/check-runs'))['check_runs']
+        rust = [check for check in checks if check['name'] == 'rust']
+        if any(check['conclusion'] == 'success' for check in rust):
+            break
+        if rust and all(check['status'] == 'completed' for check in rust):
+            raise SystemExit('release refused: workspace CI failed for this exact commit')
+        print('Waiting for workspace CI on the release commit', flush=True)
+        time.sleep(15)
     if not args.test:
         subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
     handoff_tag = 'build-' + commit
     out = Path('.local/distribution').resolve()
     out.mkdir(parents=True, exist_ok=True)
-    subprocess.run(['gh', 'release', 'download', handoff_tag, '--pattern', 'unsigned.tar.gz', '--dir', str(out), '--clobber'], check=True)
+    if args.archive:
+        if args.archive.resolve() != out / 'unsigned.tar.gz':
+            shutil.copy2(args.archive, out / 'unsigned.tar.gz')
+    else:
+        subprocess.run(['gh', 'release', 'download', handoff_tag, '--pattern', 'unsigned.tar.gz', '--dir', str(out), '--clobber'], check=True)
     with tarfile.open(out / 'unsigned.tar.gz') as tar:
         tar.extractall(out, filter='data')
     identity = json.loads((out / 'handoff.json').read_text())

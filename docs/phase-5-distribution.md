@@ -8,8 +8,10 @@ membership and additional-user setup.
 ## Native build and Linux signing
 
 GPUI depends on AppKit, Metal and the Apple SDK. Linux cannot build this checkout's
-native macOS client with the installed Linux toolchain. Keep CI Linux-only and prepare
-the native artifact on a Mac at the exact release commit:
+native macOS client. On a version change pushed to `main`, Distribution builds
+the unsigned bundle on the repository's [macOS release runner](release-runner.md)
+at the exact commit and passes it to the existing Linux signing job through
+an Actions artifact. For a local or fallback build at that commit:
 
 ```
 cargo xtask release
@@ -19,9 +21,9 @@ For local acceptance, `cargo xtask release --profile debug` produces the same co
 bundle without optimization. The handoff is `.local/release/COMMIT/unsigned.tar.gz`.
 It includes the app, daemon, installer, runtime executables and a hashed file inventory.
 Create a **draft** `build-COMMIT` release targeted at that commit, upload the archive,
-and run Distribution for that commit. `--upload` performs this handoff and dispatches
-the workflow on main. Before the workflow is merged, branch acceptance reruns the
-branch Distribution job after uploading the handoff. No build-input draft is published.
+and dispatch Distribution with `build=false` for that commit. `--upload` performs
+this fallback handoff and dispatches the workflow on main. No build-input draft
+is published.
 
 Distribution uses rcodesign 0.29.0 on Ubuntu to sign all nested code with hardened
 runtime, submit to Apple's Notary API, staple, archive and Ed25519-sign the manifest.

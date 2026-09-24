@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--profile', choices=['debug', 'release'], default='release')
     args = parser.parse_args()
     if platform.system() != 'Darwin':
-        raise SystemExit('GPUI/Metal requires the macOS SDK: run cargo xtask release on a Mac. CI remains Linux-only.')
+        raise SystemExit('GPUI/Metal requires the macOS SDK: run cargo xtask release on a Mac.')
     os.chdir(ROOT)
     if run('git', 'status', '--porcelain', '--untracked-files=no'):
         raise SystemExit('Commit tracked changes before preparing a release handoff')
@@ -69,8 +69,9 @@ def main():
         raise SystemExit('portable Postgres checksum mismatch')
     import tempfile
     with tempfile.TemporaryDirectory(dir=cache) as unpack:
-        with tarfile.open(pg_archive) as tar:
-            tar.extractall(unpack, filter='data')
+        # The archive is pinned by SHA-256 above. macOS 15's Python 3.9 does
+        # not yet support tarfile's filter= argument.
+        subprocess.run(['tar', '-xzf', str(pg_archive), '-C', unpack], check=True)
         pg = Path(unpack) / pg_name
         destination = runtime / 'postgres'
         (destination / 'bin').mkdir(parents=True)
@@ -123,7 +124,8 @@ def main():
         subprocess.run(['gh-axi', 'release', 'upload', tag, str(archive), '--clobber'], check=True)
         testing = run('git', 'branch', '--show-current') != 'main'
         subprocess.run(['gh-axi', 'workflow', 'run', 'release.yml', '--ref', 'main',
-            '-f', f'commit={commit}', '-f', 'test=' + str(testing).lower()], check=True)
+            '-f', f'commit={commit}', '-f', 'test=' + str(testing).lower(),
+            '-f', 'build=false'], check=True)
 
 if __name__ == '__main__':
     main()
