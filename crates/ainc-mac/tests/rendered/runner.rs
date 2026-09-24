@@ -453,7 +453,7 @@ pub fn run() -> Result<()> {
         )?;
         suite.keys("enter");
         suite.capture(&format!("settings-{round}"), Route::Settings, None, true)?;
-        suite.keys("cmd-9");
+        suite.keys("cmd-6");
         suite.capture(
             &format!("automations-{round}"),
             Route::Automations,
