@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "build": "42",
+  "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "daemon_version": "0.2.0",
+  "minimum_client": "0.1.0",
+  "api": 1,
+  "schema": 1,
+  "architecture": "aarch64",
+  "archive_url": "https://example.com/AgentInc.tar.gz",
+  "archive_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "archive_bytes": 18000000,
+  "notes": "# What's new in AgentInc 0.2\n\n- **Faster launch** after a restart.\n- Native software updates with clear download progress.\n- Your Tickets and conversations are preserved.\n\n[Read the full release notes](https://example.com/releases/0.2.0).",
+  "changelog": "# AgentInc changelog\n\n## 0.2.0\n\n- Improved startup and update flow.\n- Fixed recovery after interrupted downloads."
+}

@@ -4,6 +4,7 @@ mod components;
 mod evee;
 mod input;
 mod model;
+mod native_update;
 mod overlay;
 mod palette;
 mod profile;
@@ -49,6 +50,15 @@ fn main_window_options(
 fn main() {
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    #[cfg(feature = "automation")]
+    if args.len() == 3 && args[0] == "--update-ui-smoke" {
+        let manifest: ainc_release::Manifest =
+            serde_json::from_slice(&std::fs::read(&args[1]).expect("smoke manifest"))
+                .expect("valid smoke manifest");
+        native_update::smoke(&manifest, std::path::Path::new(&args[2]))
+            .expect("native update smoke");
+        return;
+    }
     #[cfg(feature = "automation")]
     let (pilot_directory, pilot_visible) = {
         if args.is_empty() {

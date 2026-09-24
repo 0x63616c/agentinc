@@ -1,4 +1,5 @@
-//! App-owned update UI. It remains available when the product backend is down.
+//! App-owned update state. Native AppKit windows remain available when the backend is down.
+use crate::native_update;
 use crate::{components::*, style::*};
 use ainc_release::{
     Manifest, SignedManifest,
@@ -15,6 +16,21 @@ use std::{
 };
 
 actions!(updates, [CheckForUpdates, ShowChangelog]);
+
+fn apply_choice(
+    preferences: &mut Preferences,
+    action: i32,
+    automatic: bool,
+    version: Option<&str>,
+    now: u64,
+) {
+    preferences.automatic_download = automatic;
+    match action {
+        1 => preferences.skipped_version = version.map(str::to_owned),
+        2 => preferences.remind_after = now + 86400,
+        _ => {}
+    }
+}
 #[derive(Clone)]
 pub struct Updates(pub Entity<UpdateView>);
 #[derive(Clone)]
@@ -30,6 +46,10 @@ pub struct UpdateView {
     ready: bool,
     available: bool,
     progress: Arc<AtomicU64>,
+    cancel: Option<tokio::sync::watch::Sender<bool>>,
+    downloading: bool,
+    install_after_download: bool,
+    visible: bool,
     changelog: bool,
 }
 impl UpdateView {
@@ -66,6 +86,17 @@ impl UpdateView {
             }
         })
         .detach();
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(100))
+                    .await;
+                if this.update(cx, |this, cx| this.poll_native(cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         if directory.join("feed.json").is_file() && !ainc_release::UPDATE_PUBLIC_KEY.is_empty() {
             let saved = directory.clone();
             let request = cx.background_executor().spawn(async move {
@@ -92,6 +123,7 @@ impl UpdateView {
                             this.available = true;
                             this.ready = true;
                             this.message = "Update verified and ready to install".into();
+                            this.present();
                             cx.notify();
                         }
                     });
@@ -108,6 +140,10 @@ impl UpdateView {
             ready: false,
             available: false,
             progress: Arc::new(AtomicU64::new(0)),
+            cancel: None,
+            downloading: false,
+            install_after_download: false,
+            visible: false,
             changelog: false,
         }
     }
@@ -126,6 +162,81 @@ impl UpdateView {
             self.message = error.to_string();
         }
     }
+    fn present(&self) {
+        if !self.visible {
+            return;
+        }
+        if self.downloading {
+            if let Some((_, manifest)) = &self.release {
+                native_update::progress(
+                    self.progress.load(Ordering::Relaxed),
+                    manifest.archive_bytes,
+                );
+            }
+        } else if self.busy {
+            native_update::status(&self.message);
+        } else if self.available {
+            if let Some((_, manifest)) = &self.release {
+                native_update::offer(
+                    manifest,
+                    self.preferences.automatic_download,
+                    self.ready,
+                    self.changelog,
+                );
+            }
+        } else {
+            native_update::status(&self.message);
+        }
+    }
+    fn poll_native(&mut self, cx: &mut Context<Self>) {
+        if self.downloading && self.visible {
+            self.present_progress();
+        }
+        if let Some((action, automatic)) = native_update::take_action() {
+            if action == 4 {
+                if let Some(cancel) = &self.cancel {
+                    let _ = cancel.send(true);
+                }
+                self.visible = false;
+                return;
+            }
+            let version = self.release.as_ref().map(|(_, m)| m.version.to_string());
+            apply_choice(
+                &mut self.preferences,
+                action,
+                automatic,
+                version.as_deref(),
+                updater::now(),
+            );
+            match action {
+                1 => {
+                    self.visible = false;
+                }
+                2 => {
+                    self.visible = false;
+                }
+                3 => {
+                    if self.ready {
+                        self.install(cx);
+                    } else {
+                        self.install_after_download = true;
+                        self.download(cx);
+                    }
+                }
+                _ => {}
+            }
+            self.save();
+            cx.notify();
+        }
+    }
+    fn present_progress(&self) {
+        if let Some((_, manifest)) = &self.release {
+            native_update::progress(
+                self.progress.load(Ordering::Relaxed),
+                manifest.archive_bytes,
+            );
+        }
+    }
     fn check(&mut self, manual: bool, cx: &mut Context<Self>) {
         if self.busy {
             return;
@@ -136,6 +247,7 @@ impl UpdateView {
         }
         self.busy = true;
         self.message = "Checking for updates…".into();
+        self.present();
         let request = cx.background_executor().spawn(async {
             crate::storage::background(updater::check(
                 ainc_release::FEED_URL,
@@ -174,6 +286,7 @@ impl UpdateView {
                     Err(error) => this.message = format!("Could not check for updates: {error:#}"),
                 }
                 this.save();
+                this.present();
                 cx.notify();
             });
         })
@@ -188,17 +301,22 @@ impl UpdateView {
             return;
         }
         self.busy = true;
+        self.downloading = true;
+        let (cancel, cancelled) = tokio::sync::watch::channel(false);
+        self.cancel = Some(cancel);
         self.message = "Downloading update…".into();
         self.progress.store(0, Ordering::Relaxed);
         let directory = self.directory.clone();
         let progress = self.progress.clone();
+        self.present();
         let request = cx.background_executor().spawn(async move {
             std::fs::create_dir_all(&directory)?;
             std::fs::write(directory.join("feed.json"), serde_json::to_vec(&signed)?)?;
-            crate::storage::background(updater::download(
+            crate::storage::background(updater::download_cancellable(
                 &manifest,
                 &directory.join("app.tar.gz"),
                 progress,
+                cancelled,
             ))?;
             updater::verify_download(&signed, ainc_release::UPDATE_PUBLIC_KEY, &directory)
                 .map(|_| ())
@@ -207,11 +325,26 @@ impl UpdateView {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
                 this.busy = false;
+                this.downloading = false;
+                let cancelled = this.cancel.take().is_some_and(|cancel| *cancel.borrow());
+                if cancelled {
+                    this.install_after_download = false;
+                    this.message = "Download canceled".into();
+                    native_update::close();
+                    cx.notify();
+                    return;
+                }
                 this.ready = result.is_ok();
                 this.message = match result {
                     Ok(()) => "Update verified and ready to install".into(),
                     Err(e) => format!("Download failed: {e:#}"),
                 };
+                if this.ready && this.install_after_download {
+                    this.install(cx);
+                } else {
+                    this.present();
+                }
+                this.install_after_download = false;
                 cx.notify();
             });
         })
@@ -247,32 +380,16 @@ impl UpdateView {
             Ok(())
         })();
         match result {
-            Ok(()) => cx.quit(),
+            Ok(()) => {
+                native_update::close();
+                cx.quit()
+            }
             Err(error) => {
                 self.message = format!("Install failed: {error:#}");
+                self.present();
                 cx.notify();
             }
         }
-    }
-    fn button(
-        &self,
-        id: &'static str,
-        label: &'static str,
-        action: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        div()
-            .id(id)
-            .accessibility_id(id)
-            .cursor_pointer()
-            .px(px(12.))
-            .py(px(8.))
-            .rounded(px(6.))
-            .bg(rgb(HOVER_CONTROL))
-            .role(accesskit::Role::Button)
-            .aria_label(label)
-            .on_click(cx.listener(move |this, _, window, cx| action(this, window, cx)))
-            .child(label)
     }
     pub fn settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
         settings_section(
@@ -285,7 +402,11 @@ impl UpdateView {
                         "updates.check",
                         "Check Now",
                         !self.busy,
-                        |this: &mut Self, _, cx| this.check(true, cx),
+                        |this: &mut Self, _, cx| {
+                            this.visible = true;
+                            this.changelog = false;
+                            this.check(true, cx);
+                        },
                         cx,
                     ),
                 ))
@@ -363,7 +484,7 @@ impl UpdateView {
                         "updates.notes",
                         "View Changelog",
                         true,
-                        |_: &mut Self, _, cx| open(cx, false),
+                        |_: &mut Self, _, cx| open_changelog(cx),
                         cx,
                     ),
                 )),
@@ -371,115 +492,52 @@ impl UpdateView {
         .into_any_element()
     }
 }
-impl Render for UpdateView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.busy {
-            window.request_animation_frame();
-        }
-        let mut view = column()
-            .id("update-window")
-            .size_full()
-            .overflow_y_scroll()
-            .p(px(28.))
-            .gap(px(16.))
-            .bg(rgb(SURFACE_UPDATE))
-            .text_color(rgb(TEXT))
-            .text_size(type_size(14.))
-            .child(div().text_size(type_size(22.)).child("Software Update"))
-            .child(self.message.clone());
-        if let Some((_, manifest)) = &self.release {
-            view = view.child(if self.changelog {
-                manifest.changelog.clone()
-            } else {
-                manifest.notes.clone()
-            });
-            if self.busy {
-                view = view.child(format!(
-                    "{} / {} MB",
-                    self.progress.load(Ordering::Relaxed) / 1_000_000,
-                    manifest.archive_bytes / 1_000_000
-                ));
-            }
-            if !self.busy && self.available {
-                view = view.child(
-                    row()
-                        .gap(px(8.))
-                        .child(self.button(
-                            "updates.install",
-                            if self.ready {
-                                "Install and Relaunch"
-                            } else {
-                                "Download Update"
-                            },
-                            |this, _, cx| {
-                                if this.ready {
-                                    this.install(cx)
-                                } else {
-                                    this.download(cx)
-                                }
-                            },
-                            cx,
-                        ))
-                        .child(self.button(
-                            "updates.later",
-                            "Remind Me Later",
-                            |this, window, cx| {
-                                this.preferences.remind_after = updater::now() + 86400;
-                                this.save();
-                                window.remove_window();
-                                cx.notify();
-                            },
-                            cx,
-                        ))
-                        .child(self.button(
-                            "updates.skip",
-                            "Skip This Version",
-                            |this, window, cx| {
-                                this.preferences.skipped_version =
-                                    this.release.as_ref().map(|(_, m)| m.version.to_string());
-                                this.save();
-                                window.remove_window();
-                                cx.notify();
-                            },
-                            cx,
-                        )),
-                );
-            }
-        }
-        view.child(self.button(
-            "updates.changelog",
-            "Full Changelog",
-            |this, _, cx| {
-                this.changelog = !this.changelog;
-                cx.notify();
-            },
-            cx,
-        ))
-    }
-}
+
 pub fn open(cx: &mut App, check: bool) {
     let view = cx.global::<Updates>().0.clone();
-    if check || view.read(cx).release.is_none() {
-        view.update(cx, |this, cx| this.check(true, cx));
-    }
-    let bounds = Bounds::centered(None, size(px(660.), px(520.)), cx);
-    if let Err(error) = cx.open_window(
-        WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(TitlebarOptions {
-                title: Some("AgentInc Updates".into()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
-        |_, _| view,
-    ) {
-        log::error!("Update window: {error}");
-    }
+    view.update(cx, |this, cx| {
+        this.visible = true;
+        if check || this.release.is_none() {
+            this.changelog = false;
+            this.check(true, cx);
+        } else {
+            this.present();
+        }
+    });
+}
+
+pub fn open_changelog(cx: &mut App) {
+    let view = cx.global::<Updates>().0.clone();
+    view.update(cx, |this, cx| {
+        this.changelog = true;
+        this.visible = true;
+        if this.release.is_none() {
+            this.check(true, cx);
+        } else {
+            this.present();
+        }
+    });
 }
 pub fn init(cx: &mut App) {
     let view = cx.new(UpdateView::new);
     cx.set_global(Updates(view));
     cx.on_action(|_: &CheckForUpdates, cx| open(cx, true));
-    cx.on_action(|_: &ShowChangelog, cx| open(cx, false));
+    cx.on_action(|_: &ShowChangelog, cx| open_changelog(cx));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Preferences, apply_choice};
+
+    #[test]
+    fn native_choices_preserve_skip_remind_and_automatic_download() {
+        let mut preferences = Preferences::default();
+        apply_choice(&mut preferences, 5, true, Some("0.2.0"), 100);
+        assert!(preferences.automatic_download);
+        apply_choice(&mut preferences, 1, true, Some("0.2.0"), 100);
+        assert_eq!(preferences.skipped_version.as_deref(), Some("0.2.0"));
+        apply_choice(&mut preferences, 2, false, Some("0.2.0"), 100);
+        assert_eq!(preferences.remind_after, 86500);
+        assert!(!preferences.automatic_download);
+    }
 }

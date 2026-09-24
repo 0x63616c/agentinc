@@ -13,6 +13,7 @@ use std::{
     },
     time::{SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::watch;
 
 pub const TEAM_ID: &str = "X9E4HG27NK";
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -85,18 +86,37 @@ pub async fn check(feed: &str, key: &str) -> Result<(SignedManifest, Manifest)> 
     Ok((signed, manifest))
 }
 pub async fn download(manifest: &Manifest, path: &Path, progress: Arc<AtomicU64>) -> Result<()> {
-    let mut stream = http()?
-        .get(&manifest.archive_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes_stream();
+    let (_sender, receiver) = watch::channel(false);
+    download_cancellable(manifest, path, progress, receiver).await
+}
+
+pub async fn download_cancellable(
+    manifest: &Manifest,
+    path: &Path,
+    progress: Arc<AtomicU64>,
+    mut cancelled: watch::Receiver<bool>,
+) -> Result<()> {
+    ensure!(!*cancelled.borrow(), "download canceled");
+    let response = tokio::select! {
+        response = http()?.get(&manifest.archive_url).send() => response?,
+        _ = cancelled.changed() => anyhow::bail!("download canceled"),
+    };
+    let mut stream = response.error_for_status()?.bytes_stream();
     let temp = path.with_extension("partial");
     let mut file = fs::File::create(&temp)?;
     let mut size = 0;
     use sha2::{Digest, Sha256};
     let mut hash = Sha256::new();
-    while let Some(bytes) = stream.next().await {
+    loop {
+        let next = tokio::select! {
+            chunk = stream.next() => chunk,
+            _ = cancelled.changed() => {
+                drop(file);
+                let _ = fs::remove_file(&temp);
+                anyhow::bail!("download canceled");
+            }
+        };
+        let Some(bytes) = next else { break };
         let bytes = bytes?;
         size += bytes.len() as u64;
         ensure!(
@@ -106,6 +126,11 @@ pub async fn download(manifest: &Manifest, path: &Path, progress: Arc<AtomicU64>
         hash.update(&bytes);
         file.write_all(&bytes)?;
         progress.store(size, Ordering::Relaxed);
+    }
+    if *cancelled.borrow() {
+        drop(file);
+        let _ = fs::remove_file(&temp);
+        anyhow::bail!("download canceled");
     }
     ensure!(
         size == manifest.archive_bytes
@@ -221,6 +246,20 @@ pub fn replace_bundle(installed: &Path, staged: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn cancelled_download_does_not_create_an_archive() {
+        let manifest: Manifest = serde_json::from_str(include_str!(
+            "../../ainc-mac/tests/fixtures/update-manifest.json"
+        ))
+        .unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("app.tar.gz");
+        let (_sender, cancelled) = watch::channel(true);
+        let result =
+            download_cancellable(&manifest, &archive, Arc::new(AtomicU64::new(0)), cancelled).await;
+        assert!(result.unwrap_err().to_string().contains("canceled"));
+        assert!(!archive.exists());
+    }
     #[test]
     fn preferences_preserve_skip_and_remind_without_delaying_manual_checks() {
         let root = tempfile::tempdir().unwrap();
