@@ -28,7 +28,14 @@ impl Shell {
                         .text_color(rgb(TEXT))
                         .font_weight(FontWeight::MEDIUM)
                 })
-                .child(nav_icon(route.icon(), self.session.current() == route))
+                .child(nav_icon(
+                    if route == Route::Assistant {
+                        "evee-outline"
+                    } else {
+                        route.icon()
+                    },
+                    self.session.current() == route,
+                ))
                 .child(
                     div()
                         .flex_1()
