@@ -188,6 +188,7 @@ impl AssetSource for Assets {
             "chevronRight.svg" => include_bytes!("../assets/chevronRight.svg"),
             "close.svg" => include_bytes!("../assets/close.svg"),
             "evee.png" => include_bytes!("../assets/evee.png"),
+            "evee-outline.svg" => include_bytes!("../assets/evee-outline.svg"),
             "grid.svg" => include_bytes!("../assets/grid.svg"),
             "home.svg" => include_bytes!("../assets/home.svg"),
             "panel.svg" => include_bytes!("../assets/panel.svg"),
