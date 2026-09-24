@@ -32,7 +32,7 @@ def main():
     version = product['version']
     commit = run('git', 'rev-parse', 'HEAD')
     build = run('git', 'rev-list', '--count', 'HEAD')
-    env = dict(os.environ, AINC_BUILD_ID=build, CARGO_INCREMENTAL='0')
+    env = dict(os.environ, AINC_BUILD_ID=build, AINC_CHANNEL='production', AINC_COMMIT=commit, CARGO_INCREMENTAL='0')
     command = ['cargo', 'build', '--locked', '-p', 'agentinc-os', '-p', 'ainc-daemon', '-p', 'ainc-release', '--bins']
     if args.profile == 'release':
         command.append('--release')
@@ -49,7 +49,9 @@ def main():
     resources.mkdir()
     target = Path(metadata['target_directory']) / args.profile
     for binary in ['agentinc-os', 'aincd', 'ainc-update']:
-        shutil.copy2(target / binary, macos / binary)
+        shutil.copy2(target / binary, macos / ('AgentInc' if binary == 'agentinc-os' else binary))
+    # The already-installed 0.1.0 updater launches this old path after replacement.
+    (macos / 'agentinc-os').symlink_to('AgentInc')
     shutil.copy2(ROOT / 'crates/ainc-mac/assets/AppIcon.icns', resources / 'AppIcon.icns')
     runtime = resources / 'runtime'
     runtime.mkdir()
@@ -105,7 +107,7 @@ def main():
     if identity['version'] != version or identity['build'] != build:
         raise SystemExit('compiled product identity differs from Cargo metadata/build input')
     (resources / 'release.json').write_text(json.dumps(identity, indent=2) + '\n')
-    plist = dict(CFBundleName='AgentInc', CFBundleDisplayName='AgentInc', CFBundleIdentifier='co.worldwidewebb.agentinc', CFBundleExecutable='agentinc-os', CFBundleIconFile='AppIcon', CFBundlePackageType='APPL', CFBundleShortVersionString=version, CFBundleVersion=build, LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, NSPrincipalClass='NSApplication')
+    plist = dict(CFBundleName='AgentInc', CFBundleDisplayName='AgentInc', CFBundleIdentifier='co.worldwidewebb.agentinc', CFBundleExecutable='AgentInc', CFBundleIconFile='AppIcon', CFBundlePackageType='APPL', CFBundleShortVersionString=version, CFBundleVersion=build, NSHumanReadableCopyright='Copyright © 2026 Calum Webb', LSMinimumSystemVersion='15.0', NSHighResolutionCapable=True, NSPrincipalClass='NSApplication')
     (contents / 'Info.plist').write_bytes(plistlib.dumps(plist))
     # The runtime input inventory makes local build provenance reviewable.
     inventory = {str(p.relative_to(bundle)): hashlib.sha256(p.read_bytes()).hexdigest() for p in bundle.rglob('*') if p.is_file()}

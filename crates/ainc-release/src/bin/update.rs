@@ -36,7 +36,7 @@ fn launch(installed: &Path) -> Result<Child> {
     // Launch the exact new executable, preserving the profile environment.
     // LaunchServices can otherwise activate an unrelated copy with the same ID.
     Ok(ainc_release::process::prepare_child(&mut Command::new(
-        installed.join("Contents/MacOS/agentinc-os"),
+        installed.join("Contents/MacOS/AgentInc"),
     ))
     .spawn()?)
 }

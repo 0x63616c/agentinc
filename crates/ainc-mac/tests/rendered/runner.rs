@@ -23,6 +23,7 @@ fn regions(
         ("header", [150, 10, width - 10, 40], text, 80),
         ("workspace", [15, 65, 165, 100], text, 60),
         ("profile", [15, height - 44, 170, height - 12], text, 30),
+        ("version", [20, height - 28, 110, height - 10], 25, 12),
         (
             "main border",
             [

@@ -37,10 +37,7 @@ impl UpdateView {
         let directory = std::env::var_os("AGENTINC_SESSION_PATH")
             .map(PathBuf::from)
             .and_then(|p| p.parent().map(|p| p.join("updates")))
-            .unwrap_or_else(|| {
-                PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-                    .join("Library/Application Support/Agentinc OS/updates")
-            });
+            .unwrap_or_else(|| ainc_release::identity::support_dir().join("updates"));
         let loaded = Preferences::load(&directory.join("preferences.json"));
         let message = loaded
             .as_ref()
@@ -127,6 +124,11 @@ impl UpdateView {
         }
     }
     fn check(&mut self, manual: bool, cx: &mut Context<Self>) {
+        if !ainc_release::identity::PRODUCTION {
+            self.message = "Updates are available in production builds.".into();
+            cx.notify();
+            return;
+        }
         if self.busy {
             return;
         }

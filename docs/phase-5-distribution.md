@@ -1,6 +1,25 @@
 # Personal distribution
 
 Product version lives in `crates/ainc-release/Cargo.toml`; the SDK version is independent.
+`ainc-release::identity` is the build-channel source of truth shared by the app and daemon.
+Only `cargo xtask release` stamps `AINC_CHANNEL=production` (plus build ID and commit);
+ordinary Cargo, Tilt and local bundle builds are development. The release app remains
+`co.worldwidewebb.agentinc` in `~/Library/Application Support/Agentinc OS` to preserve
+installed data. Development uses `co.worldwidewebb.agentinc.dev` and
+`~/Library/Application Support/AgentInc Development`. The bundle script writes
+`AgentInc Dev.app`; both bundle executables are named `AgentInc`, so macOS shows the
+correct app menu and Dock name. The app's About panel and sidebar read the compiled
+version/channel; development shows `VERSION-dev` and its commit.
+
+Channel inventory: discovery file, owner token, daemon lock/log, managed Postgres
+directory, Temporal SQLite and helper lock all live below the channel's support
+directory. Session, Codex credentials and update preferences/cache live there too.
+The daemon, Postgres and Temporal choose free loopback ports independently; Temporal
+namespace and worker group have channel-specific names. The bundle identifier is
+also the GPUI window app ID, separating LaunchServices identity and preferences.
+Development does not check or install production updates. Explicit `AINC_*` profile
+overrides remain for isolated tests and external development stacks; they can connect
+to a chosen endpoint intentionally.
 `ainc-release` owns request compatibility, the signed manifest, update preferences and
 archive validation. ADRs 0008 and 0009 remain authoritative. This phase excludes OIDC,
 membership and additional-user setup.

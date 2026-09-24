@@ -9,6 +9,59 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub mod identity {
+    use std::path::PathBuf;
+
+    pub const PRODUCTION: bool = cfg!(ainc_production);
+    pub const COMMIT: &str = match option_env!("AINC_COMMIT") {
+        Some(commit) => commit,
+        None => "unknown",
+    };
+    pub const BUNDLE_ID: &str = if PRODUCTION {
+        "co.worldwidewebb.agentinc"
+    } else {
+        "co.worldwidewebb.agentinc.dev"
+    };
+
+    pub fn version() -> String {
+        if PRODUCTION {
+            super::VERSION.into()
+        } else {
+            format!("{}-dev", super::VERSION)
+        }
+    }
+
+    pub fn support_dir() -> PathBuf {
+        let folder = if PRODUCTION {
+            "Agentinc OS"
+        } else {
+            "AgentInc Development"
+        };
+        PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+            .join("Library/Application Support")
+            .join(folder)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn compiled_channel_selects_distinct_identity_and_profile() {
+            let (version, bundle, profile) = if cfg!(ainc_production) {
+                ("0.1.0", "co.worldwidewebb.agentinc", "Agentinc OS")
+            } else {
+                (
+                    "0.1.0-dev",
+                    "co.worldwidewebb.agentinc.dev",
+                    "AgentInc Development",
+                )
+            };
+            assert_eq!(super::PRODUCTION, cfg!(ainc_production));
+            assert_eq!(super::version(), version);
+            assert_eq!(super::BUNDLE_ID, bundle);
+            assert!(super::support_dir().ends_with(profile));
+        }
+    }
+}
 pub const API: u32 = 1;
 pub const MIN_CLIENT: &str = "0.1.0";
 pub const BUILD: &str = match option_env!("AINC_BUILD_ID") {

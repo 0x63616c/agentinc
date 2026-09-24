@@ -113,7 +113,11 @@ impl LocalRuntime {
                 "--port",
                 &runtime_port.to_string(),
                 "--namespace",
-                "agentinc",
+                if ainc_release::identity::PRODUCTION {
+                    "agentinc"
+                } else {
+                    "agentinc-dev"
+                },
             ])
             .arg("--db-filename")
             .arg(root.join("runtime.sqlite"));
@@ -141,7 +145,7 @@ impl LocalRuntime {
             temporal,
             database_url: format!("postgres://agentinc:{password}@127.0.0.1:{pg_port}/postgres"),
             config: serde_json::from_value(
-                serde_json::json!({"endpoint":format!("http://127.0.0.1:{runtime_port}"),"scope":"agentinc","worker_group":"agentinc-personal"}),
+                serde_json::json!({"endpoint":format!("http://127.0.0.1:{runtime_port}"),"scope":if ainc_release::identity::PRODUCTION { "agentinc" } else { "agentinc-dev" },"worker_group":if ainc_release::identity::PRODUCTION { "agentinc-personal" } else { "agentinc-development" }}),
             )?,
         };
         let deadline = Instant::now() + Duration::from_secs(60);
