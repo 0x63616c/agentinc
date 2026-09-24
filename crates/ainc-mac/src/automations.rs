@@ -8,6 +8,15 @@ use crate::{
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 
+fn display_time(seconds: i64) -> String {
+    chrono::DateTime::from_timestamp(seconds, 0)
+        .map(|t| {
+            t.with_timezone(&chrono::Local)
+                .format("%b %-d, %H:%M")
+                .to_string()
+        })
+        .unwrap_or_else(|| "Time unavailable".into())
+}
 pub struct OpenTicket(pub i64);
 pub struct AutomationsPage {
     store: Option<Arc<Store>>,
@@ -18,6 +27,10 @@ pub struct AutomationsPage {
     loaded: bool,
     editing: bool,
     selected: Option<String>,
+    editing_revision: Option<i64>,
+    page_focus: FocusHandle,
+    restore_focus: bool,
+    focus_editor: bool,
     agent: Option<String>,
     name: Entity<TextInput>,
     prompt: Entity<TextInput>,
@@ -54,6 +67,10 @@ impl AutomationsPage {
             loaded: cfg!(test),
             editing: false,
             selected: None,
+            editing_revision: None,
+            page_focus: cx.focus_handle(),
+            restore_focus: false,
+            focus_editor: false,
             agent: None,
             name,
             prompt,
@@ -132,6 +149,7 @@ impl AutomationsPage {
                         this.reload();
                         this.error = None;
                         this.editing = false;
+                        this.restore_focus = true;
                         if this.state.rules.iter().any(|r| r.id == id) {
                             this.selected = Some(id);
                         }
@@ -145,6 +163,7 @@ impl AutomationsPage {
     }
     fn edit(&mut self, rule: Option<Automation>, cx: &mut Context<Self>) {
         self.selected = rule.as_ref().map(|r| r.id.clone());
+        self.editing_revision = rule.as_ref().map(|r| r.revision);
         self.agent = rule.as_ref().map(|r| r.agent_id.clone());
         self.name.update(cx, |input, cx| {
             input.set_text(rule.as_ref().map_or("", |r| r.name.as_str()), cx)
@@ -161,6 +180,7 @@ impl AutomationsPage {
             )
         });
         self.editing = true;
+        self.focus_editor = true;
         cx.notify();
     }
     fn save(&mut self, cx: &mut Context<Self>) {
@@ -177,12 +197,7 @@ impl AutomationsPage {
         self.command(
             AutomationCommand::Save {
                 id: self.selected.clone(),
-                revision: self
-                    .state
-                    .rules
-                    .iter()
-                    .find(|r| Some(&r.id) == self.selected.as_ref())
-                    .map(|r| r.revision),
+                revision: self.editing_revision,
                 name: self.name.read(cx).content.to_string(),
                 proposal: TicketProposal {
                     title: self.prompt.read(cx).content.to_string(),
@@ -254,13 +269,21 @@ impl AutomationsPage {
 impl Render for AutomationsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
+        if self.focus_editor {
+            window.focus(&self.name.read(cx).focus_handle(cx), cx);
+            self.focus_editor = false;
+        }
+        if self.restore_focus {
+            window.focus(&self.page_focus, cx);
+            self.restore_focus = false;
+        }
         let selected = self
             .state
             .rules
             .iter()
             .find(|r| Some(&r.id) == self.selected.as_ref())
             .cloned();
-        let mut content=column().gap(px(24.)).w_full().max_w(px(880.)).child(row().justify_between().child(div().text_size(px(24.)).child("Automations")).child(self.button("automations.create","Create Automation",true,|this,_,cx|this.edit(None,cx),cx).child("Create Automation")))
+        let mut content=column().gap(px(24.)).w_full().max_w(px(880.)).child(row().justify_between().child(div().text_size(px(24.)).child("Automations")).child(row().gap(px(8.)).child(self.button("automations.refresh","Refresh",true,|this,_,cx|this.refresh(cx),cx).child("Refresh")).child(self.button("automations.create","Create Automation",true,|this,_,cx|this.edit(None,cx),cx).child("Create Automation"))))
             .child(div().text_color(rgb(MUTED)).text_size(px(LABEL_SIZE)).child("Recurring Tickets for your agents. Overlapping work is skipped; missed firings stay in history."));
         if let Some(error) = &self.error {
             content = content.child(
@@ -292,18 +315,18 @@ impl Render for AutomationsPage {
             let run = rule.clone();
             content=content.child(column().gap(px(16.)).child(row().gap(px(8.)).child(self.button("automations.back","All rules",true,|this,_,cx|{this.selected=None;cx.notify();},cx).child("← All rules")))
                 .child(div().text_size(px(20.)).child(rule.name.clone())).child(rule.prompt.clone())
-                .child(div().text_color(rgb(MUTED)).child(format!("Every {} minutes · {}",rule.every_minutes,if rule.revision!=rule.applied_revision {"Pending application"}else if rule.paused{"Paused"}else{"Active"})))
+                .child(div().text_color(rgb(MUTED)).child(format!("Every {} {} · {}",rule.every_minutes,if rule.every_minutes == 1 {"minute"} else {"minutes"},if rule.revision!=rule.applied_revision {"Pending application"}else if rule.paused{"Paused"}else{"Active"})))
                 .when_some(rule.error.clone(),|s,e|s.child(div().text_color(rgb(DESTRUCTIVE_TEXT)).child(e)))
                 .child(row().gap(px(8.)).child(self.button("automations.edit","Edit rule",true,move|this,_,cx|this.edit(Some(edit.clone()),cx),cx).child("Edit rule"))
                     .child(self.button("automations.pause",if rule.paused{"Resume"}else{"Pause"},true,move|this,_,cx|this.command(AutomationCommand::Pause{id:pause.id.clone(),revision:pause.revision,paused:!pause.paused},cx),cx).child(if rule.paused{"Resume"}else{"Pause"}))
                     .child(self.button("automations.run","Run now",true,move|this,_,cx|this.command(AutomationCommand::RunNow{id:run.id.clone(),revision:run.revision},cx),cx).child("Run now")))
                 .child(div().text_color(rgb(MUTED)).child("History · Run now deliberately replaces a missed firing; it does not replay all missed work."))
                 .children(self.state.occurrences.iter().filter(|o|o.automation_id==rule.id).map(|o|{
-                    let label=format!("{} · {}",o.scheduled_at,o.state.replace('_'," "));
+                    let label=format!("{} · {}",display_time(o.scheduled_at),o.state.replace('_'," "));
                     row().w_full().justify_between().py(px(8.)).border_b_1().border_color(rgb(BORDER)).child(label)
                         .when_some(o.ticket_id,|s,id|s.child(self.button(SharedString::from(format!("automations.ticket.{id}")),format!("Open Ticket {id}"),true,move|_,_,cx|cx.emit(OpenTicket(id)),cx).child(format!("Ticket {id} →"))))
                 }))
-                .children(self.state.history.iter().filter(|h|h.automation_id==rule.id).map(|h|div().text_color(rgb(MUTED)).child(format!("{} · {} {}",h.observed_at,h.count,h.kind.replace('_'," "))))));
+                .children(self.state.history.iter().filter(|h|h.automation_id==rule.id).map(|h|div().text_color(rgb(MUTED)).child(format!("{} · {} {}",display_time(h.observed_at),h.count,h.kind.replace('_'," "))))));
         } else {
             if self.loaded && self.state.rules.is_empty() && self.error.is_none() {
                 content =
@@ -343,6 +366,7 @@ impl Render for AutomationsPage {
         }
         div()
             .id("automations.page")
+            .track_focus(&self.page_focus)
             .accessibility_id("automations.page")
             .size_full()
             .overflow_y_scroll()

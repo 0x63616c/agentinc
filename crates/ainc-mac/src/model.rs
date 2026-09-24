@@ -63,7 +63,7 @@ pub const PAGES: &[PageSpec] = &[
         route: Route::Automations,
         title: "Automations",
         icon: "refresh",
-        shortcut: None,
+        shortcut: Some(9),
         in_sidebar: true,
         availability: Availability::Ready,
     },
@@ -427,6 +427,7 @@ mod tests {
             Route::Today,
             Route::Tickets,
             Route::Agents,
+            Route::Automations,
             Route::Home,
             Route::Calendar,
             Route::Library,
@@ -437,7 +438,7 @@ mod tests {
             assert_eq!(route.spec().route, route);
         }
         let shortcuts: Vec<_> = PAGES.iter().filter_map(|p| p.shortcut).collect();
-        assert_eq!(shortcuts, (1..=8).collect::<Vec<_>>());
+        assert_eq!(shortcuts, vec![1, 2, 3, 9, 4, 5, 6, 7, 8]);
         let mut s = Session::default();
         s.navigate(Route::Tickets);
         s.navigate(Route::Home);

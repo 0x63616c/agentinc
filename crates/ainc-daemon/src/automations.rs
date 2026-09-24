@@ -336,7 +336,7 @@ pub struct Runner {
     pool: PgPool,
     runtime: Runtime,
     listener: PgListener,
-    _owner: sqlx::PgConnection,
+    owner: sqlx::PgConnection,
 }
 impl Runner {
     pub async fn start(pool: PgPool, mut config: RuntimeConfig) -> anyhow::Result<Self> {
@@ -353,11 +353,12 @@ impl Runner {
             pool,
             runtime,
             listener,
-            _owner: owner,
+            owner,
         })
     }
     pub async fn run(mut self) -> anyhow::Result<()> {
         loop {
+            sqlx::query("SELECT 1").execute(&mut self.owner).await?;
             self.reconcile().await?;
             tokio::select! { result=self.listener.recv()=> { result?; }, _=tokio::time::sleep(Duration::from_secs(2))=>{} }
         }
@@ -379,16 +380,28 @@ impl Runner {
         .fetch_all(&self.pool)
         .await?;
         for (id, rule, revision) in manual {
-            self.runtime
+            match self
+                .runtime
                 .run_occurrence(Occurrence {
                     id: id.clone(),
                     input: json!({"id":rule,"revision":revision,"manual":true}),
                 })
-                .await?;
-            sqlx::query("UPDATE occurrences SET dispatched=true WHERE id=$1")
-                .bind(id)
-                .execute(&self.pool)
-                .await?;
+                .await
+            {
+                Ok(()) => {
+                    sqlx::query("UPDATE occurrences SET dispatched=true,detail=NULL WHERE id=$1")
+                        .bind(id)
+                        .execute(&self.pool)
+                        .await?;
+                }
+                Err(error) => {
+                    sqlx::query("UPDATE occurrences SET detail=$2 WHERE id=$1")
+                        .bind(id)
+                        .bind(format!("Waiting for runtime: {error}"))
+                        .execute(&self.pool)
+                        .await?;
+                }
+            }
         }
         Ok(())
     }
@@ -585,7 +598,7 @@ mod tests {
             0
         );
         runner.runtime.shutdown().await.unwrap();
-        drop(runner._owner);
+        drop(runner.owner);
         // This is a real retained Schedule, fired with its worker unavailable.
         server.fire_rule(&id).await.unwrap();
         let runner = Runner::start(pool.clone(), server.config()).await.unwrap();
@@ -593,6 +606,21 @@ mod tests {
         let first = occurrence(&pool, &id).await;
         assert_eq!(first.state, "worker_unavailable");
         let ticket = first.ticket_id.unwrap();
+        server.fire_rule(&id).await.unwrap();
+        loop {
+            runner.reconcile().await.unwrap();
+            let history = snapshot(&pool, &Actor::owner()).await.unwrap();
+            if history.rules[0].overlap_skipped > 0 {
+                assert!(
+                    history
+                        .history
+                        .iter()
+                        .any(|h| h.kind == "overlap_skipped" && h.count > 0)
+                );
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
         // Retry the same invocation while its work is still open.
         let duplicate = tokio::spawn({
             let pool = pool.clone();
@@ -678,6 +706,75 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 1);
+        runner.runtime.shutdown().await.unwrap();
+        server.shutdown().await.unwrap();
+    }
+    #[sqlx::test]
+    async fn scheduled_ticket_effect_is_not_repeated_after_occurrence_retry(pool: PgPool) {
+        use crate::{
+            coding::WorkspacePolicy,
+            execution::{ModelCatalog, Runner as TicketRunner},
+        };
+        use turnkeel::{
+            Model, ModelError,
+            testing::{ScriptedModel, text, tool_call},
+        };
+        struct Models(Arc<dyn Model>);
+        impl ModelCatalog for Models {
+            fn resolve(&self, _: &str) -> Result<Arc<dyn Model>, ModelError> {
+                Ok(self.0.clone())
+            }
+        }
+        let id = save(&pool).await;
+        let server = turnkeel::testing::Server::start().await.unwrap();
+        let runner = Runner::start(pool.clone(), server.config()).await.unwrap();
+        runner.reconcile().await.unwrap();
+        let model = ScriptedModel::new()
+            .on_user(
+                "One scheduled Ticket",
+                tool_call("comment", json!({"body":"One scheduled effect"})),
+            )
+            .on_tool_result("comment", text("Scheduled work completed"));
+        let directory = tempfile::tempdir().unwrap();
+        let tickets = TicketRunner::start(
+            pool.clone(),
+            server.config(),
+            Arc::new(Models(Arc::new(model))),
+            WorkspacePolicy::new(directory.path(), vec![]).unwrap(),
+        )
+        .await
+        .unwrap();
+        let mut results = PgListener::connect_with(&pool).await.unwrap();
+        results.listen("agentinc_results").await.unwrap();
+        let worker = tokio::spawn(tickets.run());
+        server.fire_rule(&id).await.unwrap();
+        results.recv().await.unwrap();
+        let first = occurrence(&pool, &id).await;
+        assert_eq!(first.state, "completed");
+        apply_occurrence(
+            &pool,
+            Occurrence {
+                id: first.id,
+                input: json!({"id":id,"revision":0}),
+            },
+        )
+        .await
+        .unwrap();
+        let bodies: Vec<String> = sqlx::query_scalar("SELECT body FROM comments ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            bodies,
+            vec!["One scheduled effect", "Scheduled work completed"]
+        );
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM tickets")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        worker.abort();
+        let _ = worker.await;
         runner.runtime.shutdown().await.unwrap();
         server.shutdown().await.unwrap();
     }

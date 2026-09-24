@@ -347,6 +347,97 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         output.join("created.json"),
         serde_json::to_vec_pretty(&created)?,
     )?;
+    act(&mut client, "nav.automations", None)?;
+    act(&mut client, "automations.create", None)?;
+    act(
+        &mut client,
+        "automations.name",
+        Some("Pilot recurring review"),
+    )?;
+    act(&mut client, "automations.prompt", None)?;
+    act(
+        &mut client,
+        "automations.prompt",
+        Some("Provide scheduled fixture evidence"),
+    )?;
+    act(&mut client, &format!("automations.agent.{agent_id}"), None)?;
+    screenshot(&mut client, "automation-create", &output)?;
+    act(&mut client, "automations.save", None)?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "automations.pause".into(),
+        },
+    )?;
+    act(&mut client, "automations.pause", None)?;
+    wait(
+        &mut client,
+        Condition::Name {
+            author_id: "automations.pause".into(),
+            equals: "Resume".into(),
+        },
+    )?;
+    act(&mut client, "automations.edit", None)?;
+    act(&mut client, "automations.minutes", None)?;
+    client.call(Command::Press {
+        key: "cmd-a".into(),
+    })?;
+    act(&mut client, "automations.minutes", Some("45"))?;
+    act(&mut client, "automations.save", None)?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "automations.run".into(),
+        },
+    )?;
+    act(&mut client, "automations.run", None)?;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let linked = loop {
+        let snapshot = snap(&mut client)?;
+        if let Some(node) = snapshot.nodes.iter().find(|n| {
+            n.author_id
+                .as_deref()
+                .is_some_and(|id| id.starts_with("automations.ticket."))
+        }) {
+            break node.author_id.clone().unwrap();
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "Automation did not produce a linked Ticket"
+        );
+        wait(
+            &mut client,
+            Condition::FrameAfter {
+                frame: snapshot.frame,
+            },
+        )?;
+    };
+    screenshot(&mut client, "automation-history", &output)?;
+    act(&mut client, &linked, None)?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "tickets.back".into(),
+        },
+    )?;
+    screenshot(&mut client, "automation-ticket", &output)?;
+    act(&mut client, "nav.automations", None)?;
+    act(&mut client, "automations.pause", None)?;
+    wait(
+        &mut client,
+        Condition::Name {
+            author_id: "automations.pause".into(),
+            equals: "Pause".into(),
+        },
+    )?;
+    act(&mut client, "automations.pause", None)?;
+    wait(
+        &mut client,
+        Condition::Name {
+            author_id: "automations.pause".into(),
+            equals: "Resume".into(),
+        },
+    )?;
     // Typing through GPUI preserves normal selection and undo handling.
     client.call(Command::Press {
         key: "cmd-k".into(),

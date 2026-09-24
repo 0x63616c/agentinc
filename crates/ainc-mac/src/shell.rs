@@ -1456,7 +1456,7 @@ impl Render for Shell {
 }
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys(
-        (1..=8).map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateRoute(n), Some("Control"))),
+        (1..=9).map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateRoute(n), Some("Control"))),
     );
     cx.bind_keys([
         KeyBinding::new("cmd-alt-left", GoBack, Some("Control")),

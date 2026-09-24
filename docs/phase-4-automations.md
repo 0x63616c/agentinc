@@ -43,6 +43,33 @@ calls, and Temporal types remain confined to `crates/turnkeel/src/engine/`.
 
 ## Verification
 
-Phase 4 acceptance is in progress. The PR tracks real-server recovery and effect
-checks, complete workspace validation, Linux CI, the existing rendered suite and
-native gpui-pilot acceptance. Do not treat an open PR as completion of these gates.
+Automated checks use real isolated servers and scripted models:
+
+- `automations::tests` covers receipt replay and conflicting payloads, workspace
+  scope, assignment capability refusal, pause/edit fencing, real Schedule overlap
+  history, worker replacement, and a scheduled Comment effect occurring once.
+- `tests/process.rs::automation_schedule_survives_daemon_death_and_deduplicates_ticket`
+  kills the actual daemon, fires its retained Schedule with no worker, restores it,
+  kills it inside a gated model call, and recreates a lost dispatch acknowledgement.
+  Recovery retains one Ticket, one assignment and one result Comment.
+- The generated client round trip saves a 30-minute rule, pauses it and submits
+  Run now twice under one operation ID, yielding one waiting occurrence.
+- Workspace tests, strict Clippy (including automation features), contract generation
+  checks and the 38-frame real Metal regression run on this Mac. Linux CI is a
+  separate delivery gate, reported on the PR.
+
+Native gpui-pilot acceptance creates and edits a rule, pauses/resumes it, invokes
+Run now while paused, and opens its linked Ticket. The fixture model is a loopback
+Responses service with exact fake credentials; no subscription call is made.
+
+For the missed-firing check, a separate persistent Temporal dev server was stopped
+across a one-minute interval and restarted with the same SQLite file. Its actual
+missed counter reached two; the daemon projected two count-delta history entries.
+Only admitted firings had linked Tickets. Then the daemon was stopped and the
+`offline_workers` example served the same disposable database without workers. A
+Run now command remained visible as waiting for worker. This separates API
+availability from worker availability in the acceptance harness; it is not a new
+production deployment setting.
+
+Native captures and the exact acceptance boundary are in
+[phase-4 native verification](../crates/ainc-mac/docs/verification/PHASE4.md).
