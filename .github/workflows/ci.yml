@@ -28,5 +28,7 @@ jobs:
       - run: python3 crates/ainc-mac/scripts/check-colors.py
       - run: python3 crates/ainc-mac/scripts/check-ui-spacing.py
       - run: python3 crates/ainc-mac/scripts/check-ui-core.py
+      - run: python3 -m unittest discover -s scripts/release -p 'test_*.py'
+      - run: cargo xtask generate --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked --workspace

@@ -46,11 +46,16 @@ pub mod identity {
     mod tests {
         #[test]
         fn compiled_channel_selects_distinct_identity_and_profile() {
+            let expected_version = super::super::VERSION;
             let (version, bundle, profile) = if cfg!(ainc_production) {
-                ("0.2.0", "co.worldwidewebb.agentinc", "Agentinc OS")
+                (
+                    expected_version.to_string(),
+                    "co.worldwidewebb.agentinc",
+                    "Agentinc OS",
+                )
             } else {
                 (
-                    "0.2.0-dev",
+                    format!("{expected_version}-dev"),
                     "co.worldwidewebb.agentinc.dev",
                     "AgentInc Development",
                 )
@@ -205,8 +210,8 @@ mod tests {
     use super::*;
     fn fixture() -> Manifest {
         Manifest {
-            version: Version::new(0, 2, 0),
-            daemon_version: Version::new(0, 2, 0),
+            version: Version::parse(VERSION).unwrap(),
+            daemon_version: Version::parse(VERSION).unwrap(),
             minimum_client: Version::new(0, 1, 0),
             api: API,
             schema: 1,
@@ -230,8 +235,9 @@ mod tests {
         assert!(manifest.verify_archive(b"archive").is_ok());
         assert!(manifest.verify_archive(b"tamper!").is_err());
         assert!(manifest.is_upgrade("0.1.0", "aarch64").unwrap());
-        assert!(!manifest.is_upgrade("0.2.0", "aarch64").unwrap());
-        assert!(!manifest.is_upgrade("0.3.0", "aarch64").unwrap());
+        assert!(!manifest.is_upgrade(VERSION, "aarch64").unwrap());
+        let newer = Version::new(manifest.version.major, manifest.version.minor + 1, 0);
+        assert!(!manifest.is_upgrade(&newer.to_string(), "aarch64").unwrap());
         assert!(manifest.is_upgrade("0.1.0", "x86_64").is_err());
         let mut tampered = signed.clone();
         tampered.payload = STANDARD.encode(b"{}");
