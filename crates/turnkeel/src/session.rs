@@ -32,6 +32,11 @@ pub struct Session {
 }
 
 impl Session {
+    /// Request cancellation. Already completed external effects are not undone.
+    pub async fn cancel(&self) -> Result<(), Error> {
+        self.handle.cancel().await
+    }
+
     pub fn id(&self) -> &SessionId {
         &self.id
     }

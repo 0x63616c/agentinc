@@ -32,7 +32,7 @@ pub use event::Event;
 pub use message::{Content, Message, Role};
 pub use model::{Model, ModelError, ModelRequest, ModelResponse, StopReason, ToolSpec};
 pub use run::{Run, RunId};
-pub use runtime::Runtime;
+pub use runtime::{Runtime, RuntimeConfig};
 pub use session::{Session, SessionId};
 pub use tool::{Tool, ToolCtx, ToolError, ToolSet};
 pub use turnkeel_macros::tool;

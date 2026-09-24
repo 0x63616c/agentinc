@@ -3,16 +3,19 @@
 mod activities;
 mod conversation;
 mod session;
+mod test_server;
 mod workflow;
+pub(crate) use test_server::TestServer;
 
-use crate::{Agent, Error, Event, Message, RunId, SessionId};
+use crate::{Agent, Error, Event, Message, RunId, RuntimeConfig, SessionId};
 use activities::{AgentActivities, Registry};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use temporalio_client::{
-    Client, ClientOptions, ConnectionOptions, WorkflowExecuteUpdateOptions,
-    WorkflowGetResultOptions, WorkflowHandle, WorkflowSignalOptions, WorkflowStartOptions,
-    errors::WorkflowGetResultError,
+    Client, ClientOptions, ConnectionOptions, WorkflowCancelOptions, WorkflowExecuteUpdateOptions,
+    WorkflowGetResultOptions, WorkflowHandle, WorkflowIdReusePolicy, WorkflowSignalOptions,
+    WorkflowStartOptions,
+    errors::{WorkflowGetResultError, WorkflowStartError},
 };
 use temporalio_sdk::{
     Runtime, Worker, WorkerOptions,
@@ -49,29 +52,65 @@ impl Engine {
             .await
             .map_err(|e| Error::Connection(e.to_string()))?;
         let client = env.client().clone();
-        Self::with_client(client, Some(env), options).await
+        Self::with_client(
+            client,
+            Some(env),
+            options,
+            format!("agentinc-{}", uuid::Uuid::new_v4()),
+            &[],
+        )
+        .await
     }
 
     pub(crate) async fn connect(url: &str) -> Result<Self, Error> {
-        let target: temporalio_client::Url = url
+        Self::configured(
+            RuntimeConfig {
+                endpoint: url.into(),
+                scope: "default".into(),
+                worker_group: format!("agentinc-{}", uuid::Uuid::new_v4()),
+            },
+            &[],
+        )
+        .await
+    }
+
+    pub(crate) async fn configured(config: RuntimeConfig, agents: &[Agent]) -> Result<Self, Error> {
+        if config.scope.trim().is_empty() || config.worker_group.trim().is_empty() {
+            return Err(Error::Connection(
+                "runtime scope and worker group must be nonempty".into(),
+            ));
+        }
+        let target: temporalio_client::Url = config
+            .endpoint
             .parse()
-            .map_err(|e| Error::Connection(format!("bad url {url}: {e}")))?;
+            .map_err(|e| Error::Connection(format!("invalid runtime endpoint: {e}")))?;
         let client = Client::connect(
-            ConnectionOptions::new(target).identity("agentinc").build(),
-            ClientOptions::new("default").build(),
+            ConnectionOptions::new(target).identity("turnkeel").build(),
+            ClientOptions::new(config.scope).build(),
         )
         .await
         .map_err(|e| Error::Connection(e.to_string()))?;
-        Self::with_client(client, None, EngineOptions::default()).await
+        Self::with_client(
+            client,
+            None,
+            EngineOptions::default(),
+            config.worker_group,
+            agents,
+        )
+        .await
     }
 
     async fn with_client(
         client: Client,
         local: Option<WorkflowEnvironment<LocalServer>>,
         options: EngineOptions,
+        task_queue: String,
+        agents: &[Agent],
     ) -> Result<Self, Error> {
-        let task_queue = format!("agentinc-{}", uuid::Uuid::new_v4());
         let registry = Registry::default();
+        for agent in agents {
+            registry.register(agent);
+        }
 
         // The worker future is !Send, so it gets its own thread and single-threaded runtime.
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
@@ -129,9 +168,19 @@ impl Engine {
         agent: &Agent,
         input: Message,
     ) -> Result<(RunId, RunHandle), Error> {
+        let id = RunId(format!("{RUN_ID_PREFIX}{}", uuid::Uuid::new_v4()));
+        let handle = self.start_with_id(&id, agent, input).await?;
+        Ok((id, handle))
+    }
+
+    pub(crate) async fn start_with_id(
+        &self,
+        id: &RunId,
+        agent: &Agent,
+        input: Message,
+    ) -> Result<RunHandle, Error> {
         self.registry.register(agent);
-        let run_id = RunId(format!("{RUN_ID_PREFIX}{}", uuid::Uuid::new_v4()));
-        let handle = self
+        match self
             .client
             .start_workflow(
                 AgentRunWorkflow::run,
@@ -139,16 +188,27 @@ impl Engine {
                     agent: agent_spec(agent),
                     input,
                 },
-                WorkflowStartOptions::new(self.task_queue.clone(), run_id.0.clone()).build(),
+                WorkflowStartOptions::new(self.task_queue.clone(), id.0.clone())
+                    .id_reuse_policy(WorkflowIdReusePolicy::RejectDuplicate)
+                    .build(),
             )
             .await
-            .map_err(|e| Error::Other(e.into()))?;
-        Ok((
-            run_id,
-            RunHandle {
+        {
+            Ok(handle) => Ok(RunHandle {
                 inner: Arc::new(handle),
-            },
-        ))
+            }),
+            Err(WorkflowStartError::AlreadyStarted { .. }) => Ok(self.run_handle(id)),
+            Err(error) => Err(Error::Other(error.into())),
+        }
+    }
+
+    pub(crate) fn run_handle(&self, id: &RunId) -> RunHandle {
+        RunHandle {
+            inner: Arc::new(
+                self.client
+                    .get_workflow_handle::<RunWorkflowType>(id.0.clone()),
+            ),
+        }
     }
 
     pub(crate) async fn start_session(
@@ -242,6 +302,13 @@ pub(crate) struct RunHandle {
 }
 
 impl RunHandle {
+    pub(crate) async fn cancel(&self) -> Result<(), Error> {
+        self.inner
+            .cancel(WorkflowCancelOptions::default())
+            .await
+            .map_err(|e| Error::Other(e.into()))
+    }
+
     pub(crate) async fn output(&self) -> Result<RunOutput, Error> {
         self.inner
             .get_result(WorkflowGetResultOptions::default())
@@ -262,6 +329,13 @@ pub(crate) struct SessionHandle {
 }
 
 impl SessionHandle {
+    pub(crate) async fn cancel(&self) -> Result<(), Error> {
+        self.inner
+            .cancel(WorkflowCancelOptions::default())
+            .await
+            .map_err(|e| Error::Other(e.into()))
+    }
+
     pub(crate) async fn send(&self, message: Message) -> Result<(), Error> {
         self.inner
             .signal(
