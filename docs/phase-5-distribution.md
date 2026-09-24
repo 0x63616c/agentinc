@@ -83,8 +83,10 @@ return a typed HTTP 426 compatibility failure before a handler runs; every respo
 carries the server version. The generated client reports `Update to continue` centrally.
 
 Update checks and settings belong to the native app, independent of backend readiness.
-The update window exposes notes, changelog, download progress, Install and Relaunch,
-Remind Me Later and Skip This Version. Manual checks ignore skipped versions.
+The AppKit update windows expose formatted notes/changelog, download progress,
+Install Update, Remind Me Later, Skip This Version and the existing automatic-download
+preference. The Rust updater remains responsible for verification and installation.
+Manual checks ignore skipped versions.
 Downloaded archives are authenticated before installation. The signed helper repeats
 verification, validates the Apple team/bundle identity and Gatekeeper assessment,
 waits for the UI to close, asks the owned daemon to drain, waits for its discovery lock,

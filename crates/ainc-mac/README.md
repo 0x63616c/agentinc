@@ -16,6 +16,21 @@ For isolated native automation, `crates/ainc-mac/scripts/bundle.sh automation` b
 
 Verify a built bundle with `codesign --verify --deep --strict --verbose=2 'crates/ainc-mac/dist/AgentInc.app'`.
 
+The updater uses AppKit windows for the release offer and download progress. To smoke
+both windows with the checked-in test manifest, without downloading or installing:
+
+```sh
+crates/ainc-mac/scripts/bundle.sh automation
+'crates/ainc-mac/dist/AgentInc.app/Contents/MacOS/agentinc-os' \
+  --update-ui-smoke crates/ainc-mac/tests/fixtures/update-manifest.json \
+  target/native-update-smoke
+```
+
+`offer.png` and `progress.png` are captures of each window's own AppKit content
+view, so Screen Recording permission is not needed. The smoke path is available
+only in the opt-in automation build. Rebuild without arguments to restore the
+ordinary bundle.
+
 ## Development setup
 
 Workspace CI runs formatting, Clippy and tests on Linux. Run the native rendered and pilot checks locally on macOS using the commands below and in `docs/GPUI_PILOT.md`.

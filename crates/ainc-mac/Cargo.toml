@@ -22,6 +22,10 @@ reqwest = { version = "0.13", features = ["json"] }
 progenitor-client = "0.14"
 tokio.workspace = true
 uuid.workspace = true
+pulldown-cmark = "0.13"
+
+[build-dependencies]
+cc = "1"
 
 [features]
 automation = ["dep:gpui-pilot", "gpui/pilot", "gpui/test-support", "gpui_platform/test-support"]

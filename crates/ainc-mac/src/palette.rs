@@ -7,7 +7,6 @@ pub const SURFACE_MENU: u32 = 0x1c1c1c;
 pub const SURFACE_SEARCH: u32 = 0x0a0a0a;
 pub const SURFACE_SEGMENT: u32 = 0x1b1b1b;
 pub const SURFACE_COMPOSER: u32 = 0x181818;
-pub const SURFACE_UPDATE: u32 = 0x161616;
 pub const SURFACE_ERROR: u32 = 0x241818;
 pub const HOVER: u32 = 0x191919;
 pub const HOVER_ROW: u32 = 0x252525;
