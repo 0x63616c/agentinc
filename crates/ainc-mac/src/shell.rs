@@ -38,7 +38,7 @@ actions!(
 struct NavigateRoute(u8);
 
 #[derive(Clone, Copy)]
-enum Control {
+pub(crate) enum Control {
     Open(Route),
     Navigate(Route),
     Back,
@@ -82,6 +82,10 @@ pub struct Shell {
     pane_animation: [Option<(Instant, f32, f32)>; 1],
     assistant_focus_pending: bool,
     shell_focus_pending: bool,
+    #[cfg(target_os = "macos")]
+    terminal: Option<Rc<RefCell<crate::terminal::TerminalHost>>>,
+    terminal_error: Option<String>,
+    pending_terminal_focus: bool,
     #[cfg(test)]
     titlebar_zoom_requests: usize,
 }
@@ -215,6 +219,10 @@ impl Shell {
             pane_animation: [None; 1],
             assistant_focus_pending: false,
             shell_focus_pending: false,
+            #[cfg(target_os = "macos")]
+            terminal: None,
+            terminal_error: None,
+            pending_terminal_focus: false,
             #[cfg(test)]
             titlebar_zoom_requests: 0,
             path,
@@ -373,7 +381,12 @@ impl Shell {
             .borrow()
             .cycle_focus(&handles, backwards, window, cx);
     }
-    fn dispatch(&mut self, control: Control, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn dispatch(
+        &mut self,
+        control: Control,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let before = self.session.current();
         if self
             .overlays
@@ -438,6 +451,16 @@ impl Shell {
             }
             Control::Dismiss => {
                 self.overlays.borrow_mut().dismiss(window, cx);
+            }
+        }
+        if before != self.session.current() {
+            if self.session.current() == Route::Terminal {
+                self.pending_terminal_focus = true;
+            } else if before == Route::Terminal {
+                #[cfg(target_os = "macos")]
+                if let Some(terminal) = &self.terminal {
+                    terminal.borrow().hide();
+                }
             }
         }
         if before != self.session.current() {
@@ -823,15 +846,32 @@ impl Render for Shell {
             let focus = self.focus.clone();
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
+        #[cfg(target_os = "macos")]
+        if self.session.current() == Route::Terminal
+            && self.terminal.is_none()
+            && self.terminal_error.is_none()
+        {
+            match crate::terminal::TerminalHost::new(window, cx.to_async(), cx.weak_entity()) {
+                Ok(host) => {
+                    self.terminal = Some(Rc::new(RefCell::new(host)));
+                    self.pending_terminal_focus = true;
+                }
+                Err(error) => {
+                    self.terminal_error = Some(format!("Ghostty could not start: {error:#}"))
+                }
+            }
+        }
         let content = match self.session.current() {
             Route::Automations => self.automations.clone().into_any_element(),
             Route::Tickets => self.tickets.clone().into_any_element(),
             Route::Agents => self.tickets.update(cx, |tickets, cx| tickets.agents(cx)),
             Route::Assistant => self.assistant.clone().into_any_element(),
+            Route::Terminal => self.terminal_page().into_any_element(),
             Route::Settings => self
                 .static_page(self.session.current(), cx)
                 .into_any_element(),
         };
+        self.pending_terminal_focus = false;
         let dialog_content = match active_overlay {
             Some(Overlay::Search) => Some(self.command_palette(cx).into_any_element()),
             Some(Overlay::AddTicket | Overlay::AddAgent | Overlay::DeleteTicket(_)) => {
@@ -1033,7 +1073,7 @@ pub fn bind_keys(cx: &mut App) {
         }
     });
     cx.bind_keys(
-        (1..=9).map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateRoute(n), Some("Control"))),
+        (0..=9).map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateRoute(n), Some("Control"))),
     );
     cx.bind_keys([
         KeyBinding::new("cmd-alt-left", GoBack, Some("Control")),
@@ -1172,25 +1212,15 @@ mod interaction_tests {
                 "title at width {width}"
             );
             let mut badge_right: Option<f32> = None;
-            for index in 1..=4 {
+            for index in 1..=5 {
                 let badge = cx
                     .debug_bounds(
-                        [
-                            "sidebar-badge-1",
-                            "sidebar-badge-2",
-                            "sidebar-badge-3",
-                            "sidebar-badge-4",
-                        ][index - 1],
+                        ["sidebar-badge-1", "sidebar-badge-2", "sidebar-badge-3", "sidebar-badge-4", "sidebar-badge-5"][index - 1],
                     )
                     .unwrap();
                 let label = cx
                     .debug_bounds(
-                        [
-                            "sidebar-label-1",
-                            "sidebar-label-2",
-                            "sidebar-label-3",
-                            "sidebar-label-4",
-                        ][index - 1],
+                        ["sidebar-label-1", "sidebar-label-2", "sidebar-label-3", "sidebar-label-4", "sidebar-label-5"][index - 1],
                     )
                     .unwrap();
                 assert!(
@@ -1220,7 +1250,7 @@ mod interaction_tests {
         let (shell, cx) = cx.add_window_view(|window, cx| {
             Shell::fixture(dir.path().join("session.json"), window, cx)
         });
-        for number in 1..=4 {
+        for number in 1..=5 {
             cx.simulate_keystrokes(&format!("cmd-{number}"));
             shell.read_with(cx, |shell, _| {
                 assert_eq!(
@@ -1231,11 +1261,11 @@ mod interaction_tests {
         }
         cx.simulate_keystrokes("cmd-alt-left");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Agents)
+            assert_eq!(shell.session.current(), Route::Automations)
         });
         cx.simulate_keystrokes("cmd-alt-right");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Automations)
+            assert_eq!(shell.session.current(), Route::Terminal)
         });
         cx.simulate_keystrokes("cmd-,");
         shell.read_with(cx, |shell, _| {

@@ -130,6 +130,7 @@ impl AssetSource for Assets {
             "settings.svg" => include_bytes!("../../assets/settings.svg"),
             "spark.svg" => include_bytes!("../../assets/spark.svg"),
             "tasks.svg" => include_bytes!("../../assets/tasks.svg"),
+            "terminal.svg" => include_bytes!("../../assets/terminal.svg"),
             _ => return Ok(None),
         };
         Ok(Some(Cow::Borrowed(data)))

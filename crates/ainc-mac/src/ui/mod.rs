@@ -6,6 +6,7 @@ mod layout;
 mod motion;
 mod overlay;
 mod selection;
+mod terminal;
 mod tokens;
 
 pub use button::*;
@@ -15,4 +16,5 @@ pub use layout::*;
 pub use motion::*;
 pub use overlay::*;
 pub use selection::*;
+pub use terminal::*;
 pub use tokens::*;

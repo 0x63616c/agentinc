@@ -18,6 +18,7 @@ cp "target/$profile/agentinc-os" "$bundle/Contents/MacOS/AgentInc"
 cp "target/$profile/aincd" "$bundle/Contents/MacOS/aincd"
 cp "target/$profile/ainc-update" "$bundle/Contents/MacOS/ainc-update"
 cp "target/$profile/ainc" "$bundle/Contents/MacOS/ainc"
+crates/ainc-mac/scripts/stage-ghostty.sh "$profile" "$bundle"
 codesign --force --sign - "$bundle/Contents/MacOS/aincd"
 cp crates/ainc-mac/assets/AppIconDev.icns "$bundle/Contents/Resources/AppIcon.icns"
 version=$(cargo metadata --no-deps --format-version=1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ainc-release"))')
@@ -35,7 +36,7 @@ cat > "$bundle/Contents/Info.plist" <<PLIST
 <key>CFBundleShortVersionString</key><string>$version-dev</string>
 <key>CFBundleVersion</key><string>$build</string>
 <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Calum Webb</string>
-<key>LSMinimumSystemVersion</key><string>12.0</string>
+<key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>

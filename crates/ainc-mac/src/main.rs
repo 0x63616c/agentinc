@@ -8,6 +8,7 @@ mod native_update;
 mod profile;
 mod shell;
 mod storage;
+mod terminal;
 mod tickets;
 mod ui;
 mod updates;

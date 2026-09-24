@@ -54,16 +54,13 @@ impl Shell {
                 })
                 .child(route.label()),
         )
-        .when_some(
-            index.filter(|index| self.command_held && *index <= 9),
-            |s, index| {
-                s.child(
-                    shortcut_badge(format!("⌘{index}"))
-                        .flex_shrink_0()
-                        .debug_selector(move || format!("sidebar-badge-{index}")),
-                )
-            },
-        )
+        .when_some(index.filter(|_| self.command_held), |s, index| {
+            s.child(
+                shortcut_badge(format!("⌘{}", index % 10))
+                    .flex_shrink_0()
+                    .debug_selector(move || format!("sidebar-badge-{index}")),
+            )
+        })
         .when(index.is_none() && self.command_held, |s| {
             s.child(shortcut_badge("⌘,").flex_shrink_0())
         })

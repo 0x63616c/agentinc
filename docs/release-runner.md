@@ -41,6 +41,15 @@ in `~/actions-runner/_work`; the persistent
 `.cargo-target` may be removed **only while the runner is idle** if space is
 needed, at the cost of a full rebuild.
 
+The native packaging step also runs `crates/ainc-mac/scripts/stage-ghostty.sh`.
+It uses the runner's Xcode Swift 6 toolchain and network access to resolve the
+exact Swift package revisions in `crates/ainc-mac/ghostty-bridge/Package.resolved`;
+it does not build Ghostty from source or require Zig. It stages GhosttyKit's
+prebuilt libghostty, its runtime resources, the checked-in built-in themes and
+license notices before the unsigned handoff is inventoried. See
+`crates/ainc-mac/ghostty-bridge/README.md` for provenance and checksum. The
+signed app's minimum macOS version remains 15.0.
+
 ## Connection, credentials, and restart
 
 The listener makes outbound HTTPS long-poll connections to GitHub for assignments and

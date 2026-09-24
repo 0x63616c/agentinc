@@ -12,6 +12,8 @@ Outline icon paths in `assets/` originated in the imported Agentinc OS prototype
 
 The current GPUI core/platform/macOS/Apple sources are pinned to Zed commit `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8` (Apache-2.0). Their upstream license declarations and notices remain in the dependency sources. See `docs/verification/GPUI_UPGRADE.md` for resolved versions and validation.
 
+The Terminal page embeds [GhosttyKit](https://github.com/Lakr233/libghostty-spm) (MIT) and its prebuilt [libghostty](https://github.com/ghostty-org/ghostty) (MIT). The built-in theme archive comes from the official Ghostty 1.3.1 macOS distribution. Pinned revisions, archive checksum, staging, and the bundled license files are documented in `ghostty-bridge/README.md`.
+
 ## Vendored GPUI pilot seam
 
 `vendor/gpui` is the Apache-2.0 core GPUI crate from Zed revision `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`, with the opt-in adapter changes recorded in `vendor/gpui-pilot.patch`. Its license is retained at `vendor/gpui/LICENSE-APACHE`; `scripts/vendor-pilot-gpui.py` reproduces the source and standalone manifest. Other GPUI platform packages remain pinned upstream git dependencies.
