@@ -4,10 +4,10 @@ cd "$(dirname "$0")/../../.."
 # Debug is sufficient for a local, inspectable first increment. Pass release for optimization.
 profile=${1:-debug}
 case "$profile" in
-  debug) cargo build --locked -p agentinc-os ;;
-  release) cargo build --locked -p agentinc-os --release ;;
+  debug) cargo build --locked -p agentinc-os -p ainc-daemon ;;
+  release) cargo build --locked -p agentinc-os -p ainc-daemon --release ;;
   automation)
-    cargo build --locked -p agentinc-os -p gpui-pilot-cli --features agentinc-os/automation
+    cargo build --locked -p agentinc-os -p ainc-daemon -p gpui-pilot-cli --features agentinc-os/automation
     profile=debug
     ;;
   *) echo 'usage: crates/ainc-mac/scripts/bundle.sh [debug|release|automation]' >&2; exit 2 ;;
@@ -15,6 +15,8 @@ esac
 bundle='crates/ainc-mac/dist/AgentInc.app'
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 cp "target/$profile/agentinc-os" "$bundle/Contents/MacOS/agentinc-os"
+cp "target/$profile/aincd" "$bundle/Contents/MacOS/aincd"
+codesign --force --sign - "$bundle/Contents/MacOS/aincd"
 cp crates/ainc-mac/assets/AppIcon.icns "$bundle/Contents/Resources/AppIcon.icns"
 cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

@@ -5,14 +5,15 @@ use crate::{
     style::*,
 };
 use gpui::{prelude::*, *};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 pub struct TasksPage {
-    store: Option<Rc<Store>>,
+    store: Option<Arc<Store>>,
     overlays: Rc<RefCell<OverlayHost>>,
     todos: Vec<Todo>,
     input: Entity<TextInput>,
     error: Option<String>,
+    pending: bool,
     form_error: Option<String>,
     add_focus: FocusHandle,
     cancel_focus: FocusHandle,
@@ -23,7 +24,7 @@ pub struct TasksPage {
 }
 impl TasksPage {
     pub fn new(
-        store: Option<Rc<Store>>,
+        store: Option<Arc<Store>>,
         storage_error: Option<String>,
         overlays: Rc<RefCell<OverlayHost>>,
         cx: &mut Context<Self>,
@@ -43,6 +44,7 @@ impl TasksPage {
             todos: vec![],
             input,
             error: storage_error,
+            pending: false,
             form_error: None,
             add_focus: cx.focus_handle(),
             cancel_focus: cx.focus_handle(),
@@ -52,6 +54,23 @@ impl TasksPage {
             _subscriptions: subscriptions,
         };
         this.reload();
+        #[cfg(not(test))]
+        if let Some(store) = this.store.clone() {
+            let request = cx
+                .background_executor()
+                .spawn(async move { store.refresh() });
+            cx.spawn(async move |this, cx| {
+                let result = request.await;
+                let _ = this.update(cx, |this, cx| {
+                    match result {
+                        Ok(()) => this.reload(),
+                        Err(error) => this.error = Some(format!("Tasks unavailable: {error}")),
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
         this
     }
     fn reload(&mut self) {
@@ -67,7 +86,9 @@ impl TasksPage {
         }
     }
     pub fn summary(&self) -> String {
-        if self.todos.iter().any(|todo| !todo.completed) {
+        if self.error.is_some() {
+            "Tasks unavailable".into()
+        } else if self.todos.iter().any(|todo| !todo.completed) {
             "Tasks to do".into()
         } else {
             "All caught up".into()
@@ -116,34 +137,48 @@ impl TasksPage {
             cx.notify();
             return;
         }
-        match store.add_todo(&title) {
+        let store = store.clone();
+        self.mutate(move || store.add_todo(&title), cx);
+    }
+    fn change(&mut self, id: i64, completed: Option<bool>, cx: &mut Context<Self>) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        self.mutate(
+            move || match completed {
+                Some(done) => store.set_completed(id, done),
+                None => store.delete_todo(id),
+            },
+            cx,
+        );
+    }
+    fn mutate(
+        &mut self,
+        operation: impl FnOnce() -> anyhow::Result<()> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pending {
+            return;
+        }
+        self.pending = true;
+        let request = cx.background_executor().spawn(async move { operation() });
+        cx.spawn(async move |this, cx| {
+            let result = request.await;
+            let _ = this.update(cx, |this, cx| this.apply_mutation(result, cx));
+        })
+        .detach();
+        cx.notify();
+    }
+    fn apply_mutation(&mut self, result: anyhow::Result<()>, cx: &mut Context<Self>) {
+        self.pending = false;
+        match result {
             Ok(()) => {
                 self.overlays.borrow_mut().close();
                 self.error = None;
                 self.form_error = None;
                 self.reload();
             }
-            Err(error) => self.form_error = Some(format!("Task was not saved: {error}")),
-        }
-        cx.notify();
-    }
-    fn change(&mut self, id: i64, completed: Option<bool>, cx: &mut Context<Self>) {
-        let Some(store) = &self.store else {
-            return;
-        };
-        let result = match completed {
-            Some(done) => store.set_completed(id, done),
-            None => store.delete_todo(id),
-        };
-        match result {
-            Ok(()) => {
-                self.overlays.borrow_mut().close();
-                self.error = None;
-                self.reload();
-            }
-            Err(_) => {
-                self.form_error = Some("Task change could not be saved. Please try again.".into())
-            }
+            Err(error) => self.form_error = Some(format!("Change was not acknowledged: {error}")),
         }
         cx.notify();
     }
@@ -156,6 +191,7 @@ impl TasksPage {
         f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + Clone + 'static,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
+        let enabled = enabled && !self.pending;
         let id = id.into();
         let hover_id = id.clone();
         let background = self.hover.color(&id);
@@ -276,7 +312,13 @@ impl TasksPage {
                 .track_focus(&self.submit_focus)
                 .bg(rgb(if is_add { PRIMARY } else { DESTRUCTIVE }))
                 .text_color(rgb(if is_add { PRIMARY_INK } else { TEXT }))
-                .child(if is_add { "Create" } else { "Delete task" }),
+                .child(if self.pending {
+                    "Saving…"
+                } else if is_add {
+                    "Create"
+                } else {
+                    "Delete task"
+                }),
             );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
@@ -531,7 +573,7 @@ mod interaction_tests {
         AppContext, Context, Entity, IntoElement, ParentElement, Render, TestAppContext, Window,
         div,
     };
-    use std::{cell::RefCell, rc::Rc};
+    use std::{cell::RefCell, rc::Rc, sync::Arc};
 
     struct Harness {
         page: Entity<TasksPage>,
@@ -547,26 +589,32 @@ mod interaction_tests {
     fn task_input_submit_complete_reopen_and_delete(cx: &mut TestAppContext) {
         cx.update(input::bind_keys);
         let dir = tempfile::tempdir().unwrap();
-        let store = Rc::new(Store::open(&dir.path().join("tasks.sqlite3")).unwrap());
+        let store = Arc::new(Store::open(&dir.path().join("tasks.sqlite3")).unwrap());
         let overlays = Rc::new(RefCell::new(OverlayHost::default()));
         let page = cx.new(|cx| TasksPage::new(Some(store.clone()), None, overlays.clone(), cx));
         let (_, cx) = cx.add_window_view(|_, _| Harness { page: page.clone() });
         cx.update(|window, cx| page.update(cx, |page, cx| page.open_add(window, cx)));
         cx.simulate_input("  Ship café 👋  ");
         cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
         let todos = store.todos().unwrap();
         assert_eq!(todos.len(), 1);
         assert_eq!(todos[0].title, "Ship café 👋");
         assert_eq!(overlays.borrow().active(), None);
         page.update(cx, |page, cx| page.change(todos[0].id, Some(true), cx));
+        cx.run_until_parked();
         assert!(store.todos().unwrap()[0].completed);
         page.update(cx, |page, cx| page.change(todos[0].id, Some(false), cx));
+        cx.run_until_parked();
         assert!(!store.todos().unwrap()[0].completed);
         page.update(cx, |page, cx| page.change(todos[0].id, None, cx));
+        cx.run_until_parked();
         assert!(store.todos().unwrap().is_empty());
         cx.update(|window, cx| page.update(cx, |page, cx| page.open_add(window, cx)));
         cx.simulate_input("   ");
         cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        cx.run_until_parked();
         assert!(store.todos().unwrap().is_empty());
         assert_eq!(overlays.borrow().active(), Some(Overlay::AddTask));
     }

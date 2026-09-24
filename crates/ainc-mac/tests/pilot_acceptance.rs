@@ -119,9 +119,11 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
         .args(["--gpui-pilot-session", pilot.to_str().unwrap()])
         .env("AGENTINC_SESSION_PATH", directory.join("session.json"))
         .env(
-            "AGENTINC_DATABASE_PATH",
-            directory.join("assistant.sqlite3"),
+            "AINC_DISCOVERY_FILE",
+            std::env::var_os("AINC_DISCOVERY_FILE")
+                .context("run against an isolated cargo xtask dev stack")?,
         )
+        .env("AINC_LEGACY_DIR", directory.join("legacy"))
         .env("AGENTINC_CODEX_HOME", directory.join("codex"))
         .env("AGENTINC_WINDOW_TITLE", "Agentinc Pilot Acceptance")
         .stdout(Stdio::null())
@@ -211,15 +213,24 @@ fn search_tasks_create_via_driver_and_real_capture() -> Result<()> {
         })
     });
     act(&mut client, "tasks.submit", None)?;
-    waiting.join().unwrap()?;
-    let created = wait(
-        &mut client,
-        Condition::Name {
-            author_id: "task.1".into(),
-            equals: "Pilot café 👋".into(),
-        },
-    )?;
-    ensure!(created.by_id("task.1.complete")?.checked == Some(false));
+    waiting
+        .join()
+        .unwrap()
+        .context("task acknowledgement did not close the dialog")?;
+    let created = snap(&mut client)?;
+    let task = created
+        .nodes
+        .iter()
+        .find(|node| {
+            node.name.as_deref() == Some("Pilot café 👋")
+                && node
+                    .author_id
+                    .as_deref()
+                    .is_some_and(|id| id.starts_with("task.") && !id.ends_with(".complete"))
+        })
+        .context("acknowledged task missing from rendered snapshot")?;
+    let completed = format!("{}.complete", task.author_id.as_ref().unwrap());
+    ensure!(created.by_id(&completed)?.checked == Some(false));
     screenshot(&mut client, "created", &output)?;
     fs::write(
         output.join("created.json"),

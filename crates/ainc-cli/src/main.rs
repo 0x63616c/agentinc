@@ -77,7 +77,26 @@ async fn main() -> Result<()> {
     let operation = CliCommand::iter()
         .find(|operation| operation.operation_id() == name)
         .context("unknown generated command")?;
-    Cli::new(Client::new(&api_url()?), Output)
+    let token_path = env::var_os("AINC_TOKEN_FILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.local/dev/owner-token")
+        });
+    let mut headers = reqwest::header::HeaderMap::new();
+    match fs::read_to_string(token_path) {
+        Ok(token) => {
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", token.trim()).parse()?,
+            );
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    let http = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()?;
+    Cli::new(Client::new_with_client(&api_url()?, http), Output)
         .execute(operation, args)
         .await
 }

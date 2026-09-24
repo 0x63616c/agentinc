@@ -26,3 +26,44 @@ async fn generated_ticket_operation_round_trips() {
     );
     server.abort();
 }
+
+#[sqlx::test(migrations = "../ainc-daemon/migrations")]
+async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::PgPool) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            ainc_daemon::product_router(
+                ainc_daemon::product::Product::new(pool, "fixture".into()).unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
+    });
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("authorization", "Bearer fixture".parse().unwrap());
+    let client = Client::new_with_client(
+        &url,
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .unwrap(),
+    );
+    let ack = client
+        .product_command()
+        .body(ainc_client::types::CommandRequest {
+            operation_id: "797a8c57-7931-4884-88cd-49c85ab224e0".into(),
+            command: ainc_client::types::Command::CreateTodo {
+                title: "generated client".into(),
+            },
+        })
+        .send()
+        .await
+        .unwrap();
+    let state = client.product_state().send().await.unwrap();
+    assert_eq!(state.todos[0].id, ack.result_id.unwrap());
+    assert_eq!(state.settings.model, None);
+    assert_eq!(state.settings.selected_conversation, None);
+    server.abort();
+}

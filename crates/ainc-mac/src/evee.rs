@@ -2,7 +2,7 @@ use crate::{
     assistant,
     input::{Submit, TextInput},
     overlay::{Overlay, OverlayHost, dialog_shell, menu_shell},
-    storage::{Conversation, Store, Turn},
+    storage::{Command, Conversation, Store, Turn},
     style::*,
 };
 use gpui::{prelude::*, *};
@@ -17,6 +17,13 @@ use std::{
 };
 
 fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
+    let updated = chrono::DateTime::from_timestamp(updated_at, 0)
+        .map(|time| {
+            time.with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M")
+                .to_string()
+        })
+        .unwrap_or_else(|| updated.to_owned());
     let age = now.saturating_sub(updated_at);
     if age < 86_400 {
         format!("Today, {}", updated.get(11..16).unwrap_or_default())
@@ -30,7 +37,7 @@ fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
 }
 
 pub struct AssistantPage {
-    store: Option<Rc<Store>>,
+    store: Option<Arc<Store>>,
     overlays: Rc<RefCell<OverlayHost>>,
     turns: Vec<Turn>,
     input: Entity<TextInput>,
@@ -48,7 +55,7 @@ pub struct AssistantPage {
     connection_error: Option<String>,
     active: Option<i64>,
     error: Option<String>,
-    unsaved: Option<i64>,
+    pending: bool,
     scroll: ScrollHandle,
     appearance: Option<Instant>,
     reduced_motion: bool,
@@ -62,7 +69,7 @@ pub enum Navigation {
 impl EventEmitter<Navigation> for AssistantPage {}
 impl AssistantPage {
     pub fn new(
-        mut store: Option<Rc<Store>>,
+        store: Option<Arc<Store>>,
         storage_error: Option<String>,
         overlays: Rc<RefCell<OverlayHost>>,
         cx: &mut Context<Self>,
@@ -82,31 +89,34 @@ impl AssistantPage {
                 cx.notify();
             }),
         ];
-        let loaded = store
+        let conversations = store
             .as_ref()
-            .map(|db| db.recover_interrupted().and_then(|_| db.conversations()))
-            .transpose();
-        let (conversations, error) = match loaded {
-            Ok(items) => (items.unwrap_or_default(), storage_error),
-            Err(_) => {
-                store = None;
-                (
-                    vec![],
-                    Some("Could not load conversations. Check database access and restart.".into()),
-                )
-            }
-        };
+            .map(|db| db.snapshot().conversations)
+            .unwrap_or_default();
         let conversation = conversations.first().map(|c| c.id);
-        let turns = conversation
-            .and_then(|id| store.as_ref().map(|db| db.turns(id)))
-            .transpose();
-        let (turns, error) = match turns {
-            Ok(t) => (t.unwrap_or_default(), error),
-            Err(e) => (vec![], Some(e.to_string())),
-        };
-        let model = store
-            .as_ref()
-            .and_then(|db| db.setting("model").ok().flatten().filter(|s| !s.is_empty()));
+        let turns = vec![];
+        let error = storage_error;
+        let model = None;
+        #[cfg(not(test))]
+        if let Some(db) = store.clone() {
+            let request = cx.background_executor().spawn(async move { db.refresh() });
+            cx.spawn(async move |this, cx| {
+                let result = request.await;
+                let _ = this.update(cx, |this, cx| {
+                    match result {
+                        Ok(()) => {
+                            this.reload_snapshot();
+                            if let Some(id) = this.active {
+                                this.watch_turn(id, cx);
+                            }
+                        }
+                        Err(error) => this.error = Some(format!("Data unavailable: {error}")),
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
         #[cfg(not(test))]
         {
             let request = cx
@@ -140,7 +150,7 @@ impl AssistantPage {
             connection_error: None,
             active: None,
             error,
-            unsaved: None,
+            pending: false,
             scroll: ScrollHandle::new(),
             appearance: None,
             reduced_motion: reduced_motion(),
@@ -366,111 +376,154 @@ impl AssistantPage {
                     ),
             )
     }
-    fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
-        if let Some(db) = &self.store {
-            match db.set_setting("model", model.as_deref().unwrap_or("")) {
-                Ok(()) => self.model = model,
-                Err(e) => self.connection_error = Some(e.to_string()),
-            }
+    fn mutate<R: Send + 'static>(
+        &mut self,
+        operation: impl FnOnce(Arc<Store>) -> anyhow::Result<R> + Send + 'static,
+        apply: impl FnOnce(&mut Self, R, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pending {
+            return;
         }
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        self.pending = true;
+        self.error = None;
+        let request = cx
+            .background_executor()
+            .spawn(async move { operation(store) });
+        cx.spawn(async move |this, cx| {
+            let result = request.await;
+            let _ = this.update(cx, |this, cx| {
+                this.pending = false;
+                this.reload_snapshot();
+                match result {
+                    Ok(value) => {
+                        apply(this, value, cx);
+                    }
+                    Err(error) => {
+                        this.error = Some(error.to_string());
+                        this.form_error = this.error.clone();
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
         cx.notify();
     }
-    fn reload_conversations(&mut self) {
-        if let Some(db) = &self.store {
-            match db.conversations() {
-                Ok(c) => self.conversations = c,
-                Err(e) => self.error = Some(e.to_string()),
-            }
+    fn reload_snapshot(&mut self) {
+        let Some(db) = &self.store else { return };
+        let snapshot = db.snapshot();
+        self.conversations = snapshot.conversations;
+        if self
+            .conversation
+            .is_none_or(|id| !self.conversations.iter().any(|c| c.id == id))
+        {
+            self.conversation = snapshot
+                .settings
+                .selected_conversation
+                .filter(|id| self.conversations.iter().any(|c| c.id == *id))
+                .or_else(|| self.conversations.first().map(|c| c.id));
         }
+        self.turns = snapshot
+            .turns
+            .into_iter()
+            .filter(|t| Some(t.conversation_id) == self.conversation)
+            .collect();
+        self.active = self
+            .turns
+            .iter()
+            .find(|t| t.state == "queued" || t.state == "running")
+            .map(|t| t.id);
+        self.model = snapshot.settings.model.filter(|s| !s.is_empty());
+    }
+    fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
+        self.mutate(
+            move |db| {
+                db.command(Command::SelectModel {
+                    model: model.unwrap_or_default(),
+                })
+            },
+            |_, _, _| {},
+            cx,
+        );
     }
     fn open_conversation(&mut self, id: i64, cx: &mut Context<Self>) {
-        if self.active.is_some() || self.unsaved.is_some() {
+        if self.pending {
             return;
         }
-        if let Some(db) = &self.store {
-            match db.turns(id) {
-                Ok(turns) => {
-                    self.turns = turns;
-                    self.conversation = Some(id);
-                    self.error = None;
-                    self.overlays.borrow_mut().close();
-                    self.input.update(cx, |i, cx| {
-                        i.reset();
-                        cx.notify();
-                    });
-                    self.scroll.scroll_to_bottom();
-                    cx.emit(Navigation::Chat);
+        self.mutate(
+            move |db| db.command(Command::SelectConversation { id }),
+            move |this, _, cx| {
+                this.conversation = Some(id);
+                this.reload_snapshot();
+                this.overlays.borrow_mut().close();
+                this.input.update(cx, |i, cx| {
+                    i.reset();
+                    cx.notify();
+                });
+                this.scroll.scroll_to_bottom();
+                if let Some(id) = this.active {
+                    this.watch_turn(id, cx);
                 }
-                Err(e) => self.error = Some(e.to_string()),
-            }
-        }
-        cx.notify();
+                cx.emit(Navigation::Chat);
+            },
+            cx,
+        );
     }
     fn new_conversation(&mut self, cx: &mut Context<Self>) {
-        if self.active.is_some() || self.unsaved.is_some() {
-            return;
-        }
-        if let Some(db) = &self.store {
-            match db.new_conversation() {
-                Ok(id) => {
-                    self.reload_conversations();
-                    self.open_conversation(id, cx);
-                }
-                Err(e) => self.error = Some(e.to_string()),
-            }
-        }
-        cx.notify();
+        self.mutate(
+            |db| {
+                let id = db.new_conversation()?;
+                db.command(Command::SelectConversation { id })?;
+                Ok(id)
+            },
+            |this, id, cx| {
+                this.conversation = Some(id);
+                this.reload_snapshot();
+                this.input.update(cx, |i, cx| {
+                    i.reset();
+                    cx.notify();
+                });
+                cx.emit(Navigation::Chat);
+            },
+            cx,
+        );
     }
     fn rename(&mut self, cx: &mut Context<Self>) {
         let active = self.overlays.borrow().active();
-        if let (Some(db), Some(Overlay::RenameConversation(id))) = (&self.store, active) {
-            if self.form_error.is_some() || self.rename_input.read(cx).content.trim().is_empty() {
+        if let Some(Overlay::RenameConversation(id)) = active {
+            let title = self.rename_input.read(cx).content.trim().to_owned();
+            if title.is_empty() || self.form_error.is_some() {
                 return;
             }
-            match db.rename_conversation(id, &self.rename_input.read(cx).content) {
-                Ok(()) => {
-                    self.overlays.borrow_mut().close();
-                    self.form_error = None;
-                    self.reload_conversations();
-                }
-                Err(e) => self.form_error = Some(e.to_string()),
-            }
+            self.mutate(
+                move |db| db.command(Command::RenameConversation { id, title }),
+                |this, _, _| {
+                    this.overlays.borrow_mut().close();
+                    this.form_error = None;
+                },
+                cx,
+            );
         }
-        cx.notify();
     }
     fn delete(&mut self, cx: &mut Context<Self>) {
-        if self.active.is_some() || self.unsaved.is_some() {
-            return;
-        }
         let active = self.overlays.borrow().active();
-        if let (Some(db), Some(Overlay::DeleteConversation(id))) = (&self.store, active) {
-            match db.delete_conversation(id) {
-                Ok(()) => {
-                    self.overlays.borrow_mut().close();
-                    if self.conversation == Some(id) {
-                        self.conversation = None;
-                        self.turns.clear();
-                    }
-                    self.reload_conversations();
-                    if self.conversation.is_none()
-                        && let Some(next) = self.conversations.first()
-                    {
-                        self.conversation = Some(next.id);
-                        if let Some(db) = &self.store {
-                            match db.turns(next.id) {
-                                Ok(turns) => self.turns = turns,
-                                Err(error) => self.error = Some(error.to_string()),
-                            }
-                        }
-                    }
-                }
-                Err(e) => self.form_error = Some(e.to_string()),
-            }
+        if let Some(Overlay::DeleteConversation(id)) = active {
+            self.mutate(
+                move |db| db.command(Command::DeleteConversation { id }),
+                |this, _, _| {
+                    this.overlays.borrow_mut().close();
+                    this.form_error = None;
+                },
+                cx,
+            );
         }
-        cx.notify();
     }
     pub fn conversations_view(&self, cx: &mut Context<Self>) -> Div {
-        let enabled = self.active.is_none() && self.unsaved.is_none() && self.store.is_some();
+        let enabled = self.active.is_none() && !self.pending && self.store.is_some();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |time| time.as_secs() as i64);
@@ -743,7 +796,7 @@ impl AssistantPage {
         };
         let enabled = self.store.is_some()
             && self.active.is_none()
-            && self.unsaved.is_none()
+            && !self.pending
             && (!rename
                 || (self.form_error.is_none()
                     && !self.rename_input.read(cx).content.trim().is_empty()));
@@ -791,114 +844,100 @@ impl AssistantPage {
         Some(dialog_shell(title, body, footer).into_any_element())
     }
     fn send(&mut self, cx: &mut Context<Self>) {
-        if self.active.is_some() || self.unsaved.is_some() || self.credentials_busy {
+        if self.active.is_some() || self.pending || self.credentials_busy {
             return;
         }
         if self.account.is_none() {
             cx.emit(Navigation::Settings);
             return;
         }
-        let Some(store) = self.store.as_ref() else {
-            return;
-        };
         let prompt = self.input.read(cx).content.trim().to_owned();
         if prompt.is_empty() {
             return;
         }
-        let conversation = match self.conversation {
-            Some(id) => id,
-            None => match store.new_conversation() {
-                Ok(id) => {
-                    self.conversation = Some(id);
-                    id
-                }
-                Err(e) => {
-                    self.error = Some(e.to_string());
-                    cx.notify();
-                    return;
-                }
+        let conversation = self.conversation;
+        self.mutate(
+            move |db| {
+                let id = match conversation {
+                    Some(id) => id,
+                    None => db.new_conversation()?,
+                };
+                let turn = db.begin_turn(id, &prompt)?;
+                Ok((id, turn))
             },
-        };
-        match store.begin_turn(conversation, &prompt) {
-            Ok(turn) => {
-                self.input.update(cx, |input, cx| {
-                    input.reset();
+            |this, (conversation, id), cx| {
+                this.conversation = Some(conversation);
+                this.reload_snapshot();
+                this.input.update(cx, |i, cx| {
+                    i.reset();
                     cx.notify();
                 });
-                self.turns.push(turn.clone());
-                self.reload_conversations();
-                self.run(turn, cx);
-            }
-            Err(error) => {
-                self.error = Some(format!("Message was not sent: {error}"));
-                cx.notify();
-            }
-        }
+                this.scroll.scroll_to_bottom();
+                this.watch_turn(id, cx);
+            },
+            cx,
+        );
     }
     fn retry(&mut self, id: i64, cx: &mut Context<Self>) {
-        if self.active.is_some() || self.unsaved.is_some() || self.credentials_busy {
+        if self.active.is_some() || self.pending {
             return;
         }
-        if self.account.is_none() {
-            cx.emit(Navigation::Settings);
-            return;
-        }
-        let Some(turn) = self.turns.iter_mut().find(|t| t.id == id) else {
-            return;
-        };
-        let mut pending = turn.clone();
-        pending.error = None;
-        let Some(store) = &self.store else {
-            return;
-        };
-        if store.save_turn(&pending).is_err() {
-            self.error = Some("Could not save the retry. Check database access.".into());
-            cx.notify();
-            return;
-        }
-        *turn = pending.clone();
-        self.run(pending, cx);
+        self.mutate(
+            move |db| db.command(Command::Retry { id }),
+            move |this, _, cx| this.watch_turn(id, cx),
+            cx,
+        );
     }
-    fn run(&mut self, current: Turn, cx: &mut Context<Self>) {
-        let id = current.id;
+    fn watch_turn(&mut self, id: i64, cx: &mut Context<Self>) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
         self.active = Some(id);
-        self.error = None;
-        self.appearance = Some(Instant::now());
-        self.scroll.scroll_to_bottom();
-        let history = self.turns.clone();
-        let model = self.model.clone();
-        let request = cx
-            .background_executor()
-            .spawn(async move { assistant::respond(model.as_deref(), &history, &current) });
+        let request = cx.background_executor().spawn(async move {
+            loop {
+                store.refresh()?;
+                let snapshot = store.snapshot();
+                if snapshot
+                    .turns
+                    .iter()
+                    .find(|t| t.id == id)
+                    .is_none_or(|t| t.state != "queued" && t.state != "running")
+                {
+                    return Ok::<_, anyhow::Error>(());
+                }
+                crate::storage::background(async {
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    Ok(())
+                })?;
+            }
+        });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
-                this.active = None;
-                if let Some(turn) = this.turns.iter_mut().find(|t| t.id == id) {
-                    match result { Ok(reply) => turn.response = Some(reply), Err(error) => turn.error = Some(error.to_string()) }
-                    if this.store.as_ref().is_none_or(|db| db.save_turn(turn).is_err()) {
-                        this.unsaved = Some(id);
-                        this.error = Some("Reply is in this window but could not be saved. Retry saving before closing.".into());
-                    }
+                this.reload_snapshot();
+                if let Err(error) = result {
+                    this.error = Some(format!(
+                        "Reply continues on daemon. Refresh to reconnect: {error}"
+                    ));
                 }
-                this.reload_conversations(); this.appearance = Some(Instant::now()); this.scroll.scroll_to_bottom(); cx.notify();
+                this.appearance = Some(Instant::now());
+                this.scroll.scroll_to_bottom();
+                cx.notify();
             });
-        }).detach();
+        })
+        .detach();
         cx.notify();
     }
     fn save_again(&mut self, cx: &mut Context<Self>) {
-        if let Some(id) = self.unsaved
-            && let Some(turn) = self.turns.iter().find(|t| t.id == id)
-            && self
-                .store
-                .as_ref()
-                .is_some_and(|db| db.save_turn(turn).is_ok())
-        {
-            self.unsaved = None;
-            self.error = None;
-            self.reload_conversations();
-        }
-        cx.notify();
+        self.mutate(
+            |db| db.refresh(),
+            |this, _, cx| {
+                if let Some(id) = this.active {
+                    this.watch_turn(id, cx);
+                }
+            },
+            cx,
+        );
     }
     fn action(
         &self,
@@ -978,7 +1017,7 @@ impl Render for AssistantPage {
         let send_enabled = self.account.is_some()
             && !self.credentials_busy
             && self.active.is_none()
-            && self.unsaved.is_none()
+            && !self.pending
             && self.store.is_some()
             && !self.input.read(cx).content.trim().is_empty();
         column()
@@ -1002,7 +1041,7 @@ impl Render for AssistantPage {
                     .child(self.action(
                         "panel-new",
                         "+",
-                        self.active.is_none() && self.unsaved.is_none(),
+                        self.active.is_none() && !self.pending,
                         Self::new_conversation,
                         cx,
                     )),
@@ -1033,7 +1072,7 @@ impl Render for AssistantPage {
                     div()
                         .text_size(px(CAPTION_SIZE))
                         .text_color(rgb(ERROR))
-                        .child("Chat storage is unavailable. Check database access and restart."),
+                        .child("Conversation data is unavailable. Refresh to reconnect."),
                 )
             })
             .when_some(self.error.clone(), |s, error| {
@@ -1044,8 +1083,21 @@ impl Render for AssistantPage {
                         .child(error),
                 )
             })
-            .when(self.unsaved.is_some(), |s| {
-                s.child(self.action("save-reply", "Retry saving", true, Self::save_again, cx))
+            .when(self.error.is_some(), |s| {
+                s.child(self.action(
+                    "refresh-data",
+                    "Refresh",
+                    !self.pending,
+                    Self::save_again,
+                    cx,
+                ))
+            })
+            .when(self.pending, |s| {
+                s.child(
+                    div()
+                        .text_color(rgb(MUTED))
+                        .child("Waiting for acknowledgement…"),
+                )
             })
             .child(
                 column()
@@ -1141,7 +1193,7 @@ impl Render for AssistantPage {
                                         .child(self.action(
                                             ("retry", id as u64),
                                             "Retry reply",
-                                            self.active.is_none() && self.unsaved.is_none(),
+                                            self.active.is_none() && !self.pending,
                                             move |this, cx| this.retry(id, cx),
                                             cx,
                                         )),
@@ -1185,15 +1237,24 @@ mod tests {
 
     #[test]
     fn conversation_dates_keep_the_list_compact() {
+        use chrono::TimeZone;
         let precise = "2026-09-23 16:06";
+        let timestamp = chrono::Local
+            .with_ymd_and_hms(2026, 9, 23, 16, 6, 0)
+            .single()
+            .unwrap()
+            .timestamp();
         assert_eq!(
-            conversation_date(precise, 1_000_000, 1_000_030),
+            conversation_date(precise, timestamp, timestamp + 30),
             "Today, 16:06"
         );
         assert_eq!(
-            conversation_date(precise, 1_000_000, 1_100_000),
+            conversation_date(precise, timestamp, timestamp + 100_000),
             "Yesterday"
         );
-        assert_eq!(conversation_date(precise, 1_000_000, 1_200_000), "09/23/26");
+        assert_eq!(
+            conversation_date(precise, timestamp, timestamp + 200_000),
+            "09/23/26"
+        );
     }
 }
