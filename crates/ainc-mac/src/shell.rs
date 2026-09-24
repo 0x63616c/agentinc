@@ -84,6 +84,8 @@ pub struct Shell {
     grip_animation: [Option<(Instant, f32, f32)>; 2],
     pane_visible: [f32; 2],
     pane_animation: [Option<(Instant, f32, f32)>; 2],
+    #[cfg(test)]
+    titlebar_zoom_requests: usize,
 }
 struct Notification {
     icon: &'static str,
@@ -218,6 +220,8 @@ impl Shell {
             profile,
             pane_visible,
             pane_animation: [None; 2],
+            #[cfg(test)]
+            titlebar_zoom_requests: 0,
             path,
             focus,
             pane_focus: [cx.focus_handle(), cx.focus_handle()],
@@ -492,8 +496,9 @@ impl Shell {
         name: &'static str,
         control: Control,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> Stateful<Div> {
         self.button(id, label, control, cx)
+            .debug_selector(move || id.into())
             .size(px(HEADER_CONTROL))
             .justify_center()
             .child(icon(name, 16.))
@@ -994,7 +999,68 @@ mod interaction_tests {
         model::{PAGES, PANE_WIDTHS, Route, Session},
         overlay::Overlay,
     };
-    use gpui::{Focusable, Modifiers, MouseButton, TestAppContext, point, px};
+    use gpui::{
+        Focusable, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Point,
+        TestAppContext, VisualTestContext, point, px,
+    };
+
+    fn double_click(cx: &mut VisualTestContext, position: Point<Pixels>) {
+        for click_count in [1, 2] {
+            cx.simulate_event(MouseDownEvent {
+                position,
+                button: MouseButton::Left,
+                modifiers: Modifiers::default(),
+                click_count,
+                first_mouse: false,
+            });
+            cx.simulate_event(MouseUpEvent {
+                position,
+                button: MouseButton::Left,
+                modifiers: Modifiers::default(),
+                click_count,
+            });
+        }
+    }
+
+    #[gpui::test]
+    fn custom_header_owns_titlebar_gestures(_cx: &mut TestAppContext) {
+        let bounds = gpui::Bounds::new(point(px(0.), px(0.)), gpui::size(px(1360.), px(828.)));
+        assert!(crate::main_window_options(bounds, "QA".into()).app_owns_titlebar_drag);
+    }
+
+    #[gpui::test]
+    fn header_controls_do_not_zoom_but_empty_space_does(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        shell.update(cx, |shell, cx| {
+            shell.session.navigate(Route::Tickets);
+            shell.session.navigate(Route::Agents);
+            cx.notify();
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let back = cx.debug_bounds("back").unwrap().center();
+        double_click(cx, back);
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Today);
+            assert_eq!(shell.titlebar_zoom_requests, 0);
+        });
+        let forward = cx.debug_bounds("forward").unwrap().center();
+        double_click(cx, forward);
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Agents);
+            assert_eq!(shell.titlebar_zoom_requests, 0);
+        });
+        for id in ["sidebar", "notifications", "shell.search"] {
+            let position = cx.debug_bounds(id).unwrap().center();
+            double_click(cx, position);
+            shell.read_with(cx, |shell, _| assert_eq!(shell.titlebar_zoom_requests, 0));
+        }
+        let empty = cx.debug_bounds("titlebar-center-space").unwrap().center();
+        double_click(cx, empty);
+        shell.read_with(cx, |shell, _| assert_eq!(shell.titlebar_zoom_requests, 1));
+    }
 
     #[gpui::test]
     fn sidebar_drag_persists_and_toggle_restores_its_width(cx: &mut TestAppContext) {

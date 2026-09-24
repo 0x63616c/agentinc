@@ -1,6 +1,28 @@
 use super::*;
 
 impl Shell {
+    fn titlebar_space(&self, id: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
+        div()
+            .id(id)
+            .debug_selector(move || id.into())
+            .h_full()
+            .window_control_area(WindowControlArea::Drag)
+            .on_mouse_move(|event: &MouseMoveEvent, window, _| {
+                if event.dragging() {
+                    window.start_window_move();
+                }
+            })
+            .on_click(cx.listener(|_this, event: &ClickEvent, window, _| {
+                if event.click_count() == 2 {
+                    #[cfg(test)]
+                    {
+                        _this.titlebar_zoom_requests += 1;
+                    }
+                    window.titlebar_double_click();
+                }
+            }))
+    }
+
     pub(super) fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let route = self.session.current();
         row()
@@ -15,6 +37,7 @@ impl Shell {
                     .flex_shrink_0()
                     .justify_end()
                     .pr(px(9.))
+                    .child(self.titlebar_space("titlebar-left-space", cx).flex_1())
                     .child(self.icon_button(
                         "sidebar",
                         "Toggle sidebar · ⌘ B",
@@ -72,14 +95,10 @@ impl Shell {
                         ),
                 ),
             )
-            .child(
-                div()
-                    .flex_1()
-                    .h_full()
-                    .window_control_area(WindowControlArea::Drag),
-            )
+            .child(self.titlebar_space("titlebar-center-space", cx).flex_1())
             .child(
                 self.button("shell.search", "Search · ⌘ K", Control::Search, cx)
+                    .debug_selector(|| "shell.search".into())
                     .flex_shrink_0()
                     .w(px(224.))
                     .h(px(30.))
