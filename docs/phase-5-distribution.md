@@ -62,6 +62,10 @@ helper owns the bundled services: daemon exit or SIGKILL closes the pipe, then t
 flushes both stores. Its separate lock serializes immediate restart. PostgreSQL uses
 fast shutdown to disconnect residual pool sockets while safely rolling back and checkpointing.
 Companion startup diagnostics are retained in `daemon.log` beside discovery.
+Native process startup and pre-exec launch clear inherited signal masks and reset
+SIGCHLD, so launching from a UI dispatch thread cannot disable child reaping.
+`runtime-smoke.py --blocked-signals` verifies readiness and reaping with SIGCHLD
+blocked and ignored, including drain/restart and crash recovery.
 
 This is a personal, single-machine runtime, not a hosted or multi-user deployment.
 Temporal's local server is explicitly a development server; this choice is limited
@@ -86,13 +90,13 @@ and replaces the complete app/daemon bundle. It never signals a process from a P
 
 ## Acceptance status
 
-Validated on code commit `2bfd15d41f67be545ed1cd9b560726b6f5801038`:
+Validated on code commit `024756ae1a94f63e239bd98640bb3a2dc24dac40`:
 
 - Workspace fmt, Clippy and tests passed. Tests used a fresh bundled database.
-- [Linux CI](https://github.com/0x63616c/agentinc/actions/runs/35996626128) passed.
-- [Linux Distribution](https://github.com/0x63616c/agentinc/actions/runs/35996621605)
+- [Linux CI](https://github.com/0x63616c/agentinc/actions/runs/35998889853) passed.
+- [Linux Distribution](https://github.com/0x63616c/agentinc/actions/runs/35998882862)
   signed, notarized and stapled the complete native debug-profile bundle. Apple
-  submission `7342ce7c-d759-4e3e-9177-493fb8bfe35d` was Accepted.
+  submission `b85e4441-7829-41e5-8768-1cdc998cc7ae` was Accepted.
 - `spctl --assess --type execute -vv` accepted it as Notarized Developer ID,
   Calum Webb (`X9E4HG27NK`); `xcrun stapler validate` succeeded.
 - The ignored `notarized_install` acceptance test authenticated the local draft
@@ -105,17 +109,23 @@ Validated on code commit `2bfd15d41f67be545ed1cd9b560726b6f5801038`:
   [native settings](../crates/ainc-mac/docs/verification/phase5/update-settings.png).
 - Both the manifest tool and publish script refused the absent production secret.
 
-**Open acceptance blocker:** the full ignored installer test drains, replaces and
-launches the native app, but its app-spawned daemon stalls before readiness. The
-runtime helper has a defunct health-check subprocess while awaiting child status;
-inherited signal masking is a hypothesis, not yet a confirmed cause. Direct daemon
-startup and crash recovery pass. The installer retains the previous bundle on this
-failure. The test uses the real signed bundle and production install function, with
-`0.0.0` supplied as the predecessor version by the test fixture.
+The full ignored installer acceptance test also passed: it authenticated the draft,
+drained the daemon, replaced the bundle, launched the real signed native app,
+confirmed the new daemon's version/readiness and retired the backup. The test uses
+`0.0.0` as its fixture predecessor version; both installed payloads are actual
+notarized artifacts. Production uses its compiled current version and embedded key.
+No test-key override is exposed by the shipping installer.
 
-The production public key and secret have been provisioned. All distribution artifacts
-remain drafts; no public release or tag was created. Full install/relaunch acceptance
-must pass before this phase is complete.
+An earlier acceptance failure exposed inherited SIGCHLD state in native launches.
+The process-boundary reset fixes this; the blocked/ignored-SIGCHLD regression,
+workspace tests, GPUI pilot and full signed installer now pass. The missing-secret
+refusal was exercised with the environment variable explicitly absent, even after
+Firstmate provisioned the production public key and repository secret.
+
+All distribution artifacts remain drafts; no public release or tag was created.
+Acceptance output is recorded in
+[the verification evidence](../crates/ainc-mac/docs/verification/phase5/acceptance.txt).
+The signed code commit above precedes the final documentation-only evidence commit.
 
 Upstream references: [rcodesign](https://gregoryszorc.com/docs/apple-codesign/stable/apple_codesign_rcodesign.html),
 [Temporal local server](https://github.com/temporalio/documentation/blob/main/docs/cli/command-reference/server.mdx).

@@ -1,0 +1,38 @@
+AgentInc phase 5 acceptance — 2026-09-24
+Signed code commit: 024756ae1a94f63e239bd98640bb3a2dc24dac40
+Apple submission: b85e4441-7829-41e5-8768-1cdc998cc7ae — Accepted
+Draft: phase5-test-024756ae1a94
+Linux CI: https://github.com/0x63616c/agentinc/actions/runs/35998889853
+Linux Distribution: https://github.com/0x63616c/agentinc/actions/runs/35998882862
+
+Full signed installation
+Real signed installer drained the daemon, replaced the bundle, relaunched AgentInc, verified readiness and retired the backup: 024756ae1a94f63e239bd98640bb3a2dc24dac40
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 49.75s
+
+Authenticated extraction and tampering
+Installed and assessed notarized 0.1.0 (024756ae1a94f63e239bd98640bb3a2dc24dac40) from local authenticated feed; corrupt archive rejected before extraction
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 34.31s
+
+Gatekeeper
+.local/provisioned-install/AgentInc.app: accepted
+source=Notarized Developer ID
+origin=Developer ID Application: Calum Webb (X9E4HG27NK)
+
+Stapler
+The validate action worked!
+
+Blocked-signal runtime regression
+Fresh bundled runtime ready with inherited blocked/ignored SIGCHLD; health-check child reaped
+Restart retained state; runtime recovered on fresh ports
+Drain completed and removed discovery
+Hard-killed daemon recovered without orphaned-runtime interference
+
+Rendered suite
+38 real Metal frames passed, including region-removal negative controls
+
+GPUI pilot
+Tickets, Comments, assignee, four states and Today passed via socket + GPUI dispatch. {"snapshot":{"samples":100,"median_ms":2.281166,"p95_ms":2.620292},"press_and_committed_frame":{"samples":50,"median_ms":31.304291999999997,"p95_ms":42.889875},"retina_png":{"samples":10,"median_ms":1181.8692500000002,"p95_ms":1231.65375}}
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 55.94s
+
+Missing-secret refusal
+publish refused: UPDATE_SIGNING_KEY_ED25519_PEM is missing
