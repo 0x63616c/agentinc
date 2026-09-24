@@ -69,7 +69,16 @@ impl Shell {
                             .border_1()
                             .border_color(rgb(BORDER_OVERLAY))
                             .bg(rgb(HOVER))
-                            .child("W"),
+                            .child({
+                                #[cfg(feature = "automation")]
+                                if let Ok(name) = std::env::var("AGENTINC_CAPTURE_WORKSPACE") {
+                                    name.chars().next().unwrap_or('W').to_string()
+                                } else {
+                                    "W".to_owned()
+                                }
+                                #[cfg(not(feature = "automation"))]
+                                "W".to_owned()
+                            }),
                     )
                     .child(
                         div()
@@ -78,7 +87,15 @@ impl Shell {
                             .truncate()
                             .debug_selector(|| "workspace-title".into())
                             .text_size(type_size(LABEL_SIZE))
-                            .child("World Wide Webb"),
+                            .child({
+                                #[cfg(feature = "automation")]
+                                {
+                                    std::env::var("AGENTINC_CAPTURE_WORKSPACE")
+                                        .unwrap_or_else(|_| "World Wide Webb".to_owned())
+                                }
+                                #[cfg(not(feature = "automation"))]
+                                "World Wide Webb".to_owned()
+                            }),
                     ),
             )
             .child(nav)

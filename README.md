@@ -1,42 +1,16 @@
+![AgentInc native window showing Tickets across four states](docs/assets/readme/hero.png)
+
 # AgentInc
 
-AgentInc is a native Mac workspace where people and agents work through the same Tickets, Conversations and Automations. Evee is the assistant at the center of that work. The app is built in Rust with GPUI; a local daemon owns product state and durable agent execution.
+AgentInc is a native macOS app and local daemon for durable AI agents, powered by [Temporal](https://temporal.io) and built on the [Turnkeel](#turnkeel-sdk) Rust SDK. People and agents work through the same Tickets, Conversations and Automations, with Evee beside the workspace.
 
-![AgentInc showing Tickets and the Evee side panel](docs/assets/readme/hero.png)
-
-The first release is a personal, single-machine development environment for agentic coding. The screenshots below use synthetic data and show the current source, including the resizable side panes and neutral color palette; the v0.1.0 download may look slightly different.
-
-## Tour
-
-### Tickets
-
-Track work, assign an agent and keep the work log in comments.
-
-![Ticket detail with status, assignee and comment](docs/assets/readme/tickets.png)
-
-### Automations
-
-Save a rule that starts agent work and inspect its occurrences.
-
-![Automation detail with a demo recurring rule](docs/assets/readme/automations.png)
-
-### Evee
-
-Keep the assistant beside the current page in a resizable panel.
-
-![Today page and Evee side panel before ChatGPT sign-in](docs/assets/readme/evee.png)
-
-### Settings
-
-Adjust app-wide font size and manage the ChatGPT connection.
-
-![Settings page with font size controls](docs/assets/readme/settings.png)
+The app is a personal, single-machine development environment for agentic coding. The screenshot shows the running native app with synthetic Tickets.
 
 ## Install
 
-Download [AgentInc v0.1.0 for Apple Silicon](https://github.com/0x63616c/agentinc/releases/download/v0.1.0/AgentInc.tar.gz), extract `AgentInc.app` and move it to Applications. It requires **macOS 15 or later**. The signed, notarized bundle includes its local runtime; no separate Docker, database or Temporal installation is needed.
+Download [the latest AgentInc release for Apple Silicon](https://github.com/0x63616c/agentinc/releases/latest), extract `AgentInc.app` and move it to Applications. It requires **macOS 15 or later**. The signed, notarized bundle includes its local runtime; no separate Docker, database or Temporal installation is needed.
 
-Open the app and use **Settings → Accounts & connections → Sign in with ChatGPT** to connect Evee through the official Codex sign-in. [Release notes and all downloads](https://github.com/0x63616c/agentinc/releases/tag/v0.1.0).
+Open the app and use **Settings → Accounts & connections → Sign in with ChatGPT** to connect Evee through the official Codex sign-in. [Release notes and downloads](https://github.com/0x63616c/agentinc/releases/latest).
 
 ## Build from source
 
@@ -65,7 +39,7 @@ crates/ainc-mac/dist/AgentInc.app/Contents/MacOS/agentinc-os
 | [`crates/ainc-client`](crates/ainc-client), [`crates/ainc-cli`](crates/ainc-cli) | Generated API client and CLI |
 | [`crates/turnkeel`](crates/turnkeel) | Turnkeel Rust agent SDK; overview below |
 
-The [architecture](docs/architecture.md), [decisions](docs/adr) and [runtime design](docs/phase-3-runtime.md) describe how the pieces fit together. [GPUI Pilot](crates/ainc-mac/docs/GPUI_PILOT.md) is the opt-in native UI capture and automation tool used for these screenshots; [the screenshot recipe](docs/assets/readme/README.md) explains how to regenerate them.
+The [architecture](docs/architecture.md), [decisions](docs/adr) and [runtime design](docs/phase-3-runtime.md) describe how the pieces fit together. [The screenshot recipe](docs/assets/readme/README.md) explains how to regenerate the native window capture.
 
 ## Turnkeel SDK
 

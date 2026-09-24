@@ -7,6 +7,10 @@ pub struct Profile {
 }
 impl Profile {
     pub fn local() -> Self {
+        #[cfg(feature = "automation")]
+        if let Ok(name) = std::env::var("AGENTINC_CAPTURE_PROFILE") {
+            return Self { name, photo: None };
+        }
         let name = Command::new("/usr/bin/id")
             .arg("-F")
             .output()
