@@ -10,6 +10,7 @@ mod shell;
 mod storage;
 #[cfg(target_os = "macos")]
 mod terminal;
+mod temporal;
 mod tickets;
 mod ui;
 mod updates;

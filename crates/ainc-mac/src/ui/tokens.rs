@@ -42,6 +42,12 @@ pub const ERROR: u32 = 0xe6acac;
 pub const ERROR_BORDER: u32 = 0xb67171;
 pub const DESTRUCTIVE: u32 = 0x5b2b2b;
 pub const DESTRUCTIVE_TEXT: u32 = 0xdaa7a7;
+pub const STATUS_GREEN: u32 = 0x9bd7ad;
+pub const STATUS_GREEN_SURFACE: u32 = 0x15251b;
+pub const STATUS_BLUE: u32 = 0x9abfe9;
+pub const STATUS_BLUE_SURFACE: u32 = 0x182333;
+pub const STATUS_AMBER: u32 = 0xe2c38c;
+pub const STATUS_AMBER_SURFACE: u32 = 0x2b2417;
 pub const GRIP_TINT: u32 = 0x33333300;
 pub const SCRIM: u32 = 0x000000aa;
 

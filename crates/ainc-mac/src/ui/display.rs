@@ -113,6 +113,7 @@ impl AssetSource for Assets {
         }
         let data: &'static [u8] = match path {
             "refresh.svg" => include_bytes!("../../assets/icons/refresh.svg"),
+            "temporal.svg" => include_bytes!("../../assets/icons/temporal.svg"),
             "send.svg" => include_bytes!("../../assets/send.svg"),
             "openai.svg" => include_bytes!("../../assets/openai.svg"),
             "agents.svg" => include_bytes!("../../assets/agents.svg"),

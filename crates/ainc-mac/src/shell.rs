@@ -63,7 +63,9 @@ pub struct Shell {
     assistant: Entity<crate::evee::AssistantPage>,
     tickets: Entity<crate::tickets::TicketsPage>,
     automations: Entity<crate::automations::AutomationsPage>,
+    temporal: Entity<crate::temporal::TemporalPage>,
     _automation_subscriptions: Vec<Subscription>,
+    _temporal_subscription: Subscription,
     _tickets_subscription: Subscription,
     _update_subscription: Option<Subscription>,
     _assistant_subscriptions: Vec<Subscription>,
@@ -295,6 +297,8 @@ impl Shell {
         });
         let automations =
             cx.new(|cx| crate::automations::AutomationsPage::new(store.clone(), storage_error, cx));
+        let temporal = cx.new(crate::temporal::TemporalPage::new);
+        let temporal_subscription = cx.observe(&temporal, |_, _, cx| cx.notify());
         let automation_subscriptions = vec![
             cx.observe(&automations, |_, _, cx| cx.notify()),
             cx.subscribe(
@@ -344,7 +348,9 @@ impl Shell {
             assistant,
             tickets,
             automations,
+            temporal,
             _automation_subscriptions: automation_subscriptions,
+            _temporal_subscription: temporal_subscription,
             _tickets_subscription: tickets_subscription,
             _update_subscription: update_subscription,
             _assistant_subscriptions: assistant_subscriptions,
@@ -426,6 +432,23 @@ impl Shell {
     }
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
+    pub(crate) fn fixture_temporal(
+        &mut self,
+        page: ainc_client::types::ExecutionPage,
+        cx: &mut Context<Self>,
+    ) {
+        self.temporal.update(cx, |view, cx| view.fixture(page, cx));
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    pub(crate) fn fixture_temporal_error(&mut self, cx: &mut Context<Self>) {
+        self.temporal.update(cx, |view, cx| view.fixture_error(cx));
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    pub(crate) fn fixture_temporal_loading(&mut self, cx: &mut Context<Self>) {
+        self.temporal
+            .update(cx, |view, cx| view.fixture_loading(cx));
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
     pub(crate) fn fixture_profile_name(&mut self, name: &str, cx: &mut Context<Self>) {
         self.profile.name = name.into();
         cx.notify();
@@ -640,6 +663,7 @@ impl Shell {
                 self.assistant.update(cx, |_, cx| cx.notify());
                 self.tickets.update(cx, |_, cx| cx.notify());
                 self.automations.update(cx, |_, cx| cx.notify());
+                self.temporal.update(cx, |_, cx| cx.notify());
                 self.input.update(cx, |_, cx| cx.notify());
                 if let Some(updates) = cx.try_global::<crate::updates::Updates>().cloned() {
                     updates.0.update(cx, |_, cx| cx.notify());
@@ -1122,6 +1146,10 @@ impl Render for Shell {
         }
         let content = match self.session.current() {
             Route::Automations => self.automations.clone().into_any_element(),
+            Route::Temporal => {
+                self.temporal.update(cx, |view, cx| view.ensure_loaded(cx));
+                self.temporal.clone().into_any_element()
+            }
             Route::Tickets => self.tickets.clone().into_any_element(),
             Route::Agents => self
                 .tickets

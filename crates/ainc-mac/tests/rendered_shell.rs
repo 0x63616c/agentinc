@@ -24,6 +24,8 @@ mod shell;
 mod storage;
 #[path = "../src/terminal.rs"]
 mod terminal;
+#[path = "../src/temporal.rs"]
+mod temporal;
 #[path = "../src/tickets.rs"]
 mod tickets;
 #[path = "../src/ui/mod.rs"]
