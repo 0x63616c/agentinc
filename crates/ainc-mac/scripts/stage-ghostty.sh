@@ -6,8 +6,8 @@ bundle=$2
 package=$(CDPATH= cd -- "$(dirname "$0")/../ghostty-bridge" && pwd)
 # SwiftPM's native builder bakes the build-tree path and the app bundle root
 # into Bundle.module. SwiftBuild searches Contents/Resources in a shipped app.
-swift build --package-path "$package" --force-resolved-versions --build-system swiftbuild -c "$profile" --product AgentIncGhosttyBridge
-products=$(swift build --package-path "$package" --build-system swiftbuild -c "$profile" --show-bin-path)
+swift build --package-path "$package" --force-resolved-versions --build-system swiftbuild --triple arm64-apple-macosx15.0 -c "$profile" --product AgentIncGhosttyBridge
+products=$(swift build --package-path "$package" --build-system swiftbuild --triple arm64-apple-macosx15.0 -c "$profile" --show-bin-path)
 frameworks="$bundle/Contents/Frameworks"
 resources="$bundle/Contents/Resources"
 mkdir -p "$frameworks" "$resources"
