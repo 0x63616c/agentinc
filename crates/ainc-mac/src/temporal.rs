@@ -201,7 +201,8 @@ impl TemporalPage {
         .detach();
     }
 
-    fn button(
+    // Keep the shared action_button contract; this only adds the page's hover fade.
+    fn hover_action(
         &self,
         id: impl Into<ElementId>,
         label: impl Into<SharedString>,
@@ -247,7 +248,7 @@ impl Render for TemporalPage {
                     .gap(px(7.))
                     .children(group.iter().map(|(value, label)| {
                         let selected = self.filter == *value;
-                        self.button(
+                        self.hover_action(
                             format!("temporal.filter.{value}"),
                             *label,
                             !self.loading,
@@ -272,7 +273,7 @@ impl Render for TemporalPage {
         let header = PageHeader::new("Temporal")
             .description("Workflow executions in this AgentInc runtime · newest first")
             .actions(
-                self.button(
+                self.hover_action(
                     "temporal.refresh",
                     "Refresh workflows",
                     !self.loading,
@@ -375,7 +376,7 @@ impl Render for TemporalPage {
                         .unwrap_or(&run_id)
                         .to_owned();
                     let (foreground, surface) = status_colors(&status);
-                    self.button(
+                    self.hover_action(
                         format!("temporal.row.{run_id}"),
                         format!("Open {id} in Temporal"),
                         url.is_some(),
@@ -461,7 +462,7 @@ impl Render for TemporalPage {
         }
         if self.next_page.is_some() {
             content = content.child(
-                self.button(
+                self.hover_action(
                     "temporal.more",
                     "Load more workflows",
                     !self.loading,
