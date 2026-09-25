@@ -33,6 +33,12 @@ ordinary bundle.
 
 ## Development setup
 
+The development Dock/Finder icon is generated from `assets/AppIcon.png` with
+`scripts/build-dev-icon.sh` (requires ImageMagick, librsvg and macOS `iconutil`).
+The default border leaves Evee unobscured; pass `banner` to compare the angled
+strip alternative. Commit the generated `assets/AppIconDev.icns` when changing
+the production art so unbundled development runs show the same Dock icon.
+
 Workspace CI runs formatting, Clippy and tests on Linux. Run the native rendered and pilot checks locally on macOS using the commands below and in `docs/GPUI_PILOT.md`.
 
 The ordinary GPUI interaction tests run with `cargo test --locked`. On macOS, run the real Metal shell regression with:
