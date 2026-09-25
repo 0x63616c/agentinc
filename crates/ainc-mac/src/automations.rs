@@ -315,45 +315,38 @@ impl Render for AutomationsPage {
             .iter()
             .find(|r| Some(&r.id) == self.selected.as_ref())
             .cloned();
-        let mut content = column()
-            .gap(px(24.))
-            .w_full()
-            .max_w(px(880.))
-            .child(
-                PageHeader::new("Automations")
-                    .description("Recurring Tickets for your agents.")
-                    .actions(
-                        row_gap(CONTROL_GAP)
-                            .child(
-                                self.button(
-                                    "automations.refresh",
-                                    "Refresh",
-                                    true,
-                                    |this, _, cx| this.refresh(cx),
-                                    cx,
-                                )
-                                .child("Refresh"),
-                            )
-                            .child(
-                                self.button(
-                                    "automations.create",
-                                    "Create Automation",
-                                    true,
-                                    |this, _, cx| this.edit(None, cx),
-                                    cx,
-                                )
-                                .debug_selector(|| "automations.create".into())
-                                .child("Create Automation"),
-                            ),
+        let header = PageHeader::new("Automations")
+            .description("Recurring Tickets for your agents.")
+            .actions(
+                row_gap(CONTROL_GAP)
+                    .child(
+                        self.button(
+                            "automations.refresh",
+                            "Refresh",
+                            true,
+                            |this, _, cx| this.refresh(cx),
+                            cx,
+                        )
+                        .child("Refresh"),
                     )
-                    .build(),
-            )
-            .child(
-                div()
-                    .text_color(rgb(MUTED))
-                    .text_size(type_size(LABEL_SIZE))
-                    .child("Overlapping work is skipped; missed firings stay in history."),
+                    .child(
+                        self.button(
+                            "automations.create",
+                            "Create Automation",
+                            true,
+                            |this, _, cx| this.edit(None, cx),
+                            cx,
+                        )
+                        .debug_selector(|| "automations.create".into())
+                        .child("Create Automation"),
+                    ),
             );
+        let mut content = column().gap(px(24.)).w_full().child(
+            div()
+                .text_color(rgb(MUTED))
+                .text_size(type_size(LABEL_SIZE))
+                .child("Overlapping work is skipped; missed firings stay in history."),
+        );
         if let Some(error) = &self.error {
             content = content.child(
                 div()
@@ -439,13 +432,16 @@ impl Render for AutomationsPage {
                 )))
             }));
         }
-        div()
-            .id("automations.page")
-            .track_focus(&self.page_focus)
-            .accessibility_id("automations.page")
-            .size_full()
-            .overflow_y_scroll()
-            .p(px(32.))
-            .child(content)
+        Page::document(header)
+            .child(
+                div()
+                    .id("automations.page")
+                    .debug_selector(|| "automations.page".into())
+                    .track_focus(&self.page_focus)
+                    .accessibility_id("automations.page")
+                    .w_full()
+                    .child(content),
+            )
+            .build()
     }
 }

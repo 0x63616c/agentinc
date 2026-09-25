@@ -571,206 +571,213 @@ impl AssistantPage {
             );
         }
     }
-    pub fn conversations_view(&self, cx: &mut Context<Self>) -> Div {
+    pub fn conversations_view(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let enabled = self.active.is_none() && !self.pending && self.store.is_some();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |time| time.as_secs() as i64);
-        column()
-            .gap(px(16.))
-            .child(
-                PageHeader::new("Assistant")
-                    .description("Your conversations with Evee.")
-                    .actions(
-                        self.action(
-                            "new-chat",
-                            "New conversation",
-                            enabled,
-                            Self::new_conversation,
-                            cx,
-                        )
-                        .border_1()
-                        .border_color(rgb(BORDER)),
+        Page::document(
+            PageHeader::new("Assistant")
+                .description("Your conversations with Evee.")
+                .actions(
+                    self.action(
+                        "new-chat",
+                        "New conversation",
+                        enabled,
+                        Self::new_conversation,
+                        cx,
                     )
-                    .build(),
-            )
-            .when_some(self.error.clone(), |s, e| {
-                s.child(
-                    div()
-                        .text_size(type_size(LABEL_SIZE))
-                        .text_color(rgb(ERROR))
-                        .child(e),
-                )
-            })
-            .when(self.conversations.is_empty(), |s| {
-                s.child(
-                    div()
-                        .py(px(28.))
-                        .text_color(rgb(MUTED))
-                        .child("Your conversations will appear here."),
-                )
-            })
-            .children(self.conversations.iter().map(|conversation| {
-                let id = conversation.id;
-                let selected = self.conversation == Some(id);
-                let snippet = if conversation.snippet.trim().is_empty() {
-                    "No messages yet".to_owned()
-                } else {
-                    conversation
-                        .snippet
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                };
-                column()
-                    .relative()
-                    .rounded(px(7.))
-                    .bg(rgb(if selected { SELECTED } else { SURFACE }))
-                    .child(
-                        row()
-                            .gap(px(8.))
-                            .px(px(12.))
-                            .py(px(10.))
-                            .child(
-                                self.action(
-                                    ("conversation", id as u64),
-                                    "",
-                                    enabled,
-                                    move |this, cx| this.open_conversation(id, cx),
-                                    cx,
-                                )
-                                .flex_1()
-                                .min_w_0()
-                                .justify_start()
-                                .bg(rgb(if selected { SELECTED } else { SURFACE }))
+                    .border_1()
+                    .border_color(rgb(BORDER)),
+                ),
+        )
+        .child(
+            column()
+                .gap(px(16.))
+                .when_some(self.error.clone(), |s, e| {
+                    s.child(
+                        div()
+                            .text_size(type_size(LABEL_SIZE))
+                            .text_color(rgb(ERROR))
+                            .child(e),
+                    )
+                })
+                .when(self.conversations.is_empty(), |s| {
+                    s.child(
+                        div()
+                            .py(px(28.))
+                            .text_color(rgb(MUTED))
+                            .child("Your conversations will appear here."),
+                    )
+                })
+                .children(self.conversations.iter().map(|conversation| {
+                    let id = conversation.id;
+                    let selected = self.conversation == Some(id);
+                    let snippet = if conversation.snippet.trim().is_empty() {
+                        "No messages yet".to_owned()
+                    } else {
+                        conversation
+                            .snippet
+                            .split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    };
+                    column()
+                        .relative()
+                        .rounded(px(7.))
+                        .bg(rgb(if selected { SELECTED } else { SURFACE }))
+                        .child(
+                            row()
+                                .gap(px(8.))
+                                .px(px(12.))
+                                .py(px(10.))
                                 .child(
-                                    column()
-                                        .gap(px(3.))
-                                        .flex_1()
-                                        .min_w_0()
-                                        .child(
-                                            div()
-                                                .text_size(type_size(BODY_SIZE))
-                                                .text_color(rgb(TEXT))
-                                                .truncate()
-                                                .child(conversation.title.clone()),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_size(type_size(CAPTION_SIZE))
-                                                .text_color(rgb(MUTED))
-                                                .truncate()
-                                                .child(snippet),
-                                        ),
-                                ),
-                            )
-                            .child(
-                                div()
-                                    .text_size(type_size(10.))
-                                    .text_color(rgb(MUTED))
-                                    .child(conversation_date(
-                                        &conversation.updated,
-                                        conversation.updated_at,
-                                        now,
-                                    )),
-                            )
-                            .child(self.action_window(
-                                ("chat-menu", id as u64),
-                                "…",
-                                Some("Conversation actions"),
-                                enabled,
-                                move |this, window, cx| {
-                                    let mut host = this.overlays.borrow_mut();
-                                    if host.active() == Some(Overlay::ConversationMenu(id)) {
-                                        host.dismiss(window, cx);
-                                    } else {
-                                        host.open(Overlay::ConversationMenu(id), window, cx, None);
-                                    }
-                                    cx.notify();
-                                },
-                                cx,
-                            )),
-                    )
-                    .when(
-                        self.overlays.borrow().active() == Some(Overlay::ConversationMenu(id)),
-                        |s| {
-                            s.child(
-                                menu_shell(
-                                    column()
-                                        .child(
-                                            column()
-                                                .px(px(10.))
-                                                .py(px(5.))
-                                                .text_size(type_size(10.))
-                                                .text_color(rgb(MUTED))
-                                                .child("Updated")
-                                                .child(conversation.updated.clone()),
-                                        )
-                                        .child(
-                                            self.action_window(
-                                                ("rename-chat", id as u64),
-                                                "Rename",
-                                                None,
-                                                enabled,
-                                                move |this, window, cx| {
-                                                    if let Some(c) = this
-                                                        .conversations
-                                                        .iter()
-                                                        .find(|c| c.id == id)
-                                                    {
-                                                        this.rename_input.update(
-                                                            cx,
-                                                            |input, cx| {
-                                                                input.set_text(&c.title, cx)
-                                                            },
-                                                        );
-                                                    }
-                                                    this.form_error = None;
-                                                    let initial_focus =
-                                                        this.rename_input.focus_handle(cx);
-                                                    this.overlays.borrow_mut().open(
-                                                        Overlay::RenameConversation(id),
-                                                        window,
-                                                        cx,
-                                                        Some(initial_focus),
-                                                    );
-                                                    cx.notify();
-                                                },
-                                                cx,
+                                    self.action(
+                                        ("conversation", id as u64),
+                                        "",
+                                        enabled,
+                                        move |this, cx| this.open_conversation(id, cx),
+                                        cx,
+                                    )
+                                    .flex_1()
+                                    .min_w_0()
+                                    .justify_start()
+                                    .bg(rgb(if selected { SELECTED } else { SURFACE }))
+                                    .child(
+                                        column()
+                                            .gap(px(3.))
+                                            .flex_1()
+                                            .min_w_0()
+                                            .child(
+                                                div()
+                                                    .text_size(type_size(BODY_SIZE))
+                                                    .text_color(rgb(TEXT))
+                                                    .truncate()
+                                                    .child(conversation.title.clone()),
                                             )
-                                            .w_full()
-                                            .justify_start(),
-                                        )
-                                        .child(
-                                            self.action_window(
-                                                ("delete-chat", id as u64),
-                                                "Delete",
-                                                None,
-                                                enabled,
-                                                move |this, window, cx| {
-                                                    this.form_error = None;
-                                                    this.overlays.borrow_mut().open(
-                                                        Overlay::DeleteConversation(id),
-                                                        window,
-                                                        cx,
-                                                        Some(this.cancel_focus.clone()),
-                                                    );
-                                                    cx.notify();
-                                                },
-                                                cx,
-                                            )
-                                            .w_full()
-                                            .justify_start()
-                                            .text_color(rgb(DESTRUCTIVE_TEXT)),
-                                        ),
+                                            .child(
+                                                div()
+                                                    .text_size(type_size(CAPTION_SIZE))
+                                                    .text_color(rgb(MUTED))
+                                                    .truncate()
+                                                    .child(snippet),
+                                            ),
+                                    ),
                                 )
-                                .absolute()
-                                .right(px(0.))
-                                .top(px(48.)),
-                            )
-                        },
-                    )
-            }))
+                                .child(
+                                    div()
+                                        .text_size(type_size(10.))
+                                        .text_color(rgb(MUTED))
+                                        .child(conversation_date(
+                                            &conversation.updated,
+                                            conversation.updated_at,
+                                            now,
+                                        )),
+                                )
+                                .child(self.action_window(
+                                    ("chat-menu", id as u64),
+                                    "…",
+                                    Some("Conversation actions"),
+                                    enabled,
+                                    move |this, window, cx| {
+                                        let mut host = this.overlays.borrow_mut();
+                                        if host.active() == Some(Overlay::ConversationMenu(id)) {
+                                            host.dismiss(window, cx);
+                                        } else {
+                                            host.open(
+                                                Overlay::ConversationMenu(id),
+                                                window,
+                                                cx,
+                                                None,
+                                            );
+                                        }
+                                        cx.notify();
+                                    },
+                                    cx,
+                                )),
+                        )
+                        .when(
+                            self.overlays.borrow().active() == Some(Overlay::ConversationMenu(id)),
+                            |s| {
+                                s.child(
+                                    menu_shell(
+                                        column()
+                                            .child(
+                                                column()
+                                                    .px(px(10.))
+                                                    .py(px(5.))
+                                                    .text_size(type_size(10.))
+                                                    .text_color(rgb(MUTED))
+                                                    .child("Updated")
+                                                    .child(conversation.updated.clone()),
+                                            )
+                                            .child(
+                                                self.action_window(
+                                                    ("rename-chat", id as u64),
+                                                    "Rename",
+                                                    None,
+                                                    enabled,
+                                                    move |this, window, cx| {
+                                                        if let Some(c) = this
+                                                            .conversations
+                                                            .iter()
+                                                            .find(|c| c.id == id)
+                                                        {
+                                                            this.rename_input.update(
+                                                                cx,
+                                                                |input, cx| {
+                                                                    input.set_text(&c.title, cx)
+                                                                },
+                                                            );
+                                                        }
+                                                        this.form_error = None;
+                                                        let initial_focus =
+                                                            this.rename_input.focus_handle(cx);
+                                                        this.overlays.borrow_mut().open(
+                                                            Overlay::RenameConversation(id),
+                                                            window,
+                                                            cx,
+                                                            Some(initial_focus),
+                                                        );
+                                                        cx.notify();
+                                                    },
+                                                    cx,
+                                                )
+                                                .w_full()
+                                                .justify_start(),
+                                            )
+                                            .child(
+                                                self.action_window(
+                                                    ("delete-chat", id as u64),
+                                                    "Delete",
+                                                    None,
+                                                    enabled,
+                                                    move |this, window, cx| {
+                                                        this.form_error = None;
+                                                        this.overlays.borrow_mut().open(
+                                                            Overlay::DeleteConversation(id),
+                                                            window,
+                                                            cx,
+                                                            Some(this.cancel_focus.clone()),
+                                                        );
+                                                        cx.notify();
+                                                    },
+                                                    cx,
+                                                )
+                                                .w_full()
+                                                .justify_start()
+                                                .text_color(rgb(DESTRUCTIVE_TEXT)),
+                                            ),
+                                    )
+                                    .absolute()
+                                    .right(px(0.))
+                                    .top(px(48.)),
+                                )
+                            },
+                        )
+                })),
+        )
+        .build()
     }
     pub fn show_list(&mut self, cx: &mut Context<Self>) {
         self.show_chat = false;
@@ -1132,196 +1139,118 @@ impl Render for AssistantPage {
             && self.store.is_some()
             && !self.input.read(cx).content.trim().is_empty();
         if !self.show_chat {
-            return column()
+            return self
+                .conversations_view(cx)
                 .id("conversation-list")
-                .size_full()
-                .overflow_y_scroll()
-                .p(px(PAGE_X))
-                .child(self.conversations_view(cx))
                 .into_any_element();
         }
-        column()
-            .size_full()
-            .min_h_0()
-            .gap(px(12.))
-            .p(px(24.))
-            .max_w(px(900.))
-            .mx_auto()
-            .child(
-                row()
-                    .gap(px(8.))
-                    .text_size(type_size(CAPTION_SIZE))
-                    .text_color(rgb(MUTED))
-                    .child(
-                        self.action(
-                            "back-to-conversations",
-                            "‹ Conversations",
-                            true,
-                            Self::show_list,
-                            cx,
-                        )
-                        .debug_selector(|| "back-to-conversations".into()),
-                    )
-                    .child(
-                        div().flex_1().child(
-                            self.conversations
-                                .iter()
-                                .find(|c| Some(c.id) == self.conversation)
-                                .map(|c| c.title.clone())
-                                .unwrap_or("New conversation".into()),
-                        ),
-                    )
-                    .child(self.action(
-                        "panel-new",
-                        "+",
-                        self.active.is_none() && !self.pending,
-                        Self::new_conversation,
-                        cx,
-                    )),
-            )
-            .when(self.account.is_none(), |s| {
-                s.child(
-                    column()
-                        .gap(px(5.))
-                        .items_start()
-                        .text_size(type_size(CAPTION_SIZE))
-                        .text_color(rgb(MUTED))
-                        .child("Connect ChatGPT to chat.")
-                        .child(
-                            self.action(
-                                "open-settings",
-                                "Open Settings",
-                                true,
-                                |_, cx| cx.emit(Navigation::Settings),
-                                cx,
-                            )
-                            .border_1()
-                            .border_color(rgb(BORDER)),
-                        ),
-                )
-            })
-            .when(self.store.is_none(), |s| {
-                s.child(
-                    div()
-                        .text_size(type_size(CAPTION_SIZE))
-                        .text_color(rgb(ERROR))
-                        .child("Conversation data is unavailable. Refresh to reconnect."),
-                )
-            })
-            .when_some(self.error.clone(), |s, error| {
-                s.child(
-                    div()
-                        .text_size(type_size(CAPTION_SIZE))
-                        .text_color(rgb(ERROR))
-                        .child(error),
-                )
-            })
-            .when(self.error.is_some(), |s| {
-                s.child(self.action(
-                    "refresh-data",
-                    "Refresh",
-                    !self.pending,
-                    Self::save_again,
-                    cx,
-                ))
-            })
-            .when(self.pending, |s| {
-                s.child(
-                    div()
-                        .text_color(rgb(MUTED))
-                        .child("Waiting for acknowledgement…"),
-                )
-            })
+        Page::canvas()
             .child(
                 column()
-                    .id("chat-history")
-                    .flex_1()
+                    .size_full()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll)
-                    .gap(px(16.))
-                    .when(self.turns.is_empty() && self.account.is_some(), |s| {
+                    .gap(px(12.))
+                    .p(px(24.))
+                    .max_w(px(900.))
+                    .mx_auto()
+                    .child(
+                        row()
+                            .gap(px(8.))
+                            .text_size(type_size(CAPTION_SIZE))
+                            .text_color(rgb(MUTED))
+                            .child(
+                                self.action(
+                                    "back-to-conversations",
+                                    "‹ Conversations",
+                                    true,
+                                    Self::show_list,
+                                    cx,
+                                )
+                                .debug_selector(|| "back-to-conversations".into()),
+                            )
+                            .child(
+                                div().flex_1().child(
+                                    self.conversations
+                                        .iter()
+                                        .find(|c| Some(c.id) == self.conversation)
+                                        .map(|c| c.title.clone())
+                                        .unwrap_or("New conversation".into()),
+                                ),
+                            )
+                            .child(self.action(
+                                "panel-new",
+                                "+",
+                                self.active.is_none() && !self.pending,
+                                Self::new_conversation,
+                                cx,
+                            )),
+                    )
+                    .when(self.account.is_none(), |s| {
                         s.child(
                             column()
-                                .py(px(16.))
-                                .gap(px(8.))
-                                .text_size(type_size(LABEL_SIZE))
+                                .gap(px(5.))
+                                .items_start()
+                                .text_size(type_size(CAPTION_SIZE))
                                 .text_color(rgb(MUTED))
-                                .child("What’s on your mind?"),
+                                .child("Connect ChatGPT to chat.")
+                                .child(
+                                    self.action(
+                                        "open-settings",
+                                        "Open Settings",
+                                        true,
+                                        |_, cx| cx.emit(Navigation::Settings),
+                                        cx,
+                                    )
+                                    .border_1()
+                                    .border_color(rgb(BORDER)),
+                                ),
                         )
                     })
-                    .children(self.turns.iter().map(|turn| {
+                    .when(self.store.is_none(), |s| {
+                        s.child(
+                            div()
+                                .text_size(type_size(CAPTION_SIZE))
+                                .text_color(rgb(ERROR))
+                                .child("Conversation data is unavailable. Refresh to reconnect."),
+                        )
+                    })
+                    .when_some(self.error.clone(), |s, error| {
+                        s.child(
+                            div()
+                                .text_size(type_size(CAPTION_SIZE))
+                                .text_color(rgb(ERROR))
+                                .child(error),
+                        )
+                    })
+                    .when(self.error.is_some(), |s| {
+                        s.child(self.action(
+                            "refresh-data",
+                            "Refresh",
+                            !self.pending,
+                            Self::save_again,
+                            cx,
+                        ))
+                    })
+                    .when(self.pending, |s| {
+                        s.child(
+                            div()
+                                .text_color(rgb(MUTED))
+                                .child("Waiting for acknowledgement…"),
+                        )
+                    })
+                    .child(
                         column()
-                            .id(("turn", turn.id as u64))
-                            .gap(px(12.))
-                            .flex_shrink_0()
-                            .when(latest == Some(turn.id), |s| {
-                                s.relative().opacity(0.4 + 0.6 * progress)
-                            })
-                            .child(
-                                column()
-                                    .gap(px(5.))
-                                    .p(px(12.))
-                                    .ml_auto()
-                                    .max_w(px(620.))
-                                    .rounded(px(10.))
-                                    .bg(rgb(HOVER))
-                                    .child(
-                                        div()
-                                            .text_size(type_size(10.))
-                                            .text_color(rgb(MUTED))
-                                            .child("You"),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(type_size(LABEL_SIZE))
-                                            .child(turn.prompt.clone()),
-                                    ),
-                            )
-                            .when_some(turn.response.clone(), |s, reply| {
+                            .id("chat-history")
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll)
+                            .gap(px(16.))
+                            .when(self.turns.is_empty() && self.account.is_some(), |s| {
                                 s.child(
                                     column()
-                                        .gap(px(5.))
-                                        .px(px(2.))
-                                        .max_w(px(680.))
-                                        .child(
-                                            div()
-                                                .text_size(type_size(10.))
-                                                .text_color(rgb(TEXT_ACCENT))
-                                                .child("Evee"),
-                                        )
-                                        .child(div().text_size(type_size(LABEL_SIZE)).child(reply))
-                                        .child(
-                                            row().child(
-                                                self.action(
-                                                    ("copy", turn.id as u64),
-                                                    "Copy reply",
-                                                    true,
-                                                    {
-                                                        let response = turn
-                                                            .response
-                                                            .clone()
-                                                            .unwrap_or_default();
-                                                        move |_, cx| {
-                                                            cx.write_to_clipboard(
-                                                                ClipboardItem::new_string(
-                                                                    response.clone(),
-                                                                ),
-                                                            )
-                                                        }
-                                                    },
-                                                    cx,
-                                                )
-                                                .text_size(type_size(CAPTION_SIZE))
-                                                .text_color(rgb(MUTED)),
-                                            ),
-                                        ),
-                                )
-                            })
-                            .when(self.active == Some(turn.id), |s| {
-                                s.child(
-                                    div()
-                                        .px(px(2.))
+                                        .py(px(16.))
+                                        .gap(px(8.))
                                         .text_size(type_size(LABEL_SIZE))
                                         .text_color(rgb(MUTED))
                                         .child(
@@ -1330,55 +1259,138 @@ impl Render for AssistantPage {
                                         ),
                                 )
                             })
-                            .when_some(turn.error.clone(), |s, error| {
-                                let id = turn.id;
-                                s.child(
-                                    column()
-                                        .gap(px(6.))
-                                        .child(
-                                            div()
-                                                .text_size(type_size(CAPTION_SIZE))
-                                                .text_color(rgb(ERROR))
-                                                .child(error),
+                            .children(self.turns.iter().map(|turn| {
+                                column()
+                                    .id(("turn", turn.id as u64))
+                                    .gap(px(12.))
+                                    .flex_shrink_0()
+                                    .when(latest == Some(turn.id), |s| {
+                                        s.relative().opacity(0.4 + 0.6 * progress)
+                                    })
+                                    .child(
+                                        column()
+                                            .gap(px(5.))
+                                            .p(px(12.))
+                                            .ml_auto()
+                                            .max_w(px(620.))
+                                            .rounded(px(10.))
+                                            .bg(rgb(HOVER))
+                                            .child(
+                                                div()
+                                                    .text_size(type_size(10.))
+                                                    .text_color(rgb(MUTED))
+                                                    .child("You"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(type_size(LABEL_SIZE))
+                                                    .child(turn.prompt.clone()),
+                                            ),
+                                    )
+                                    .when_some(turn.response.clone(), |s, reply| {
+                                        s.child(
+                                            column()
+                                                .gap(px(5.))
+                                                .px(px(2.))
+                                                .max_w(px(680.))
+                                                .child(
+                                                    div()
+                                                        .text_size(type_size(10.))
+                                                        .text_color(rgb(TEXT_ACCENT))
+                                                        .child("Evee"),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_size(type_size(LABEL_SIZE))
+                                                        .child(reply),
+                                                )
+                                                .child(
+                                                    row().child(
+                                                        self.action(
+                                                            ("copy", turn.id as u64),
+                                                            "Copy reply",
+                                                            true,
+                                                            {
+                                                                let response = turn
+                                                                    .response
+                                                                    .clone()
+                                                                    .unwrap_or_default();
+                                                                move |_, cx| {
+                                                                    cx.write_to_clipboard(
+                                                                        ClipboardItem::new_string(
+                                                                            response.clone(),
+                                                                        ),
+                                                                    )
+                                                                }
+                                                            },
+                                                            cx,
+                                                        )
+                                                        .text_size(type_size(CAPTION_SIZE))
+                                                        .text_color(rgb(MUTED)),
+                                                    ),
+                                                ),
                                         )
-                                        .child(self.action(
-                                            ("retry", id as u64),
-                                            "Retry reply",
-                                            self.active.is_none() && !self.pending,
-                                            move |this, cx| this.retry(id, cx),
-                                            cx,
-                                        )),
-                                )
-                            })
-                    })),
-            )
-            .child(
-                column()
-                    .flex_shrink_0()
-                    .gap(px(8.))
-                    .p(px(12.))
-                    .rounded(px(10.))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .bg(rgb(SURFACE_COMPOSER))
-                    .child(self.input.clone())
+                                    })
+                                    .when(self.active == Some(turn.id), |s| {
+                                        s.child(
+                                            div()
+                                                .px(px(2.))
+                                                .text_size(type_size(LABEL_SIZE))
+                                                .text_color(rgb(MUTED))
+                                                .child("Evee is thinking…"),
+                                        )
+                                    })
+                                    .when_some(turn.error.clone(), |s, error| {
+                                        let id = turn.id;
+                                        s.child(
+                                            column()
+                                                .gap(px(6.))
+                                                .child(
+                                                    div()
+                                                        .text_size(type_size(CAPTION_SIZE))
+                                                        .text_color(rgb(ERROR))
+                                                        .child(error),
+                                                )
+                                                .child(self.action(
+                                                    ("retry", id as u64),
+                                                    "Retry reply",
+                                                    self.active.is_none() && !self.pending,
+                                                    move |this, cx| this.retry(id, cx),
+                                                    cx,
+                                                )),
+                                        )
+                                    })
+                            })),
+                    )
                     .child(
-                        row().justify_end().child(
-                            self.action_window(
-                                "send",
-                                "",
-                                Some("Send message"),
-                                send_enabled,
-                                |this, _, cx| this.send(cx),
-                                cx,
-                            )
-                            .size(px(30.))
-                            .p(px(0.))
-                            .bg(rgb(HOVER_SEND))
-                            .child(icon("send", 16.).text_color(rgb(TEXT))),
-                        ),
+                        column()
+                            .flex_shrink_0()
+                            .gap(px(8.))
+                            .p(px(12.))
+                            .rounded(px(10.))
+                            .border_1()
+                            .border_color(rgb(BORDER))
+                            .bg(rgb(SURFACE_COMPOSER))
+                            .child(self.input.clone())
+                            .child(
+                                row().justify_end().child(
+                                    self.action_window(
+                                        "send",
+                                        "",
+                                        Some("Send message"),
+                                        send_enabled,
+                                        |this, _, cx| this.send(cx),
+                                        cx,
+                                    )
+                                    .size(px(30.))
+                                    .p(px(0.))
+                                    .bg(rgb(HOVER_SEND))
+                                    .child(icon("send", 16.).text_color(rgb(TEXT))),
+                                ),
+                            ),
                     ),
             )
+            .build()
             .into_any_element()
     }
 }
