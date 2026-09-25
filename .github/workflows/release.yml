@@ -57,12 +57,15 @@ jobs:
     env:
       CARGO_BUILD_JOBS: 4
       CARGO_INCREMENTAL: "0"
+      DEVELOPER_DIR: /Applications/Xcode-27.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Show release Xcode version
+        run: xcodebuild -version
       - name: Prepare pinned build tools inside runner work directory
         run: |
           export CARGO_HOME="$RUNNER_WORKSPACE/.cargo"
@@ -236,11 +239,15 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode-27.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit || github.sha }}
           persist-credentials: false
+      - name: Show release Xcode version
+        run: xcodebuild -version
       - uses: actions/download-artifact@v4
         with:
           name: unsigned-${{ inputs.commit || github.sha }}

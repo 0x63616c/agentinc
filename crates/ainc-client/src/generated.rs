@@ -5044,7 +5044,7 @@ pub mod types {
 
 
 
-Version: 0.3.2*/
+Version: 0.3.3*/
 pub struct Client {
     pub(crate) baseurl: String,
     pub(crate) client: reqwest::Client,
@@ -5082,7 +5082,7 @@ impl Client {
 }
 impl ClientInfo<()> for Client {
     fn api_version() -> &'static str {
-        "0.3.2"
+        "0.3.3"
     }
     fn baseurl(&self) -> &str {
         self.baseurl.as_str()

@@ -5,6 +5,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - Product ownership and daemon configuration: `../../docs/phase-2-ownership.md`. Native tests must use an isolated daemon discovery file; never import the regular Application Support profile.
 - Current product ownership and native acceptance are in `../../docs/phase-2-ownership.md` and `docs/verification/PHASE3.md`.
 - From the workspace root, build the native bundle with `crates/ainc-mac/scripts/bundle.sh`; the pinned toolchain and lockfile are at the workspace root.
+- Ghostty resource staging must use SwiftBuild; `scripts/stage-ghostty.sh` and `scripts/check-ghostty-staging.sh` enforce the shipped `Bundle.module` lookup path.
 - The opt-in driver setup, protocol, upstream seam and acceptance commands are in `docs/GPUI_PILOT.md`; normal bundles must keep `automation` off.
 - Keep GPUI `font-kit` enabled on macOS. Current upstream pin, native acceptance and the main-thread Metal regression command are documented in `docs/verification/GPUI_UPGRADE.md`; inspect saved full PNGs at logical resolution before diagnosing missing regions from inline previews.
 - Workspace Linux CI runs fmt, clippy and default tests; use the macOS rendered and pilot commands in `docs/GPUI_PILOT.md` for native acceptance.

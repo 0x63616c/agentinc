@@ -1398,7 +1398,7 @@
       "name": "MIT"
     },
     "title": "ainc-daemon",
-    "version": "0.3.2"
+    "version": "0.3.3"
   },
   "openapi": "3.0.3",
   "paths": {

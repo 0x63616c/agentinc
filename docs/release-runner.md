@@ -5,7 +5,10 @@
 workspace is `~/actions-runner/_work`. It has the labels `self-hosted`, `macOS`,
 `ARM64`, and `agentinc-release`. The mini has eight CPU cores and 8 GiB of RAM
 and also runs Home Assistant and other services. It runs macOS 15.6 with
-Xcode 26.3 at `/Applications/Xcode-26.3.0.app`.
+Xcode 27.0 at `/Applications/Xcode-27.0.app` alongside Xcode 26.3. Distribution
+sets `DEVELOPER_DIR` to Xcode 27 for both Mac jobs and logs `xcodebuild -version`;
+the machine's default Xcode remains 26.3. Xcode 27 is required for the
+SwiftBuild Ghostty bridge used by shipped bundles.
 
 ## Release path
 
