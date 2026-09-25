@@ -1,4 +1,5 @@
 mod local_runtime;
+mod terminal_attach;
 use anyhow::{Context, Result};
 use sqlx::postgres::PgPoolOptions;
 use std::{
@@ -21,6 +22,17 @@ async fn run() -> Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     if args.len() == 2 && args[0] == "--local-runtime" {
         return local_runtime::helper(Path::new(&args[1])).await;
+    }
+    if (args.len() == 2 || args.len() == 3) && args[0] == "--terminal-attach" {
+        let id = uuid::Uuid::parse_str(&args[1].to_string_lossy())?;
+        anyhow::ensure!(
+            args.len() == 2 || args[2] == "--existing",
+            "usage: aincd --terminal-attach UUID [--existing]"
+        );
+        return terminal_attach::run(id, args.len() == 3).await;
+    }
+    if args.len() == 2 && args[0] == "--terminal-close" {
+        return terminal_attach::close(uuid::Uuid::parse_str(&args[1].to_string_lossy())?).await;
     }
     anyhow::ensure!(args.is_empty(), "usage: aincd");
     tracing_subscriber::fmt()

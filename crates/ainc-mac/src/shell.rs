@@ -123,6 +123,16 @@ enum PaletteItem {
     CreateWorkspace,
 }
 impl Shell {
+    #[cfg(target_os = "macos")]
+    fn reset_terminal_for_workspace(&mut self) {
+        // Recreate the view with this workspace's layout while its daemon PTY keeps running.
+        self.terminal.take();
+        self.terminal_error = None;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn reset_terminal_for_workspace(&mut self) {}
+
     fn workspace_state(&self) -> crate::storage::WorkspaceState {
         self.store
             .as_ref()
@@ -187,6 +197,7 @@ impl Shell {
                 this.workspace_pending = false;
                 match result {
                     Ok(_) => {
+                        this.reset_terminal_for_workspace();
                         this.assistant.update(cx, |page, cx| {
                             page.workspace_changed(cx);
                             cx.notify();
@@ -1093,7 +1104,13 @@ impl Render for Shell {
             && self.terminal.is_none()
             && self.terminal_error.is_none()
         {
-            match crate::terminal::TerminalHost::new(window, cx.to_async(), cx.weak_entity()) {
+            let workspace_id = self.workspace_state().current_id;
+            match crate::terminal::TerminalHost::new(
+                window,
+                cx.to_async(),
+                cx.weak_entity(),
+                &workspace_id,
+            ) {
                 Ok(host) => {
                     self.terminal = Some(Rc::new(RefCell::new(host)));
                     self.pending_terminal_focus = true;

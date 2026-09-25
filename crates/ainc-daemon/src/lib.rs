@@ -8,6 +8,7 @@ pub mod execution;
 pub mod inference;
 pub mod legacy;
 pub mod product;
+pub mod terminal_sessions;
 pub mod tickets;
 pub mod workspaces;
 use axum::{
@@ -84,6 +85,9 @@ async fn ticket_contract(Json(ticket): Json<TicketContract>) -> Json<TicketContr
         tickets::command,
         automations::state,
         automations::command,
+        terminal_sessions::list,
+        terminal_sessions::create,
+        terminal_sessions::close,
         workspaces::state,
         workspaces::command
     ),
@@ -129,6 +133,7 @@ pub fn product_router(product: product::Product) -> Router {
         .merge(connection::router(product.clone()))
         .merge(tickets::router(product.clone()))
         .merge(automations::router(product.clone()))
+        .merge(terminal_sessions::router(product.clone()))
         .merge(workspaces::router(product))
         .layer(axum::middleware::from_fn(compatibility))
         .layer(axum::middleware::map_response(server_version_header))

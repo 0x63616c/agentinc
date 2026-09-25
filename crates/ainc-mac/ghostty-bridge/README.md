@@ -8,8 +8,8 @@ comes from Ghostty revision `3c47ca159368eb4a860ffe5333abdf4a85b2767b`.
 No Zig installation is needed for app or release builds. Swift 6 and macOS 15
 are required by this package.
 
-`Sources/AgentIncGhosttyBridge/Bridge.swift` owns the persistent terminal
-controller, AppKit child views, split tree and terminal-only key handling. The
+`Sources/AgentIncGhosttyBridge/Bridge.swift` owns the terminal controller,
+AppKit child views, split tree and terminal-only key handling. The
 app's `src/terminal.rs` dynamically loads its C ABI from the signed bundle and
 places the child view in `src/ui/terminal.rs`'s GPUI canvas. The bridge reads
 the user's XDG and macOS Ghostty config files through `config-file` directives,
@@ -18,9 +18,19 @@ roles are appended last, deliberately overriding terminal colors and themes.
 The bridge intercepts Cmd+K, Cmd+, and Cmd+number only while a terminal pane is
 focused, forwarding them to AgentInc. Its Swift test verifies the focus rule;
 all other Ghostty keybinds pass through.
+Each pane runs `aincd --terminal-attach` through Ghostty's exec backend. The
+daemon owns its login shell, PTY and bounded output buffer in
+`crates/ainc-daemon/src/terminal_sessions.rs`; the attach client reconnects and
+replays output. The bridge saves pane IDs, splits and zoom beside the daemon's
+discovery file as `terminal-layout.json`. Closing a pane calls the authenticated
+daemon close endpoint. Terminal session list/create/close are generated into
+OpenAPI and the Rust client by `cargo xtask generate`.
 `swift test` also starts a process in a split pane, hides the terminal page,
 releases the process through a FIFO, and verifies that the same pane and
-process output remain after showing the page again.
+process output remain after showing the page again. It checks split and zoom
+restoration after host recreation. The daemon test checks disconnect and replay;
+`pilot_terminal_sessions` checks the signed app across quit and relaunch against
+an isolated daemon.
 
 `scripts/stage-ghostty.sh` builds the pinned Swift package and stages the
 dylib, GhosttyKit resource bundle, license notices, and built-in themes in
