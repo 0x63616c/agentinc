@@ -987,35 +987,46 @@ impl AssistantPage {
             return;
         };
         self.active = Some(id);
-        let request = cx.background_executor().spawn(async move {
-            loop {
-                store.refresh()?;
-                let snapshot = store.snapshot();
-                if snapshot
-                    .turns
-                    .iter()
-                    .find(|t| t.id == id)
-                    .is_none_or(|t| t.state != "queued" && t.state != "running")
-                {
-                    return Ok::<_, anyhow::Error>(());
-                }
-                crate::storage::background(async {
-                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                    Ok(())
-                })?;
-            }
-        });
         cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.reload_snapshot();
-                if let Err(error) = result {
-                    this.error = Some(format!(
-                        "Reply continues on daemon. Refresh to reconnect: {error}"
-                    ));
+            loop {
+                let db = store.clone();
+                let result = cx
+                    .background_executor()
+                    .spawn(async move {
+                        db.refresh()?;
+                        Ok::<_, anyhow::Error>(
+                            db.snapshot()
+                                .turns
+                                .iter()
+                                .find(|t| t.id == id)
+                                .is_none_or(|t| t.state != "queued" && t.state != "running"),
+                        )
+                    })
+                    .await;
+                let done = this
+                    .update(cx, |this, cx| {
+                        this.reload_snapshot();
+                        if let Err(error) = &result {
+                            this.error = Some(format!(
+                                "Reply continues on daemon. Refresh to reconnect: {error}"
+                            ));
+                        }
+                        this.scroll.scroll_to_bottom();
+                        cx.notify();
+                        result.as_ref().copied().unwrap_or(true)
+                    })
+                    .unwrap_or(true);
+                if done {
+                    break;
                 }
+                cx.background_executor()
+                    .spawn(async {
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    })
+                    .await;
+            }
+            let _ = this.update(cx, |this, cx| {
                 this.appearance = Some(Instant::now());
-                this.scroll.scroll_to_bottom();
                 cx.notify();
             });
         })

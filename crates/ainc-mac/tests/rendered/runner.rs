@@ -389,7 +389,6 @@ pub fn run() -> Result<()> {
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_profile_name("QA Profile", cx);
     })?;
-    suite.capture_version_tooltip()?;
     suite.cx.simulate_mouse_move(
         suite.window.into(),
         point(px(125.), px(167.)),

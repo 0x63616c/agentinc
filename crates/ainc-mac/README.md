@@ -1,6 +1,6 @@
 # AgentInc
 
-A native macOS workspace built with Rust and GPUI, following the approved Control design. It includes a single tab, navigation, search, panel controls, a saved local session, daemon-backed Tasks and a Codex subscription-backed Evee chat panel and an Assistant conversation library. Agents, home, calendar, library and apps remain intentional placeholders.
+A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents and Automations, with Settings in the footer. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane.
 
 ## Build and run
 
@@ -47,7 +47,7 @@ The ordinary GPUI interaction tests run with `cargo test --locked`. On macOS, ru
 cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
 ```
 
-It captures 38 frames across routes, two window sizes, dialogs and Evee visibility, and asserts that shell regions contain rendered pixels. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
+It captures 39 frames across routes, two window sizes, dialogs and full-page Evee conversations, and asserts that shell regions contain rendered pixels. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
 
 ## Evee and Tasks
 
