@@ -299,9 +299,16 @@ impl Shell {
         ];
         let tickets_subscription = cx.observe(&tickets, |_, _, cx| cx.notify());
         let input = cx.new(TextInput::new);
-        let workspace_name = cx.new(|cx| TextInput::new(cx).with_placeholder("Workspace name"));
-        let workspace_icon = cx.new(|cx| TextInput::field("Icon (optional)", false, cx));
-        let workspace_color = cx.new(|cx| TextInput::field("Color #RRGGBB (optional)", false, cx));
+        let workspace_name = cx.new(|cx| {
+            TextInput::new(cx)
+                .identified("workspace.name")
+                .with_placeholder("Workspace name")
+        });
+        let workspace_icon = cx
+            .new(|cx| TextInput::field("Icon (optional)", false, cx).identified("workspace.icon"));
+        let workspace_color = cx.new(|cx| {
+            TextInput::field("Color #RRGGBB (optional)", false, cx).identified("workspace.color")
+        });
         let subscription = cx.observe(&input, |this, _, cx| {
             this.selected = 0;
             cx.notify();
