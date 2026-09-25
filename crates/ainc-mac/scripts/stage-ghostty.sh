@@ -11,7 +11,8 @@ resources="$bundle/Contents/Resources"
 mkdir -p "$frameworks" "$resources"
 cp "$products/libAgentIncGhosttyBridge.dylib" "$frameworks/"
 ditto "$products/GhosttyKit_GhosttyTerminal.bundle" "$resources/GhosttyKit_GhosttyTerminal.bundle"
-ghostty_resources="$resources/GhosttyKit_GhosttyTerminal.bundle/Contents/Resources/Ghostty"
+ghostty_resources=$(find "$resources/GhosttyKit_GhosttyTerminal.bundle" -type d -name Ghostty -print -quit)
+test -n "$ghostty_resources" || { echo 'GhosttyKit resource bundle has no Ghostty directory' >&2; exit 1; }
 tar -xzf "$package/ghostty-themes-1.3.1.tar.gz" -C "$ghostty_resources"
 cp "$package/licenses/ghostty.txt" "$resources/GHOSTTY-LICENSE.txt"
 cp "$package/licenses/ghosttykit.txt" "$resources/GHOSTTYKIT-LICENSE.txt"
