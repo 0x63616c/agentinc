@@ -84,7 +84,9 @@ pub struct Shell {
     shell_focus_pending: bool,
     #[cfg(target_os = "macos")]
     terminal: Option<Rc<RefCell<crate::terminal::TerminalHost>>>,
+    #[cfg(target_os = "macos")]
     terminal_error: Option<String>,
+    #[cfg(target_os = "macos")]
     pending_terminal_focus: bool,
     #[cfg(test)]
     titlebar_zoom_requests: usize,
@@ -221,7 +223,9 @@ impl Shell {
             shell_focus_pending: false,
             #[cfg(target_os = "macos")]
             terminal: None,
+            #[cfg(target_os = "macos")]
             terminal_error: None,
+            #[cfg(target_os = "macos")]
             pending_terminal_focus: false,
             #[cfg(test)]
             titlebar_zoom_requests: 0,
@@ -453,14 +457,14 @@ impl Shell {
                 self.overlays.borrow_mut().dismiss(window, cx);
             }
         }
+        #[cfg(target_os = "macos")]
         if before != self.session.current() {
             if self.session.current() == Route::Terminal {
                 self.pending_terminal_focus = true;
-            } else if before == Route::Terminal {
-                #[cfg(target_os = "macos")]
-                if let Some(terminal) = &self.terminal {
-                    terminal.borrow().hide();
-                }
+            } else if before == Route::Terminal
+                && let Some(terminal) = &self.terminal
+            {
+                terminal.borrow_mut().hide();
             }
         }
         if before != self.session.current() {
@@ -846,6 +850,15 @@ impl Render for Shell {
             let focus = self.focus.clone();
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
+        // AppKit child views paint above GPUI's Metal layer. Hide Ghostty
+        // before GPUI paints any app popover, menu, or dialog over this page.
+        #[cfg(target_os = "macos")]
+        if self.session.current() == Route::Terminal
+            && active_overlay.is_some()
+            && let Some(terminal) = &self.terminal
+        {
+            terminal.borrow_mut().hide();
+        }
         #[cfg(target_os = "macos")]
         if self.session.current() == Route::Terminal
             && self.terminal.is_none()
@@ -866,12 +879,17 @@ impl Render for Shell {
             Route::Tickets => self.tickets.clone().into_any_element(),
             Route::Agents => self.tickets.update(cx, |tickets, cx| tickets.agents(cx)),
             Route::Assistant => self.assistant.clone().into_any_element(),
-            Route::Terminal => self.terminal_page().into_any_element(),
+            Route::Terminal => self
+                .terminal_page(active_overlay.is_none())
+                .into_any_element(),
             Route::Settings => self
                 .static_page(self.session.current(), cx)
                 .into_any_element(),
         };
-        self.pending_terminal_focus = false;
+        #[cfg(target_os = "macos")]
+        {
+            self.pending_terminal_focus = false;
+        }
         let dialog_content = match active_overlay {
             Some(Overlay::Search) => Some(self.command_palette(cx).into_any_element()),
             Some(Overlay::AddTicket | Overlay::AddAgent | Overlay::DeleteTicket(_)) => {

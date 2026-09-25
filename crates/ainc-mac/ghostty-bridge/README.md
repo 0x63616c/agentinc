@@ -15,6 +15,12 @@ places the child view in `src/ui/terminal.rs`'s GPUI canvas. The bridge reads
 the user's XDG and macOS Ghostty config files through `config-file` directives,
 so includes, fonts and keybinds are parsed by Ghostty. AgentInc's UI color
 roles are appended last, deliberately overriding terminal colors and themes.
+The bridge intercepts Cmd+K, Cmd+, and Cmd+number only while a terminal pane is
+focused, forwarding them to AgentInc. Its Swift test verifies the focus rule;
+all other Ghostty keybinds pass through.
+`swift test` also starts a process in a split pane, hides the terminal page,
+releases the process through a FIFO, and verifies that the same pane and
+process output remain after showing the page again.
 
 `scripts/stage-ghostty.sh` builds the pinned Swift package and stages the
 dylib, GhosttyKit resource bundle, license notices, and built-in themes in

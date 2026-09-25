@@ -18,18 +18,23 @@ pub(crate) fn terminal_colors() -> String {
 #[cfg(target_os = "macos")]
 pub fn terminal_surface(
     host: std::rc::Rc<std::cell::RefCell<crate::terminal::TerminalHost>>,
+    visible: bool,
     focus: bool,
 ) -> impl gpui::IntoElement {
     use gpui::{Styled as _, canvas};
     canvas(
         move |bounds, _, _| {
-            host.borrow_mut().set_frame(
-                f64::from(f32::from(bounds.origin.x)),
-                f64::from(f32::from(bounds.origin.y)),
-                f64::from(f32::from(bounds.size.width)),
-                f64::from(f32::from(bounds.size.height)),
-                focus,
-            );
+            if visible {
+                host.borrow_mut().set_frame(
+                    f64::from(f32::from(bounds.origin.x)),
+                    f64::from(f32::from(bounds.origin.y)),
+                    f64::from(f32::from(bounds.size.width)),
+                    f64::from(f32::from(bounds.size.height)),
+                    focus,
+                );
+            } else {
+                host.borrow_mut().hide();
+            }
         },
         |_, _, _, _| {},
     )

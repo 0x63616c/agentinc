@@ -8,6 +8,7 @@ impl Shell {
                 .debug_selector(|| "main-pane".into())
                 .flex_1()
                 .min_w_0()
+                .min_h_0()
                 .h_full()
                 .overflow_hidden()
                 .p(px(8.))
@@ -40,28 +41,27 @@ impl Shell {
         }
     }
 
-    pub(super) fn terminal_page(&self) -> impl IntoElement {
+    pub(super) fn terminal_page(&self, _visible: bool) -> impl IntoElement {
         let page = column().size_full().min_h_0();
         #[cfg(target_os = "macos")]
         if let Some(host) = &self.terminal {
             return page
-                .child(
-                    div()
-                        .flex_1()
-                        .min_h_0()
-                        .w_full()
-                        .child(terminal_surface(host.clone(), self.pending_terminal_focus)),
-                )
+                .child(div().flex_1().min_h_0().w_full().child(terminal_surface(
+                    host.clone(),
+                    _visible,
+                    self.pending_terminal_focus,
+                )))
                 .into_any_element();
         }
-        page.child(
-            div().text_color(rgb(MUTED)).child(
-                self.terminal_error
-                    .clone()
-                    .unwrap_or_else(|| "Terminal requires macOS and the Ghostty runtime.".into()),
-            ),
-        )
-        .into_any_element()
+        #[cfg(target_os = "macos")]
+        let message = self
+            .terminal_error
+            .clone()
+            .unwrap_or_else(|| "Ghostty could not start.".into());
+        #[cfg(not(target_os = "macos"))]
+        let message = "Terminal requires macOS and the Ghostty runtime.";
+        page.child(div().text_color(rgb(MUTED)).child(message))
+            .into_any_element()
     }
 
     pub(super) fn static_page(&self, route: Route, cx: &mut Context<Self>) -> impl IntoElement {

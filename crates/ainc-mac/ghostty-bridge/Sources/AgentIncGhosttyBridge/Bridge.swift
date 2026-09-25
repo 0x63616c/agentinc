@@ -1,7 +1,28 @@
 import AppKit
 import GhosttyTerminal
 
-public typealias NavigateCallback = @convention(c) (UnsafeMutableRawPointer?, Int32) -> Void
+public typealias ShortcutCallback = @convention(c) (UnsafeMutableRawPointer?, Int32) -> Void
+
+// The AppKit terminal is first responder, so GPUI's window key bindings do
+// not see these keys. Consume only AgentInc's navigation keys here; all other
+// configured Ghostty bindings continue to reach Ghostty.
+@MainActor
+func appShortcutCommand(_ event: NSEvent, in pane: NSView, shown: Bool) -> Int32? {
+    guard shown, pane.window?.firstResponder === pane,
+          event.modifierFlags.contains(.command),
+          !event.modifierFlags.contains(.shift),
+          !event.modifierFlags.contains(.option),
+          !event.modifierFlags.contains(.control)
+    else { return nil }
+    let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+    switch key {
+    case "k": return -1 // AgentInc Search
+    case ",": return -2 // AgentInc Settings
+    default:
+        guard key.count == 1, let digit = key.first?.wholeNumberValue else { return nil }
+        return Int32(digit)
+    }
+}
 
 private final class PaneView: AppTerminalView {
     weak var host: TerminalHost?
@@ -91,7 +112,7 @@ private final class TerminalHost: NSObject {
     let zoomIndicator = ZoomIndicator(frame: .zero)
     let controller: TerminalController
     let home: String
-    let navigate: NavigateCallback?
+    let navigate: ShortcutCallback?
     let context: UnsafeMutableRawPointer?
     var tree: PaneNode!
     weak var focused: PaneView?
@@ -99,7 +120,7 @@ private final class TerminalHost: NSObject {
     var shown = false
 
     init(parent: NSView, home: String, colors: String, dividerColor: UInt32,
-         navigate: NavigateCallback?,
+         navigate: ShortcutCallback?,
          context: UnsafeMutableRawPointer?) {
         self.home = home
         self.navigate = navigate
@@ -153,6 +174,10 @@ private final class TerminalHost: NSObject {
         let frameY = parent.isFlipped ? y : Double(parent.bounds.height) - y - height
         let next = NSRect(x: x, y: frameY, width: width, height: height)
         if container.frame != next { container.frame = next }
+        if !visible && shown, let window = container.window,
+           window.firstResponder is PaneView {
+            window.makeFirstResponder(parent)
+        }
         shown = visible
         container.isHidden = !visible
         layoutPanes()
@@ -165,6 +190,10 @@ private final class TerminalHost: NSObject {
     }
 
     func shortcut(_ event: NSEvent, in pane: PaneView) -> Bool {
+        if let command = appShortcutCommand(event, in: pane, shown: shown) {
+            navigate?(context, command)
+            return true
+        }
         guard shown, pane.window?.firstResponder === pane,
               event.modifierFlags.contains(.command),
               !event.modifierFlags.contains(.option),
@@ -174,10 +203,6 @@ private final class TerminalHost: NSObject {
         let shifted = event.modifierFlags.contains(.shift)
         if shifted && (event.keyCode == 36 || event.keyCode == 76) {
             toggleZoom(pane)
-            return true
-        }
-        if !shifted, key.count == 1, let digit = key.first?.wholeNumberValue {
-            navigate?(context, Int32(digit))
             return true
         }
         switch (key, shifted) {
@@ -277,7 +302,7 @@ private final class TerminalHost: NSObject {
 public func agentincGhosttyCreate(_ parent: UnsafeMutableRawPointer?, _ home: UnsafePointer<CChar>?,
                                   _ colors: UnsafePointer<CChar>?,
                                   _ dividerColor: UInt32,
-                                  _ navigate: NavigateCallback?,
+                                  _ navigate: ShortcutCallback?,
                                   _ context: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
     guard let parent, let home, let colors else { return nil }
     let parentAddress = UInt(bitPattern: parent)

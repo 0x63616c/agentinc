@@ -12,13 +12,13 @@ mod macos {
         ptr::NonNull,
     };
 
-    type Navigate = unsafe extern "C" fn(*mut c_void, i32);
+    type Shortcut = unsafe extern "C" fn(*mut c_void, i32);
     type Create = unsafe extern "C" fn(
         *mut c_void,
         *const std::ffi::c_char,
         *const std::ffi::c_char,
         u32,
-        Option<Navigate>,
+        Option<Shortcut>,
         *mut c_void,
     ) -> *mut c_void;
     type SetFrame = unsafe extern "C" fn(*mut c_void, f64, f64, f64, f64, bool, bool);
@@ -30,22 +30,27 @@ mod macos {
         shell: WeakEntity<Shell>,
     }
 
-    unsafe extern "C" fn navigate(context: *mut c_void, number: i32) {
+    unsafe extern "C" fn shortcut(context: *mut c_void, number: i32) {
         // SAFETY: the bridge retains this pointer only while TerminalHost and
         // its Navigation box are alive, and invokes it synchronously on the UI thread.
         let Some(navigation) = (unsafe { (context as *const Navigation).as_ref() }) else {
             return;
         };
-        let Ok(number) = u8::try_from(number) else {
-            return;
-        };
-        let Some(route) = crate::model::Route::from_shortcut(number) else {
-            return;
+        let control = match number {
+            -1 => Control::Search,
+            -2 => Control::Navigate(crate::model::Route::Settings),
+            0..=9 => {
+                let Some(route) = crate::model::Route::from_shortcut(number as u8) else {
+                    return;
+                };
+                Control::Navigate(route)
+            }
+            _ => return,
         };
         navigation.app.update(|cx| {
             let _ = navigation.window.update(cx, |_, window, cx| {
                 let _ = navigation.shell.update(cx, |shell, cx| {
-                    shell.dispatch(Control::Navigate(route), window, cx);
+                    shell.dispatch(control, window, cx);
                 });
             });
         });
@@ -58,6 +63,7 @@ mod macos {
         destroy: Destroy,
         _navigation: Box<Navigation>,
         frame: (f64, f64, f64, f64),
+        visible: bool,
     }
 
     impl TerminalHost {
@@ -94,7 +100,7 @@ mod macos {
                     home.as_ptr(),
                     colors.as_ptr(),
                     crate::ui::BORDER,
-                    Some(navigate),
+                    Some(shortcut),
                     (&*navigation as *const Navigation).cast_mut().cast(),
                 )
             };
@@ -106,6 +112,7 @@ mod macos {
                 destroy,
                 _navigation: navigation,
                 frame: (0., 0., 0., 0.),
+                visible: false,
             })
         }
 
@@ -125,12 +132,15 @@ mod macos {
 
         pub fn set_frame(&mut self, x: f64, y: f64, width: f64, height: f64, focus: bool) {
             self.frame = (x, y, width, height);
+            let focus = focus || !self.visible;
+            self.visible = true;
             // SAFETY: raw is owned by the live Swift host and calls stay on
             // GPUI's macOS main thread.
             unsafe { (self.set_frame)(self.raw.as_ptr(), x, y, width, height, true, focus) }
         }
 
-        pub fn hide(&self) {
+        pub fn hide(&mut self) {
+            self.visible = false;
             let (x, y, width, height) = self.frame;
             // SAFETY: same lifetime and thread contract as set_frame.
             unsafe { (self.set_frame)(self.raw.as_ptr(), x, y, width, height, false, false) }
@@ -146,8 +156,4 @@ mod macos {
     }
 }
 
-#[cfg(target_os = "macos")]
 pub use macos::TerminalHost;
-
-#[cfg(not(target_os = "macos"))]
-pub struct TerminalHost;
