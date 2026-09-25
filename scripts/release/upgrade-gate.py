@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import urllib.request
 
 
 KNOWN_BROKEN = {
@@ -51,6 +52,20 @@ def wait_for(directory, ready, seconds, description):
     finally:
         queue.close()
         os.close(fd)
+
+
+def drain_profile(profile):
+    discovery = profile / 'daemon' / 'api-url'
+    token = discovery.with_name('owner-token')
+    if not discovery.is_file() or not token.is_file():
+        return
+    request = urllib.request.Request(discovery.read_text().strip() + '/internal/drain',
+                                     data=b'', method='POST',
+                                     headers={'Authorization': 'Bearer ' + token.read_text().strip()})
+    try:
+        urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=10).close()
+    except OSError:
+        pass
 
 
 def exercise(mode, candidate, newer, key, manifest_tool):
@@ -118,7 +133,11 @@ def exercise(mode, candidate, newer, key, manifest_tool):
                     process.terminate()
                     process.wait(timeout=10)
                 if marker.is_file():
-                    os.kill(int(marker.read_text().split()[1]), 15)
+                    try:
+                        os.kill(int(marker.read_text().split()[1]), 15)
+                    except ProcessLookupError:
+                        pass
+                drain_profile(profile)
                 server.shutdown()
                 thread.join()
 
