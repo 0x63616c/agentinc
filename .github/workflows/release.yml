@@ -276,12 +276,22 @@ jobs:
         run: rm -rf .local/upgrade-input .local/upgrade-signed
   publish:
     needs: [prepare, distribute, upgrade]
-    if: needs.upgrade.result == 'success' && github.ref == 'refs/heads/main' && inputs.test != true
+    if: needs.upgrade.result == 'success' && ((github.ref == 'refs/heads/main' && inputs.test != true) || (github.event_name == 'workflow_dispatch' && inputs.test == true))
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
     steps:
+      - name: Check draft lookup without a checkout
+        if: inputs.test == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit='${{ inputs.commit || github.sha }}'
+          test "$(gh release view "phase5-test-${commit:0:12}" --json isDraft --jq .isDraft)" = true
       - name: Publish only after native upgrade gate
+        if: inputs.test != true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
