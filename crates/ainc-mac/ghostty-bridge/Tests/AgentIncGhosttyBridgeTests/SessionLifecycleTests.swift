@@ -54,7 +54,7 @@ final class SessionLifecycleTests: XCTestCase {
         let pointer = home.withCString { home in
             "background = #171717".withCString { colors in
                 agentincGhosttyCreate(Unmanaged.passUnretained(parent).toOpaque(), home,
-                                       colors, 0x333333, nil, nil)
+                                       nil, nil, colors, 0x333333, nil, nil)
             }
         }
         let host = try XCTUnwrap(pointer)
@@ -98,5 +98,57 @@ final class SessionLifecycleTests: XCTestCase {
         XCTAssertTrue(restored.contains { $0 === first })
         XCTAssertTrue(restored.contains { $0 === second })
         XCTAssertTrue(window.firstResponder === second)
+    }
+
+    func testSplitAndZoomRestoreAfterHostRecreation() throws {
+        _ = NSApplication.shared
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/layout-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let layout = directory.appendingPathComponent("terminal-layout.json")
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        let parent = window.contentView!
+        func create() -> UnsafeMutableRawPointer? {
+            NSHomeDirectory().withCString { home in
+                "/usr/bin/true".withCString { helper in
+                    layout.path.withCString { path in
+                        "background = #171717".withCString { colors in
+                            agentincGhosttyCreate(Unmanaged.passUnretained(parent).toOpaque(),
+                                                   home, helper, path, colors, 0x333333, nil, nil)
+                        }
+                    }
+                }
+            }
+        }
+        let firstHost = try XCTUnwrap(create())
+        agentincGhosttySetFrame(firstHost, 0, 0, 800, 500, true, true)
+        let first = try XCTUnwrap(panes(in: parent).first)
+        XCTAssertTrue(window.makeFirstResponder(first))
+        let split = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command,
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            characters: "d", charactersIgnoringModifiers: "d", isARepeat: false, keyCode: 2))
+        XCTAssertTrue(first.performKeyEquivalent(with: split))
+        XCTAssertEqual(panes(in: parent).count, 2)
+        let second = try XCTUnwrap(panes(in: parent).first { $0 !== first })
+        let zoom = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [.command, .shift],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        XCTAssertTrue(second.performKeyEquivalent(with: zoom))
+        let saved = try Data(contentsOf: layout)
+        let firstIDs = try XCTUnwrap(JSONSerialization.jsonObject(with: saved) as? [String: Any])
+        XCTAssertNotNil(firstIDs["tree"])
+        XCTAssertNotNil(firstIDs["zoomed"])
+        agentincGhosttyDestroy(firstHost)
+        XCTAssertTrue(panes(in: parent).isEmpty)
+
+        let secondHost = try XCTUnwrap(create())
+        defer { agentincGhosttyDestroy(secondHost) }
+        agentincGhosttySetFrame(secondHost, 0, 0, 800, 500, true, true)
+        XCTAssertEqual(panes(in: parent).count, 2)
+        XCTAssertEqual(try Data(contentsOf: layout), saved)
     }
 }

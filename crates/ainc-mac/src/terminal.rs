@@ -17,6 +17,8 @@ mod macos {
         *mut c_void,
         *const std::ffi::c_char,
         *const std::ffi::c_char,
+        *const std::ffi::c_char,
+        *const std::ffi::c_char,
         u32,
         Option<Shortcut>,
         *mut c_void,
@@ -75,6 +77,10 @@ mod macos {
             };
             let home = std::env::var_os("HOME").context("HOME is missing")?;
             let home = CString::new(home.to_string_lossy().as_bytes()).context("invalid HOME")?;
+            let helper = std::env::current_exe()?.with_file_name("aincd");
+            let helper = CString::new(helper.to_string_lossy().as_bytes())?;
+            let layout = crate::storage::discovery_path()?.with_file_name("terminal-layout.json");
+            let layout = CString::new(layout.to_string_lossy().as_bytes())?;
             let colors = CString::new(crate::ui::terminal_colors())?;
             let library = unsafe { Library::new(Self::library_path()?) }
                 .context("load AgentInc Ghostty bridge")?;
@@ -98,6 +104,8 @@ mod macos {
                 create(
                     handle.ns_view.as_ptr(),
                     home.as_ptr(),
+                    helper.as_ptr(),
+                    layout.as_ptr(),
                     colors.as_ptr(),
                     crate::ui::BORDER,
                     Some(shortcut),

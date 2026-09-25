@@ -27,6 +27,7 @@ func appShortcutCommand(_ event: NSEvent, in pane: NSView, shown: Bool) -> Int32
 
 private final class PaneView: AppTerminalView {
     weak var host: TerminalHost?
+    var sessionID = ""
 
     override func becomeFirstResponder() -> Bool {
         host?.focused = self
@@ -67,6 +68,7 @@ private final class ZoomIndicator: NSButton {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
+@MainActor
 private indirect enum PaneNode {
     case pane(PaneView)
     case split(vertical: Bool, PaneNode, PaneNode)
@@ -75,6 +77,14 @@ private indirect enum PaneNode {
         switch self {
         case .pane(let pane): [pane]
         case .split(_, let first, let second): first.panes + second.panes
+        }
+    }
+
+    var record: PaneRecord {
+        switch self {
+        case .pane(let pane): return PaneRecord(id: pane.sessionID)
+        case .split(let vertical, let first, let second):
+            return PaneRecord(vertical: vertical, first: first.record, second: second.record)
         }
     }
 
@@ -107,12 +117,38 @@ private indirect enum PaneNode {
     }
 }
 
+private final class PaneRecord: Codable {
+    var id: String?
+    var vertical: Bool?
+    var first: PaneRecord?
+    var second: PaneRecord?
+
+    init(id: String) { self.id = id }
+    init(vertical: Bool, first: PaneRecord, second: PaneRecord) {
+        self.vertical = vertical
+        self.first = first
+        self.second = second
+    }
+
+    var isValid: Bool {
+        if let id { return UUID(uuidString: id) != nil }
+        return vertical != nil && first?.isValid == true && second?.isValid == true
+    }
+}
+
+private struct TerminalLayout: Codable {
+    var tree: PaneRecord
+    var zoomed: String?
+}
+
 @MainActor
 private final class TerminalHost: NSObject {
     let container = NSView(frame: .zero)
     let zoomIndicator = ZoomIndicator(frame: .zero)
     let controller: TerminalController
     let home: String
+    let helper: String?
+    let layoutURL: URL?
     let navigate: ShortcutCallback?
     let context: UnsafeMutableRawPointer?
     var tree: PaneNode!
@@ -120,10 +156,13 @@ private final class TerminalHost: NSObject {
     weak var zoomed: PaneView?
     var shown = false
 
-    init(parent: NSView, home: String, colors: String, dividerColor: UInt32,
+    init(parent: NSView, home: String, helper: String?, layoutPath: String?,
+         colors: String, dividerColor: UInt32,
          navigate: ShortcutCallback?,
          context: UnsafeMutableRawPointer?) {
         self.home = home
+        self.helper = helper
+        self.layoutURL = layoutPath.map { URL(fileURLWithPath: $0) }
         self.navigate = navigate
         self.context = context
         let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "\(home)/.config"
@@ -151,16 +190,55 @@ private final class TerminalHost: NSObject {
         zoomIndicator.action = #selector(restorePanes)
         zoomIndicator.isHidden = true
         container.addSubview(zoomIndicator)
-        let first = makePane()
-        tree = .pane(first)
-        focused = first
+        if let layoutURL,
+           let data = try? Data(contentsOf: layoutURL),
+           let saved = try? JSONDecoder().decode(TerminalLayout.self, from: data),
+           saved.tree.isValid,
+           let restored = restore(saved.tree) {
+            tree = restored
+            focused = restored.panes.first
+            zoomed = restored.panes.first { $0.sessionID == saved.zoomed }
+        } else {
+            let first = makePane()
+            tree = .pane(first)
+            focused = first
+            saveLayout()
+        }
         layoutPanes()
     }
 
-    private func makePane() -> PaneView {
+    private func restore(_ record: PaneRecord) -> PaneNode? {
+        if let id = record.id, UUID(uuidString: id) != nil {
+            return .pane(makePane(id: id, existing: true))
+        }
+        guard let vertical = record.vertical,
+              let first = record.first.flatMap(restore),
+              let second = record.second.flatMap(restore) else { return nil }
+        return .split(vertical: vertical, first, second)
+    }
+
+    private func saveLayout() {
+        guard let tree, let layoutURL else { return }
+        do {
+            let data = try JSONEncoder().encode(TerminalLayout(tree: tree.record, zoomed: zoomed?.sessionID))
+            try FileManager.default.createDirectory(at: layoutURL.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try data.write(to: layoutURL, options: .atomic)
+        } catch {
+            fputs("AgentInc terminal layout: \(error)\n", stderr)
+        }
+    }
+
+    private func makePane(id: String = UUID().uuidString, existing: Bool = false) -> PaneView {
         let pane = PaneView(frame: .zero)
         pane.host = self
-        pane.configuration = TerminalSurfaceOptions(workingDirectory: home)
+        pane.sessionID = id
+        let command = helper.map {
+            let quoted = "'\($0.replacingOccurrences(of: "'", with: "'\\''"))'"
+            return "\(quoted) --terminal-attach \(id)\(existing ? " --existing" : "")"
+        }
+        pane.configuration = TerminalSurfaceOptions(workingDirectory: home, command: command,
+                                                     waitAfterCommand: true)
         pane.controller = controller
         pane.setAccessibilityElement(true)
         pane.setAccessibilityIdentifier("terminal.pane")
@@ -222,6 +300,7 @@ private final class TerminalHost: NSObject {
         zoomed = nil
         layoutPanes()
         focus(newPane)
+        saveLayout()
     }
 
     private func close(_ pane: PaneView) {
@@ -231,12 +310,20 @@ private final class TerminalHost: NSObject {
         tree = tree.removing(pane)
         if zoomed === pane { zoomed = nil }
         pane.removeFromSuperview()
+        if let helper {
+            let command = Process()
+            command.executableURL = URL(fileURLWithPath: helper)
+            command.arguments = ["--terminal-close", pane.sessionID]
+            do { try command.run() } catch { fputs("AgentInc close terminal: \(error)\n", stderr) }
+        }
         layoutPanes()
         focus(tree.panes[min(index, tree.panes.count - 1)])
+        saveLayout()
     }
 
     private func toggleZoom(_ pane: PaneView) {
         zoomed = zoomed === pane ? nil : pane
+        saveLayout()
         layoutPanes()
         focus(pane)
     }
@@ -301,6 +388,7 @@ private final class TerminalHost: NSObject {
 
 @_cdecl("agentinc_ghostty_create")
 public func agentincGhosttyCreate(_ parent: UnsafeMutableRawPointer?, _ home: UnsafePointer<CChar>?,
+                                  _ helper: UnsafePointer<CChar>?, _ layoutPath: UnsafePointer<CChar>?,
                                   _ colors: UnsafePointer<CChar>?,
                                   _ dividerColor: UInt32,
                                   _ navigate: ShortcutCallback?,
@@ -309,11 +397,14 @@ public func agentincGhosttyCreate(_ parent: UnsafeMutableRawPointer?, _ home: Un
     let parentAddress = UInt(bitPattern: parent)
     let contextAddress = context.map { UInt(bitPattern: $0) }
     let homePath = String(cString: home)
+    let helperPath = helper.map(String.init(cString:))
+    let layout = layoutPath.map(String.init(cString:))
     let colorConfig = String(cString: colors)
     let address = MainActor.assumeIsolated { () -> UInt in
         let view = Unmanaged<NSView>.fromOpaque(UnsafeMutableRawPointer(bitPattern: parentAddress)!)
             .takeUnretainedValue()
-        let host = TerminalHost(parent: view, home: homePath, colors: colorConfig,
+        let host = TerminalHost(parent: view, home: homePath, helper: helperPath,
+                                layoutPath: layout, colors: colorConfig,
                                 dividerColor: dividerColor, navigate: navigate,
                                 context: contextAddress.flatMap(UnsafeMutableRawPointer.init(bitPattern:)))
         return UInt(bitPattern: Unmanaged.passRetained(host).toOpaque())
