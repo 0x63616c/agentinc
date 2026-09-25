@@ -281,6 +281,10 @@ impl Suite {
             f32::from(row.size.height) >= SETTINGS_ROW_HEIGHT - GEOMETRY_TOLERANCE,
             "{label}: SettingsRow is shorter than its shared minimum"
         );
+        ensure!(
+            f32::from(text.size.width) >= 150.,
+            "{label}: SettingsRow label collapsed to a narrow column"
+        );
         near(
             &format!("{label} SettingsRow label inset"),
             f32::from(text.origin.x - row.origin.x),

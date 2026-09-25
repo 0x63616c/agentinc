@@ -262,6 +262,7 @@ impl Shell {
         )
     }
     #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
     pub(crate) fn fixture_profile_name(&mut self, name: &str, cx: &mut Context<Self>) {
         self.profile.name = name.into();
         cx.notify();
