@@ -52,7 +52,9 @@ static NSWindow *window(NSSize size, NSString *title, BOOL closable) {
         backing:NSBackingStoreBuffered defer:NO];
     // AincUpdateUI owns each window through a strong property. Closing must not
     // release it a second time before that property is cleared or replaced.
+#ifndef AINC_UPGRADE_REPRO_PRE_FIX
     result.releasedWhenClosed = NO;
+#endif
     result.title = title;
     [result center];
     return result;

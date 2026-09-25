@@ -1,6 +1,7 @@
 fn main() {
     println!("cargo:rerun-if-changed=src/update_window.m");
     println!("cargo:rerun-if-env-changed=AINC_UPGRADE_TEST_PUBLIC_KEY");
+    println!("cargo:rerun-if-env-changed=AINC_UPGRADE_REPRO_PRE_FIX");
     println!("cargo:rustc-check-cfg=cfg(ainc_upgrade_test)");
     let upgrade_test = std::env::var_os("AINC_UPGRADE_TEST_PUBLIC_KEY").is_some();
     if upgrade_test {
@@ -12,6 +13,9 @@ fn main() {
         build.file("src/update_window.m").flag("-fobjc-arc");
         if upgrade_test {
             build.define("AINC_UPGRADE_TEST", None);
+            if std::env::var("AINC_UPGRADE_REPRO_PRE_FIX").as_deref() == Ok("1") {
+                build.define("AINC_UPGRADE_REPRO_PRE_FIX", None);
+            }
         }
         build.compile("agentinc_update_window");
     }

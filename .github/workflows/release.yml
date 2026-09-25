@@ -15,6 +15,10 @@ on:
         type: boolean
         default: true
         description: Build on homelab-mini (disable to use an existing build-COMMIT draft)
+      reproduce_pre_fix:
+        type: boolean
+        default: false
+        description: Test-only window ownership regression proof
 concurrency:
   group: distribution-${{ inputs.commit || github.sha }}
   cancel-in-progress: false
@@ -114,6 +118,10 @@ jobs:
           openssl genpkey -algorithm ED25519 -out .local/upgrade-input/test-key.pem
           public=$(openssl pkey -in .local/upgrade-input/test-key.pem -pubout -outform DER | tail -c 32 | base64 | tr -d '\n')
           export AINC_UPGRADE_TEST_PUBLIC_KEY="$public"
+          if [ '${{ inputs.reproduce_pre_fix }}' = true ]; then
+            test '${{ inputs.test }}' = true
+            export AINC_UPGRADE_REPRO_PRE_FIX=1
+          fi
           python3 scripts/release/prepare.py
           mv ".local/release/$commit/unsigned.tar.gz" .local/upgrade-input/upgrade-candidate-unsigned.tar.gz
           candidate_version=$(python3 -c 'import json,subprocess; print(next(p["version"] for p in json.loads(subprocess.check_output(["cargo","metadata","--no-deps","--format-version=1"]))["packages"] if p["name"]=="ainc-release"))')
