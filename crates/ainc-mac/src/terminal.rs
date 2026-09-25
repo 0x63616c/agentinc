@@ -69,7 +69,12 @@ mod macos {
     }
 
     impl TerminalHost {
-        pub fn new(window: &Window, app: AsyncApp, shell: WeakEntity<Shell>) -> Result<Self> {
+        pub fn new(
+            window: &Window,
+            app: AsyncApp,
+            shell: WeakEntity<Shell>,
+            workspace_id: &str,
+        ) -> Result<Self> {
             let handle = HasWindowHandle::window_handle(window)
                 .map_err(|error| anyhow!("GPUI native window: {error}"))?;
             let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
@@ -79,7 +84,12 @@ mod macos {
             let home = CString::new(home.to_string_lossy().as_bytes()).context("invalid HOME")?;
             let helper = std::env::current_exe()?.with_file_name("aincd");
             let helper = CString::new(helper.to_string_lossy().as_bytes())?;
-            let layout = crate::storage::discovery_path()?.with_file_name("terminal-layout.json");
+            let layout_name = if workspace_id == "local" {
+                "terminal-layout.json".to_owned()
+            } else {
+                format!("terminal-layout-{workspace_id}.json")
+            };
+            let layout = crate::storage::discovery_path()?.with_file_name(layout_name);
             let layout = CString::new(layout.to_string_lossy().as_bytes())?;
             let colors = CString::new(crate::ui::terminal_colors())?;
             let library = unsafe { Library::new(Self::library_path()?) }

@@ -9,6 +9,7 @@ mod pane;
 #[path = "shell/sidebar.rs"]
 mod sidebar;
 
+use crate::storage::{Store, WorkspaceCommand};
 use crate::{
     input::TextInput,
     model::{FontChoice, FontSize, PAGES, Route, Session},
@@ -37,13 +38,17 @@ actions!(
 #[action(namespace = control, no_json)]
 struct NavigateRoute(u8);
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum Control {
     Open(Route),
     Navigate(Route),
     Back,
     Forward,
     Search,
+    WorkspacePicker,
+    SwitchWorkspace(String),
+    NewWorkspace,
+    CreateWorkspace,
     Sidebar,
     Notifications,
     MarkAllRead,
@@ -52,6 +57,7 @@ pub(crate) enum Control {
     FontSize(FontSize),
 }
 pub struct Shell {
+    store: Option<std::sync::Arc<Store>>,
     session: Session,
     overlays: Rc<RefCell<OverlayHost>>,
     assistant: Entity<crate::evee::AssistantPage>,
@@ -66,11 +72,19 @@ pub struct Shell {
     focus: FocusHandle,
     pane_focus: [FocusHandle; 1],
     input: Entity<TextInput>,
+    workspace_name: Entity<TextInput>,
+    workspace_icon: Entity<TextInput>,
+    workspace_color: Entity<TextInput>,
+    workspace_only: bool,
+    creating_workspace: bool,
+    workspace_pending: bool,
+    workspace_error: Option<String>,
     picker_result_focus: Vec<FocusHandle>,
     picker_close_focus: FocusHandle,
     _input_subscription: Subscription,
     command_held: bool,
     palette_transition: Option<Instant>,
+    launch_started: Option<Instant>,
     selected: usize,
     notification_items: Vec<Notification>,
     save_error: bool,
@@ -98,7 +112,107 @@ struct Notification {
     relative_time: String,
     unread: bool,
 }
+#[derive(Clone)]
+enum PaletteItem {
+    Route(Route),
+    Workspace {
+        id: String,
+        name: String,
+        icon: Option<String>,
+    },
+    CreateWorkspace,
+}
 impl Shell {
+    fn workspace_state(&self) -> crate::storage::WorkspaceState {
+        self.store
+            .as_ref()
+            .map(|store| store.workspaces())
+            .unwrap_or_else(|| Store::new().workspaces())
+    }
+    fn palette_items(&self, query: &str) -> Vec<PaletteItem> {
+        let query = query.trim().to_lowercase();
+        let mut items = if self.workspace_only {
+            Vec::new()
+        } else {
+            Route::matching(&query)
+                .into_iter()
+                .map(PaletteItem::Route)
+                .collect()
+        };
+        let show_all = query.is_empty() || query == "workspace" || query == "switch workspace";
+        for workspace in self.workspace_state().workspaces {
+            if show_all || workspace.name.to_lowercase().contains(&query) {
+                items.push(PaletteItem::Workspace {
+                    id: workspace.id,
+                    name: workspace.name,
+                    icon: workspace.icon,
+                });
+            }
+        }
+        if show_all || "create workspace".contains(&query) || "new workspace".contains(&query) {
+            items.push(PaletteItem::CreateWorkspace);
+        }
+        items
+    }
+    fn choose_palette(&mut self, item: PaletteItem, window: &mut Window, cx: &mut Context<Self>) {
+        match item {
+            PaletteItem::Route(route) => self.dispatch(Control::Open(route), window, cx),
+            PaletteItem::Workspace { id, .. } => {
+                self.dispatch(Control::SwitchWorkspace(id), window, cx)
+            }
+            PaletteItem::CreateWorkspace => self.dispatch(Control::NewWorkspace, window, cx),
+        }
+    }
+    fn change_workspace(
+        &mut self,
+        command: WorkspaceCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.workspace_pending {
+            return;
+        }
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        self.workspace_pending = true;
+        self.workspace_error = None;
+        self.overlays.borrow_mut().dismiss(window, cx);
+        let request = cx
+            .background_executor()
+            .spawn(async move { store.workspace_command(command) });
+        cx.spawn(async move |this, cx| {
+            let result = request.await;
+            let _ = this.update(cx, |this, cx| {
+                this.workspace_pending = false;
+                match result {
+                    Ok(_) => {
+                        // Recreate the view with this workspace's saved layout.
+                        // Dropping an attach view leaves its daemon PTY running.
+                        this.terminal.take();
+                        this.terminal_error = None;
+                        this.assistant.update(cx, |page, cx| {
+                            page.workspace_changed(cx);
+                            cx.notify();
+                        });
+                        this.tickets.update(cx, |page, cx| {
+                            page.workspace_changed(cx);
+                            cx.notify();
+                        });
+                        this.automations.update(cx, |page, cx| {
+                            page.workspace_changed(cx);
+                            cx.notify();
+                        });
+                    }
+                    Err(error) => {
+                        this.workspace_error = Some(format!("Workspace unavailable: {error}"))
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let path = std::env::var_os("AGENTINC_SESSION_PATH")
             .map(PathBuf::from)
@@ -173,7 +287,7 @@ impl Shell {
             )
         });
         let automations =
-            cx.new(|cx| crate::automations::AutomationsPage::new(store, storage_error, cx));
+            cx.new(|cx| crate::automations::AutomationsPage::new(store.clone(), storage_error, cx));
         let automation_subscriptions = vec![
             cx.observe(&automations, |_, _, cx| cx.notify()),
             cx.subscribe(
@@ -189,6 +303,16 @@ impl Shell {
         ];
         let tickets_subscription = cx.observe(&tickets, |_, _, cx| cx.notify());
         let input = cx.new(TextInput::new);
+        let workspace_name = cx.new(|cx| {
+            TextInput::new(cx)
+                .identified("workspace.name")
+                .with_placeholder("Workspace name")
+        });
+        let workspace_icon = cx
+            .new(|cx| TextInput::field("Icon (optional)", false, cx).identified("workspace.icon"));
+        let workspace_color = cx.new(|cx| {
+            TextInput::field("Color #RRGGBB (optional)", false, cx).identified("workspace.color")
+        });
         let subscription = cx.observe(&input, |this, _, cx| {
             this.selected = 0;
             cx.notify();
@@ -207,6 +331,7 @@ impl Shell {
             .cloned()
             .map(|updates| cx.observe(&updates.0, |_, _, cx| cx.notify()));
         let mut shell = Self {
+            store,
             session,
             overlays,
             assistant,
@@ -233,11 +358,19 @@ impl Shell {
             focus,
             pane_focus: [cx.focus_handle()],
             input,
-            picker_result_focus: PAGES.iter().map(|_| cx.focus_handle()).collect(),
+            workspace_name,
+            workspace_icon,
+            workspace_color,
+            workspace_only: false,
+            creating_workspace: false,
+            workspace_pending: false,
+            workspace_error: None,
+            picker_result_focus: (0..64).map(|_| cx.focus_handle()).collect(),
             picker_close_focus: cx.focus_handle(),
             _input_subscription: subscription,
             command_held: false,
             palette_transition: None,
+            launch_started: None,
             selected: 0,
             notification_items: Vec::new(),
             save_error: !session_writable,
@@ -252,7 +385,7 @@ impl Shell {
     #[cfg(test)]
     pub(crate) fn fixture(path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let store = crate::storage::Store::open(&path.with_extension("sqlite3")).unwrap();
-        Self::with_state(
+        let mut shell = Self::with_state(
             path,
             Some(std::sync::Arc::new(store)),
             None,
@@ -262,7 +395,9 @@ impl Shell {
             },
             window,
             cx,
-        )
+        );
+        shell.launch_started = Some(Instant::now() - std::time::Duration::from_secs(1));
+        shell
     }
 
     #[cfg(test)]
@@ -272,6 +407,15 @@ impl Shell {
             self.overlays.borrow().active(),
             false,
         )
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    pub(crate) fn fixture_launch_elapsed(
+        &mut self,
+        elapsed: std::time::Duration,
+        cx: &mut Context<Self>,
+    ) {
+        self.launch_started = Some(Instant::now() - elapsed);
+        cx.notify();
     }
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
@@ -347,6 +491,8 @@ impl Shell {
     }
     fn focus_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selected = 0;
+        self.creating_workspace = false;
+        self.workspace_error = None;
         self.input.update(cx, |input, _| input.reset());
         let initial_focus = self.input.focus_handle(cx);
         self.overlays
@@ -358,10 +504,19 @@ impl Shell {
             Some(Overlay::Search) => {
                 let mut handles =
                     vec![self.input.focus_handle(cx), self.picker_close_focus.clone()];
+                if self.creating_workspace {
+                    handles[0] = self.workspace_name.read(cx).focus_handle(cx);
+                    handles.push(self.workspace_icon.read(cx).focus_handle(cx));
+                    handles.push(self.workspace_color.read(cx).focus_handle(cx));
+                    return self
+                        .overlays
+                        .borrow()
+                        .cycle_focus(&handles, backwards, window, cx);
+                }
                 handles.extend(
                     self.picker_result_focus
                         .iter()
-                        .take(Route::matching(&self.input.read(cx).content).len())
+                        .take(self.palette_items(&self.input.read(cx).content).len())
                         .cloned(),
                 );
                 handles
@@ -397,13 +552,13 @@ impl Shell {
             .borrow()
             .active()
             .is_some_and(Overlay::is_dialog)
-            && !matches!(control, Control::Dismiss)
+            && !matches!(&control, Control::Dismiss)
         {
             return;
         }
         match control {
             Control::Back | Control::Forward => {
-                self.session.go(matches!(control, Control::Forward));
+                self.session.go(matches!(&control, Control::Forward));
                 self.overlays.borrow_mut().dismiss(window, cx);
                 window.focus(&self.focus, cx);
             }
@@ -422,8 +577,53 @@ impl Shell {
                 window.focus(&self.focus, cx);
             }
             Control::Search => {
+                self.workspace_only = false;
                 self.palette_transition = Some(Instant::now());
                 self.focus_picker(window, cx);
+            }
+            Control::WorkspacePicker => {
+                self.workspace_only = true;
+                self.palette_transition = Some(Instant::now());
+                self.focus_picker(window, cx);
+            }
+            Control::SwitchWorkspace(id) => {
+                self.change_workspace(WorkspaceCommand::Switch { id }, window, cx)
+            }
+            Control::NewWorkspace => {
+                self.creating_workspace = true;
+                self.workspace_name.update(cx, |input, _| input.reset());
+                self.workspace_icon.update(cx, |input, _| input.reset());
+                self.workspace_color.update(cx, |input, _| input.reset());
+                self.selected = 0;
+                window.focus(&self.workspace_name.read(cx).focus_handle(cx), cx);
+            }
+            Control::CreateWorkspace => {
+                let name = self.workspace_name.read(cx).content.trim().to_owned();
+                let icon = self.workspace_icon.read(cx).content.trim().to_owned();
+                let color = self.workspace_color.read(cx).content.trim().to_owned();
+                if name.is_empty()
+                    || name.chars().count() > 120
+                    || icon.chars().count() > 4
+                    || (!color.is_empty()
+                        && (color.len() != 7
+                            || !color.starts_with('#')
+                            || !color[1..].bytes().all(|byte| byte.is_ascii_hexdigit())))
+                {
+                    self.workspace_error = Some(
+                        "Enter a name, up to four icon characters, and an optional #RRGGBB color."
+                            .into(),
+                    );
+                } else {
+                    self.change_workspace(
+                        WorkspaceCommand::Create {
+                            name,
+                            icon: (!icon.is_empty()).then_some(icon),
+                            color: (!color.is_empty()).then_some(color),
+                        },
+                        window,
+                        cx,
+                    );
+                }
             }
             Control::Sidebar => self.toggle_pane(pane::Side::Left),
             Control::Font(font) => self.session.font = font,
@@ -488,6 +688,8 @@ impl Shell {
             .unwrap_or(&label)
             .to_owned()
             .into();
+        let hover_open = matches!(&control, Control::Open(_));
+        let click_control = control.clone();
         let button = action_button(
             ButtonSpec {
                 id,
@@ -497,17 +699,17 @@ impl Shell {
             },
             |button| {
                 button.gap(px(8.)).hover(move |s| {
-                    if matches!(control, Control::Open(_)) {
+                    if hover_open {
                         s.text_color(rgb(TEXT))
                     } else {
                         s.bg(rgb(HOVER)).text_color(rgb(TEXT))
                     }
                 })
             },
-            move |this: &mut Self, window, cx| this.dispatch(control, window, cx),
+            move |this: &mut Self, window, cx| this.dispatch(click_control.clone(), window, cx),
             cx,
         );
-        match control {
+        match &control {
             Control::Sidebar => button.role(accesskit::Role::Switch).aria_toggled(
                 if self.session.panes[pane::Side::Left.index()].open {
                     accesskit::Toggled::True
@@ -516,14 +718,14 @@ impl Shell {
                 },
             ),
             Control::Font(font) => button.role(accesskit::Role::RadioButton).aria_toggled(
-                if self.session.font == font {
+                if self.session.font == *font {
                     accesskit::Toggled::True
                 } else {
                     accesskit::Toggled::False
                 },
             ),
             Control::FontSize(size) => button.role(accesskit::Role::RadioButton).aria_toggled(
-                if self.session.font_size == size {
+                if self.session.font_size == *size {
                     accesskit::Toggled::True
                 } else {
                     accesskit::Toggled::False
@@ -553,14 +755,17 @@ impl Shell {
         )
     }
     fn command_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let matches = Route::matching(&self.input.read(cx).content);
+        let matches = self.palette_items(&self.input.read(cx).content);
+        let current_id = self.workspace_state().current_id;
         panel()
             .id("search.dialog")
             .accessibility_id("search.dialog")
             .role(accesskit::Role::Dialog)
-            .aria_label("Search spaces")
+            .aria_label(if self.creating_workspace { "Create workspace" } else { "Search spaces and workspaces" })
             .w(px(520.))
             .overflow_hidden()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(|_, _, cx| cx.stop_propagation())
             .child(
                 row()
                     .h(px(56.))
@@ -568,31 +773,48 @@ impl Shell {
                     .gap(px(12.))
                     .border_b_1()
                     .border_color(rgb(BORDER))
-                    .child(icon("search", 18.))
-                    .child(self.input.clone())
+                    .child(icon(if self.creating_workspace { "plus" } else { "search" }, 18.))
+                    .child(if self.creating_workspace { self.workspace_name.clone() } else { self.input.clone() })
                     .child(
                         self.button("palette-close", "Close search", Control::Dismiss, cx)
                             .track_focus(&self.picker_close_focus)
                             .child(shortcut_badge("esc").px(px(8.))),
                     ),
             )
-            .child(
+            .when(self.creating_workspace, |panel| panel.child(
                 column()
+                    .p(px(16.))
+                    .gap(px(12.))
+                    .child(div().font_weight(FontWeight::MEDIUM).child("New workspace"))
+                    .child(self.workspace_icon.clone())
+                    .child(self.workspace_color.clone())
+                    .when_some(self.workspace_error.as_ref(), |form, error| form.child(div().text_color(rgb(ERROR)).child(error.clone())))
+                    .child(self.button("create-workspace", "Create workspace", Control::CreateWorkspace, cx)
+                        .h(px(36.)).px(px(12.)).bg(rgb(HOVER)).child("Create workspace")),
+            ))
+            .when(!self.creating_workspace, |panel| panel.child(
+                column()
+                    .id("workspace-results")
                     .p(px(8.))
+                    .max_h(px(420.))
+                    .overflow_y_scroll()
                     .when(matches.is_empty(), |s| {
                         s.child(column().p(px(24.)).gap(px(6.)).child("No matches."))
                     })
-                    .children(matches.iter().copied().enumerate().map(|(index, route)| {
+                    .children(matches.iter().cloned().enumerate().map(|(index, item)| {
+                        let (label, control) = match &item {
+                            PaletteItem::Route(route) => (route.label().to_owned(), Control::Open(*route)),
+                            PaletteItem::Workspace { id, name, .. } => (format!("Switch to {name}"), Control::SwitchWorkspace(id.clone())),
+                            PaletteItem::CreateWorkspace => ("Create workspace".into(), Control::NewWorkspace),
+                        };
+                        let selected_workspace = matches!(&item, PaletteItem::Workspace { id, .. } if *id == current_id);
                         self.button(
-                            SharedString::from(format!(
-                                "search.result.{}",
-                                route.label().to_lowercase().replace(' ', "-")
-                            )),
-                            route.label(),
-                            Control::Open(route),
+                            SharedString::from(format!("search.result.{index}")),
+                            "Open result",
+                            control,
                             cx,
                         )
-                        .track_focus(&self.picker_result_focus[index])
+                        .when_some(self.picker_result_focus.get(index), |row, focus| row.track_focus(focus))
                         .on_hover(cx.listener(move |this, hovered, _, cx| {
                             if *hovered {
                                 this.selected = index;
@@ -603,16 +825,21 @@ impl Shell {
                         .px(px(10.))
                         .gap(px(12.))
                         .when(index == self.selected, |s| s.bg(rgb(HOVER)))
-                        .child(icon(route.icon(), 17.))
-                        .child(route.label())
+                        .child(match item {
+                            PaletteItem::Route(route) => icon(route.icon(), 17.).into_any_element(),
+                            PaletteItem::Workspace { icon, name, .. } => div().w(px(17.)).child(icon.unwrap_or_else(|| name.chars().next().unwrap_or('W').to_string())).into_any_element(),
+                            PaletteItem::CreateWorkspace => icon("plus", 17.).into_any_element(),
+                        })
+                        .child(label)
                         .child(div().flex_1())
+                        .when(selected_workspace, |row| row.child(div().text_color(rgb(MUTED)).child("Current")))
                         .child(
                             div()
                                 .w(px(24.))
                                 .when(index == self.selected, |s| s.child(shortcut_badge("↵"))),
                         )
                     })),
-            )
+            ))
             .child(
                 row()
                     .h(px(40.))
@@ -736,19 +963,25 @@ impl Shell {
     }
     fn keys(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.overlays.borrow().active() == Some(Overlay::Search) {
-            let matches = Route::matching(&self.input.read(cx).content);
+            let matches = self.palette_items(&self.input.read(cx).content);
             match event.keystroke.key.as_str() {
                 "down" => {
-                    self.selected = (self.selected + 1).min(matches.len().saturating_sub(1));
+                    if !self.creating_workspace {
+                        self.selected = (self.selected + 1).min(matches.len().saturating_sub(1));
+                    }
                     cx.stop_propagation();
                 }
                 "up" => {
-                    self.selected = self.selected.saturating_sub(1);
+                    if !self.creating_workspace {
+                        self.selected = self.selected.saturating_sub(1);
+                    }
                     cx.stop_propagation();
                 }
                 "enter" => {
-                    if let Some(route) = matches.get(self.selected) {
-                        self.dispatch(Control::Open(*route), window, cx);
+                    if self.creating_workspace {
+                        self.dispatch(Control::CreateWorkspace, window, cx);
+                    } else if let Some(item) = matches.get(self.selected) {
+                        self.choose_palette(item.clone(), window, cx);
                     }
                     cx.stop_propagation();
                 }
@@ -864,7 +1097,13 @@ impl Render for Shell {
             && self.terminal.is_none()
             && self.terminal_error.is_none()
         {
-            match crate::terminal::TerminalHost::new(window, cx.to_async(), cx.weak_entity()) {
+            let workspace_id = self.workspace_state().current_id;
+            match crate::terminal::TerminalHost::new(
+                window,
+                cx.to_async(),
+                cx.weak_entity(),
+                &workspace_id,
+            ) {
                 Ok(host) => {
                     self.terminal = Some(Rc::new(RefCell::new(host)));
                     self.pending_terminal_focus = true;
@@ -877,7 +1116,9 @@ impl Render for Shell {
         let content = match self.session.current() {
             Route::Automations => self.automations.clone().into_any_element(),
             Route::Tickets => self.tickets.clone().into_any_element(),
-            Route::Agents => self.tickets.update(cx, |tickets, cx| tickets.agents(cx)),
+            Route::Agents => self
+                .tickets
+                .update(cx, |tickets, cx| tickets.agents(window, cx)),
             Route::Assistant => self.assistant.clone().into_any_element(),
             Route::Terminal => self
                 .terminal_page(active_overlay.is_none())
@@ -975,16 +1216,13 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|this, _: &FocusNext, w, cx| this.cycle_focus(false, w, cx)))
             .on_action(cx.listener(|this, _: &FocusPrevious, w, cx| this.cycle_focus(true, w, cx)))
-            .child(
-                self.layout_body(
-                    self.sidebar(cx).into_any_element(),
-                    self.main_area(content, self.session.current() == Route::Assistant)
-                        .into_any_element(),
-                    None,
-                    window,
-                    cx,
-                ),
-            )
+            .child(self.layout_body(
+                self.sidebar(cx).into_any_element(),
+                self.main_area(content).into_any_element(),
+                None,
+                window,
+                cx,
+            ))
             // Header paints after panels so the current space covers the top border.
             .child(
                 div()
@@ -1034,6 +1272,24 @@ impl Render for Shell {
                         .child("Session could not be saved. Changes remain in this window."),
                 )
             })
+            .when_some(
+                self.workspace_error
+                    .as_ref()
+                    .filter(|_| active_overlay != Some(Overlay::Search)),
+                |s, error| {
+                    s.child(
+                        div()
+                            .absolute()
+                            .bottom(px(12.))
+                            .left(px(220.))
+                            .px(px(12.))
+                            .py(px(8.))
+                            .bg(rgb(SURFACE_ERROR))
+                            .text_color(rgb(ERROR))
+                            .child(error.clone()),
+                    )
+                },
+            )
             .when(active_overlay == Some(Overlay::Notifications), |s| {
                 s.child(self.notification_panel(cx))
             })
@@ -1071,6 +1327,13 @@ impl Render for Shell {
                         ),
                 )
             })
+            .when_some(
+                launch_overlay(
+                    *self.launch_started.get_or_insert_with(Instant::now),
+                    window,
+                ),
+                |s, overlay| s.child(overlay),
+            )
             .into_any_element()
     }
 }
@@ -1108,7 +1371,7 @@ pub fn bind_keys(cx: &mut App) {
 
 #[cfg(test)]
 mod interaction_tests {
-    use super::{Shell, bind_keys};
+    use super::{Shell, WorkspaceCommand, bind_keys};
     use crate::{
         input,
         model::{PANE_WIDTHS, Route, Session},
@@ -1346,6 +1609,63 @@ mod interaction_tests {
     }
 
     #[gpui::test]
+    fn command_switcher_changes_workspace(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        cx.update(|cx| {
+            bind_keys(cx);
+            input::bind_keys(cx);
+        });
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        let store = shell.read_with(cx, |shell, _| shell.store.clone().unwrap());
+        let personal = store
+            .workspace_command(WorkspaceCommand::Create {
+                name: "Personal".into(),
+                icon: Some("P".into()),
+                color: None,
+            })
+            .unwrap();
+        store
+            .workspace_command(WorkspaceCommand::Switch { id: "local".into() })
+            .unwrap();
+        cx.simulate_keystrokes("cmd-k");
+        cx.simulate_input("Personal");
+        shell.read_with(cx, |shell, cx| {
+            assert_eq!(shell.palette_items(&shell.input.read(cx).content).len(), 1);
+        });
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert_eq!(store.workspaces().current_id, personal);
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.overlays.borrow().active(), None)
+        });
+        cx.simulate_keystrokes("cmd-k");
+        cx.simulate_input("create workspace");
+        cx.simulate_keystrokes("enter");
+        shell.read_with(cx, |shell, _| assert!(shell.creating_workspace));
+        cx.simulate_input("New Project");
+        shell.read_with(cx, |shell, cx| {
+            assert_eq!(
+                shell.workspace_name.read(cx).content.as_ref(),
+                "New Project"
+            )
+        });
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        let state = store.workspaces();
+        assert_eq!(
+            state
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.id == state.current_id)
+                .unwrap()
+                .name,
+            "New Project"
+        );
+    }
+
+    #[gpui::test]
     fn search_shortcut_works_with_pane_or_no_focus(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().unwrap();
         cx.update(|cx| {
@@ -1380,8 +1700,9 @@ mod interaction_tests {
             Shell::fixture(dir.path().join("session.json"), window, cx)
         });
         cx.simulate_keystrokes("cmd-k shift-tab");
-        let last = shell.read_with(cx, |shell, _| {
-            shell.picker_result_focus.last().unwrap().clone()
+        let last = shell.read_with(cx, |shell, cx| {
+            let count = shell.palette_items(&shell.input.read(cx).content).len();
+            shell.picker_result_focus[count - 1].clone()
         });
         cx.update(|window, _| assert!(last.is_focused(window)));
         cx.simulate_keystrokes("tab");

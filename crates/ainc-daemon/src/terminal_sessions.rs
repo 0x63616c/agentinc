@@ -38,6 +38,7 @@ struct Service {
     sessions: Arc<Mutex<HashMap<Uuid, Arc<Session>>>>,
 }
 struct Session {
+    workspace_id: String,
     pid: i32,
     master: File,
     input: mpsc::UnboundedSender<Vec<u8>>,
@@ -99,14 +100,16 @@ async fn list(
     headers: HeaderMap,
 ) -> Result<Json<Vec<TerminalSession>>, ApiError> {
     service.product.authorize(&headers)?;
+    let workspace_id = crate::workspaces::current(&service.product.pool).await?;
     let sessions = service
         .sessions
         .lock()
         .unwrap()
         .iter()
+        .filter(|(_, session)| session.workspace_id == workspace_id)
         .map(|(id, session)| TerminalSession {
             id: id.to_string(),
-            workspace_id: "local".into(),
+            workspace_id: session.workspace_id.clone(),
             state: if session.ended.load(Ordering::SeqCst) {
                 "ended"
             } else {
@@ -124,19 +127,23 @@ async fn create(
     Json(request): Json<CreateTerminalSession>,
 ) -> Result<Json<TerminalSession>, ApiError> {
     service.product.authorize(&headers)?;
+    let workspace_id = crate::workspaces::current(&service.product.pool).await?;
     let id = Uuid::parse_str(&request.id).map_err(|_| bad_id())?;
     if id.is_nil() {
         return Err(bad_id());
     }
     let mut sessions = service.sessions.lock().unwrap();
     if let std::collections::hash_map::Entry::Vacant(entry) = sessions.entry(id) {
-        let session = spawn_shell().map_err(api_error)?;
+        let session = spawn_shell(workspace_id.clone()).map_err(api_error)?;
         entry.insert(session);
     }
     let session = &sessions[&id];
+    if session.workspace_id != workspace_id {
+        return Err(missing());
+    }
     Ok(Json(TerminalSession {
         id: request.id,
-        workspace_id: "local".into(),
+        workspace_id,
         state: if session.ended.load(Ordering::SeqCst) {
             "ended"
         } else {
@@ -152,13 +159,17 @@ async fn close(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     service.product.authorize(&headers)?;
+    let workspace_id = crate::workspaces::current(&service.product.pool).await?;
     let id = Uuid::parse_str(&id).map_err(|_| bad_id())?;
-    let session = service
-        .sessions
-        .lock()
-        .unwrap()
-        .remove(&id)
-        .ok_or_else(missing)?;
+    let mut sessions = service.sessions.lock().unwrap();
+    if sessions
+        .get(&id)
+        .is_none_or(|session| session.workspace_id != workspace_id)
+    {
+        return Err(missing());
+    }
+    let session = sessions.remove(&id).ok_or_else(missing)?;
+    drop(sessions);
     session.ended.store(true, Ordering::SeqCst);
     let _ = session.ending.send(true);
     unsafe { libc::kill(-session.pid, libc::SIGHUP) };
@@ -171,6 +182,7 @@ async fn attach(
     upgrade: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, ApiError> {
     service.product.authorize(&headers)?;
+    let workspace_id = crate::workspaces::current(&service.product.pool).await?;
     let id = Uuid::parse_str(&id).map_err(|_| bad_id())?;
     let session = service
         .sessions
@@ -179,6 +191,9 @@ async fn attach(
         .get(&id)
         .cloned()
         .ok_or_else(missing)?;
+    if session.workspace_id != workspace_id {
+        return Err(missing());
+    }
     Ok(upgrade.on_upgrade(move |socket| attached(socket, session)))
 }
 async fn attached(socket: WebSocket, session: Arc<Session>) {
@@ -229,7 +244,7 @@ async fn attached(socket: WebSocket, session: Arc<Session>) {
         }
     }
 }
-fn spawn_shell() -> anyhow::Result<Arc<Session>> {
+fn spawn_shell(workspace_id: String) -> anyhow::Result<Arc<Session>> {
     let mut master = -1;
     let mut slave = -1;
     let mut size = libc::winsize {
@@ -291,6 +306,7 @@ fn spawn_shell() -> anyhow::Result<Arc<Session>> {
     let (output, _) = broadcast::channel(128);
     let (ending, _) = watch::channel(false);
     let session = Arc::new(Session {
+        workspace_id,
         pid,
         master: master.try_clone()?,
         input,
@@ -381,10 +397,9 @@ mod tests {
         tungstenite::{Message as ClientMessage, client::IntoClientRequest},
     };
 
-    #[tokio::test]
-    async fn disconnected_viewer_keeps_shell_and_replays_output() {
-        let pool = sqlx::PgPool::connect_lazy("postgres://unused:unused@127.0.0.1/unused").unwrap();
-        let app = router(Product::new(pool, "owner".into()).unwrap());
+    #[sqlx::test]
+    async fn disconnected_viewer_keeps_shell_and_replays_output(pool: sqlx::PgPool) {
+        let app = router(Product::new(pool.clone(), "owner".into()).unwrap());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -435,7 +450,7 @@ mod tests {
             file.write_all(b"survived\n").unwrap();
         });
         gate.await.unwrap();
-        let (mut second, _) = connect_async(request).await.unwrap();
+        let (mut second, _) = connect_async(request.clone()).await.unwrap();
         let mut replay = Vec::new();
         loop {
             if let Some(Ok(ClientMessage::Binary(bytes))) = second.next().await {
@@ -446,6 +461,44 @@ mod tests {
             }
         }
         second.close(None).await.unwrap();
+        crate::workspaces::execute(
+            &pool,
+            crate::workspaces::WorkspaceRequest {
+                operation_id: Uuid::new_v4().to_string(),
+                command: crate::workspaces::WorkspaceCommand::Create {
+                    name: "Other".into(),
+                    icon: None,
+                    color: None,
+                },
+            },
+        )
+        .await
+        .unwrap();
+        let listed: Vec<TerminalSession> = client
+            .get(format!("http://{address}/v1/terminal/sessions"))
+            .bearer_auth("owner")
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert!(listed.is_empty());
+        let denied = connect_async(request.clone()).await.unwrap_err();
+        assert!(matches!(
+            denied,
+            tokio_tungstenite::tungstenite::Error::Http(response)
+                if response.status() == StatusCode::NOT_FOUND
+        ));
+        crate::workspaces::execute(
+            &pool,
+            crate::workspaces::WorkspaceRequest {
+                operation_id: Uuid::new_v4().to_string(),
+                command: crate::workspaces::WorkspaceCommand::Switch { id: "local".into() },
+            },
+        )
+        .await
+        .unwrap();
         client
             .delete(format!("http://{address}/v1/terminal/sessions/{id}"))
             .bearer_auth("owner")

@@ -84,6 +84,52 @@ async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::Pg
     );
     assert_eq!(tickets.comments[0].id, accepted.result_id.unwrap());
     assert_eq!(tickets.comments[0].body, "Generated command evidence");
+    let workspace = client
+        .workspaces_command()
+        .body(ainc_client::types::WorkspaceRequest {
+            operation_id: "1821931d-58c2-4f58-aa0c-169691c14aae".into(),
+            command: ainc_client::types::WorkspaceCommand::Create {
+                name: "Personal".into(),
+                icon: Some("P".into()),
+                color: None,
+            },
+        })
+        .send()
+        .await
+        .unwrap();
+    let workspace_state = client.workspaces_state().send().await.unwrap();
+    assert_eq!(workspace_state.current_id, workspace.result_id);
+    assert!(
+        client
+            .product_state()
+            .send()
+            .await
+            .unwrap()
+            .todos
+            .is_empty()
+    );
+    assert!(
+        client
+            .tickets_state()
+            .send()
+            .await
+            .unwrap()
+            .tickets
+            .is_empty()
+    );
+    client
+        .workspaces_command()
+        .body(ainc_client::types::WorkspaceRequest {
+            operation_id: "cf480965-805b-47b4-9b5d-0f861891fcd7".into(),
+            command: ainc_client::types::WorkspaceCommand::Switch { id: "local".into() },
+        })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        client.product_state().send().await.unwrap().todos[0].id,
+        ack.result_id.unwrap()
+    );
     server.abort();
 }
 

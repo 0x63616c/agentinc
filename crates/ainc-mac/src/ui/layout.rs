@@ -1,6 +1,55 @@
 //! Small layout contracts; callers own screen composition.
-use super::tokens::*;
+use super::{display::PageHeader, tokens::*};
 use gpui::{prelude::*, *};
+
+/// The common page frame. Document pages share the same header, full-width
+/// content and inset; canvas pages let chat and the terminal use their height.
+pub struct Page {
+    header: Option<PageHeader>,
+    content: Div,
+}
+
+impl Page {
+    pub fn document(header: PageHeader) -> Self {
+        Self {
+            header: Some(header),
+            content: column().w_full().min_w_0().gap(px(24.)),
+        }
+    }
+
+    pub fn canvas() -> Self {
+        Self {
+            header: None,
+            content: column().size_full().min_w_0().min_h_0(),
+        }
+    }
+
+    pub fn child(mut self, child: impl IntoElement) -> Self {
+        self.content = self.content.child(child);
+        self
+    }
+
+    pub fn build(self) -> Stateful<Div> {
+        let frame = column()
+            .id("page")
+            .debug_selector(|| "page-frame".into())
+            .size_full()
+            .min_w_0()
+            .min_h_0();
+        match self.header {
+            Some(header) => frame.overflow_y_scroll().p(px(PAGE_X)).child(
+                column()
+                    .debug_selector(|| "main-content".into())
+                    .w_full()
+                    .min_w_0()
+                    .gap(px(24.))
+                    .child(header.build())
+                    .child(self.content),
+            ),
+            None => frame.child(self.content),
+        }
+    }
+}
 
 pub fn row() -> Div {
     div().flex().items_center()

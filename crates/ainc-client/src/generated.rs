@@ -2069,6 +2069,248 @@ pub mod types {
             Default::default()
         }
     }
+    ///`Workspace`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "color": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "icon": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "id": {
+    ///      "type": "string"
+    ///    },
+    ///    "name": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct Workspace {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub color: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub icon: ::std::option::Option<::std::string::String>,
+        pub id: ::std::string::String,
+        pub name: ::std::string::String,
+    }
+    impl Workspace {
+        pub fn builder() -> builder::Workspace {
+            Default::default()
+        }
+    }
+    ///`WorkspaceCommand`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "name"
+    ///      ],
+    ///      "properties": {
+    ///        "color": {
+    ///          "type": [
+    ///            "string",
+    ///            "null"
+    ///          ]
+    ///        },
+    ///        "icon": {
+    ///          "type": [
+    ///            "string",
+    ///            "null"
+    ///          ]
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "create"
+    ///          ]
+    ///        },
+    ///        "name": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "name"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "string"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "rename"
+    ///          ]
+    ///        },
+    ///        "name": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "string"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "switch"
+    ///          ]
+    ///        }
+    ///      }
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    #[serde(tag = "kind")]
+    pub enum WorkspaceCommand {
+        #[serde(rename = "create")]
+        Create {
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            color: ::std::option::Option<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            icon: ::std::option::Option<::std::string::String>,
+            name: ::std::string::String,
+        },
+        #[serde(rename = "rename")]
+        Rename {
+            id: ::std::string::String,
+            name: ::std::string::String,
+        },
+        #[serde(rename = "switch")]
+        Switch { id: ::std::string::String },
+    }
+    ///`WorkspaceReceipt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "result_id"
+    ///  ],
+    ///  "properties": {
+    ///    "result_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct WorkspaceReceipt {
+        pub result_id: ::std::string::String,
+    }
+    impl WorkspaceReceipt {
+        pub fn builder() -> builder::WorkspaceReceipt {
+            Default::default()
+        }
+    }
+    ///`WorkspaceRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "command",
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "command": {
+    ///      "$ref": "#/components/schemas/WorkspaceCommand"
+    ///    },
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct WorkspaceRequest {
+        pub command: WorkspaceCommand,
+        pub operation_id: ::std::string::String,
+    }
+    impl WorkspaceRequest {
+        pub fn builder() -> builder::WorkspaceRequest {
+            Default::default()
+        }
+    }
+    ///`WorkspaceState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "current_id",
+    ///    "workspaces"
+    ///  ],
+    ///  "properties": {
+    ///    "current_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "workspaces": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Workspace"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct WorkspaceState {
+        pub current_id: ::std::string::String,
+        pub workspaces: ::std::vec::Vec<Workspace>,
+    }
+    impl WorkspaceState {
+        pub fn builder() -> builder::WorkspaceState {
+            Default::default()
+        }
+    }
     /// Types for composing complex structures.
     pub mod builder {
         #[derive(Clone, Debug)]
@@ -4251,6 +4493,243 @@ pub mod types {
                 }
             }
         }
+        #[derive(Clone, Debug)]
+        pub struct Workspace {
+            color: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            icon: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            name: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for Workspace {
+            fn default() -> Self {
+                Self {
+                    color: Ok(Default::default()),
+                    icon: Ok(Default::default()),
+                    id: Err("no value supplied for id".to_string()),
+                    name: Err("no value supplied for name".to_string()),
+                }
+            }
+        }
+        impl Workspace {
+            pub fn color<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.color = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for color: {e}"));
+                self
+            }
+            pub fn icon<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.icon = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for icon: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn name<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.name = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for name: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<Workspace> for super::Workspace {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: Workspace,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    color: value.color?,
+                    icon: value.icon?,
+                    id: value.id?,
+                    name: value.name?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::Workspace> for Workspace {
+            fn from(value: super::Workspace) -> Self {
+                Self {
+                    color: Ok(value.color),
+                    icon: Ok(value.icon),
+                    id: Ok(value.id),
+                    name: Ok(value.name),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct WorkspaceReceipt {
+            result_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for WorkspaceReceipt {
+            fn default() -> Self {
+                Self {
+                    result_id: Err("no value supplied for result_id".to_string()),
+                }
+            }
+        }
+        impl WorkspaceReceipt {
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<WorkspaceReceipt> for super::WorkspaceReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: WorkspaceReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::WorkspaceReceipt> for WorkspaceReceipt {
+            fn from(value: super::WorkspaceReceipt) -> Self {
+                Self {
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct WorkspaceRequest {
+            command: ::std::result::Result<super::WorkspaceCommand, ::std::string::String>,
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for WorkspaceRequest {
+            fn default() -> Self {
+                Self {
+                    command: Err("no value supplied for command".to_string()),
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                }
+            }
+        }
+        impl WorkspaceRequest {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::WorkspaceCommand>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<WorkspaceRequest> for super::WorkspaceRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: WorkspaceRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    command: value.command?,
+                    operation_id: value.operation_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::WorkspaceRequest> for WorkspaceRequest {
+            fn from(value: super::WorkspaceRequest) -> Self {
+                Self {
+                    command: Ok(value.command),
+                    operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct WorkspaceState {
+            current_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            workspaces:
+                ::std::result::Result<::std::vec::Vec<super::Workspace>, ::std::string::String>,
+        }
+        impl ::std::default::Default for WorkspaceState {
+            fn default() -> Self {
+                Self {
+                    current_id: Err("no value supplied for current_id".to_string()),
+                    workspaces: Err("no value supplied for workspaces".to_string()),
+                }
+            }
+        }
+        impl WorkspaceState {
+            pub fn current_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.current_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for current_id: {e}"));
+                self
+            }
+            pub fn workspaces<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Workspace>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.workspaces = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for workspaces: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<WorkspaceState> for super::WorkspaceState {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: WorkspaceState,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    current_id: value.current_id?,
+                    workspaces: value.workspaces?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::WorkspaceState> for WorkspaceState {
+            fn from(value: super::WorkspaceState) -> Self {
+                Self {
+                    current_id: Ok(value.current_id),
+                    workspaces: Ok(value.workspaces),
+                }
+            }
+        }
     }
 }
 #[derive(Clone, Debug)]
@@ -4475,6 +4954,27 @@ impl Client {
     ```*/
     pub fn ticket_contract(&self) -> builder::TicketContract<'_> {
         builder::TicketContract::new(self)
+    }
+    /*Sends a `GET` request to `/v1/workspaces`
+
+    ```ignore
+    let response = client.workspaces_state()
+        .send()
+        .await;
+    ```*/
+    pub fn workspaces_state(&self) -> builder::WorkspacesState<'_> {
+        builder::WorkspacesState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/workspaces/commands`
+
+    ```ignore
+    let response = client.workspaces_command()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn workspaces_command(&self) -> builder::WorkspacesCommand<'_> {
+        builder::WorkspacesCommand::new(self)
     }
     /*Sends a `GET` request to `/version`
 
@@ -5589,6 +6089,158 @@ pub mod builder {
             let response = result?;
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::workspaces_state`]
+
+    [`Client::workspaces_state`]: super::Client::workspaces_state*/
+    #[derive(Debug, Clone)]
+    pub struct WorkspacesState<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> WorkspacesState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `GET` request to `/v1/workspaces`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::WorkspaceState>, Error<types::ErrorBody>> {
+            let Self { client } = self;
+            let url = format!("{}/v1/workspaces", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "workspaces_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::workspaces_command`]
+
+    [`Client::workspaces_command`]: super::Client::workspaces_command*/
+    #[derive(Debug, Clone)]
+    pub struct WorkspacesCommand<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::WorkspaceRequest, String>,
+    }
+    impl<'a> WorkspacesCommand<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::WorkspaceRequest>,
+            <V as std::convert::TryInto<types::WorkspaceRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value
+                .try_into()
+                .map(From::from)
+                .map_err(|s| format!("conversion to `WorkspaceRequest` for body failed: {}", s));
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(
+                    types::builder::WorkspaceRequest,
+                ) -> types::builder::WorkspaceRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/workspaces/commands`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::WorkspaceReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::WorkspaceRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/workspaces/commands", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "workspaces_command",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 _ => Err(Error::UnexpectedResponse(response)),
             }
         }

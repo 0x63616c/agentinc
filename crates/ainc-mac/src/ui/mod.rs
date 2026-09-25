@@ -1,8 +1,9 @@
-//! App-owned native component set. Keep page-specific geometry at its call site.
+//! App-owned native components. Pages share `Page`; local content owns its own geometry.
 mod button;
 mod display;
 mod field;
 mod layout;
+mod loading;
 mod motion;
 mod overlay;
 mod selection;
@@ -14,6 +15,7 @@ pub use button::*;
 pub use display::*;
 pub use field::*;
 pub use layout::*;
+pub use loading::*;
 pub use motion::*;
 pub use overlay::*;
 pub use selection::*;

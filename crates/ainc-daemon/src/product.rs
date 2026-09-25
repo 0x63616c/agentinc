@@ -187,23 +187,29 @@ pub async fn state(
     headers: HeaderMap,
 ) -> Result<Json<Snapshot>, ApiError> {
     product.authorize(&headers)?;
-    Ok(Json(snapshot(&product.pool).await?))
+    let workspace = crate::workspaces::current(&product.pool).await?;
+    Ok(Json(snapshot_in(&product.pool, &workspace).await?))
 }
 
 pub async fn snapshot(pool: &PgPool) -> Result<Snapshot, sqlx::Error> {
+    snapshot_in(pool, "local").await
+}
+
+pub async fn snapshot_in(pool: &PgPool, workspace: &str) -> Result<Snapshot, sqlx::Error> {
     let mut tx = pool.begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         .execute(&mut *tx)
         .await?;
-    let conversations = sqlx::query_as("SELECT c.id,c.title,COALESCE((SELECT COALESCE(response,prompt) FROM turns WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1),'') AS snippet,to_char(to_timestamp(c.updated_at),'YYYY-MM-DD HH24:MI') AS updated,c.updated_at FROM conversations c WHERE workspace_id='local' ORDER BY updated_at DESC,id DESC").fetch_all(&mut *tx).await?;
-    let turns = sqlx::query_as("SELECT t.id,conversation_id,prompt,response,error,state FROM turns t JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id='local' ORDER BY t.id").fetch_all(&mut *tx).await?;
-    let todos = sqlx::query_as("SELECT id,title,(status='done') AS completed FROM tickets WHERE workspace_id='local' ORDER BY (status='done'),id DESC").fetch_all(&mut *tx).await?;
+    let conversations = sqlx::query_as("SELECT c.id,c.title,COALESCE((SELECT COALESCE(response,prompt) FROM turns WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1),'') AS snippet,to_char(to_timestamp(c.updated_at),'YYYY-MM-DD HH24:MI') AS updated,c.updated_at FROM conversations c WHERE workspace_id=$1 ORDER BY updated_at DESC,id DESC").bind(workspace).fetch_all(&mut *tx).await?;
+    let turns = sqlx::query_as("SELECT t.id,conversation_id,prompt,response,error,state FROM turns t JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id=$1 ORDER BY t.id").bind(workspace).fetch_all(&mut *tx).await?;
+    let todos = sqlx::query_as("SELECT id,title,(status='done') AS completed FROM tickets WHERE workspace_id=$1 ORDER BY (status='done'),id DESC").bind(workspace).fetch_all(&mut *tx).await?;
     let model = sqlx::query_scalar(
-        "SELECT value FROM assistant_settings WHERE workspace_id='local' AND key='model'",
+        "SELECT value FROM assistant_settings WHERE workspace_id=$1 AND key='model'",
     )
+    .bind(workspace)
     .fetch_optional(&mut *tx)
     .await?;
-    let selected: Option<String> = sqlx::query_scalar("SELECT value FROM assistant_settings WHERE workspace_id='local' AND key='selected_conversation'").fetch_optional(&mut *tx).await?;
+    let selected: Option<String> = sqlx::query_scalar("SELECT value FROM assistant_settings WHERE workspace_id=$1 AND key='selected_conversation'").bind(workspace).fetch_optional(&mut *tx).await?;
     tx.commit().await?;
     Ok(Snapshot {
         conversations,
@@ -223,10 +229,19 @@ pub async fn command(
     Json(request): Json<CommandRequest>,
 ) -> Result<Json<Acknowledgement>, ApiError> {
     product.authorize(&headers)?;
-    Ok(Json(execute(&product.pool, request).await?))
+    let workspace = crate::workspaces::current(&product.pool).await?;
+    Ok(Json(execute_in(&product.pool, &workspace, request).await?))
 }
 
 pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowledgement, ApiError> {
+    execute_in(pool, "local", request).await
+}
+
+pub async fn execute_in(
+    pool: &PgPool,
+    workspace: &str,
+    request: CommandRequest,
+) -> Result<Acknowledgement, ApiError> {
     if uuid::Uuid::parse_str(&request.operation_id).is_err() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -241,13 +256,14 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
         .bind(&request.operation_id)
         .execute(&mut *tx)
         .await?;
-    let receipt: Option<(serde_json::Value, Option<i64>)> =
-        sqlx::query_as("SELECT command,result_id FROM command_receipts WHERE operation_id=$1")
-            .bind(&request.operation_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-    if let Some((prior, result_id)) = receipt {
-        if prior != value {
+    let receipt: Option<(String, serde_json::Value, Option<i64>)> = sqlx::query_as(
+        "SELECT workspace_id,command,result_id FROM command_receipts WHERE operation_id=$1",
+    )
+    .bind(&request.operation_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some((receipt_workspace, prior, result_id)) = receipt {
+        if receipt_workspace != workspace || prior != value {
             return Err(ApiError::conflict());
         }
         return Ok(Acknowledgement {
@@ -258,18 +274,20 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
     let result_id = match request.command {
         Command::CreateConversation => Some(
             sqlx::query_scalar(
-                "INSERT INTO conversations(title) VALUES ('New conversation') RETURNING id",
+                "INSERT INTO conversations(workspace_id,title) VALUES ($1,'New conversation') RETURNING id",
             )
+            .bind(workspace)
             .fetch_one(&mut *tx)
             .await?,
         ),
         Command::RenameConversation { id, title } => {
             changed(
                 sqlx::query(
-                    "UPDATE conversations SET title=$2 WHERE id=$1 AND workspace_id='local'",
+                    "UPDATE conversations SET title=$2 WHERE id=$1 AND workspace_id=$3",
                 )
                 .bind(id)
                 .bind(title.trim())
+                .bind(workspace)
                 .execute(&mut *tx)
                 .await?
                 .rows_affected(),
@@ -279,9 +297,10 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
         Command::DeleteConversation { id } => {
             // Lock the parent against send, retry and worker claims.
             let row: Option<i64> = sqlx::query_scalar(
-                "SELECT id FROM conversations WHERE id=$1 AND workspace_id='local' FOR UPDATE",
+                "SELECT id FROM conversations WHERE id=$1 AND workspace_id=$2 FOR UPDATE",
             )
             .bind(id)
+            .bind(workspace)
             .fetch_optional(&mut *tx)
             .await?;
             if row.is_none() {
@@ -300,15 +319,16 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
         }
         Command::SelectConversation { id } => {
             let exists: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM conversations WHERE id=$1 AND workspace_id='local')",
+                "SELECT EXISTS(SELECT 1 FROM conversations WHERE id=$1 AND workspace_id=$2)",
             )
             .bind(id)
+            .bind(workspace)
             .fetch_one(&mut *tx)
             .await?;
             if !exists {
                 return Err(ApiError::conflict());
             }
-            sqlx::query("INSERT INTO assistant_settings(key,value) VALUES ('selected_conversation',$1) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value").bind(id.to_string()).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO assistant_settings(workspace_id,key,value) VALUES ($1,'selected_conversation',$2) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value").bind(workspace).bind(id.to_string()).execute(&mut *tx).await?;
             Some(id)
         }
         Command::Send {
@@ -316,20 +336,21 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
             prompt,
         } => {
             let parent: Option<i64> = sqlx::query_scalar(
-                "SELECT id FROM conversations WHERE id=$1 AND workspace_id='local' FOR UPDATE",
+                "SELECT id FROM conversations WHERE id=$1 AND workspace_id=$2 FOR UPDATE",
             )
             .bind(conversation_id)
+            .bind(workspace)
             .fetch_optional(&mut *tx)
             .await?;
             if parent.is_none() {
                 return Err(ApiError::conflict());
             }
-            let id = sqlx::query_scalar("INSERT INTO turns(conversation_id,prompt,state,model) VALUES ($1,$2,'queued',(SELECT value FROM assistant_settings WHERE workspace_id='local' AND key='model')) RETURNING id").bind(conversation_id).bind(prompt.trim()).fetch_one(&mut *tx).await?;
+            let id = sqlx::query_scalar("INSERT INTO turns(conversation_id,prompt,state,model) VALUES ($1,$2,'queued',(SELECT value FROM assistant_settings WHERE workspace_id=$3 AND key='model')) RETURNING id").bind(conversation_id).bind(prompt.trim()).bind(workspace).fetch_one(&mut *tx).await?;
             sqlx::query("UPDATE conversations SET updated_at=extract(epoch FROM now())::bigint,title=CASE WHEN title='New conversation' THEN left($2,60) ELSE title END WHERE id=$1").bind(conversation_id).bind(prompt.trim()).execute(&mut *tx).await?;
             Some(id)
         }
         Command::Retry { id } => {
-            let parent: Option<i64> = sqlx::query_scalar("SELECT c.id FROM conversations c JOIN turns t ON c.id=t.conversation_id WHERE t.id=$1 AND c.workspace_id='local' FOR UPDATE OF c").bind(id).fetch_optional(&mut *tx).await?;
+            let parent: Option<i64> = sqlx::query_scalar("SELECT c.id FROM conversations c JOIN turns t ON c.id=t.conversation_id WHERE t.id=$1 AND c.workspace_id=$2 FOR UPDATE OF c").bind(id).bind(workspace).fetch_optional(&mut *tx).await?;
             if parent.is_none() {
                 return Err(ApiError::conflict());
             }
@@ -345,16 +366,17 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
             Some(id)
         }
         Command::CreateTodo { title } => Some(
-            sqlx::query_scalar("INSERT INTO tickets(title) VALUES ($1) RETURNING id")
-                .bind(title.trim())
+            sqlx::query_scalar("INSERT INTO tickets(workspace_id,title) VALUES ($1,$2) RETURNING id")
+                .bind(workspace).bind(title.trim())
                 .fetch_one(&mut *tx)
                 .await?,
         ),
         Command::CompleteTodo { id, completed } => {
             changed(
-                sqlx::query("UPDATE tickets SET status=CASE WHEN $2 THEN 'done' ELSE 'to_do' END,revision=revision+1 WHERE id=$1 AND workspace_id='local' AND assignee_kind='human'")
+                sqlx::query("UPDATE tickets SET status=CASE WHEN $2 THEN 'done' ELSE 'to_do' END,revision=revision+1 WHERE id=$1 AND workspace_id=$3 AND assignee_kind='human'")
                     .bind(id)
                     .bind(completed)
+                    .bind(workspace)
                     .execute(&mut *tx)
                     .await?
                     .rows_affected(),
@@ -363,8 +385,9 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
         }
         Command::DeleteTodo { id } => {
             changed(
-                sqlx::query("DELETE FROM tickets WHERE id=$1 AND workspace_id='local'")
+                sqlx::query("DELETE FROM tickets WHERE id=$1 AND workspace_id=$2")
                     .bind(id)
+                    .bind(workspace)
                     .execute(&mut *tx)
                     .await?
                     .rows_affected(),
@@ -372,12 +395,13 @@ pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowled
             Some(id)
         }
         Command::SelectModel { model } => {
-            sqlx::query("INSERT INTO assistant_settings(key,value) VALUES ('model',$1) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value").bind(model).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO assistant_settings(workspace_id,key,value) VALUES ($1,'model',$2) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value").bind(workspace).bind(model).execute(&mut *tx).await?;
             None
         }
     };
-    sqlx::query("INSERT INTO command_receipts(operation_id,command,result_id) VALUES ($1,$2,$3)")
+    sqlx::query("INSERT INTO command_receipts(operation_id,workspace_id,command,result_id) VALUES ($1,$2,$3,$4)")
         .bind(&request.operation_id)
+        .bind(workspace)
         .bind(value)
         .bind(result_id)
         .execute(&mut *tx)

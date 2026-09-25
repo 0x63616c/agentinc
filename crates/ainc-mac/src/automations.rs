@@ -6,7 +6,7 @@ use crate::{
     ui::*,
 };
 use gpui::{prelude::*, *};
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 fn display_time(seconds: i64) -> String {
     chrono::DateTime::from_timestamp(seconds, 0)
@@ -25,6 +25,7 @@ pub struct AutomationsPage {
     pending: bool,
     refreshing: bool,
     loaded: bool,
+    loading_started: Instant,
     editing: bool,
     selected: Option<String>,
     editing_revision: Option<i64>,
@@ -103,6 +104,7 @@ impl AutomationsPage {
             pending: false,
             refreshing: false,
             loaded: cfg!(test),
+            loading_started: Instant::now(),
             editing: false,
             selected: None,
             editing_revision: None,
@@ -134,10 +136,20 @@ impl AutomationsPage {
         }
         this
     }
-    fn reload(&mut self) {
+    pub(crate) fn reload(&mut self) {
         if let Some(store) = &self.store {
             self.state = store.automations();
         }
+    }
+    pub(crate) fn workspace_changed(&mut self, cx: &mut Context<Self>) {
+        self.editing = false;
+        self.selected = None;
+        self.editing_revision = None;
+        self.agent = None;
+        for input in [&self.name, &self.prompt, &self.minutes] {
+            input.update(cx, |input, _| input.reset());
+        }
+        self.reload();
     }
     fn refresh(&mut self, cx: &mut Context<Self>) {
         if self.pending || self.refreshing {
@@ -146,6 +158,9 @@ impl AutomationsPage {
         let Some(store) = self.store.clone() else {
             return;
         };
+        if self.error.is_some() {
+            self.loading_started = Instant::now();
+        }
         self.refreshing = true;
         let work = cx
             .background_executor()
@@ -300,45 +315,38 @@ impl Render for AutomationsPage {
             .iter()
             .find(|r| Some(&r.id) == self.selected.as_ref())
             .cloned();
-        let mut content = column()
-            .gap(px(24.))
-            .w_full()
-            .max_w(px(880.))
-            .child(
-                PageHeader::new("Automations")
-                    .description("Recurring Tickets for your agents.")
-                    .actions(
-                        row_gap(CONTROL_GAP)
-                            .child(
-                                self.button(
-                                    "automations.refresh",
-                                    "Refresh",
-                                    true,
-                                    |this, _, cx| this.refresh(cx),
-                                    cx,
-                                )
-                                .child("Refresh"),
-                            )
-                            .child(
-                                self.button(
-                                    "automations.create",
-                                    "Create Automation",
-                                    true,
-                                    |this, _, cx| this.edit(None, cx),
-                                    cx,
-                                )
-                                .debug_selector(|| "automations.create".into())
-                                .child("Create Automation"),
-                            ),
+        let header = PageHeader::new("Automations")
+            .description("Recurring Tickets for your agents.")
+            .actions(
+                row_gap(CONTROL_GAP)
+                    .child(
+                        self.button(
+                            "automations.refresh",
+                            "Refresh",
+                            true,
+                            |this, _, cx| this.refresh(cx),
+                            cx,
+                        )
+                        .child("Refresh"),
                     )
-                    .build(),
-            )
-            .child(
-                div()
-                    .text_color(rgb(MUTED))
-                    .text_size(type_size(LABEL_SIZE))
-                    .child("Overlapping work is skipped; missed firings stay in history."),
+                    .child(
+                        self.button(
+                            "automations.create",
+                            "Create Automation",
+                            true,
+                            |this, _, cx| this.edit(None, cx),
+                            cx,
+                        )
+                        .debug_selector(|| "automations.create".into())
+                        .child("Create Automation"),
+                    ),
             );
+        let mut content = column().gap(px(24.)).w_full().child(
+            div()
+                .text_color(rgb(MUTED))
+                .text_size(type_size(LABEL_SIZE))
+                .child("Overlapping work is skipped; missed firings stay in history."),
+        );
         if let Some(error) = &self.error {
             content = content.child(
                 div()
@@ -348,8 +356,14 @@ impl Render for AutomationsPage {
                     .child(error.clone()),
             );
         }
-        if !self.loaded {
-            content = content.child("Loading Automations…");
+        if self.refreshing && self.error.is_some() {
+            content = content
+                .child(LoadingFrame::new(self.loading_started, window).inline("Reconnecting…"));
+        }
+        if !self.loaded && self.error.is_none() {
+            content = content.child(
+                LoadingFrame::new(self.loading_started, window).page("Loading Automations…"),
+            );
         }
         if self.editing {
             let agents = self
@@ -418,13 +432,16 @@ impl Render for AutomationsPage {
                 )))
             }));
         }
-        div()
-            .id("automations.page")
-            .track_focus(&self.page_focus)
-            .accessibility_id("automations.page")
-            .size_full()
-            .overflow_y_scroll()
-            .p(px(32.))
-            .child(content)
+        Page::document(header)
+            .child(
+                div()
+                    .id("automations.page")
+                    .debug_selector(|| "automations.page".into())
+                    .track_focus(&self.page_focus)
+                    .accessibility_id("automations.page")
+                    .w_full()
+                    .child(content),
+            )
+            .build()
     }
 }

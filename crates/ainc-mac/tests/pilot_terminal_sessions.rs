@@ -2,10 +2,7 @@
 #![cfg(target_os = "macos")]
 use anyhow::{Context, Result, ensure};
 use futures::{SinkExt, StreamExt};
-use gpui_pilot::{
-    protocol::{Command, Reply},
-    transport::Client,
-};
+use gpui_pilot::{protocol::Command, transport::Client};
 use std::{
     fs,
     io::Write,
@@ -56,19 +53,9 @@ fn launch(root: &Path, discovery: &Path, run: &str) -> Result<(App, Client)> {
     }
     let mut client = Client::connect(&manifest)?;
     client.call(Command::Hello)?;
-    loop {
-        let snapshot = client
-            .call(Command::Snapshot)?
-            .snapshot()
-            .context("snapshot")?
-            .clone();
-        let reference = snapshot.by_id("nav.terminal")?.reference.clone();
-        match client.request(Command::Click { reference })?.result {
-            Reply::Ok { .. } => break,
-            Reply::Error { error, .. } if error.code == "stale_ref" => continue,
-            error => anyhow::bail!("Terminal navigation failed: {error:?}"),
-        }
-    }
+    client.call(Command::Press {
+        key: "cmd-5".into(),
+    })?;
     Ok((app, client))
 }
 

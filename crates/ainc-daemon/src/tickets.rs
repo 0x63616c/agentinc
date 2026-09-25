@@ -142,6 +142,12 @@ impl Actor {
             assignment: None,
         }
     }
+    pub(crate) fn owner_in(workspace: String) -> Self {
+        Self {
+            workspace,
+            ..Self::owner()
+        }
+    }
 }
 fn denied() -> ApiError {
     ApiError::new(
@@ -159,7 +165,9 @@ fn token_hash(token: &str) -> String {
 
 async fn authorize(product: &Product, headers: &HeaderMap) -> Result<Actor, ApiError> {
     if product.authorize(headers).is_ok() {
-        return Ok(Actor::owner());
+        return Ok(Actor::owner_in(
+            crate::workspaces::current(&product.pool).await?,
+        ));
     }
     let token = headers
         .get("authorization")
