@@ -76,7 +76,8 @@ def main():
             return
         notes = release['body']
     else:
-        notes = json.loads(run('gh', 'api', f'repos/{repo}/releases/generate-notes', '-f', f'tag_name={tag}', '-f', f'target_commitish={commit}'))['body']
+        notes_file = Path(f'docs/releases/{version}.md')
+        notes = notes_file.read_text() if notes_file.exists() else json.loads(run('gh', 'api', f'repos/{repo}/releases/generate-notes', '-f', f'tag_name={tag}', '-f', f'target_commitish={commit}'))['body']
         notes_path = out / 'notes.md'
         notes_path.write_text(notes)
         subprocess.run(['gh', 'release', 'create', tag, '--draft', '--target', commit, '--title', f'AgentInc {version}', '--notes-file', str(notes_path)], check=True)
