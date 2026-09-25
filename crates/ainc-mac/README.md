@@ -1,10 +1,10 @@
 # AgentInc
 
-A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents and Automations, with Settings in the footer. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane.
+A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents, Automations and Terminal, with Settings in the footer. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane.
 
 ## Build and run
 
-Requires macOS, Xcode command-line tools and Rust installed through rustup. `rust-toolchain.toml` selects Rust 1.98.1. GPUI comes from Zed commit `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`, pinned in `Cargo.toml` and `Cargo.lock`. This is current upstream source, although Zed still labels its core crate 0.2.2. Core/platform `font-kit` and platform `runtime_shaders` provide macOS text and Metal shaders.
+Requires macOS 15 or later, Xcode command-line tools, Swift 6 and Rust installed through rustup. `rust-toolchain.toml` selects Rust 1.98.1. GPUI comes from Zed commit `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`, pinned in `Cargo.toml` and `Cargo.lock`. Core/platform `font-kit` and platform `runtime_shaders` provide macOS text and Metal shaders. The bundle script also resolves the pinned GhosttyKit Swift package and stages its libghostty renderer, shell integration, terminfo and themes before signing. See `ghostty-bridge/README.md` for provenance and release packaging.
 
 ```sh
 crates/ainc-mac/scripts/bundle.sh
@@ -65,12 +65,14 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | --- | --- |
 | Cmd+K | Search spaces |
 | Cmd+Option+Left / Right | Back / forward |
-| Cmd+1…4 | Tickets, Assistant, Agents, Automations |
+| Cmd+1…5 | Tickets, Assistant, Agents, Automations, Terminal |
 | Cmd+, | Settings |
 | Cmd+B | Toggle sidebar |
 | Escape | Dismiss Search, task dialogs or notifications |
 
 Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. The profile opens Settings, including persisted font family and size controls that update the whole app immediately. Default type is two points larger than the original Control scale. The notification bell opens an empty notification panel until notifications are connected.
+
+Terminal hosts a live Ghostty session in your home directory. It loads your Ghostty configuration, including font, keybinds and included files, then applies AgentInc's colors. The session and split panes stay alive when you visit another page. With a Terminal pane focused, Cmd+D splits right, Cmd+Shift+D splits below, Cmd+W closes the focused pane when another exists, and Cmd+Shift+Enter or Cmd+Shift+= toggles a pane to fill the Terminal page. Cmd+K opens AgentInc Search without clearing the terminal; Cmd+, and Cmd+number retain their app navigation actions. Other Ghostty bindings, including Ctrl+L, remain available.
 
 Development sessions save to `~/Library/Application Support/AgentInc Development/session.json`; installed production sessions retain `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/phase-5-distribution.md). Older multi-tab sessions restore retained destinations into the single space view; removed destinations and missing or invalid state start on Assistant. The account name/photo is read locally at runtime and is not bundled.
 

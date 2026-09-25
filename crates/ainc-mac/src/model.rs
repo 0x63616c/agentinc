@@ -17,6 +17,7 @@ pub enum Route {
     Tickets,
     Agents,
     Automations,
+    Terminal,
     #[serde(rename = "evee", alias = "assistant")]
     Assistant,
     Settings,
@@ -55,6 +56,12 @@ pub const PAGES: &[PageSpec] = &[
         in_sidebar: true,
     },
     PageSpec {
+        route: Route::Terminal,
+        title: "Terminal",
+        icon: "terminal",
+        in_sidebar: true,
+    },
+    PageSpec {
         route: Route::Settings,
         title: "Settings",
         icon: "settings",
@@ -67,10 +74,11 @@ impl Route {
         if !(1..=9).contains(&number) {
             return None;
         }
+        let index = usize::from(number - 1);
         PAGES
             .iter()
             .filter(|page| page.in_sidebar)
-            .nth(usize::from(number - 1))
+            .nth(index)
             .map(|page| page.route)
     }
 
@@ -359,11 +367,12 @@ mod tests {
     use super::*;
     #[test]
     fn catalogue_and_history() {
-        assert_eq!(PAGES.len(), 5);
+        assert_eq!(PAGES.len(), 6);
         for route in [
             Route::Tickets,
             Route::Agents,
             Route::Automations,
+            Route::Terminal,
             Route::Assistant,
             Route::Settings,
         ] {
@@ -392,12 +401,14 @@ mod tests {
                 Route::Assistant,
                 Route::Agents,
                 Route::Automations,
+                Route::Terminal,
             ]
         );
         for (index, route) in sidebar.into_iter().enumerate() {
-            assert_eq!(Route::from_shortcut((index + 1) as u8), Some(route));
+            assert_eq!(Route::from_shortcut(((index + 1) % 10) as u8), Some(route));
         }
         assert_eq!(Route::from_shortcut(0), None);
+        assert_eq!(Route::from_shortcut(6), None);
         assert_eq!(Route::from_shortcut(10), None);
     }
     #[test]

@@ -6,6 +6,8 @@ mod layout;
 mod motion;
 mod overlay;
 mod selection;
+#[cfg(target_os = "macos")]
+mod terminal;
 mod tokens;
 
 pub use button::*;
@@ -15,4 +17,6 @@ pub use layout::*;
 pub use motion::*;
 pub use overlay::*;
 pub use selection::*;
+#[cfg(target_os = "macos")]
+pub use terminal::*;
 pub use tokens::*;

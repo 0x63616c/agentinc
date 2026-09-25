@@ -53,6 +53,7 @@ def main():
     # The already-installed 0.1.0 updater launches this old path after replacement.
     (macos / 'agentinc-os').symlink_to('AgentInc')
     shutil.copy2(ROOT / 'crates/ainc-mac/assets/AppIcon.icns', resources / 'AppIcon.icns')
+    subprocess.run(['sh', 'crates/ainc-mac/scripts/stage-ghostty.sh', args.profile, str(bundle)], check=True)
     runtime = resources / 'runtime'
     runtime.mkdir()
     # Portable by construction; never relocate a developer's Homebrew install.

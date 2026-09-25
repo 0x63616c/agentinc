@@ -33,6 +33,11 @@ pub const STATUS_UNREAD: u32 = TEXT_ACCENT;
 pub const TEXT_ON_PRIMARY: u32 = 0x141414;
 pub const PRIMARY: u32 = 0xe8e8e8;
 pub const ACCENT: u32 = 0x0a84ff;
+#[cfg(target_os = "macos")]
+pub const TERMINAL_ANSI: [u32; 16] = [
+    0x171717, 0xb67171, 0x8eae9b, 0xcbb38a, 0x7aa7d8, 0xb69aca, 0x82b4bc, 0xc6c6c6, 0x555555,
+    0xe6acac, 0xb1d4ba, 0xe2cea0, 0xa4c9f1, 0xd0b2e2, 0xa6d5dd, 0xededed,
+];
 pub const ERROR: u32 = 0xe6acac;
 pub const ERROR_BORDER: u32 = 0xb67171;
 pub const DESTRUCTIVE: u32 = 0x5b2b2b;

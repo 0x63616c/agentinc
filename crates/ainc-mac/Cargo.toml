@@ -31,6 +31,8 @@ cc = "1"
 objc2 = "0.6.2"
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSImage", "NSResponder"] }
 objc2-foundation = { version = "0.3.2", features = ["NSData", "NSDictionary", "NSString"] }
+libloading = "0.8"
+raw-window-handle = "0.6"
 
 [features]
 automation = ["dep:gpui-pilot", "gpui/pilot", "gpui/test-support", "gpui_platform/test-support"]
