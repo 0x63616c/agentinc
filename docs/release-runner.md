@@ -9,6 +9,12 @@ Xcode 26.3 at `/Applications/Xcode-26.3.0.app`.
 
 ## Release path
 
+To bump the product version, edit the single `version` in the root
+`Cargo.toml` under `[workspace.package]`, run `cargo xtask generate`, then
+commit and merge to `main`. CI checks the generated API and client files.
+The SDK crates keep independent versions. A product version change starts
+Distribution after merge; other pushes do not.
+
 [`Distribution`](../.github/workflows/release.yml) starts on a product version
 change pushed to `main`. Its Ubuntu prepare job checks the version, then the
 Mac runs `cargo xtask release` at that exact commit. The unsigned archive moves

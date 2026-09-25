@@ -1,6 +1,6 @@
 # Personal distribution
 
-Product version lives in `crates/ainc-release/Cargo.toml`; the SDK version is independent.
+Product version lives in the root `Cargo.toml` under `[workspace.package]`; the SDK version is independent.
 `ainc-release::identity` is the build-channel source of truth shared by the app and daemon.
 Only `cargo xtask release` stamps `AINC_CHANNEL=production` (plus build ID and commit);
 ordinary Cargo, Tilt and local bundle builds are development. The release app remains
