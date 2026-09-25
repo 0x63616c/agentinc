@@ -247,12 +247,18 @@ async fn attached(socket: WebSocket, session: Arc<Session>) {
 fn spawn_shell(workspace_id: String) -> anyhow::Result<Arc<Session>> {
     let mut master = -1;
     let mut slave = -1;
-    let mut size = libc::winsize {
+    let size = libc::winsize {
         ws_row: 24,
         ws_col: 80,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
+    #[cfg(target_os = "macos")]
+    let mut size = size;
+    #[cfg(target_os = "macos")]
+    let size_ptr = &mut size;
+    #[cfg(not(target_os = "macos"))]
+    let size_ptr = &size;
     anyhow::ensure!(
         unsafe {
             libc::openpty(
@@ -260,7 +266,7 @@ fn spawn_shell(workspace_id: String) -> anyhow::Result<Arc<Session>> {
                 &mut slave,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                &mut size,
+                size_ptr,
             )
         } == 0,
         "openpty: {}",
