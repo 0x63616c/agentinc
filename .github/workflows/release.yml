@@ -116,13 +116,13 @@ jobs:
           export AINC_UPGRADE_TEST_PUBLIC_KEY="$public"
           python3 scripts/release/prepare.py
           mv ".local/release/$commit/unsigned.tar.gz" .local/upgrade-input/upgrade-candidate-unsigned.tar.gz
-          next_version=$(python3 -c 'import json,subprocess; v=next(p["version"] for p in json.loads(subprocess.check_output(["cargo","metadata","--no-deps","--format-version=1"]))["packages"] if p["name"]=="ainc-release"); a,b,c=map(int,v.split(".")); print(f"{a}.{b}.{c+1}")')
+          candidate_version=$(python3 -c 'import json,subprocess; print(next(p["version"] for p in json.loads(subprocess.check_output(["cargo","metadata","--no-deps","--format-version=1"]))["packages"] if p["name"]=="ainc-release"))')
+          next_version=$(python3 -c 'import sys; a,b,c=map(int,sys.argv[1].split(".")); print(f"{a}.{b}.{c+1}")' "$candidate_version")
           export AINC_UPGRADE_TEST_VERSION="$next_version"
           python3 scripts/release/prepare.py
           mv ".local/release/$commit/unsigned.tar.gz" .local/upgrade-input/upgrade-newer-unsigned.tar.gz
           cp "$CARGO_TARGET_DIR/release/ainc-release-manifest" .local/upgrade-input/ainc-release-manifest
           unset AINC_UPGRADE_TEST_VERSION
-          candidate_version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
           for tag in $(git tag --list 'v*' --sort=version:refname); do
             prior_version="${tag#v}"
             if ! python3 -c 'import sys; a,b=(tuple(map(int,v.split("."))) for v in sys.argv[1:]); sys.exit(0 if a < b else 1)' "$prior_version" "$candidate_version"; then
