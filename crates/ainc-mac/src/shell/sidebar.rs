@@ -138,22 +138,22 @@ impl Shell {
                     Control::Navigate(Route::Settings),
                     cx,
                 )
-                .h(px(98.))
+                .h(px(44.))
                 .flex_shrink_0()
                 .w_full()
-                .flex_col()
-                .items_start()
-                .justify_center()
+                .items_center()
                 .px(px(10.))
-                .gap(px(4.))
+                .gap(px(8.))
                 .debug_selector(|| "sidebar-profile".into())
                 .child(match &self.profile.photo {
                     Some(photo) => img(photo.clone())
                         .size(px(24.))
+                        .flex_shrink_0()
                         .rounded_full()
                         .into_any_element(),
                     None => row()
                         .size(px(24.))
+                        .flex_shrink_0()
                         .rounded_full()
                         .bg(rgb(BORDER))
                         .justify_center()
@@ -162,8 +162,10 @@ impl Shell {
                 })
                 .child(
                     div()
+                        .flex_1()
                         .min_w_0()
                         .truncate()
+                        .debug_selector(|| "sidebar-profile-name".into())
                         .text_size(type_size(LABEL_SIZE))
                         .child(self.profile.name.clone()),
                 )
@@ -177,10 +179,7 @@ impl Shell {
                         .aria_label(ainc_release::identity::version())
                         .text_size(type_size(CAPTION_SIZE))
                         .text_color(rgb(TEXT_MUTED))
-                        .child(ainc_release::identity::version())
-                        .when(!ainc_release::identity::PRODUCTION, |version| {
-                            version.tooltip(|_, cx| cx.new(|_| crate::about::CommitTooltip).into())
-                        }),
+                        .child(ainc_release::identity::version()),
                 ),
             )
     }

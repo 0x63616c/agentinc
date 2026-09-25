@@ -261,6 +261,11 @@ impl Shell {
             self.session.panes[pane::Side::Right.index()].open,
         )
     }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    pub(crate) fn fixture_profile_name(&mut self, name: &str, cx: &mut Context<Self>) {
+        self.profile.name = name.into();
+        cx.notify();
+    }
 
     pub(crate) fn flush_for_update(&mut self, cx: &mut Context<Self>) -> anyhow::Result<()> {
         anyhow::ensure!(
@@ -874,7 +879,10 @@ impl Render for Shell {
             .on_action(
                 cx.listener(|this, _: &GoForward, w, cx| this.dispatch(Control::Forward, w, cx)),
             )
-            .on_action(cx.listener(|this, _: &Search, w, cx| this.dispatch(Control::Search, w, cx)))
+            .on_action(cx.listener(|this, _: &Search, w, cx| {
+                cx.stop_propagation();
+                this.dispatch(Control::Search, w, cx);
+            }))
             .on_action(
                 cx.listener(|this, _: &ToggleSidebar, w, cx| {
                     this.dispatch(Control::Sidebar, w, cx)
@@ -988,13 +996,28 @@ impl Render for Shell {
     }
 }
 pub fn bind_keys(cx: &mut App) {
+    cx.on_action(|_: &Search, cx| {
+        let handle = cx.active_window().or_else(|| {
+            let windows = cx.windows();
+            (windows.len() == 1).then(|| windows[0])
+        });
+        if let Some(handle) = handle {
+            cx.defer(move |cx| {
+                let _ = handle.update(cx, |_, window, cx| {
+                    if let Some(shell) = window.root::<Shell>().flatten() {
+                        shell.update(cx, |shell, cx| shell.dispatch(Control::Search, window, cx));
+                    }
+                });
+            });
+        }
+    });
     cx.bind_keys(
         (1..=9).map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateRoute(n), Some("Control"))),
     );
     cx.bind_keys([
         KeyBinding::new("cmd-alt-left", GoBack, Some("Control")),
         KeyBinding::new("cmd-alt-right", GoForward, Some("Control")),
-        KeyBinding::new("cmd-k", Search, Some("Control")),
+        KeyBinding::new("cmd-k", Search, None),
         KeyBinding::new("cmd-,", OpenSettings, Some("Control")),
         KeyBinding::new("cmd-b", ToggleSidebar, Some("Control")),
         KeyBinding::new("cmd-shift-e", ToggleEvee, Some("Control")),
@@ -1246,6 +1269,30 @@ mod interaction_tests {
         cx.simulate_keystrokes("escape");
         let focus = shell.read_with(cx, |shell, _| shell.focus.clone());
         cx.update(|window, _| assert!(focus.is_focused(window)));
+    }
+
+    #[gpui::test]
+    fn search_shortcut_works_with_pane_or_no_focus(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        cx.update(|cx| {
+            bind_keys(cx);
+            input::bind_keys(cx);
+        });
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        let pane_focus = shell.read_with(cx, |shell, _| shell.pane_focus[0].clone());
+        cx.update(|window, cx| window.focus(&pane_focus, cx));
+        cx.simulate_keystrokes("cmd-k");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+        });
+        cx.simulate_keystrokes("escape");
+        cx.update(|window, cx| window.blur(cx));
+        cx.simulate_keystrokes("cmd-k");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+        });
     }
 
     #[gpui::test]

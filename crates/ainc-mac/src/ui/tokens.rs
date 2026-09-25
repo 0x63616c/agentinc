@@ -67,8 +67,6 @@ pub const LIST_ROW_HEIGHT: f32 = 48.;
 pub const DIALOG_WIDTH: f32 = 440.;
 pub const MENU_WIDTH: f32 = 146.;
 pub const MENU_INSET: f32 = 4.;
-pub const TOOLTIP_INSET_X: f32 = 8.;
-pub const TOOLTIP_INSET_Y: f32 = 6.;
 pub const RIGHT_PANE_CONTENT_INSET: f32 = 20.;
 // The search icon needs 9 px before it to align its visible edge with header text.
 pub const HEADER_SEARCH_LEFT_INSET: f32 = 9.;

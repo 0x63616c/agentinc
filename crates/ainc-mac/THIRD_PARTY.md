@@ -4,6 +4,8 @@ License: https://www.apache.org/licenses/LICENSE-2.0
 
 Outline icon paths in `assets/` originated in the imported Agentinc OS prototype. The Evee logo `assets/evee.png` is copied unchanged from the existing Evee project’s `web/public/evee-icon.png`, as requested in the implementation feedback.
 
+`assets/settings.svg` uses the [Lucide Settings outline](https://github.com/lucide-icons/lucide/blob/main/icons/settings.svg), adjusted to the app's 1.5 stroke width. Lucide is licensed under [ISC](https://github.com/lucide-icons/lucide/blob/main/LICENSE).
+
 `assets/openai.svg` is the OpenAI Blossom mark from [OpenAI's agents-python repository](https://github.com/openai/openai-agents-python/blob/main/docs/assets/logo.svg). Only its solid fill was changed to `currentColor` so the official geometry follows the native control's text color. It identifies the ChatGPT connection action and remains subject to [OpenAI's brand guidelines](https://openai.com/brand/).
 
 `assets/AppIcon.png` and `.icns` retain the same Evee artwork on an opaque black canvas, allowing macOS to apply the rounded icon mask without exposing a light backing at the edge. They are bundled locally; the user's profile photo is read at runtime and is not an app asset.
