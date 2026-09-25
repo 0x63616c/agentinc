@@ -7,7 +7,7 @@ impl Shell {
             .debug_selector(|| "main-pane".into())
             .flex_1()
             .min_w_0()
-            .h_full()
+            .min_h_0()
             .overflow_hidden()
             .child(
                 column()

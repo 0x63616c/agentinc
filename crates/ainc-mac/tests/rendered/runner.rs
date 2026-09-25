@@ -358,6 +358,23 @@ impl Suite {
             0.,
         )?;
         let main = self.bounds("main-pane")?;
+        let status = self.bounds("status-bar")?;
+        near(
+            "status bar left edge",
+            f32::from(status.origin.x),
+            f32::from(main.origin.x),
+        )?;
+        near(
+            "status bar width",
+            f32::from(status.size.width),
+            f32::from(main.size.width),
+        )?;
+        near("status bar height", f32::from(status.size.height), 10.)?;
+        near(
+            "status bar gap",
+            f32::from(status.origin.y - main.origin.y - main.size.height),
+            8.,
+        )?;
         let content = self.bounds("main-content")?;
         near(
             "main content left inset",
@@ -370,6 +387,11 @@ impl Suite {
             PAGE_X,
         )?;
         let right = self.bounds("right-pane")?;
+        near(
+            "status bar bottom edge",
+            f32::from(status.origin.y + status.size.height),
+            f32::from(right.origin.y + right.size.height),
+        )?;
         let body = self.bounds("right-content")?;
         near(
             "right content left inset",
