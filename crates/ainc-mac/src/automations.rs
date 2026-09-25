@@ -6,7 +6,7 @@ use crate::{
     ui::*,
 };
 use gpui::{prelude::*, *};
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 fn display_time(seconds: i64) -> String {
     chrono::DateTime::from_timestamp(seconds, 0)
@@ -25,6 +25,7 @@ pub struct AutomationsPage {
     pending: bool,
     refreshing: bool,
     loaded: bool,
+    loading_started: Instant,
     editing: bool,
     selected: Option<String>,
     editing_revision: Option<i64>,
@@ -103,6 +104,7 @@ impl AutomationsPage {
             pending: false,
             refreshing: false,
             loaded: cfg!(test),
+            loading_started: Instant::now(),
             editing: false,
             selected: None,
             editing_revision: None,
@@ -146,6 +148,9 @@ impl AutomationsPage {
         let Some(store) = self.store.clone() else {
             return;
         };
+        if self.error.is_some() {
+            self.loading_started = Instant::now();
+        }
         self.refreshing = true;
         let work = cx
             .background_executor()
@@ -348,8 +353,14 @@ impl Render for AutomationsPage {
                     .child(error.clone()),
             );
         }
-        if !self.loaded {
-            content = content.child("Loading Automations…");
+        if self.refreshing && self.error.is_some() {
+            content = content
+                .child(LoadingFrame::new(self.loading_started, window).inline("Reconnecting…"));
+        }
+        if !self.loaded && self.error.is_none() {
+            content = content.child(
+                LoadingFrame::new(self.loading_started, window).page("Loading Automations…"),
+            );
         }
         if self.editing {
             let agents = self

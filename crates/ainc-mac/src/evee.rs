@@ -59,6 +59,7 @@ pub struct AssistantPage {
     pending: bool,
     scroll: ScrollHandle,
     appearance: Option<Instant>,
+    loading_started: Instant,
     reduced_motion: bool,
     hover: HoverFade,
     _subscriptions: Vec<Subscription>,
@@ -183,6 +184,7 @@ impl AssistantPage {
             pending: false,
             scroll: ScrollHandle::new(),
             appearance: None,
+            loading_started: Instant::now(),
             reduced_motion: reduced_motion(),
             hover: HoverFade::default(),
             _subscriptions: subscriptions,
@@ -987,6 +989,7 @@ impl AssistantPage {
             return;
         };
         self.active = Some(id);
+        self.loading_started = Instant::now();
         cx.spawn(async move |this, cx| {
             loop {
                 let db = store.clone();
@@ -1314,7 +1317,10 @@ impl Render for AssistantPage {
                                         .px(px(2.))
                                         .text_size(type_size(LABEL_SIZE))
                                         .text_color(rgb(MUTED))
-                                        .child("Evee is thinking…"),
+                                        .child(
+                                            LoadingFrame::new(self.loading_started, window)
+                                                .inline("Evee is thinking…"),
+                                        ),
                                 )
                             })
                             .when_some(turn.error.clone(), |s, error| {

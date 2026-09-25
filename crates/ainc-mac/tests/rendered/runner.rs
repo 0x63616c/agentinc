@@ -1,3 +1,4 @@
+use crate::ui;
 use crate::ui::{
     CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, SETTINGS_INSET, SETTINGS_ROW_HEIGHT, type_size,
 };
@@ -9,11 +10,62 @@ use crate::{
     ui::Overlay,
 };
 use anyhow::{Result, ensure};
+use gpui::prelude::*;
 use gpui::{
-    AppContext, Bounds, Modifiers, MouseButton, Pixels, VisualTestAppContext, WindowHandle, point,
-    px, size,
+    AppContext, Bounds, IntoElement, Modifiers, MouseButton, Pixels, Render, VisualTestAppContext,
+    Window, WindowHandle, div, point, px, size,
 };
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+struct LoadingPreview {
+    kind: &'static str,
+    start: Instant,
+}
+
+impl Render for LoadingPreview {
+    fn render(&mut self, window: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+        let frame = ui::LoadingFrame::new(self.start, window);
+        div()
+            .relative()
+            .size_full()
+            .bg(gpui::rgb(ui::SHELL))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(match self.kind {
+                "page" => frame.page("Loading Tickets…").into_any_element(),
+                "reconnect" => frame.inline("Reconnecting…").into_any_element(),
+                _ => frame.inline("Evee is thinking…").into_any_element(),
+            })
+    }
+}
+
+fn capture_loading_frames(cx: &mut VisualTestAppContext, output: &std::path::Path) -> Result<()> {
+    let preview = cx.open_offscreen_window(size(px(1360.), px(828.)), |_, cx| {
+        cx.new(|_| LoadingPreview {
+            kind: "page",
+            start: Instant::now(),
+        })
+    })?;
+    for kind in ["page", "inline", "reconnect"] {
+        for (index, elapsed) in [0, 80, 160, 240].into_iter().enumerate() {
+            preview.update(cx, |view, _, cx| {
+                view.kind = kind;
+                view.start = Instant::now() - Duration::from_millis(elapsed);
+                cx.notify();
+            })?;
+            cx.run_until_parked();
+            cx.update_window(preview.into(), |_, window, cx| window.draw(cx).clear(cx))?;
+            cx.capture_screenshot(preview.into())?
+                .save(output.join(format!("loading-{kind}-{index}.png")))?;
+        }
+    }
+    Ok(())
+}
 
 // Check actual pixels in independent shell regions, rather than trusting scene/AX nodes.
 // Coordinates are logical pixels; thresholds are deliberately below normal text contrast.
@@ -367,6 +419,7 @@ pub fn run() -> Result<()> {
         gpui_platform::current_platform(false),
         Arc::new(Assets),
     );
+    capture_loading_frames(&mut cx, &output)?;
     cx.update(|cx| {
         input::bind_keys(cx);
         shell::bind_keys(cx);
@@ -380,6 +433,24 @@ pub fn run() -> Result<()> {
         output,
         count: 0,
     };
+    for (index, elapsed) in [0, 80, 160, 240].into_iter().enumerate() {
+        suite.window.update(&mut suite.cx, |shell, _, cx| {
+            shell.fixture_launch_elapsed(Duration::from_millis(elapsed), cx)
+        })?;
+        suite.cx.run_until_parked();
+        suite
+            .cx
+            .update_window(suite.window.into(), |_, window, cx| {
+                window.draw(cx).clear(cx)
+            })?;
+        suite
+            .cx
+            .capture_screenshot(suite.window.into())?
+            .save(suite.output.join(format!("loading-launch-{index}.png")))?;
+    }
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_launch_elapsed(Duration::from_secs(1), cx)
+    })?;
     suite.capture("initial", Route::Assistant, None, false)?;
     suite.check_profile_row_geometry()?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
