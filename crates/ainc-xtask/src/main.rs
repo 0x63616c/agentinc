@@ -264,6 +264,7 @@ fn daemon(instance: &Instance) -> Result<()> {
         "endpoint": format!("http://127.0.0.1:{}", port(instance, "temporal", "7233")?),
         "scope": instance.namespace,
         "worker_group": format!("{}-agents", instance.id),
+        "ui_url": format!("http://127.0.0.1:{}", port(instance, "temporal-ui", "8080")?),
     });
     fs::write(
         local(instance).join("runtime.json"),

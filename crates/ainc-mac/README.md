@@ -47,7 +47,7 @@ The ordinary GPUI interaction tests run with `cargo test --locked`. On macOS, ru
 cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
 ```
 
-It captures 40 frames across every route, two window sizes, dialogs and full-page Evee conversations. It checks rendered shell regions and the shared page frame, content width and Settings/Automations right edges. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
+It captures frames across every route, two window sizes, dialogs, Temporal states and full-page Evee conversations. It checks rendered shell regions and the shared page frame, content width and Settings/Automations right edges. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
 
 ## Evee and Tasks
 
@@ -65,7 +65,7 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | --- | --- |
 | Cmd+K | Search spaces |
 | Cmd+Option+Left / Right | Back / forward |
-| Cmd+1…5 | Tickets, Assistant, Agents, Automations, Terminal |
+| Cmd+1…6 | Tickets, Assistant, Agents, Automations, Terminal, Temporal |
 | Cmd+, | Settings |
 | Cmd+B | Toggle sidebar |
 | Escape | Dismiss Search, task dialogs or notifications |

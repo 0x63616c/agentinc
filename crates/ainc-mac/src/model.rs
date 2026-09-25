@@ -18,6 +18,7 @@ pub enum Route {
     Agents,
     Automations,
     Terminal,
+    Temporal,
     #[serde(rename = "evee", alias = "assistant")]
     Assistant,
     Settings,
@@ -59,6 +60,12 @@ pub const PAGES: &[PageSpec] = &[
         route: Route::Terminal,
         title: "Terminal",
         icon: "terminal",
+        in_sidebar: true,
+    },
+    PageSpec {
+        route: Route::Temporal,
+        title: "Temporal",
+        icon: "temporal",
         in_sidebar: true,
     },
     PageSpec {
@@ -367,12 +374,13 @@ mod tests {
     use super::*;
     #[test]
     fn catalogue_and_history() {
-        assert_eq!(PAGES.len(), 6);
+        assert_eq!(PAGES.len(), 7);
         for route in [
             Route::Tickets,
             Route::Agents,
             Route::Automations,
             Route::Terminal,
+            Route::Temporal,
             Route::Assistant,
             Route::Settings,
         ] {
@@ -402,13 +410,15 @@ mod tests {
                 Route::Agents,
                 Route::Automations,
                 Route::Terminal,
+                Route::Temporal,
             ]
         );
         for (index, route) in sidebar.into_iter().enumerate() {
             assert_eq!(Route::from_shortcut(((index + 1) % 10) as u8), Some(route));
         }
         assert_eq!(Route::from_shortcut(0), None);
-        assert_eq!(Route::from_shortcut(6), None);
+        assert_eq!(Route::from_shortcut(6), Some(Route::Temporal));
+        assert_eq!(Route::from_shortcut(7), None);
         assert_eq!(Route::from_shortcut(10), None);
     }
     #[test]

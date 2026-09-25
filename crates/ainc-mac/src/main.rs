@@ -8,6 +8,7 @@ mod native_update;
 mod profile;
 mod shell;
 mod storage;
+mod temporal;
 #[cfg(target_os = "macos")]
 mod terminal;
 mod tickets;

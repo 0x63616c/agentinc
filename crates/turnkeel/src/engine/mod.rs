@@ -5,8 +5,10 @@ mod conversation;
 mod recurring;
 mod session;
 mod test_server;
+mod visibility;
 mod workflow;
 pub(crate) use test_server::TestServer;
+pub(crate) use visibility::list_workflows;
 
 use crate::{Agent, Error, Event, Message, RunId, RuntimeConfig, SessionId};
 use activities::{AgentActivities, Registry};

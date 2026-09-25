@@ -572,6 +572,65 @@
         ],
         "type": "object"
       },
+      "ExecutionPage": {
+        "properties": {
+          "executions": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionView"
+            },
+            "type": "array"
+          },
+          "next_page": {
+            "nullable": true,
+            "type": "string"
+          },
+          "ui_available": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "executions",
+          "ui_available"
+        ],
+        "type": "object"
+      },
+      "ExecutionView": {
+        "properties": {
+          "closed_at": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "workflow_id": {
+            "type": "string"
+          },
+          "workflow_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "run_id",
+          "workflow_type",
+          "status",
+          "started_at"
+        ],
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "status": {
@@ -1761,6 +1820,76 @@
         },
         "tags": [
           "product"
+        ]
+      }
+    },
+    "/v1/temporal/executions": {
+      "get": {
+        "operationId": "temporal_executions",
+        "parameters": [
+          {
+            "description": "All, Running, Completed, Failed, Canceled, Terminated, TimedOut, ContinuedAsNew, or Paused",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque next-page token",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionPage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "temporal"
         ]
       }
     },

@@ -10,6 +10,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+fn runtime_config(bytes: &[u8]) -> Result<(turnkeel::RuntimeConfig, Option<String>)> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)?;
+    let ui_url = value
+        .get("ui_url")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+    Ok((serde_json::from_value(value)?, ui_url))
+}
+
 fn main() -> Result<()> {
     ainc_release::process::reset_inherited_signals()?;
     tokio::runtime::Builder::new_multi_thread()
@@ -94,12 +103,12 @@ async fn run() -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     let product = ainc_daemon::product::Product::new(pool.clone(), token.trim().into())?;
-    let config: turnkeel::RuntimeConfig = if let Some(local) = &local {
-        local.config.clone()
+    let (config, ui_url): (turnkeel::RuntimeConfig, Option<String>) = if let Some(local) = &local {
+        (local.config.clone(), Some(local.ui_url.clone()))
     } else if let Ok(config) = env::var("AINC_RUNTIME_CONFIG") {
-        serde_json::from_str(&config).context("parse AINC_RUNTIME_CONFIG")?
+        runtime_config(config.as_bytes()).context("parse AINC_RUNTIME_CONFIG")?
     } else {
-        serde_json::from_slice(
+        runtime_config(
             &fs::read(Path::new(&discovery).with_file_name("runtime.json"))
                 .context("configure the durable runtime in runtime.json beside daemon discovery")?,
         )?
@@ -118,7 +127,7 @@ async fn run() -> Result<()> {
             .await?;
     let tickets =
         ainc_daemon::execution::Runner::start(pool.clone(), config.clone(), models, policy).await?;
-    let automations = ainc_daemon::automations::Runner::start(pool.clone(), config).await?;
+    let automations = ainc_daemon::automations::Runner::start(pool.clone(), config.clone()).await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     publish_address(Path::new(&discovery), address)?;
@@ -147,7 +156,9 @@ async fn run() -> Result<()> {
         async {
             axum::serve(
                 listener,
-                ainc_daemon::product_router(product).route("/internal/drain", drain),
+                ainc_daemon::product_router(product.clone())
+                    .merge(ainc_daemon::temporal::router(product, config, ui_url))
+                    .route("/internal/drain", drain),
             )
             .with_graceful_shutdown(stopping(receiver.clone()))
             .await
@@ -176,4 +187,19 @@ fn publish_address(path: &Path, address: SocketAddr) -> Result<()> {
 
 async fn stopping(mut receiver: tokio::sync::watch::Receiver<bool>) {
     let _ = receiver.wait_for(|stopping| *stopping).await;
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn runtime_ui_address_stays_in_daemon_configuration() {
+        let (config, ui_url) = runtime_config(
+            br#"{"endpoint":"http://127.0.0.1:7233","scope":"agentinc-dev","worker_group":"personal","ui_url":"http://127.0.0.1:8233"}"#,
+        )
+        .unwrap();
+        assert_eq!(config.scope, "agentinc-dev");
+        assert_eq!(ui_url.as_deref(), Some("http://127.0.0.1:8233"));
+    }
 }
