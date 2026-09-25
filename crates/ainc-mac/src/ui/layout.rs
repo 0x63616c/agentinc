@@ -99,6 +99,6 @@ pub fn status_bar() -> Div {
         .flex_row()
         .items_center()
         .justify_between()
-        .h(px(10.))
+        .h(px(20.))
         .rounded(px(5.))
 }

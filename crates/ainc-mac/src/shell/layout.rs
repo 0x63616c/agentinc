@@ -18,7 +18,7 @@ impl Shell {
             .flex_1()
             .min_h_0()
             .pt(px(48.))
-            .pb(px(8.))
+            .pb(px(6.))
             .pr(px(8.))
             .child(self.pane(left_side, left, left_width))
             .pl(px(8. * (1. - left_width / left_saved)))
@@ -33,7 +33,7 @@ impl Shell {
                             .flex_1()
                             .min_w_0()
                             .h_full()
-                            .gap(px(8.))
+                            .gap(px(6.))
                             .child(center)
                             .child(status_bar()),
                     )

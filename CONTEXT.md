@@ -46,3 +46,6 @@ _Avoid_: tab index, screen ID
 **Page**:
 The view shown for a Route.
 _Avoid_: route, tab
+
+**Status bar**:
+The thin strip beneath the main pane at the bottom of the AgentInc window.

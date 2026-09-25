@@ -379,11 +379,11 @@ impl Suite {
             f32::from(status.size.width),
             f32::from(main.size.width),
         )?;
-        near("status bar height", f32::from(status.size.height), 10.)?;
+        near("status bar height", f32::from(status.size.height), 20.)?;
         near(
             "status bar gap",
             f32::from(status.origin.y - main.origin.y - main.size.height),
-            8.,
+            6.,
         )?;
         let content = self.bounds("main-content")?;
         near(
@@ -647,6 +647,23 @@ pub fn run() -> Result<()> {
         );
     })?;
     for round in 0..3 {
+        if round == 2 {
+            window = suite
+                .cx
+                .open_offscreen_window(size(px(800.), px(600.)), |window, cx| {
+                    cx.new(|cx| {
+                        Shell::fixture(temporary.path().join("min-session.json"), window, cx)
+                    })
+                })?;
+            suite.window = window;
+            ensure!(
+                suite
+                    .cx
+                    .update_window(window.into(), |_, window, _| window.viewport_size())?
+                    == size(px(800.), px(600.)),
+                "minimum window dimensions"
+            );
+        }
         if round == 1 {
             // AppKit resize is asynchronous without its native event loop. Use a second
             // real offscreen window at the smaller size; native resize is verified separately.
