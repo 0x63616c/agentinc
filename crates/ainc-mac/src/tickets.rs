@@ -156,10 +156,24 @@ impl TicketsPage {
         }
         this
     }
-    fn reload(&mut self) {
+    pub(crate) fn reload(&mut self) {
         if let Some(store) = &self.store {
             self.state = store.tickets();
         }
+    }
+    pub(crate) fn workspace_changed(&mut self, cx: &mut Context<Self>) {
+        self.selected = None;
+        for input in [
+            &self.input,
+            &self.comment,
+            &self.agent_name,
+            &self.agent_instructions,
+            &self.agent_model,
+        ] {
+            input.update(cx, |input, _| input.reset());
+        }
+        self.form_error = None;
+        self.reload();
     }
     fn refresh(&mut self, cx: &mut Context<Self>) {
         if self.refreshing || self.pending {

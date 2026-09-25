@@ -67,6 +67,27 @@ impl Shell {
     }
 
     pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let workspace = self.workspace_state();
+        let current = workspace
+            .workspaces
+            .iter()
+            .find(|item| item.id == workspace.current_id);
+        let workspace_name = current
+            .map_or("World Wide Webb", |item| item.name.as_str())
+            .to_owned();
+        let workspace_icon = current
+            .and_then(|item| item.icon.as_deref())
+            .filter(|icon| !icon.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| workspace_name.chars().next().unwrap_or('W').to_string());
+        let workspace_color = current
+            .and_then(|item| item.color.as_deref())
+            .and_then(|color| u32::from_str_radix(color.trim_start_matches('#'), 16).ok());
+        let workspace_ink = workspace_color.map_or(TEXT, |color| {
+            let brightness =
+                ((color >> 16) & 0xff) * 3 + ((color >> 8) & 0xff) * 6 + (color & 0xff);
+            if brightness > 1400 { SHELL } else { TEXT }
+        });
         let mut nav = column().gap(px(2.));
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             nav = nav.child(self.sidebar_item(page.route, Some(index + 1), cx));
@@ -79,49 +100,38 @@ impl Shell {
             .px(px(12.))
             .pt(px(20.))
             .child(
-                row()
-                    .min_w_0()
-                    .pl(px(SIDEBAR_IDENTITY_LEFT_INSET))
-                    .pr(px(SIDEBAR_IDENTITY_RIGHT_INSET))
-                    .gap(px(8.5))
-                    .mb(px(22.))
-                    .child(
-                        row()
-                            .size(px(24.))
-                            .flex_shrink_0()
-                            .justify_center()
-                            .rounded(px(7.))
-                            .border_1()
-                            .border_color(rgb(BORDER_OVERLAY))
-                            .bg(rgb(HOVER))
-                            .child({
-                                #[cfg(feature = "automation")]
-                                if let Ok(name) = std::env::var("AGENTINC_CAPTURE_WORKSPACE") {
-                                    name.chars().next().unwrap_or('W').to_string()
-                                } else {
-                                    "W".to_owned()
-                                }
-                                #[cfg(not(feature = "automation"))]
-                                "W".to_owned()
-                            }),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .debug_selector(|| "workspace-title".into())
-                            .text_size(type_size(LABEL_SIZE))
-                            .child({
-                                #[cfg(feature = "automation")]
-                                {
-                                    std::env::var("AGENTINC_CAPTURE_WORKSPACE")
-                                        .unwrap_or_else(|_| "World Wide Webb".to_owned())
-                                }
-                                #[cfg(not(feature = "automation"))]
-                                "World Wide Webb".to_owned()
-                            }),
-                    ),
+                self.button(
+                    "workspace-picker",
+                    "Switch workspace",
+                    Control::WorkspacePicker,
+                    cx,
+                )
+                .min_w_0()
+                .pl(px(SIDEBAR_IDENTITY_LEFT_INSET))
+                .pr(px(SIDEBAR_IDENTITY_RIGHT_INSET))
+                .gap(px(8.5))
+                .mb(px(22.))
+                .child(
+                    row()
+                        .size(px(24.))
+                        .flex_shrink_0()
+                        .justify_center()
+                        .rounded(px(7.))
+                        .border_1()
+                        .border_color(rgb(BORDER_OVERLAY))
+                        .bg(rgb(workspace_color.unwrap_or(HOVER)))
+                        .text_color(rgb(workspace_ink))
+                        .child(workspace_icon),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .debug_selector(|| "workspace-title".into())
+                        .text_size(type_size(LABEL_SIZE))
+                        .child(workspace_name),
+                ),
             )
             .child(nav)
             .child(div().flex_1())

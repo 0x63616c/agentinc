@@ -99,7 +99,8 @@ pub async fn state(
     headers: HeaderMap,
 ) -> Result<Json<AutomationSnapshot>, ApiError> {
     product.authorize(&headers)?;
-    Ok(Json(snapshot(&product.pool, &Actor::owner()).await?))
+    let actor = Actor::owner_in(crate::workspaces::current(&product.pool).await?);
+    Ok(Json(snapshot(&product.pool, &actor).await?))
 }
 #[utoipa::path(post,path="/v1/automations/commands",operation_id="automations_command",request_body=AutomationRequest,responses((status=200,body=AutomationReceipt),(status=400,body=ErrorBody),(status=401,body=ErrorBody),(status=409,body=ErrorBody),(status=503,body=ErrorBody)))]
 pub async fn command(
@@ -108,9 +109,8 @@ pub async fn command(
     Json(request): Json<AutomationRequest>,
 ) -> Result<Json<AutomationReceipt>, ApiError> {
     product.authorize(&headers)?;
-    Ok(Json(
-        execute(&product.pool, &Actor::owner(), request).await?,
-    ))
+    let actor = Actor::owner_in(crate::workspaces::current(&product.pool).await?);
+    Ok(Json(execute(&product.pool, &actor, request).await?))
 }
 pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<AutomationSnapshot, ApiError> {
     let rules = sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id").bind(&actor.workspace).fetch_all(pool).await?;
