@@ -6,14 +6,12 @@ mod layout;
 mod main_content;
 #[path = "shell/pane.rs"]
 mod pane;
-#[path = "shell/right_pane.rs"]
-mod right_pane;
 #[path = "shell/sidebar.rs"]
 mod sidebar;
 
 use crate::{
     input::TextInput,
-    model::{Availability, FontChoice, FontSize, PAGES, Route, Session},
+    model::{FontChoice, FontSize, PAGES, Route, Session},
     ui::*,
 };
 use gpui::{prelude::*, *};
@@ -25,7 +23,6 @@ actions!(
         GoBack,
         GoForward,
         ToggleSidebar,
-        ToggleEvee,
         Escape,
         Down,
         Up,
@@ -48,7 +45,6 @@ enum Control {
     Forward,
     Search,
     Sidebar,
-    Evee,
     Notifications,
     MarkAllRead,
     Dismiss,
@@ -68,7 +64,7 @@ pub struct Shell {
     profile: crate::profile::Profile,
     path: PathBuf,
     focus: FocusHandle,
-    pane_focus: [FocusHandle; 2],
+    pane_focus: [FocusHandle; 1],
     input: Entity<TextInput>,
     picker_result_focus: Vec<FocusHandle>,
     picker_close_focus: FocusHandle,
@@ -80,10 +76,12 @@ pub struct Shell {
     save_error: bool,
     session_writable: bool,
     resizing: Option<pane::Side>,
-    grip_opacity: [f32; 2],
-    grip_animation: [Option<(Instant, f32, f32)>; 2],
-    pane_visible: [f32; 2],
-    pane_animation: [Option<(Instant, f32, f32)>; 2],
+    grip_opacity: [f32; 1],
+    grip_animation: [Option<(Instant, f32, f32)>; 1],
+    pane_visible: [f32; 1],
+    pane_animation: [Option<(Instant, f32, f32)>; 1],
+    assistant_focus_pending: bool,
+    shell_focus_pending: bool,
     #[cfg(test)]
     titlebar_zoom_requests: usize,
 }
@@ -150,10 +148,10 @@ impl Shell {
                     match event {
                         crate::evee::Navigation::Settings => this.session.navigate(Route::Settings),
                         crate::evee::Navigation::Chat => {
-                            if !this.session.panes[pane::Side::Right.index()].open {
-                                this.toggle_pane(pane::Side::Right);
-                            }
+                            this.session.navigate(Route::Assistant);
+                            this.assistant_focus_pending = true;
                         }
+                        crate::evee::Navigation::List => this.shell_focus_pending = true,
                     }
                     this.save(cx);
                     cx.notify();
@@ -214,12 +212,14 @@ impl Shell {
             _assistant_subscriptions: assistant_subscriptions,
             profile,
             pane_visible,
-            pane_animation: [None; 2],
+            pane_animation: [None; 1],
+            assistant_focus_pending: false,
+            shell_focus_pending: false,
             #[cfg(test)]
             titlebar_zoom_requests: 0,
             path,
             focus,
-            pane_focus: [cx.focus_handle(), cx.focus_handle()],
+            pane_focus: [cx.focus_handle()],
             input,
             picker_result_focus: PAGES.iter().map(|_| cx.focus_handle()).collect(),
             picker_close_focus: cx.focus_handle(),
@@ -231,8 +231,8 @@ impl Shell {
             save_error: !session_writable,
             session_writable,
             resizing: None,
-            grip_opacity: [0.; 2],
-            grip_animation: [None; 2],
+            grip_opacity: [0.; 1],
+            grip_animation: [None; 1],
         };
         shell.restore_update_drafts(cx);
         shell
@@ -258,12 +258,29 @@ impl Shell {
         (
             self.session.current(),
             self.overlays.borrow().active(),
-            self.session.panes[pane::Side::Right.index()].open,
+            false,
         )
     }
     #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
     pub(crate) fn fixture_profile_name(&mut self, name: &str, cx: &mut Context<Self>) {
         self.profile.name = name.into();
+        cx.notify();
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_chat(&mut self, populated: bool, cx: &mut Context<Self>) {
+        self.session.navigate(Route::Assistant);
+        self.assistant
+            .update(cx, |assistant, cx| assistant.fixture_chat(populated, cx));
+        cx.notify();
+    }
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_models(&mut self, cx: &mut Context<Self>) {
+        self.assistant
+            .update(cx, |assistant, cx| assistant.fixture_models(cx));
         cx.notify();
     }
 
@@ -374,6 +391,10 @@ impl Shell {
                 window.focus(&self.focus, cx);
             }
             Control::Navigate(route) => {
+                if route == Route::Assistant {
+                    self.assistant
+                        .update(cx, |assistant, cx| assistant.show_list(cx));
+                }
                 self.session.navigate(route);
                 self.overlays.borrow_mut().dismiss(window, cx);
                 window.focus(&self.focus, cx);
@@ -388,7 +409,6 @@ impl Shell {
                 self.focus_picker(window, cx);
             }
             Control::Sidebar => self.toggle_pane(pane::Side::Left),
-            Control::Evee => self.toggle_pane(pane::Side::Right),
             Control::Font(font) => self.session.font = font,
             Control::FontSize(size) => {
                 self.session.font_size = size;
@@ -461,12 +481,8 @@ impl Shell {
             cx,
         );
         match control {
-            Control::Sidebar | Control::Evee => button.role(accesskit::Role::Switch).aria_toggled(
-                if if matches!(control, Control::Sidebar) {
-                    self.session.panes[pane::Side::Left.index()].open
-                } else {
-                    self.session.panes[pane::Side::Right.index()].open
-                } {
+            Control::Sidebar => button.role(accesskit::Role::Switch).aria_toggled(
+                if self.session.panes[pane::Side::Left.index()].open {
                     accesskit::Toggled::True
                 } else {
                     accesskit::Toggled::False
@@ -746,19 +762,19 @@ impl Render for Shell {
                 .into_any_element();
         }
         if reduced_motion() {
-            for index in 0..2 {
+            for index in 0..self.pane_visible.len() {
                 if let Some((_, _, to)) = self.grip_animation[index].take() {
                     self.grip_opacity[index] = to;
                 }
             }
-            for index in 0..2 {
+            for index in 0..self.pane_visible.len() {
                 if let Some((_, _, to)) = self.pane_animation[index].take() {
                     self.pane_visible[index] = to;
                 }
             }
             self.palette_transition = None;
         }
-        for index in 0..2 {
+        for index in 0..self.pane_visible.len() {
             if let Some((start, from, to)) = self.grip_animation[index] {
                 let t = (start.elapsed().as_secs_f32() / (HOVER_MS as f32 / 1000.)).min(1.);
                 self.grip_opacity[index] = from + (to - from) * t;
@@ -769,7 +785,7 @@ impl Render for Shell {
                 }
             }
         }
-        for index in 0..2 {
+        for index in 0..self.pane_visible.len() {
             if let Some((start, from, to)) = self.pane_animation[index] {
                 let t = (start.elapsed().as_secs_f32() / (PANEL_MS as f32 / 1000.)).min(1.);
                 self.pane_visible[index] = from + (to - from) * (1. - (1. - t).powi(3));
@@ -797,17 +813,22 @@ impl Render for Shell {
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
         let active_overlay = self.overlays.borrow().active();
+        if self.assistant_focus_pending {
+            self.assistant_focus_pending = false;
+            let focus = self.assistant.read(cx).composer_focus(cx);
+            window.defer(cx, move |window, cx| window.focus(&focus, cx));
+        }
+        if self.shell_focus_pending {
+            self.shell_focus_pending = false;
+            let focus = self.focus.clone();
+            window.defer(cx, move |window, cx| window.focus(&focus, cx));
+        }
         let content = match self.session.current() {
             Route::Automations => self.automations.clone().into_any_element(),
             Route::Tickets => self.tickets.clone().into_any_element(),
             Route::Agents => self.tickets.update(cx, |tickets, cx| tickets.agents(cx)),
-            Route::Today
-            | Route::Home
-            | Route::Calendar
-            | Route::Library
-            | Route::Apps
-            | Route::Assistant
-            | Route::Settings => self
+            Route::Assistant => self.assistant.clone().into_any_element(),
+            Route::Settings => self
                 .static_page(self.session.current(), cx)
                 .into_any_element(),
         };
@@ -888,9 +909,6 @@ impl Render for Shell {
                     this.dispatch(Control::Sidebar, w, cx)
                 }),
             )
-            .on_action(
-                cx.listener(|this, _: &ToggleEvee, w, cx| this.dispatch(Control::Evee, w, cx)),
-            )
             .on_action(cx.listener(|this, _: &Escape, w, cx| {
                 if !this.overlays.borrow_mut().dismiss(w, cx) {
                     w.focus(&this.focus, cx);
@@ -899,13 +917,16 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|this, _: &FocusNext, w, cx| this.cycle_focus(false, w, cx)))
             .on_action(cx.listener(|this, _: &FocusPrevious, w, cx| this.cycle_focus(true, w, cx)))
-            .child(self.layout_body(
-                self.sidebar(cx).into_any_element(),
-                self.main_area(content).into_any_element(),
-                self.evee(cx).into_any_element(),
-                window,
-                cx,
-            ))
+            .child(
+                self.layout_body(
+                    self.sidebar(cx).into_any_element(),
+                    self.main_area(content, self.session.current() == Route::Assistant)
+                        .into_any_element(),
+                    None,
+                    window,
+                    cx,
+                ),
+            )
             // Header paints after panels so the current space covers the top border.
             .child(
                 div()
@@ -1020,7 +1041,6 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-k", Search, None),
         KeyBinding::new("cmd-,", OpenSettings, Some("Control")),
         KeyBinding::new("cmd-b", ToggleSidebar, Some("Control")),
-        KeyBinding::new("cmd-shift-e", ToggleEvee, Some("Control")),
         KeyBinding::new("escape", Escape, Some("Control")),
         KeyBinding::new("tab", FocusNext, Some("Control")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("Control")),
@@ -1080,7 +1100,7 @@ mod interaction_tests {
         let back = cx.debug_bounds("back").unwrap().center();
         double_click(cx, back);
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Today);
+            assert_eq!(shell.session.current(), Route::Assistant);
             assert_eq!(shell.titlebar_zoom_requests, 0);
         });
         let forward = cx.debug_bounds("forward").unwrap().center();
@@ -1152,32 +1172,26 @@ mod interaction_tests {
                 "title at width {width}"
             );
             let mut badge_right: Option<f32> = None;
-            for index in 1..=9 {
+            for index in 1..=4 {
                 let badge = cx
-                    .debug_bounds(match index {
-                        1 => "sidebar-badge-1",
-                        2 => "sidebar-badge-2",
-                        3 => "sidebar-badge-3",
-                        4 => "sidebar-badge-4",
-                        5 => "sidebar-badge-5",
-                        6 => "sidebar-badge-6",
-                        7 => "sidebar-badge-7",
-                        8 => "sidebar-badge-8",
-                        _ => "sidebar-badge-9",
-                    })
+                    .debug_bounds(
+                        [
+                            "sidebar-badge-1",
+                            "sidebar-badge-2",
+                            "sidebar-badge-3",
+                            "sidebar-badge-4",
+                        ][index - 1],
+                    )
                     .unwrap();
                 let label = cx
-                    .debug_bounds(match index {
-                        1 => "sidebar-label-1",
-                        2 => "sidebar-label-2",
-                        3 => "sidebar-label-3",
-                        4 => "sidebar-label-4",
-                        5 => "sidebar-label-5",
-                        6 => "sidebar-label-6",
-                        7 => "sidebar-label-7",
-                        8 => "sidebar-label-8",
-                        _ => "sidebar-label-9",
-                    })
+                    .debug_bounds(
+                        [
+                            "sidebar-label-1",
+                            "sidebar-label-2",
+                            "sidebar-label-3",
+                            "sidebar-label-4",
+                        ][index - 1],
+                    )
                     .unwrap();
                 assert!(
                     right(label) + 8. <= f32::from(badge.origin.x),
@@ -1206,7 +1220,7 @@ mod interaction_tests {
         let (shell, cx) = cx.add_window_view(|window, cx| {
             Shell::fixture(dir.path().join("session.json"), window, cx)
         });
-        for number in 1..=9 {
+        for number in 1..=4 {
             cx.simulate_keystrokes(&format!("cmd-{number}"));
             shell.read_with(cx, |shell, _| {
                 assert_eq!(
@@ -1217,11 +1231,11 @@ mod interaction_tests {
         }
         cx.simulate_keystrokes("cmd-alt-left");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Library)
+            assert_eq!(shell.session.current(), Route::Agents)
         });
         cx.simulate_keystrokes("cmd-alt-right");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Apps)
+            assert_eq!(shell.session.current(), Route::Automations)
         });
         cx.simulate_keystrokes("cmd-,");
         shell.read_with(cx, |shell, _| {

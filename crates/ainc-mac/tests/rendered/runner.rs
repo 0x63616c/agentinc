@@ -1,6 +1,5 @@
 use crate::ui::{
-    CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, RIGHT_PANE_CONTENT_INSET, SETTINGS_INSET,
-    SETTINGS_ROW_HEIGHT, type_size,
+    CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, SETTINGS_INSET, SETTINGS_ROW_HEIGHT, type_size,
 };
 use crate::{
     input,
@@ -18,12 +17,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 // Check actual pixels in independent shell regions, rather than trusting scene/AX nodes.
 // Coordinates are logical pixels; thresholds are deliberately below normal text contrast.
-fn regions(
-    width: u32,
-    height: u32,
-    evee: bool,
-    dimmed: bool,
-) -> Vec<(&'static str, [u32; 4], u8, usize)> {
+fn regions(width: u32, height: u32, dimmed: bool) -> Vec<(&'static str, [u32; 4], u8, usize)> {
     let text = if dimmed { 35 } else { 90 };
     let border = if dimmed { 7 } else { 20 };
     let mut regions = vec![
@@ -55,38 +49,16 @@ fn regions(
         ),
     ];
     for (index, (name, group_offset)) in [
-        ("Today", 0),
         ("Tickets", 0),
-        ("Calendar", 0),
         ("Assistant", 0),
         ("Agents", 12),
         ("Automations", 12),
-        ("Home", 24),
-        ("Library", 24),
-        ("My apps", 24),
     ]
     .into_iter()
     .enumerate()
     {
         let y = 115 + index as u32 * 34 + group_offset;
         regions.push((name, [20, y, 165, y + 28], text, 35));
-    }
-    if evee {
-        regions.extend([
-            ("Evee header", [width - 250, 56, width - 20, 90], text, 50),
-            (
-                "Evee composer",
-                [width - 244, height - 121, width - 30, height - 82],
-                if dimmed { 20 } else { 60 },
-                30,
-            ),
-            (
-                "Evee border",
-                [width - 266, 110, width - 264, height - 30],
-                border,
-                100,
-            ),
-        ]);
     }
     regions
 }
@@ -176,12 +148,11 @@ impl Suite {
         let probes = regions(
             width,
             height,
-            evee,
             overlay.is_some_and(|o| o == Overlay::Search || o.is_dialog()),
         );
         check_pixels(image.as_raw(), image.width(), scale, &probes)
             .map_err(|e| anyhow::anyhow!("{name}: {e}"))?;
-        if name == "initial" || name == "route-1-0" {
+        if name == "route-1-0" {
             self.check_shell_geometry()?;
         }
         if name.starts_with("ticket-field-") {
@@ -198,7 +169,7 @@ impl Suite {
                 f32::from(second.origin.x),
             )?;
         }
-        if name == "route-0-1" || name == "route-1-1" {
+        if name == "route-0-0" || name == "route-1-0" {
             let button = self.bounds("tickets.create")?;
             near(
                 "shared regular Button height",
@@ -310,6 +281,10 @@ impl Suite {
             f32::from(row.size.height) >= SETTINGS_ROW_HEIGHT - GEOMETRY_TOLERANCE,
             "{label}: SettingsRow is shorter than its shared minimum"
         );
+        ensure!(
+            f32::from(text.size.width) >= 150.,
+            "{label}: SettingsRow label collapsed to a narrow column"
+        );
         near(
             &format!("{label} SettingsRow label inset"),
             f32::from(text.origin.x - row.origin.x),
@@ -366,23 +341,11 @@ impl Suite {
             f32::from(content.origin.y - main.origin.y),
             PAGE_X,
         )?;
-        let right = self.bounds("right-pane")?;
-        near(
-            "status bar bottom edge",
-            f32::from(status.origin.y + status.size.height),
-            f32::from(right.origin.y + right.size.height),
-        )?;
-        let body = self.bounds("right-content")?;
-        near(
-            "right content left inset",
-            f32::from(body.origin.x - right.origin.x),
-            RIGHT_PANE_CONTENT_INSET,
-        )?;
-        near(
-            "right content trailing inset",
-            f32::from(right.origin.x + right.size.width - body.origin.x - body.size.width),
-            RIGHT_PANE_CONTENT_INSET,
-        )
+        ensure!(
+            self.bounds("right-pane").is_err(),
+            "removed Evee pane visible"
+        );
+        Ok(())
     }
 }
 
@@ -417,7 +380,7 @@ pub fn run() -> Result<()> {
         output,
         count: 0,
     };
-    suite.capture("initial", Route::Today, None, true)?;
+    suite.capture("initial", Route::Assistant, None, false)?;
     suite.check_profile_row_geometry()?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_profile_name(
@@ -425,7 +388,7 @@ pub fn run() -> Result<()> {
             cx,
         );
     })?;
-    suite.capture("profile-long-name", Route::Today, None, true)?;
+    suite.capture("profile-long-name", Route::Assistant, None, false)?;
     suite.check_profile_row_geometry()?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_profile_name("QA Profile", cx);
@@ -436,7 +399,7 @@ pub fn run() -> Result<()> {
         None::<MouseButton>,
         Modifiers::default(),
     );
-    suite.capture("hover-tickets", Route::Today, None, true)?;
+    suite.capture("hover-tickets", Route::Assistant, None, false)?;
     suite.cx.simulate_mouse_move(
         suite.window.into(),
         point(px(500.), px(500.)),
@@ -462,51 +425,51 @@ pub fn run() -> Result<()> {
             );
         }
         for (index, route) in [
-            Route::Today,
             Route::Tickets,
-            Route::Calendar,
             Route::Assistant,
             Route::Agents,
             Route::Automations,
-            Route::Home,
-            Route::Library,
-            Route::Apps,
         ]
         .into_iter()
         .enumerate()
         {
             suite.keys(&format!("cmd-{}", index + 1));
-            suite.capture(&format!("route-{round}-{index}"), route, None, true)?;
+            suite.capture(&format!("route-{round}-{index}"), route, None, false)?;
             if round < 2 && route == Route::Tickets {
                 suite.click_selector("tickets.create")?;
                 suite.capture(
                     &format!("ticket-field-{round}"),
                     route,
                     Some(Overlay::AddTicket),
-                    true,
+                    false,
                 )?;
                 suite.keys("escape");
             }
         }
         suite.keys("cmd-k");
         if round == 0 {
-            suite.capture("search-empty", Route::Apps, Some(Overlay::Search), true)?;
+            suite.capture(
+                "search-empty",
+                Route::Automations,
+                Some(Overlay::Search),
+                false,
+            )?;
         }
         suite.cx.simulate_input(window.into(), "settings");
         suite.capture(
             &format!("search-{round}"),
-            Route::Apps,
+            Route::Automations,
             Some(Overlay::Search),
-            true,
+            false,
         )?;
         suite.keys("enter");
-        suite.capture(&format!("settings-{round}"), Route::Settings, None, true)?;
-        suite.keys("cmd-6");
+        suite.capture(&format!("settings-{round}"), Route::Settings, None, false)?;
+        suite.keys("cmd-4");
         suite.capture(
             &format!("automations-{round}"),
             Route::Automations,
             None,
-            true,
+            false,
         )?;
         if round < 2 {
             suite.click_selector("automations.create")?;
@@ -514,29 +477,44 @@ pub fn run() -> Result<()> {
                 &format!("automation-fields-{round}"),
                 Route::Automations,
                 None,
-                true,
+                false,
             )?;
         }
     }
-    suite.keys("cmd-2");
-    suite.settle()?;
-    // Add Ticket is in the shared page header at the smaller window width.
-    suite.click(811., 93.);
-    suite.capture("add-dialog", Route::Tickets, Some(Overlay::AddTicket), true)?;
-    suite.cx.simulate_input(window.into(), "Rendered café 👋");
-    suite.capture("add-typed", Route::Tickets, Some(Overlay::AddTicket), true)?;
-    suite.keys("escape");
-    suite.capture("dialog-dismissed", Route::Tickets, None, true)?;
-    suite.keys("cmd-k");
-    suite.capture("search-open", Route::Tickets, Some(Overlay::Search), true)?;
-    suite.keys("escape cmd-shift-e");
-    suite.capture("evee-hidden", Route::Tickets, None, false)?;
     suite.keys("cmd-1");
-    suite.capture("today-evee-hidden", Route::Today, None, false)?;
-    suite.keys("cmd-shift-e");
-    suite.capture("evee-restored", Route::Today, None, true)?;
+    suite.settle()?;
+    suite.click_selector("tickets.create")?;
+    suite.capture(
+        "add-dialog",
+        Route::Tickets,
+        Some(Overlay::AddTicket),
+        false,
+    )?;
+    suite.cx.simulate_input(window.into(), "Rendered café 👋");
+    suite.capture("add-typed", Route::Tickets, Some(Overlay::AddTicket), false)?;
+    suite.keys("escape");
+    suite.capture("dialog-dismissed", Route::Tickets, None, false)?;
+    suite.keys("cmd-k");
+    suite.capture("search-open", Route::Tickets, Some(Overlay::Search), false)?;
     suite.keys("cmd-,");
-    suite.capture("settings-shortcut", Route::Settings, None, true)?;
+    suite.capture("settings-shortcut", Route::Settings, None, false)?;
+    suite
+        .window
+        .update(&mut suite.cx, |shell, _, cx| shell.fixture_chat(false, cx))?;
+    suite.capture("assistant-new-conversation", Route::Assistant, None, false)?;
+    suite
+        .window
+        .update(&mut suite.cx, |shell, _, cx| shell.fixture_chat(true, cx))?;
+    suite.capture("assistant-conversation", Route::Assistant, None, false)?;
+    suite.click_selector("back-to-conversations")?;
+    suite.capture("assistant-conversation-list", Route::Assistant, None, false)?;
+    suite.keys("cmd-,");
+    suite
+        .window
+        .update(&mut suite.cx, |shell, _, cx| shell.fixture_models(cx))?;
+    suite.capture("settings-model-closed", Route::Settings, None, false)?;
+    suite.click_selector("codex-model-select")?;
+    suite.capture("model-dropdown-open", Route::Settings, None, false)?;
     println!(
         "{} real Metal frames passed, including region-removal negative controls",
         suite.count

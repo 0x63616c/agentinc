@@ -1,5 +1,7 @@
 # Page layout Pilot captures
 
+Archived pre-trim evidence: Today and the Evee side pane shown here were removed in the Assistant full-page navigation change. These images are historical, not current acceptance targets.
+
 These are full native Metal window captures from `gpui-pilot screenshot` at 2×
 backing scale. Each page was opened through its keyboard route shortcut in an
 isolated Pilot session. The companion daemon was unavailable in both sets, so
@@ -13,6 +15,5 @@ captures compare the page chrome and header layout.
 | Automations | [Before](before/1360x828/automations.png) | [After](after/1360x828/automations.png) | [Before](before/1160x728/automations.png) | [After](after/1160x728/automations.png) |
 
 The 1160×728 Pilot launch uses `AGENTINC_PILOT_NARROW=1`; ordinary app launches
-retain their existing window size. The moved `toggle-evee` control remains a
-Switch in the Pilot accessibility snapshot. Pressing ⌘⇧E changed its checked
-state to false, and clicking it changed the state back to true.
+retain their existing window size. The old `toggle-evee` observations below
+the pre-trim baseline no longer apply to the current app.

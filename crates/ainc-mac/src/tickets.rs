@@ -187,58 +187,6 @@ impl TicketsPage {
         })
         .detach();
     }
-    pub fn summary(&self) -> String {
-        if self.error.is_some() {
-            "Tickets unavailable".into()
-        } else if !self.loaded {
-            "Loading Tickets…".into()
-        } else {
-            let count = self
-                .state
-                .tickets
-                .iter()
-                .filter(|t| t.status != TicketStatus::Done)
-                .count();
-            if count == 0 {
-                "All caught up".into()
-            } else {
-                format!(
-                    "{count} open {}",
-                    if count == 1 { "Ticket" } else { "Tickets" }
-                )
-            }
-        }
-    }
-    pub fn agent_summary(&self) -> String {
-        if self.error.is_some() {
-            return "Agents unavailable".into();
-        }
-        let count = self
-            .state
-            .assignees
-            .iter()
-            .filter(|a| a.kind == AssigneeKind::Agent)
-            .count();
-        format!("{count} {}", if count == 1 { "agent" } else { "agents" })
-    }
-    pub fn preview(&self) -> Vec<(i64, String, String)> {
-        if self.error.is_some() {
-            return vec![];
-        }
-        self.state
-            .tickets
-            .iter()
-            .filter(|t| t.status == TicketStatus::InProgress)
-            .chain(
-                self.state
-                    .tickets
-                    .iter()
-                    .filter(|t| t.status == TicketStatus::ToDo),
-            )
-            .take(4)
-            .map(|t| (t.id, t.title.clone(), status_name(t.status).into()))
-            .collect()
-    }
     pub fn select(&mut self, id: i64, cx: &mut Context<Self>) {
         self.selected = Some(id);
         cx.notify();

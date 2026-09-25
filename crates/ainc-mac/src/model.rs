@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
-pub const PANE_WIDTHS: [(f32, f32, f32); 2] = [(150., 320., 216.), (220., 480., 258.)];
+pub const PANE_WIDTHS: [(f32, f32, f32); 1] = [(150., 320., 216.)];
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PanePreference {
@@ -13,24 +13,13 @@ pub struct PanePreference {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Route {
-    Today,
     #[serde(alias = "tasks")]
     Tickets,
     Agents,
     Automations,
-    Home,
-    Calendar,
-    Library,
-    Apps,
     #[serde(rename = "evee", alias = "assistant")]
     Assistant,
     Settings,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Availability {
-    Ready,
-    Planned,
 }
 
 pub struct PageSpec {
@@ -38,79 +27,38 @@ pub struct PageSpec {
     pub title: &'static str,
     pub icon: &'static str,
     pub in_sidebar: bool,
-    pub availability: Availability,
 }
 
 pub const PAGES: &[PageSpec] = &[
-    PageSpec {
-        route: Route::Today,
-        title: "Today",
-        icon: "sun",
-        in_sidebar: true,
-        availability: Availability::Ready,
-    },
     PageSpec {
         route: Route::Tickets,
         title: "Tickets",
         icon: "tasks",
         in_sidebar: true,
-        availability: Availability::Ready,
-    },
-    PageSpec {
-        route: Route::Calendar,
-        title: "Calendar",
-        icon: "calendar",
-        in_sidebar: true,
-        availability: Availability::Planned,
     },
     PageSpec {
         route: Route::Assistant,
         title: "Assistant",
         icon: "spark",
         in_sidebar: true,
-        availability: Availability::Ready,
     },
     PageSpec {
         route: Route::Agents,
         title: "Agents",
         icon: "agents",
         in_sidebar: true,
-        availability: Availability::Ready,
     },
     PageSpec {
         route: Route::Automations,
         title: "Automations",
         icon: "refresh",
         in_sidebar: true,
-        availability: Availability::Ready,
-    },
-    PageSpec {
-        route: Route::Home,
-        title: "Home",
-        icon: "home",
-        in_sidebar: true,
-        availability: Availability::Planned,
-    },
-    PageSpec {
-        route: Route::Library,
-        title: "Library",
-        icon: "photos",
-        in_sidebar: true,
-        availability: Availability::Planned,
-    },
-    PageSpec {
-        route: Route::Apps,
-        title: "My apps",
-        icon: "grid",
-        in_sidebar: true,
-        availability: Availability::Planned,
     },
     PageSpec {
         route: Route::Settings,
         title: "Settings",
         icon: "settings",
         in_sidebar: false,
-        availability: Availability::Ready,
     },
 ];
 
@@ -146,81 +94,6 @@ impl Route {
             .map(|page| page.route)
             .collect()
     }
-    pub fn empty(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Today => (
-                "Your day starts here",
-                "Choose a destination from the sidebar.",
-            ),
-            Self::Automations => ("No Automations yet", "Create a recurring Ticket rule."),
-            Self::Tickets => ("No Tickets yet", "Add a Ticket to get started."),
-            Self::Agents => (
-                "No agents connected",
-                "Agent runs and reviews will appear here.",
-            ),
-            Self::Home => (
-                "Home is not connected",
-                "Home controls are not connected yet.",
-            ),
-            Self::Calendar => (
-                "No calendars connected",
-                "Calendar accounts are not connected yet.",
-            ),
-            Self::Library => (
-                "No photos yet",
-                "Photos and library search are coming later.",
-            ),
-            Self::Apps => ("No apps yet", "Personal apps will appear here."),
-            Self::Assistant => ("No conversations yet", "Start a conversation with Evee."),
-            Self::Settings => ("Settings", "Manage your account and preferences."),
-        }
-    }
-    pub fn planned(self) -> &'static [(&'static str, &'static str)] {
-        match self {
-            Self::Tickets => &[
-                (
-                    "Capture & organize",
-                    "Tickets, assignees and their work log.",
-                ),
-                ("Priorities & due dates", "Keep upcoming work in view."),
-                ("Reviews", "Review work completed with your agents."),
-            ],
-            Self::Agents => &[
-                ("Your agents", "Connected agents and their capabilities."),
-                ("Runs", "Follow active work and inspect its results."),
-                ("Approvals", "A place for decisions that need you."),
-            ],
-            Self::Home => &[
-                ("Rooms & devices", "Your connected home, organized by room."),
-                ("Scenes", "Bring familiar device settings together."),
-                ("Activity", "Recent changes from your home."),
-            ],
-            Self::Calendar => &[
-                ("Agenda", "Upcoming events from connected calendars."),
-                ("Accounts", "Choose which calendars appear here."),
-                ("Planning", "Make room for focused work and everyday life."),
-            ],
-            Self::Library => &[
-                ("Collections", "Organize the things you want to keep."),
-                ("Photos", "Browse connected photo libraries."),
-                ("Search", "Find items across your library."),
-            ],
-            Self::Apps => &[
-                ("Your apps", "Open the tools you use most."),
-                ("Personal tools", "A place for small apps made for you."),
-                ("Connections", "Manage the services those tools use."),
-            ],
-            Self::Assistant => &[
-                (
-                    "Conversations",
-                    "Return to conversations with your assistant.",
-                ),
-                ("Context", "Choose what Evee can help you with."),
-                ("Actions", "Review proposed actions before they run."),
-            ],
-            _ => &[],
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -232,7 +105,7 @@ pub struct Router {
 impl Default for Router {
     fn default() -> Self {
         Self {
-            current: Route::Today,
+            current: Route::Assistant,
             back: vec![],
             forward: vec![],
         }
@@ -317,7 +190,7 @@ impl FontSize {
 pub struct Session {
     pub schema_version: u32,
     router: Router,
-    pub panes: [PanePreference; 2],
+    pub panes: [PanePreference; 1],
     pub font: FontChoice,
     pub font_size: FontSize,
 }
@@ -326,16 +199,10 @@ impl Default for Session {
         Self {
             schema_version: 1,
             router: Router::default(),
-            panes: [
-                PanePreference {
-                    open: true,
-                    width: PANE_WIDTHS[0].2,
-                },
-                PanePreference {
-                    open: true,
-                    width: PANE_WIDTHS[1].2,
-                },
-            ],
+            panes: [PanePreference {
+                open: true,
+                width: PANE_WIDTHS[0].2,
+            }],
             font: FontChoice::System,
             font_size: FontSize::Default,
         }
@@ -372,16 +239,11 @@ impl Session {
                 }
             }
         } else {
-            for (index, open_key, width_key) in
-                [(0, "sidebar", "sidebar_width"), (1, "evee", "evee_width")]
-            {
-                if let Some(open) = value.get(open_key).and_then(|v| v.as_bool()) {
-                    session.panes[index].open = open;
-                }
-                if let Some(width) = value.get(width_key).and_then(|v| v.as_f64()) {
-                    session.panes[index].width =
-                        (width as f32).clamp(PANE_WIDTHS[index].0, PANE_WIDTHS[index].1);
-                }
+            if let Some(open) = value.get("sidebar").and_then(|v| v.as_bool()) {
+                session.panes[0].open = open;
+            }
+            if let Some(width) = value.get("sidebar_width").and_then(|v| v.as_f64()) {
+                session.panes[0].width = (width as f32).clamp(PANE_WIDTHS[0].0, PANE_WIDTHS[0].1);
             }
         }
         if let Some(font) = value
@@ -396,11 +258,22 @@ impl Session {
         {
             session.font_size = font_size;
         }
-        if let Some(router) = value
-            .get("router")
-            .and_then(|v| serde_json::from_value::<Router>(v.clone()).ok())
-        {
-            session.router = router;
+        if let Some(router) = value.get("router").and_then(|v| v.as_object()) {
+            session.router.current = router
+                .get("current")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or(Route::Assistant);
+            for (key, history) in [
+                ("back", &mut session.router.back),
+                ("forward", &mut session.router.forward),
+            ] {
+                if let Some(saved) = router.get(key).and_then(|v| v.as_array()) {
+                    *history = saved
+                        .iter()
+                        .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                        .collect();
+                }
+            }
         } else if let Some(tabs) = value.get("tabs").and_then(|v| v.as_array()) {
             let active = value.get("active").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
             let selected = tabs
@@ -486,16 +359,11 @@ mod tests {
     use super::*;
     #[test]
     fn catalogue_and_history() {
-        assert_eq!(PAGES.len(), 10);
+        assert_eq!(PAGES.len(), 5);
         for route in [
-            Route::Today,
             Route::Tickets,
             Route::Agents,
             Route::Automations,
-            Route::Home,
-            Route::Calendar,
-            Route::Library,
-            Route::Apps,
             Route::Assistant,
             Route::Settings,
         ] {
@@ -503,10 +371,10 @@ mod tests {
         }
         let mut s = Session::default();
         s.navigate(Route::Tickets);
-        s.navigate(Route::Home);
+        s.navigate(Route::Agents);
         s.go(false);
         assert_eq!(s.current(), Route::Tickets);
-        s.navigate(Route::Library);
+        s.navigate(Route::Automations);
         assert!(!s.can_go(true));
         assert_eq!(Session::from_json(&serde_json::to_string(&s).unwrap()), s);
     }
@@ -520,15 +388,10 @@ mod tests {
         assert_eq!(
             sidebar,
             [
-                Route::Today,
                 Route::Tickets,
-                Route::Calendar,
                 Route::Assistant,
                 Route::Agents,
                 Route::Automations,
-                Route::Home,
-                Route::Library,
-                Route::Apps,
             ]
         );
         for (index, route) in sidebar.into_iter().enumerate() {
@@ -545,14 +408,27 @@ mod tests {
         assert_eq!(s.current(), Route::Assistant);
         assert!(!s.panes[0].open);
         assert_eq!(s.font, FontChoice::HelveticaNeue);
-        assert_eq!(s.panes[1].width, 390.);
+        assert_eq!(s.panes.len(), 1);
         assert_eq!(
             serde_json::to_string(&Route::Assistant).unwrap(),
             "\"evee\""
         );
         let unknown =
             Session::from_json(r#"{"tabs":["future"],"font":"helvetica_neue","sidebar":false}"#);
-        assert_eq!(unknown.current(), Route::Today);
+        assert_eq!(unknown.current(), Route::Assistant);
+        let removed = Session::from_json(
+            r#"{"router":{"current":"today","back":["home"],"forward":[]},"panes":[{"open":false,"width":286},{"open":true,"width":390}]}"#,
+        );
+        assert_eq!(removed.current(), Route::Assistant);
+        assert_eq!(removed.panes[0].width, 286.);
+        assert!(!removed.panes[0].open);
+        assert!(!serde_json::to_string(&removed).unwrap().contains("390"));
+        let retained = Session::from_json(
+            r#"{"router":{"current":"tickets","back":["today","evee"],"forward":["home","agents"]}}"#,
+        );
+        assert_eq!(retained.current(), Route::Tickets);
+        assert_eq!(retained.router.back, vec![Route::Assistant]);
+        assert_eq!(retained.router.forward, vec![Route::Agents]);
         assert_eq!(unknown.font, FontChoice::HelveticaNeue);
         assert!(!unknown.panes[0].open);
     }
@@ -600,7 +476,7 @@ mod tests {
     }
     #[test]
     fn search_and_file_round_trip() {
-        assert_eq!(Route::matching(" HOME "), vec![Route::Home]);
+        assert!(Route::matching(" HOME ").is_empty());
         assert!(Route::matching("zzz").is_empty());
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("session.json");

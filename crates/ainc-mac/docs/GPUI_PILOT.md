@@ -63,11 +63,10 @@ cargo test --locked -p agentinc-os --features rendered-tests --test rendered_she
 python3 crates/ainc-mac/tests/pilot_cli_smoke.py
 ```
 
-`pilot_acceptance` launches the actual app executable with isolated UI, daemon discovery, import/profile and title variables and a fresh private driver session. Its only UI operations/assertions use the socket driver. It follows Search → Tickets → Add Ticket → Unicode title → Create, checks the resulting Ticket row, four statuses, assignee changes, Comments, agent registration and Today links, exercises stale refs, overlay rejection, selection/undo, a concurrent wait and a deadline, and checks screenshot pixels in independent shell regions. Artifacts and small-sample latency distributions are written to `target/pilot-acceptance/`. The test process stops only its own child.
+`pilot_acceptance` launches the actual app executable with isolated UI, daemon discovery, import/profile and title variables and a fresh private driver session. Its only UI operations/assertions use the socket driver. It follows Search → Tickets → Add Ticket → Unicode title → Create, checks the resulting Ticket row, four statuses, assignee changes, Comments, agent registration, and Assistant new-conversation/list navigation; it exercises stale refs, overlay rejection, selection/undo, a concurrent wait and a deadline, and checks screenshot pixels in independent shell regions. Artifacts and small-sample latency distributions are written to `target/pilot-acceptance/`. The test process stops only its own child.
 
-A separate unavailable-service launch verifies that Today reports Tickets unavailable instead of an empty successful read.
-It also injects search input, captures a Metal frame, and checks through WindowServer that the Pilot window stays off screen while the previously frontmost app remains frontmost. The separate CLI smoke opts into visibility for its native OS-window check.
+The separate CLI smoke opts into visibility for its native OS-window check.
 
-The existing 38-frame `rendered_shell` suite remains the broader capture-integrity gate. Separate OS acceptance is recorded in `docs/verification/GPUI_PILOT.md`; in-process tests do not prove native menus, OS prompts, screen-reader behavior or IME composition.
+The `rendered_shell` suite remains the broader capture-integrity gate. Separate OS acceptance is recorded in `docs/verification/GPUI_PILOT.md`; in-process tests do not prove native menus, OS prompts, screen-reader behavior or IME composition.
 
 Out of scope: drag/hover/scroll commands, broad component coverage, MCP, Jev, model policy, multiwindow selection, stable refs across frames, request deduplication, Linux pixels, publishing and UI redesign.

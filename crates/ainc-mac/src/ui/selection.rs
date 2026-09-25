@@ -41,6 +41,7 @@ pub fn settings_row(
         .child(
             column()
                 .debug_selector(move || format!("settings.row.{label}.label"))
+                .flex_1()
                 .min_w_0()
                 .gap(px(3.))
                 .child(div().font_weight(FontWeight::MEDIUM).child(label))

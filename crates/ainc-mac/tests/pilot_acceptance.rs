@@ -99,7 +99,6 @@ fn screenshot(client: &mut Client, name: &str, output: &std::path::Path) -> Resu
         ("header", [150, 10, 1350, 40]),
         ("sidebar", [20, 110, 165, 390]),
         ("profile", [15, 735, 170, 812]),
-        ("Evee", [1110, 56, 1340, 90]),
     ] {
         let mut bright = 0;
         for y in (y0 as f32 * scale) as u32..(y1 as f32 * scale) as u32 {
@@ -334,16 +333,6 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     act(&mut client, "tickets.status.in_progress", None)?;
     wait_disabled(&mut client, "tickets.status.in_progress")?;
     screenshot(&mut client, "ticket-assignee", &output)?;
-    act(&mut client, "nav.today", None)?;
-    let today_id = ticket_id.replacen("ticket.", "today.ticket.", 1);
-    wait(
-        &mut client,
-        Condition::Present {
-            author_id: today_id.clone(),
-        },
-    )?;
-    screenshot(&mut client, "today-tickets", &output)?;
-    act(&mut client, &today_id, None)?;
     act(&mut client, "tickets.status.done", None)?;
     wait_disabled(&mut client, "tickets.status.done")?;
     act(&mut client, "tickets.status.to_do", None)?;
@@ -497,6 +486,23 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     act(&mut client, "updates.daily", None)?;
     ensure!(snap(&mut client)?.by_id("updates.daily")?.checked == Some(true));
     screenshot(&mut client, "update-settings", &output)?;
+    act(&mut client, "nav.assistant", None)?;
+    screenshot(&mut client, "assistant-conversations", &output)?;
+    act(&mut client, "new-chat", None)?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "back-to-conversations".into(),
+        },
+    )?;
+    screenshot(&mut client, "assistant-new-conversation", &output)?;
+    act(&mut client, "back-to-conversations", None)?;
+    wait(
+        &mut client,
+        Condition::Present {
+            author_id: "new-chat".into(),
+        },
+    )?;
     let metrics = serde_json::json!({
         "snapshot": latency(&mut client, Command::Snapshot, 100)?,
         "press_and_committed_frame": latency(&mut client, Command::Press { key: "escape".into() }, 50)?,
@@ -507,7 +513,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         serde_json::to_vec_pretty(&metrics)?,
     )?;
     println!(
-        "Tickets, Comments, assignee, four states and Today passed via socket + GPUI dispatch. {metrics}"
+        "Tickets, Comments, assignee, four states and Assistant new-conversation navigation passed via socket + GPUI dispatch. {metrics}"
     );
     client
         .call(Command::Press {
@@ -520,90 +526,5 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         std::thread::sleep(Duration::from_millis(20));
     }
     ensure!(!manifest.exists(), "normal quit left session endpoints");
-    Ok(())
-}
-
-#[test]
-fn today_read_failure_is_unavailable_not_empty() -> Result<()> {
-    fs::create_dir_all(".local")?;
-    let temporary = tempfile::Builder::new()
-        .prefix("u")
-        .tempdir_in(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))?;
-    let directory = temporary.path().canonicalize()?;
-    let pilot = directory.join("s");
-    let output = PathBuf::from("target/pilot-acceptance");
-    fs::create_dir_all(&output)?;
-    fs::write(
-        directory.join("owner-token"),
-        "isolated-unavailable-fixture",
-    )?;
-    let os_check = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/pilot_hidden_acceptance.swift"
-    );
-    let frontmost = Process::new("swift")
-        .args([os_check, "frontmost"])
-        .output()?;
-    ensure!(frontmost.status.success(), "frontmost OS probe failed");
-    let frontmost = String::from_utf8(frontmost.stdout)?.trim().to_owned();
-    let mut app = App(Process::new(env!("CARGO_BIN_EXE_agentinc-os"))
-        .args(["--gpui-pilot-session", pilot.to_str().unwrap()])
-        .env("AGENTINC_SESSION_PATH", directory.join("session.json"))
-        .env("AINC_DISCOVERY_FILE", directory.join("api-url"))
-        .env("AINC_TOKEN_FILE", directory.join("owner-token"))
-        .env("AINC_DAEMON_URL", "http://127.0.0.1:1")
-        .env("AINC_LEGACY_DIR", directory.join("legacy"))
-        .env("AGENTINC_CODEX_HOME", directory.join("codex"))
-        .env("AGENTINC_WINDOW_TITLE", "Agentinc Unavailable Acceptance")
-        .stdout(Stdio::null())
-        .stderr(fs::File::create(output.join("unavailable.log"))?)
-        .spawn()?);
-    let manifest = pilot.join("instance.json");
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !manifest.exists() {
-        ensure!(app.0.try_wait()?.is_none(), "unavailable fixture exited");
-        ensure!(Instant::now() < deadline, "startup timeout");
-        std::thread::yield_now();
-    }
-    let mut client = Client::connect(&manifest)?;
-    wait(
-        &mut client,
-        Condition::Name {
-            author_id: "today.tickets.summary".into(),
-            equals: "Tickets unavailable".into(),
-        },
-    )?;
-    let snapshot = snap(&mut client)?;
-    ensure!(
-        !snapshot
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("All caught up"))
-    );
-    screenshot(&mut client, "today-unavailable", &output)?;
-    act(&mut client, "shell.search", None)?;
-    act(&mut client, "search.input", Some("Tickets"))?;
-    wait(
-        &mut client,
-        Condition::Value {
-            author_id: "search.input".into(),
-            equals: "Tickets".into(),
-        },
-    )?;
-    screenshot(&mut client, "hidden-input", &output)?;
-    let os_result = Process::new("swift")
-        .args([
-            os_check,
-            &app.0.id().to_string(),
-            "Agentinc Unavailable Acceptance",
-            &frontmost,
-        ])
-        .output()?;
-    ensure!(
-        os_result.status.success(),
-        "hidden WindowServer check failed: {}",
-        String::from_utf8_lossy(&os_result.stderr)
-    );
-    println!("{}", String::from_utf8_lossy(&os_result.stdout));
     Ok(())
 }

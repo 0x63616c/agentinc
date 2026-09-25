@@ -4,22 +4,11 @@ use crate::model::PANE_WIDTHS;
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum Side {
     Left,
-    Right,
 }
 
 impl Side {
     pub(super) fn index(self) -> usize {
-        match self {
-            Self::Left => 0,
-            Self::Right => 1,
-        }
-    }
-
-    fn other(self) -> Self {
-        match self {
-            Self::Left => Self::Right,
-            Self::Right => Self::Left,
-        }
+        0
     }
 
     fn bounds(self) -> (f32, f32, f32) {
@@ -46,22 +35,10 @@ impl Shell {
     pub(super) fn resize_handle(&self, side: Side, cx: &mut Context<Self>) -> Stateful<Div> {
         let index = side.index();
         div()
-            .id(if side == Side::Left {
-                "left-resizer"
-            } else {
-                "right-resizer"
-            })
-            .accessibility_id(if side == Side::Left {
-                "pane.left.resize"
-            } else {
-                "pane.right.resize"
-            })
+            .id("left-resizer")
+            .accessibility_id("pane.left.resize")
             .role(accesskit::Role::Splitter)
-            .aria_label(if side == Side::Left {
-                "Resize left pane"
-            } else {
-                "Resize right pane"
-            })
+            .aria_label("Resize left pane")
             .on_hover(cx.listener(move |this, hovered, _, cx| {
                 this.grip_animation[index] = Some((
                     Instant::now(),
@@ -96,8 +73,8 @@ impl Shell {
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                 let current = this.session.panes[index].width;
                 let value = match event.keystroke.key.as_str() {
-                    "left" => current + if side == Side::Right { 20. } else { -20. },
-                    "right" => current + if side == Side::Right { -20. } else { 20. },
+                    "left" => current - 20.,
+                    "right" => current + 20.,
                     "home" => side.bounds().2,
                     _ => return,
                 };
@@ -118,26 +95,12 @@ impl Shell {
     }
 
     pub(super) fn pane_limit(&self, side: Side, window: &Window) -> f32 {
-        let other = if self.session.panes[side.other().index()].open {
-            self.pane_visible[side.other().index()]
-        } else {
-            0.
-        };
-        let gap = if self.session.panes[Side::Right.index()].open {
-            PANEL_GAP
-        } else {
-            0.
-        };
-        (f32::from(window.viewport_size().width) - other - 378. - gap)
-            .clamp(side.bounds().0, side.bounds().1)
+        (f32::from(window.viewport_size().width) - 378.).clamp(side.bounds().0, side.bounds().1)
     }
 
     pub(super) fn resize_from_pointer(&mut self, position: Point<Pixels>, window: &mut Window) {
         let Some(side) = self.resizing else { return };
-        let width = match side {
-            Side::Left => f32::from(position.x),
-            Side::Right => f32::from(window.viewport_size().width - position.x) - 8.,
-        };
+        let width = f32::from(position.x);
         self.set_pane_width(side, width, window);
     }
 

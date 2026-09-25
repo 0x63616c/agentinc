@@ -42,6 +42,7 @@ pub struct AssistantPage {
     input: Entity<TextInput>,
     conversations: Vec<Conversation>,
     conversation: Option<i64>,
+    show_chat: bool,
     rename_input: Entity<TextInput>,
     form_error: Option<String>,
     cancel_focus: FocusHandle,
@@ -49,6 +50,7 @@ pub struct AssistantPage {
     account: Option<String>,
     models: Vec<assistant::Model>,
     model: Option<String>,
+    model_menu_open: bool,
     credentials_busy: bool,
     login_cancel: Option<Arc<AtomicBool>>,
     connection_error: Option<String>,
@@ -64,6 +66,7 @@ pub struct AssistantPage {
 pub enum Navigation {
     Settings,
     Chat,
+    List,
 }
 impl EventEmitter<Navigation> for AssistantPage {}
 impl AssistantPage {
@@ -163,6 +166,7 @@ impl AssistantPage {
             input,
             conversations,
             conversation,
+            show_chat: false,
             rename_input,
             form_error: None,
             cancel_focus: cx.focus_handle(),
@@ -170,6 +174,7 @@ impl AssistantPage {
             account: None,
             models: vec![],
             model,
+            model_menu_open: false,
             credentials_busy: !cfg!(test),
             login_cancel: None,
             connection_error: None,
@@ -329,31 +334,69 @@ impl AssistantPage {
                 s.child(settings_divider()).child(settings_row(
                     "Model",
                     "Choose the Codex model for conversations.",
-                    settings_segments(
-                        std::iter::once(settings_segment(
-                            "model-default",
-                            "Codex default",
-                            self.model.is_none(),
-                            enabled,
-                            |this: &mut Self, _, cx| this.select_model(None, cx),
-                            cx,
-                        ))
-                        .chain(self.models.iter().enumerate().map(
-                            |(index, model)| {
-                                let id = model.id.clone();
-                                settings_segment(
-                                    ("codex-model", index),
-                                    model.name.clone(),
-                                    self.model.as_ref() == Some(&id),
-                                    enabled,
-                                    move |this: &mut Self, _, cx| {
-                                        this.select_model(Some(id.clone()), cx)
-                                    },
-                                    cx,
-                                )
-                            },
-                        )),
-                    ),
+                    column()
+                        .w(px(210.))
+                        .child(
+                            settings_button(
+                                "codex-model-select",
+                                self.model
+                                    .as_ref()
+                                    .and_then(|id| {
+                                        self.models
+                                            .iter()
+                                            .find(|model| &model.id == id)
+                                            .map(|model| model.name.clone())
+                                    })
+                                    .unwrap_or_else(|| "Codex default".into()),
+                                enabled,
+                                |this: &mut Self, _, cx| {
+                                    this.model_menu_open = !this.model_menu_open;
+                                    cx.notify();
+                                },
+                                cx,
+                            )
+                            .w_full()
+                            .justify_between()
+                            .debug_selector(|| "codex-model-select".into())
+                            .child("⌄"),
+                        )
+                        .when(self.model_menu_open, |menu| {
+                            menu.child(
+                                column()
+                                    .mt(px(4.))
+                                    .rounded(px(7.))
+                                    .border_1()
+                                    .border_color(rgb(BORDER))
+                                    .bg(rgb(SURFACE_MENU))
+                                    .child(
+                                        settings_button(
+                                            "model-default",
+                                            "Codex default",
+                                            enabled,
+                                            |this: &mut Self, _, cx| this.select_model(None, cx),
+                                            cx,
+                                        )
+                                        .w_full()
+                                        .justify_start(),
+                                    )
+                                    .children(self.models.iter().enumerate().map(
+                                        |(index, model)| {
+                                            let id = model.id.clone();
+                                            settings_button(
+                                                ("codex-model", index),
+                                                model.name.clone(),
+                                                enabled,
+                                                move |this: &mut Self, _, cx| {
+                                                    this.select_model(Some(id.clone()), cx)
+                                                },
+                                                cx,
+                                            )
+                                            .w_full()
+                                            .justify_start()
+                                        },
+                                    )),
+                            )
+                        }),
                 ))
             })
             .child(settings_divider())
@@ -433,6 +476,7 @@ impl AssistantPage {
         self.model = snapshot.settings.model.filter(|s| !s.is_empty());
     }
     fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
+        self.model_menu_open = false;
         self.mutate(
             move |db| {
                 db.command(Command::SelectModel {
@@ -451,6 +495,7 @@ impl AssistantPage {
             move |db| db.command(Command::SelectConversation { id }),
             move |this, _, cx| {
                 this.conversation = Some(id);
+                this.show_chat = true;
                 this.reload_snapshot();
                 this.overlays.borrow_mut().close();
                 this.input.update(cx, |i, cx| {
@@ -475,6 +520,7 @@ impl AssistantPage {
             },
             |this, id, cx| {
                 this.conversation = Some(id);
+                this.show_chat = true;
                 this.reload_snapshot();
                 this.input.update(cx, |i, cx| {
                     i.reset();
@@ -510,6 +556,7 @@ impl AssistantPage {
                 |this, _, _| {
                     this.overlays.borrow_mut().close();
                     this.form_error = None;
+                    this.show_chat = false;
                 },
                 cx,
             );
@@ -716,6 +763,54 @@ impl AssistantPage {
                     )
             }))
     }
+    pub fn show_list(&mut self, cx: &mut Context<Self>) {
+        self.show_chat = false;
+        cx.emit(Navigation::List);
+        cx.notify();
+    }
+    pub fn composer_focus(&self, cx: &App) -> FocusHandle {
+        self.input.focus_handle(cx)
+    }
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub fn fixture_chat(&mut self, populated: bool, cx: &mut Context<Self>) {
+        self.fixture_models(cx);
+        self.conversation = Some(1);
+        self.conversations = vec![Conversation {
+            id: 1,
+            title: "Planning the day".into(),
+            snippet: "Let's prioritize the work.".into(),
+            updated: "2026-09-24 09:00".into(),
+            updated_at: 1_790_249_400,
+        }];
+        self.turns = if populated {
+            vec![
+                Turn { conversation_id: 1, id: 1, prompt: "What should I focus on today?".into(), response: Some("Let's prioritize the work. Review your open Tickets, then plan the next agent run.".into()), error: None, state: "done".into() },
+                Turn { conversation_id: 1, id: 2, prompt: "Can you help me choose the first one?".into(), response: Some("Yes. Start with the Ticket that is blocking the rest of your plan.".into()), error: None, state: "done".into() },
+            ]
+        } else {
+            vec![]
+        };
+        self.show_chat = true;
+        cx.notify();
+    }
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub fn fixture_models(&mut self, cx: &mut Context<Self>) {
+        self.account = Some("Fixture account".into());
+        self.credentials_busy = false;
+        self.models = vec![
+            assistant::Model {
+                id: "model-one".into(),
+                name: "Codex One".into(),
+            },
+            assistant::Model {
+                id: "model-two".into(),
+                name: "Codex Two".into(),
+            },
+        ];
+        cx.notify();
+    }
     pub fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
         if matches!(
             self.overlays.borrow().active(),
@@ -892,35 +987,46 @@ impl AssistantPage {
             return;
         };
         self.active = Some(id);
-        let request = cx.background_executor().spawn(async move {
-            loop {
-                store.refresh()?;
-                let snapshot = store.snapshot();
-                if snapshot
-                    .turns
-                    .iter()
-                    .find(|t| t.id == id)
-                    .is_none_or(|t| t.state != "queued" && t.state != "running")
-                {
-                    return Ok::<_, anyhow::Error>(());
-                }
-                crate::storage::background(async {
-                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                    Ok(())
-                })?;
-            }
-        });
         cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.reload_snapshot();
-                if let Err(error) = result {
-                    this.error = Some(format!(
-                        "Reply continues on daemon. Refresh to reconnect: {error}"
-                    ));
+            loop {
+                let db = store.clone();
+                let result = cx
+                    .background_executor()
+                    .spawn(async move {
+                        db.refresh()?;
+                        Ok::<_, anyhow::Error>(
+                            db.snapshot()
+                                .turns
+                                .iter()
+                                .find(|t| t.id == id)
+                                .is_none_or(|t| t.state != "queued" && t.state != "running"),
+                        )
+                    })
+                    .await;
+                let done = this
+                    .update(cx, |this, cx| {
+                        this.reload_snapshot();
+                        if let Err(error) = &result {
+                            this.error = Some(format!(
+                                "Reply continues on daemon. Refresh to reconnect: {error}"
+                            ));
+                        }
+                        this.scroll.scroll_to_bottom();
+                        cx.notify();
+                        result.as_ref().copied().unwrap_or(true)
+                    })
+                    .unwrap_or(true);
+                if done {
+                    break;
                 }
+                cx.background_executor()
+                    .spawn(async {
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    })
+                    .await;
+            }
+            let _ = this.update(cx, |this, cx| {
                 this.appearance = Some(Instant::now());
-                this.scroll.scroll_to_bottom();
                 cx.notify();
             });
         })
@@ -1015,15 +1121,37 @@ impl Render for AssistantPage {
             && !self.pending
             && self.store.is_some()
             && !self.input.read(cx).content.trim().is_empty();
+        if !self.show_chat {
+            return column()
+                .id("conversation-list")
+                .size_full()
+                .overflow_y_scroll()
+                .p(px(PAGE_X))
+                .child(self.conversations_view(cx))
+                .into_any_element();
+        }
         column()
             .size_full()
             .min_h_0()
             .gap(px(12.))
+            .p(px(24.))
+            .max_w(px(900.))
+            .mx_auto()
             .child(
                 row()
                     .gap(px(8.))
                     .text_size(type_size(CAPTION_SIZE))
                     .text_color(rgb(MUTED))
+                    .child(
+                        self.action(
+                            "back-to-conversations",
+                            "‹ Conversations",
+                            true,
+                            Self::show_list,
+                            cx,
+                        )
+                        .debug_selector(|| "back-to-conversations".into()),
+                    )
                     .child(
                         div().flex_1().child(
                             self.conversations
@@ -1124,6 +1252,8 @@ impl Render for AssistantPage {
                                 column()
                                     .gap(px(5.))
                                     .p(px(12.))
+                                    .ml_auto()
+                                    .max_w(px(620.))
                                     .rounded(px(10.))
                                     .bg(rgb(HOVER))
                                     .child(
@@ -1143,6 +1273,7 @@ impl Render for AssistantPage {
                                     column()
                                         .gap(px(5.))
                                         .px(px(2.))
+                                        .max_w(px(680.))
                                         .child(
                                             div()
                                                 .text_size(type_size(10.))
@@ -1150,21 +1281,31 @@ impl Render for AssistantPage {
                                                 .child("Evee"),
                                         )
                                         .child(div().text_size(type_size(LABEL_SIZE)).child(reply))
-                                        .child(self.action(
-                                            ("copy", turn.id as u64),
-                                            "Copy reply",
-                                            true,
-                                            {
-                                                let response =
-                                                    turn.response.clone().unwrap_or_default();
-                                                move |_, cx| {
-                                                    cx.write_to_clipboard(
-                                                        ClipboardItem::new_string(response.clone()),
-                                                    )
-                                                }
-                                            },
-                                            cx,
-                                        )),
+                                        .child(
+                                            row().child(
+                                                self.action(
+                                                    ("copy", turn.id as u64),
+                                                    "Copy reply",
+                                                    true,
+                                                    {
+                                                        let response = turn
+                                                            .response
+                                                            .clone()
+                                                            .unwrap_or_default();
+                                                        move |_, cx| {
+                                                            cx.write_to_clipboard(
+                                                                ClipboardItem::new_string(
+                                                                    response.clone(),
+                                                                ),
+                                                            )
+                                                        }
+                                                    },
+                                                    cx,
+                                                )
+                                                .text_size(type_size(CAPTION_SIZE))
+                                                .text_color(rgb(MUTED)),
+                                            ),
+                                        ),
                                 )
                             })
                             .when(self.active == Some(turn.id), |s| {
@@ -1225,6 +1366,7 @@ impl Render for AssistantPage {
                         ),
                     ),
             )
+            .into_any_element()
     }
 }
 

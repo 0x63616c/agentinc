@@ -1,6 +1,6 @@
 # AgentInc
 
-A native macOS workspace built with Rust and GPUI, following the approved Control design. It includes a single tab, navigation, search, panel controls, a saved local session, daemon-backed Tasks and a Codex subscription-backed Evee chat panel and an Assistant conversation library. Agents, home, calendar, library and apps remain intentional placeholders.
+A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents and Automations, with Settings in the footer. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane.
 
 ## Build and run
 
@@ -47,7 +47,7 @@ The ordinary GPUI interaction tests run with `cargo test --locked`. On macOS, ru
 cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
 ```
 
-It captures 38 frames across routes, two window sizes, dialogs and Evee visibility, and asserts that shell regions contain rendered pixels. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
+It captures 39 frames across routes, two window sizes, dialogs and full-page Evee conversations, and asserts that shell regions contain rendered pixels. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
 
 ## Evee and Tasks
 
@@ -65,15 +65,14 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | --- | --- |
 | Cmd+K | Search spaces |
 | Cmd+Option+Left / Right | Back / forward |
-| Cmd+1…9 | Today, Tickets, Calendar, Assistant, Agents, Automations, Home, Library, My apps |
+| Cmd+1…4 | Tickets, Assistant, Agents, Automations |
 | Cmd+, | Settings |
 | Cmd+B | Toggle sidebar |
-| Cmd+Shift+E | Toggle Evee |
 | Escape | Dismiss Search, task dialogs or notifications |
 
-Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag either side pane's divider to resize it; focus a divider and use Left/Right in 20-point steps or Home to reset its width. The profile opens Settings, including persisted font family and size controls that update the whole app immediately. Default type is two points larger than the original Control scale. The notification bell opens an empty notification panel until notifications are connected.
+Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. The profile opens Settings, including persisted font family and size controls that update the whole app immediately. Default type is two points larger than the original Control scale. The notification bell opens an empty notification panel until notifications are connected.
 
-Development sessions save to `~/Library/Application Support/AgentInc Development/session.json`; installed production sessions retain `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/phase-5-distribution.md). Older multi-tab sessions restore the active destination into the single space view; missing or invalid state safely starts on Today. The account name/photo is read locally at runtime and is not bundled.
+Development sessions save to `~/Library/Application Support/AgentInc Development/session.json`; installed production sessions retain `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/phase-5-distribution.md). Older multi-tab sessions restore retained destinations into the single space view; removed destinations and missing or invalid state start on Assistant. The account name/photo is read locally at runtime and is not bundled.
 
 For an isolated session without changing the regular app's state:
 

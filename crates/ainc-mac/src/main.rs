@@ -151,7 +151,6 @@ fn main() {
                     name: "View".into(),
                     items: vec![
                         MenuItem::action("Toggle Sidebar", ToggleSidebar),
-                        MenuItem::action("Toggle Evee", ToggleEvee),
                         MenuItem::action("Back", GoBack),
                         MenuItem::action("Forward", GoForward),
                     ],

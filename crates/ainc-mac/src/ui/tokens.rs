@@ -67,7 +67,6 @@ pub const LIST_ROW_HEIGHT: f32 = 48.;
 pub const DIALOG_WIDTH: f32 = 440.;
 pub const MENU_WIDTH: f32 = 146.;
 pub const MENU_INSET: f32 = 4.;
-pub const RIGHT_PANE_CONTENT_INSET: f32 = 20.;
 // The search icon needs 9 px before it to align its visible edge with header text.
 pub const HEADER_SEARCH_LEFT_INSET: f32 = 9.;
 // The shortcut badge needs only 4 px after it to balance the search control.
@@ -76,10 +75,6 @@ pub const HEADER_SEARCH_RIGHT_INSET: f32 = 4.;
 pub const SIDEBAR_IDENTITY_LEFT_INSET: f32 = 6.5;
 // The workspace label's right edge retains the measured 6 px optical inset.
 pub const SIDEBAR_IDENTITY_RIGHT_INSET: f32 = 6.;
-// The Evee mark keeps its measured 10 px alignment against the pane edge.
-pub const EVEE_HEADER_LEFT_INSET: f32 = 10.;
-// The close control keeps its measured 9 px alignment against the pane edge.
-pub const EVEE_HEADER_RIGHT_INSET: f32 = 9.;
 pub const PANEL_RADIUS: f32 = 14.;
 pub const DIALOG_RADIUS: f32 = 12.;
 pub const MENU_RADIUS: f32 = 6.;
