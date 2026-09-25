@@ -16,6 +16,7 @@ pub struct LocalRuntime {
     temporal: Child,
     pub database_url: String,
     pub config: turnkeel::RuntimeConfig,
+    pub ui_url: String,
 }
 fn port() -> Result<u16> {
     Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
@@ -102,16 +103,20 @@ impl LocalRuntime {
             .spawn()
             .context("start bundled database")?;
         let runtime_port = port()?;
+        let ui_port = port()?;
         let mut temporal_command = command(&resources.join("temporal"), root, "runtime.log")?;
         temporal_command
             .args([
                 "server",
                 "start-dev",
-                "--headless",
                 "--ip",
                 "127.0.0.1",
                 "--port",
                 &runtime_port.to_string(),
+                "--ui-ip",
+                "127.0.0.1",
+                "--ui-port",
+                &ui_port.to_string(),
                 "--namespace",
                 if ainc_release::identity::PRODUCTION {
                     "agentinc"
@@ -144,6 +149,7 @@ impl LocalRuntime {
             postgres,
             temporal,
             database_url: format!("postgres://agentinc:{password}@127.0.0.1:{pg_port}/postgres"),
+            ui_url: format!("http://127.0.0.1:{ui_port}"),
             config: serde_json::from_value(
                 serde_json::json!({"endpoint":format!("http://127.0.0.1:{runtime_port}"),"scope":if ainc_release::identity::PRODUCTION { "agentinc" } else { "agentinc-dev" },"worker_group":if ainc_release::identity::PRODUCTION { "agentinc-personal" } else { "agentinc-development" }}),
             )?,
@@ -220,7 +226,7 @@ pub async fn helper(root: &Path) -> Result<()> {
     use std::io::Write;
     use tokio::io::AsyncReadExt;
     let runtime = LocalRuntime::start(root, &bundled_resources()?).await?;
-    let identity = serde_json::json!({"database_url":runtime.database_url,"config":runtime.config});
+    let identity = serde_json::json!({"database_url":runtime.database_url,"config":runtime.config,"ui_url":runtime.ui_url});
     writeln!(std::io::stdout(), "{}", identity)?;
     std::io::stdout().flush()?;
     let mut ignored = Vec::new();
@@ -234,6 +240,7 @@ pub struct ManagedRuntime {
     lifetime: Option<std::process::ChildStdin>,
     pub database_url: String,
     pub config: turnkeel::RuntimeConfig,
+    pub ui_url: String,
 }
 impl ManagedRuntime {
     pub async fn start(root: PathBuf) -> Result<Self> {
@@ -250,7 +257,7 @@ impl ManagedRuntime {
             let lifetime = child.stdin.take();
             let output = child.stdout.take().context("runtime identity pipe")?;
             let mut line = String::new();
-            let result = (|| -> Result<(String, turnkeel::RuntimeConfig)> {
+            let result = (|| -> Result<(String, turnkeel::RuntimeConfig, String)> {
                 ensure!(
                     std::io::BufReader::new(output).read_line(&mut line)? > 0,
                     "bundled runtime helper exited before readiness"
@@ -262,14 +269,19 @@ impl ManagedRuntime {
                     .context("runtime database")?
                     .to_owned();
                 let config = serde_json::from_value(identity["config"].take())?;
-                Ok((database, config))
+                let ui_url = identity["ui_url"]
+                    .as_str()
+                    .context("runtime UI URL")?
+                    .to_owned();
+                Ok((database, config, ui_url))
             })();
             match result {
-                Ok((database_url, config)) => Ok(Self {
+                Ok((database_url, config, ui_url)) => Ok(Self {
                     child,
                     lifetime,
                     database_url,
                     config,
+                    ui_url,
                 }),
                 Err(error) => {
                     drop(lifetime);

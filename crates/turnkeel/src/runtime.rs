@@ -12,12 +12,38 @@ pub struct RuntimeConfig {
     pub worker_group: String,
 }
 
+/// One run in the runtime's retained history.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct RunRecord {
+    pub id: String,
+    pub run_id: String,
+    pub kind: String,
+    pub status: String,
+    pub started_at: i64,
+    pub closed_at: Option<i64>,
+}
+
+/// A page of runs ordered by start time, newest first.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct RunPage {
+    pub runs: Vec<RunRecord>,
+    pub next_page: Option<String>,
+}
+
 /// The runtime. Owns the connection and runs agents.
 pub struct Runtime {
     engine: Engine,
 }
 
 impl Runtime {
+    /// Read one page of retained runs without starting a worker.
+    pub async fn run_history(
+        config: &RuntimeConfig,
+        status: Option<&str>,
+        page: Option<&str>,
+    ) -> Result<RunPage, Error> {
+        crate::engine::list_workflows(config, status, page).await
+    }
     /// Start an embedded local runtime. Good for development and examples.
     pub async fn local() -> Result<Self, Error> {
         Ok(Self {

@@ -9,6 +9,7 @@ pub mod inference;
 pub mod legacy;
 pub mod product;
 pub mod terminal_sessions;
+pub mod temporal;
 pub mod tickets;
 pub mod workspaces;
 use axum::{
@@ -89,7 +90,8 @@ async fn ticket_contract(Json(ticket): Json<TicketContract>) -> Json<TicketContr
         terminal_sessions::create,
         terminal_sessions::close,
         workspaces::state,
-        workspaces::command
+        workspaces::command,
+        temporal::list
     ),
     components(schemas(Health, Version, TicketContract))
 )]
