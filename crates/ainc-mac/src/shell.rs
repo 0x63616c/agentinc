@@ -760,6 +760,8 @@ impl Shell {
             .aria_label(if self.creating_workspace { "Create workspace" } else { "Search spaces and workspaces" })
             .w(px(520.))
             .overflow_hidden()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(|_, _, cx| cx.stop_propagation())
             .child(
                 row()
                     .h(px(56.))
