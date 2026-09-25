@@ -47,6 +47,9 @@ static NSWindow *window(NSSize size, NSString *title, BOOL closable) {
     NSWindow *result = [[NSWindow alloc] initWithContentRect:rect
         styleMask:NSWindowStyleMaskTitled | (closable ? NSWindowStyleMaskClosable : 0)
         backing:NSBackingStoreBuffered defer:NO];
+    // AincUpdateUI owns each window through a strong property. Closing must not
+    // release it a second time before that property is cleared or replaced.
+    result.releasedWhenClosed = NO;
     result.title = title;
     [result center];
     return result;
