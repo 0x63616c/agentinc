@@ -36,7 +36,7 @@ crates/ainc-mac/dist/AgentInc.app/Contents/MacOS/agentinc-os
 | --- | --- |
 | [`crates/ainc-mac`](crates/ainc-mac) | Native GPUI app and [app guide](crates/ainc-mac/README.md) |
 | [`crates/ainc-daemon`](crates/ainc-daemon) | Product API, state and agent execution |
-| [`crates/ainc-client`](crates/ainc-client), [`crates/ainc-cli`](crates/ainc-cli) | Generated API client and CLI |
+| [`crates/ainc-client`](crates/ainc-client), [`crates/ainc-cli`](crates/ainc-cli) | Generated API client and [installed CLI usage](crates/ainc-cli/README.md) |
 | [`crates/turnkeel`](crates/turnkeel) | Turnkeel Rust agent SDK; overview below |
 
 The [architecture](docs/architecture.md), [decisions](docs/adr) and [runtime design](docs/phase-3-runtime.md) describe how the pieces fit together. [The screenshot recipe](docs/assets/readme/README.md) explains how to regenerate the native window capture.

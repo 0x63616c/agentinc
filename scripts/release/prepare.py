@@ -33,7 +33,7 @@ def main():
     commit = run('git', 'rev-parse', 'HEAD')
     build = run('git', 'rev-list', '--count', 'HEAD')
     env = dict(os.environ, AINC_BUILD_ID=build, AINC_CHANNEL='production', AINC_COMMIT=commit, CARGO_INCREMENTAL='0')
-    command = ['cargo', 'build', '--locked', '-p', 'agentinc-os', '-p', 'ainc-daemon', '-p', 'ainc-release', '--bins']
+    command = ['cargo', 'build', '--locked', '-p', 'agentinc-os', '-p', 'ainc-daemon', '-p', 'ainc-release', '-p', 'ainc-cli', '--bins']
     if args.profile == 'release':
         command.append('--release')
     subprocess.run(command, check=True, env=env)
@@ -48,7 +48,7 @@ def main():
     macos.mkdir(parents=True)
     resources.mkdir()
     target = Path(metadata['target_directory']) / args.profile
-    for binary in ['agentinc-os', 'aincd', 'ainc-update']:
+    for binary in ['agentinc-os', 'aincd', 'ainc-update', 'ainc']:
         shutil.copy2(target / binary, macos / ('AgentInc' if binary == 'agentinc-os' else binary))
     # The already-installed 0.1.0 updater launches this old path after replacement.
     (macos / 'agentinc-os').symlink_to('AgentInc')

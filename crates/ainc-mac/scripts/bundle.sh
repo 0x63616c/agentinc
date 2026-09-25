@@ -4,10 +4,10 @@ cd "$(dirname "$0")/../../.."
 # Debug is sufficient for a local, inspectable first increment. Pass release for optimization.
 profile=${1:-debug}
 case "$profile" in
-  debug) cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release --bins ;;
-  release) cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release --bins --release ;;
+  debug) cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release -p ainc-cli --bins ;;
+  release) cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release -p ainc-cli --bins --release ;;
   automation)
-    cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release --bins -p gpui-pilot-cli --features agentinc-os/automation
+    cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release -p ainc-cli --bins -p gpui-pilot-cli --features agentinc-os/automation
     profile=debug
     ;;
   *) echo 'usage: crates/ainc-mac/scripts/bundle.sh [debug|release|automation]' >&2; exit 2 ;;
@@ -17,6 +17,7 @@ mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 cp "target/$profile/agentinc-os" "$bundle/Contents/MacOS/AgentInc"
 cp "target/$profile/aincd" "$bundle/Contents/MacOS/aincd"
 cp "target/$profile/ainc-update" "$bundle/Contents/MacOS/ainc-update"
+cp "target/$profile/ainc" "$bundle/Contents/MacOS/ainc"
 codesign --force --sign - "$bundle/Contents/MacOS/aincd"
 cp crates/ainc-mac/assets/AppIconDev.icns "$bundle/Contents/Resources/AppIcon.icns"
 version=$(cargo metadata --no-deps --format-version=1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ainc-release"))')

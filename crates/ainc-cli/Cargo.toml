@@ -13,9 +13,18 @@ path = "src/main.rs"
 [dependencies]
 reqwest = { version = "0.13", features = ["json"] }
 ainc-client = { path = "../ainc-client" }
+ainc-release = { path = "../ainc-release" }
+clap_complete = "4"
+tempfile = "3"
+uuid.workspace = true
 anyhow.workspace = true
 clap = { version = "4", features = ["derive"] }
 serde_json.workspace = true
 schemars = "0.8"
 serde.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+ainc-daemon = { path = "../ainc-daemon" }
+axum = "0.8"
+sqlx = { version = "0.8", features = ["postgres"] }
