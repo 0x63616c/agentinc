@@ -25,7 +25,7 @@ def run(*args, **kwargs):
 
 
 def unpack(archive, destination):
-    destination.mkdir(parents=True)
+    destination.mkdir(parents=True, exist_ok=True)
     run('tar', '-xzf', str(archive), '-C', str(destination))
     app = destination / 'AgentInc.app'
     if not app.is_dir():
