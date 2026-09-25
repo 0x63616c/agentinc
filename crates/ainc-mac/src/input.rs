@@ -379,6 +379,10 @@ impl TextInput {
         self.author_id = id.into();
         self
     }
+    pub fn with_placeholder(mut self, placeholder: &str) -> Self {
+        self.placeholder = placeholder.to_owned().into();
+        self
+    }
     pub fn field(placeholder: &str, secret: bool, cx: &mut Context<Self>) -> Self {
         let mut input = Self::new(cx);
         input.placeholder = placeholder.to_owned().into();

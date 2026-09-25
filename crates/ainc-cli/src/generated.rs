@@ -23,6 +23,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::TicketsState => Self::cli_tickets_state(),
             CliCommand::TicketsCommand => Self::cli_tickets_command(),
             CliCommand::TicketContract => Self::cli_ticket_contract(),
+            CliCommand::WorkspacesState => Self::cli_workspaces_state(),
+            CliCommand::WorkspacesCommand => Self::cli_workspaces_command(),
             CliCommand::GetVersion => Self::cli_get_version(),
         }
     }
@@ -145,6 +147,32 @@ impl<T: CliConfig> Cli<T> {
                     .help("XXX"),
             )
     }
+    pub fn cli_workspaces_state() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_workspaces_command() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("operation-id")
+                    .long("operation-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
     pub fn cli_get_version() -> ::clap::Command {
         ::clap::Command::new("")
     }
@@ -167,6 +195,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::TicketsState => self.execute_tickets_state(matches).await,
             CliCommand::TicketsCommand => self.execute_tickets_command(matches).await,
             CliCommand::TicketContract => self.execute_ticket_contract(matches).await,
+            CliCommand::WorkspacesState => self.execute_workspaces_state(matches).await,
+            CliCommand::WorkspacesCommand => self.execute_workspaces_command(matches).await,
             CliCommand::GetVersion => self.execute_get_version(matches).await,
         }
     }
@@ -438,6 +468,54 @@ impl<T: CliConfig> Cli<T> {
             }
         }
     }
+    pub async fn execute_workspaces_state(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.workspaces_state();
+        self.config
+            .execute_workspaces_state(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_workspaces_command(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.workspaces_command();
+        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
+            request = request.body_map(|body| body.operation_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::WorkspaceRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config
+            .execute_workspaces_command(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
     pub async fn execute_get_version(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
         let mut request = self.client.get_version();
         self.config.execute_get_version(matches, &mut request)?;
@@ -565,6 +643,20 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_workspaces_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::WorkspacesState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_workspaces_command(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::WorkspacesCommand,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_get_version(
         &self,
         matches: &::clap::ArgMatches,
@@ -588,6 +680,8 @@ pub enum CliCommand {
     TicketsState,
     TicketsCommand,
     TicketContract,
+    WorkspacesState,
+    WorkspacesCommand,
     GetVersion,
 }
 impl CliCommand {
@@ -606,6 +700,8 @@ impl CliCommand {
             CliCommand::TicketsState,
             CliCommand::TicketsCommand,
             CliCommand::TicketContract,
+            CliCommand::WorkspacesState,
+            CliCommand::WorkspacesCommand,
             CliCommand::GetVersion,
         ]
         .into_iter()
@@ -625,6 +721,8 @@ impl CliCommand {
             CliCommand::TicketsState => "tickets_state",
             CliCommand::TicketsCommand => "tickets_command",
             CliCommand::TicketContract => "ticket_contract",
+            CliCommand::WorkspacesState => "workspaces_state",
+            CliCommand::WorkspacesCommand => "workspaces_command",
             CliCommand::GetVersion => "get_version",
         }
     }

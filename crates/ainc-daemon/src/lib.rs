@@ -9,6 +9,7 @@ pub mod inference;
 pub mod legacy;
 pub mod product;
 pub mod tickets;
+pub mod workspaces;
 use axum::{
     Json, Router,
     extract::State,
@@ -82,7 +83,9 @@ async fn ticket_contract(Json(ticket): Json<TicketContract>) -> Json<TicketContr
         tickets::state,
         tickets::command,
         automations::state,
-        automations::command
+        automations::command,
+        workspaces::state,
+        workspaces::command
     ),
     components(schemas(Health, Version, TicketContract))
 )]
@@ -125,7 +128,8 @@ pub fn product_router(product: product::Product) -> Router {
         .merge(product::router(product.clone()))
         .merge(connection::router(product.clone()))
         .merge(tickets::router(product.clone()))
-        .merge(automations::router(product))
+        .merge(automations::router(product.clone()))
+        .merge(workspaces::router(product))
         .layer(axum::middleware::from_fn(compatibility))
         .layer(axum::middleware::map_response(server_version_header))
 }

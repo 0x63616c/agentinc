@@ -451,7 +451,7 @@ impl AssistantPage {
         .detach();
         cx.notify();
     }
-    fn reload_snapshot(&mut self) {
+    pub(crate) fn reload_snapshot(&mut self) {
         let Some(db) = &self.store else { return };
         let snapshot = db.snapshot();
         self.conversations = snapshot.conversations;
@@ -476,6 +476,13 @@ impl AssistantPage {
             .find(|t| t.state == "queued" || t.state == "running")
             .map(|t| t.id);
         self.model = snapshot.settings.model.filter(|s| !s.is_empty());
+    }
+    pub(crate) fn workspace_changed(&mut self, cx: &mut Context<Self>) {
+        self.conversation = None;
+        self.input.update(cx, |input, _| input.reset());
+        self.rename_input.update(cx, |input, _| input.reset());
+        self.form_error = None;
+        self.reload_snapshot();
     }
     fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
         self.model_menu_open = false;

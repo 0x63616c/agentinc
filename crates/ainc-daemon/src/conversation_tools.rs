@@ -61,12 +61,13 @@ impl Tool for TicketsTool {
     fn call(&self, ctx: ToolCtx, args: Value) -> BoxFuture<'static, Result<Value, ToolError>> {
         let this = self.clone();
         Box::pin(async move {
-            let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM conversation_sessions s JOIN conversations c ON c.id=s.conversation_id WHERE s.id=$1 AND s.state='active' AND c.workspace_id='local')").bind(&this.session_id).fetch_one(&this.pool).await.map_err(|_|ToolError::Failed("Ticket service unavailable".into()))?;
-            if !active {
+            let workspace: Option<String> = sqlx::query_scalar("SELECT c.workspace_id FROM conversation_sessions s JOIN conversations c ON c.id=s.conversation_id WHERE s.id=$1 AND s.state='active'").bind(&this.session_id).fetch_optional(&this.pool).await.map_err(|_|ToolError::Failed("Ticket service unavailable".into()))?;
+            let Some(workspace) = workspace else {
                 return Err(ToolError::InvalidArguments(
                     "Conversation is no longer active".into(),
                 ));
-            }
+            };
+            let actor = Actor::owner_in(workspace);
             if this.mutation {
                 let command = serde_json::from_value(args["command"].clone()).map_err(|e| {
                     ToolError::InvalidArguments(format!("Invalid Ticket command: {e}"))
@@ -75,10 +76,10 @@ impl Tool for TicketsTool {
                 let operation_id =
                     uuid::Uuid::from_bytes(digest[..16].try_into().expect("SHA-256 length"))
                         .to_string();
-                let receipt=tickets::execute(&this.pool,&Actor::owner(),TicketCommandRequest{operation_id,command}).await.map_err(|_|ToolError::InvalidArguments("Command refused. Read current Ticket revisions before retrying; verify the assignee and arguments.".into()))?;
+                let receipt=tickets::execute(&this.pool,&actor,TicketCommandRequest{operation_id,command}).await.map_err(|_|ToolError::InvalidArguments("Command refused. Read current Ticket revisions before retrying; verify the assignee and arguments.".into()))?;
                 Ok(json!(receipt))
             } else {
-                tickets::snapshot(&this.pool, &Actor::owner())
+                tickets::snapshot(&this.pool, &actor)
                     .await
                     .map(|s| json!(s))
                     .map_err(|_| ToolError::Failed("Ticket service unavailable".into()))
@@ -141,12 +142,13 @@ impl Tool for AutomationsTool {
     fn call(&self, ctx: ToolCtx, args: Value) -> BoxFuture<'static, Result<Value, ToolError>> {
         let this = self.clone();
         Box::pin(async move {
-            let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM conversation_sessions s JOIN conversations c ON c.id=s.conversation_id WHERE s.id=$1 AND s.state='active' AND c.workspace_id='local')").bind(&this.session_id).fetch_one(&this.pool).await.map_err(|_|ToolError::Failed("Automation service unavailable".into()))?;
-            if !active {
+            let workspace: Option<String> = sqlx::query_scalar("SELECT c.workspace_id FROM conversation_sessions s JOIN conversations c ON c.id=s.conversation_id WHERE s.id=$1 AND s.state='active'").bind(&this.session_id).fetch_optional(&this.pool).await.map_err(|_|ToolError::Failed("Automation service unavailable".into()))?;
+            let Some(workspace) = workspace else {
                 return Err(ToolError::InvalidArguments(
                     "Conversation is no longer active".into(),
                 ));
-            }
+            };
+            let actor = Actor::owner_in(workspace);
             if this.mutation {
                 let command = serde_json::from_value(args["command"].clone()).map_err(|e| {
                     ToolError::InvalidArguments(format!("Invalid Automation command: {e}"))
@@ -155,10 +157,10 @@ impl Tool for AutomationsTool {
                 let operation_id =
                     uuid::Uuid::from_bytes(digest[..16].try_into().expect("SHA-256 length"))
                         .to_string();
-                let receipt=crate::automations::execute(&this.pool,&Actor::owner(),crate::automations::AutomationRequest{operation_id,command}).await.map_err(|_|ToolError::InvalidArguments("Command refused. Read current Automation revisions before retrying; verify the assignee and arguments.".into()))?;
+                let receipt=crate::automations::execute(&this.pool,&actor,crate::automations::AutomationRequest{operation_id,command}).await.map_err(|_|ToolError::InvalidArguments("Command refused. Read current Automation revisions before retrying; verify the assignee and arguments.".into()))?;
                 Ok(json!(receipt))
             } else {
-                crate::automations::snapshot(&this.pool, &Actor::owner())
+                crate::automations::snapshot(&this.pool, &actor)
                     .await
                     .map(|s| json!(s))
                     .map_err(|_| ToolError::Failed("Automation service unavailable".into()))

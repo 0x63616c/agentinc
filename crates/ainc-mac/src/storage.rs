@@ -2,7 +2,8 @@
 //! reads this cache only; refresh and command methods run on the background executor.
 pub use ainc_client::types::{
     AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, Command, Conversation, Ticket,
-    TicketCommand, TicketProposal, TicketSnapshot, TicketStatus, Turn,
+    TicketCommand, TicketProposal, TicketSnapshot, TicketStatus, Turn, Workspace, WorkspaceCommand,
+    WorkspaceState,
 };
 use ainc_client::{
     Client,
@@ -111,6 +112,8 @@ pub struct Store {
     snapshot: Mutex<Snapshot>,
     tickets: Mutex<TicketSnapshot>,
     automations: Mutex<AutomationSnapshot>,
+    workspaces: Mutex<WorkspaceState>,
+    pending_workspace: Mutex<Option<ainc_client::types::WorkspaceRequest>>,
     pending_automation: Mutex<Option<ainc_client::types::AutomationRequest>>,
     pending_ticket: Mutex<Option<TicketCommandRequest>>,
     // Serialize mutations and refreshes so an older snapshot cannot replace a
@@ -144,6 +147,16 @@ impl Store {
                 occurrences: vec![],
                 history: vec![],
             }),
+            workspaces: Mutex::new(WorkspaceState {
+                current_id: "local".into(),
+                workspaces: vec![Workspace {
+                    id: "local".into(),
+                    name: "World Wide Webb".into(),
+                    icon: None,
+                    color: None,
+                }],
+            }),
+            pending_workspace: Mutex::new(None),
             pending_automation: Mutex::new(None),
             pending_ticket: Mutex::new(None),
             requests: Mutex::new(()),
@@ -164,6 +177,14 @@ impl Store {
         if self.fixture {
             return Ok(());
         }
+        let pending_workspace = self
+            .pending_workspace
+            .lock()
+            .expect("pending Workspace command")
+            .clone();
+        if let Some(request) = pending_workspace {
+            return self.workspace_command(request.command).map(|_| ());
+        }
         let pending_ticket = self
             .pending_ticket
             .lock()
@@ -183,13 +204,15 @@ impl Store {
         self.refresh_inner()
     }
     fn refresh_inner(&self) -> Result<()> {
-        let (snapshot, tickets, automations) = background(async {
+        let (snapshot, tickets, automations, workspaces) = background(async {
             let client = client().await?;
+            let workspaces = client.workspaces_state().send().await?.into_inner();
             let snapshot = client.product_state().send().await?.into_inner();
             let tickets = client.tickets_state().send().await?.into_inner();
             let automations = client.automations_state().send().await?.into_inner();
-            anyhow::Ok((snapshot, tickets, automations))
+            anyhow::Ok((snapshot, tickets, automations, workspaces))
         })?;
+        *self.workspaces.lock().expect("Workspace snapshot") = workspaces;
         *self.tickets.lock().expect("Ticket snapshot") = tickets;
         *self.automations.lock().expect("Automation snapshot") = automations;
         *self
@@ -209,6 +232,103 @@ impl Store {
             .lock()
             .expect("Automation snapshot")
             .clone()
+    }
+    pub fn workspaces(&self) -> WorkspaceState {
+        self.workspaces.lock().expect("Workspace snapshot").clone()
+    }
+    pub fn workspace_command(&self, command: WorkspaceCommand) -> Result<String> {
+        #[cfg(test)]
+        if self.fixture {
+            return self.fixture_workspace_command(command);
+        }
+        let _serial = self
+            .requests
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Request state unavailable"))?;
+        let request = {
+            let mut pending = self
+                .pending_workspace
+                .lock()
+                .expect("pending Workspace command");
+            if let Some(prior) = pending.as_ref() {
+                anyhow::ensure!(
+                    serde_json::to_value(&prior.command)? == serde_json::to_value(&command)?,
+                    "Retry the unacknowledged Workspace change before another change."
+                );
+                prior.clone()
+            } else {
+                let request = ainc_client::types::WorkspaceRequest {
+                    command,
+                    operation_id: uuid::Uuid::new_v4().to_string(),
+                };
+                *pending = Some(request.clone());
+                request
+            }
+        };
+        let result = background(async {
+            let client = client().await?;
+            let mut result = client
+                .workspaces_command()
+                .body(request.clone())
+                .send()
+                .await;
+            if matches!(result, Err(progenitor_client::Error::CommunicationError(_))) {
+                result = client.workspaces_command().body(request).send().await;
+            }
+            match result {
+                Ok(receipt) => Ok(receipt.into_inner()),
+                Err(error) => {
+                    if error.status().is_some_and(|s| s.is_client_error()) {
+                        *self
+                            .pending_workspace
+                            .lock()
+                            .expect("pending Workspace command") = None;
+                    }
+                    Err(error.into())
+                }
+            }
+        })?;
+        self.refresh_inner()
+            .context("Workspace changed; refresh to load it")?;
+        *self
+            .pending_workspace
+            .lock()
+            .expect("pending Workspace command") = None;
+        Ok(result.result_id)
+    }
+    #[cfg(test)]
+    fn fixture_workspace_command(&self, command: WorkspaceCommand) -> Result<String> {
+        let mut state = self.workspaces.lock().expect("Workspace snapshot");
+        match command {
+            WorkspaceCommand::Create { name, icon, color } => {
+                let id = uuid::Uuid::new_v4().to_string();
+                state.workspaces.push(Workspace {
+                    id: id.clone(),
+                    name,
+                    icon,
+                    color,
+                });
+                state.current_id = id.clone();
+                Ok(id)
+            }
+            WorkspaceCommand::Rename { id, name } => {
+                let workspace = state
+                    .workspaces
+                    .iter_mut()
+                    .find(|item| item.id == id)
+                    .context("Workspace unavailable")?;
+                workspace.name = name;
+                Ok(id)
+            }
+            WorkspaceCommand::Switch { id } => {
+                anyhow::ensure!(
+                    state.workspaces.iter().any(|item| item.id == id),
+                    "Workspace unavailable"
+                );
+                state.current_id = id.clone();
+                Ok(id)
+            }
+        }
     }
     pub fn automation_command(&self, command: AutomationCommand) -> Result<String> {
         #[cfg(test)]
