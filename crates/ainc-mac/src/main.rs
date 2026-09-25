@@ -48,24 +48,6 @@ fn main_window_options(
     }
 }
 
-#[cfg(target_os = "macos")]
-fn set_dev_dock_icon() {
-    if ainc_release::identity::PRODUCTION {
-        return;
-    }
-    use objc2::{AnyThread, MainThreadMarker};
-    use objc2_app_kit::{NSApplication, NSImage};
-    use objc2_foundation::NSData;
-
-    let bytes = include_bytes!("../assets/AppIconDev.icns");
-    let data = NSData::with_bytes(bytes);
-    let image = NSImage::initWithData(NSImage::alloc(), &data).expect("valid development icon");
-    let app = NSApplication::sharedApplication(
-        MainThreadMarker::new().expect("application starts on the main thread"),
-    );
-    unsafe { app.setApplicationIconImage(Some(&image)) };
-}
-
 fn main() {
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     let args: Vec<_> = std::env::args_os().skip(1).collect();
@@ -122,8 +104,6 @@ fn main() {
     gpui_platform::application()
         .with_assets(ui::Assets)
         .run(move |cx| {
-            #[cfg(target_os = "macos")]
-            set_dev_dock_icon();
             cx.on_action(|_: &about::About, _| about::show());
             updates::init(cx);
             input::bind_keys(cx);
