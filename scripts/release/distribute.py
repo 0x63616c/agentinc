@@ -18,11 +18,43 @@ def run(*args, **kwargs):
     return subprocess.check_output(args, text=True, **kwargs).strip()
 
 
+def sign_bundle(bundle, archive, private):
+    subprocess.run(['rcodesign', 'sign', '--p12-file', str(private / 'identity.p12'),
+                    '--p12-password-file', str(private / 'password'), '--team-name',
+                    os.environ['APPLE_TEAM_ID'], '--for-notarization', str(bundle)], check=True)
+    subprocess.run(['rcodesign', 'notary-submit', '--api-key-file', str(private / 'notary.json'),
+                    '--wait', '--staple', str(bundle)], check=True)
+    with tarfile.open(archive, 'w:gz') as tar:
+        tar.add(bundle, arcname='AgentInc.app')
+
+
+def sign_upgrade_fixture(source, destination, private, commit, version=None):
+    with tempfile.TemporaryDirectory() as directory:
+        directory = Path(directory)
+        with tarfile.open(source) as tar:
+            tar.extractall(directory, filter='data')
+        identity = json.loads((directory / 'handoff.json').read_text())
+        if (identity['commit'] != commit or identity.get('upgrade_test') is not True
+                or (version is not None and identity['version'] != version)):
+            raise SystemExit(f'upgrade fixture is not a test build from {commit}')
+        bundle = directory / 'AgentInc.app'
+        import hashlib
+        files = {str(p.relative_to(bundle)): hashlib.sha256(p.read_bytes()).hexdigest()
+                 for p in bundle.rglob('*') if p.is_file()}
+        if files != identity['files']:
+            raise SystemExit('upgrade fixture inventory mismatch')
+        sign_bundle(bundle, destination, private)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--commit', required=True)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--archive', type=Path, help='Unsigned artifact from this workflow run')
+    parser.add_argument('--upgrade-candidate', type=Path)
+    parser.add_argument('--upgrade-newer', type=Path)
+    parser.add_argument('--upgrade-prior', type=Path, action='append', default=[])
+    parser.add_argument('--stage', action='store_true', help='Leave production release as a draft until upgrade gate passes')
     args = parser.parse_args()
     if not args.test and not os.environ.get('UPDATE_SIGNING_KEY_ED25519_PEM', '').strip():
         raise SystemExit('publish refused: UPDATE_SIGNING_KEY_ED25519_PEM is missing')
@@ -56,6 +88,8 @@ def main():
     identity = json.loads((out / 'handoff.json').read_text())
     if identity['commit'] != commit:
         raise SystemExit('handoff commit mismatch')
+    if identity.get('upgrade_test'):
+        raise SystemExit('publish refused: production handoff contains upgrade-test code')
     metadata = json.loads(run('cargo', 'metadata', '--no-deps', '--format-version=1'))
     version = next(p['version'] for p in metadata['packages'] if p['name'] == 'ainc-release')
     if identity['version'] != version:
@@ -94,11 +128,18 @@ def main():
         (private / 'notary.p8').write_text(os.environ['NOTARY_KEY_P8'])
         # rcodesign uses the modern Notary API and runs on Linux.
         run('rcodesign', 'encode-app-store-connect-api-key', os.environ['NOTARY_ISSUER_ID'], os.environ['NOTARY_KEY_ID'], str(private / 'notary.p8'), '--output-path', str(private / 'notary.json'))
-        subprocess.run(['rcodesign', 'sign', '--p12-file', str(private / 'identity.p12'), '--p12-password-file', str(private / 'password'), '--team-name', os.environ['APPLE_TEAM_ID'], '--for-notarization', str(bundle)], check=True)
-        subprocess.run(['rcodesign', 'notary-submit', '--api-key-file', str(private / 'notary.json'), '--wait', '--staple', str(bundle)], check=True)
         archive = out / 'AgentInc.tar.gz'
-        with tarfile.open(archive, 'w:gz') as tar:
-            tar.add(bundle, arcname='AgentInc.app')
+        sign_bundle(bundle, archive, private)
+        if bool(args.upgrade_candidate) != bool(args.upgrade_newer):
+            raise SystemExit('both upgrade fixture handoffs are required')
+        if args.upgrade_candidate:
+            sign_upgrade_fixture(args.upgrade_candidate, out / 'upgrade-candidate.tar.gz', private, commit)
+            sign_upgrade_fixture(args.upgrade_newer, out / 'upgrade-newer.tar.gz', private, commit)
+        for prior in args.upgrade_prior:
+            version = prior.name.removeprefix('upgrade-prior-').removesuffix('-unsigned.tar.gz')
+            prior_commit = run('git', 'rev-parse', f'v{version}^{{commit}}')
+            sign_upgrade_fixture(prior, out / f'upgrade-prior-{version}.tar.gz', private,
+                                 prior_commit, version)
         env = dict(os.environ)
         env.pop('AINC_RELEASE_TEST_KEY', None)
         if args.test:
@@ -114,9 +155,9 @@ def main():
     if args.test:
         assets.append(str(out / 'test-public-key.txt'))
     subprocess.run(['gh', 'release', 'upload', tag, *assets, '--clobber'], check=True)
-    if not args.test:
+    if not args.test and not args.stage:
         subprocess.run(['gh', 'release', 'edit', tag, '--draft=false', '--latest'], check=True)
-    print('Draft validated' if args.test else 'Published', tag)
+    print('Draft staged' if args.test or args.stage else 'Published', tag)
 
 if __name__ == '__main__':
     main()

@@ -29,7 +29,10 @@ def main():
         raise SystemExit('Commit tracked changes before preparing a release handoff')
     metadata = json.loads(run('cargo', 'metadata', '--no-deps', '--format-version=1'))
     product = next(p for p in metadata['packages'] if p['name'] == 'ainc-release')
-    version = product['version']
+    test_key = os.environ.get('AINC_UPGRADE_TEST_PUBLIC_KEY')
+    if os.environ.get('AINC_UPGRADE_TEST_VERSION') and not test_key:
+        raise SystemExit('test version requires an upgrade-test public key')
+    version = os.environ.get('AINC_UPGRADE_TEST_VERSION', product['version'])
     commit = run('git', 'rev-parse', 'HEAD')
     build = run('git', 'rev-list', '--count', 'HEAD')
     env = dict(os.environ, AINC_BUILD_ID=build, AINC_CHANNEL='production', AINC_COMMIT=commit, CARGO_INCREMENTAL='0')
@@ -104,7 +107,8 @@ def main():
                 if not dependency_path.is_relative_to(bundle) or not dependency_path.is_file():
                     raise SystemExit(f'unresolved bundle dependency {dependency} in {binary}')
     identity = json.loads(run(str(target / 'ainc-release-manifest'), '--identity'))
-    identity.update(commit=commit, architecture=platform.machine().replace('arm64','aarch64'))
+    identity.update(commit=commit, architecture=platform.machine().replace('arm64','aarch64'),
+                    upgrade_test=bool(test_key))
     if identity['version'] != version or identity['build'] != build:
         raise SystemExit('compiled product identity differs from Cargo metadata/build input')
     (resources / 'release.json').write_text(json.dumps(identity, indent=2) + '\n')

@@ -21,6 +21,8 @@ unsafe extern "C" {
     fn ainc_update_status(message: *const i8);
     fn ainc_update_progress(message: *const i8, received: u64, total: u64);
     fn ainc_update_close();
+    #[cfg(ainc_upgrade_test)]
+    fn ainc_update_test_click_install();
     #[cfg(feature = "automation")]
     fn ainc_update_capture(path: *const i8, progress: bool) -> bool;
     #[cfg(feature = "automation")]
@@ -107,6 +109,11 @@ pub fn progress(_: u64, _: u64) {}
 #[cfg(target_os = "macos")]
 pub fn close() {
     unsafe { ainc_update_close() }
+}
+
+#[cfg(all(ainc_upgrade_test, target_os = "macos"))]
+pub fn upgrade_test_click_install() {
+    unsafe { ainc_update_test_click_install() }
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -177,6 +177,8 @@ fn main() {
                 }
             };
             cx.set_global(updates::UpdateHost(window));
+            #[cfg(ainc_upgrade_test)]
+            updates::start_upgrade_test(cx);
             #[cfg(feature = "automation")]
             if let Some(directory) = pilot_directory {
                 let title = std::env::var("AGENTINC_WINDOW_TITLE").expect("validated pilot title");

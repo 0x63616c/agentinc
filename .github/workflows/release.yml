@@ -26,6 +26,7 @@ jobs:
       contents: read
     outputs:
       ready: ${{ steps.version.outputs.ready }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +40,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
         run: |
           test "$(git rev-parse HEAD)" = "$COMMIT"
+          echo "version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             changed=$(python3 scripts/release/version-changed.py "$BEFORE")
             echo "ready=$changed" >> "$GITHUB_OUTPUT"
@@ -103,16 +105,50 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = '${{ inputs.commit || github.sha }}'
           python3 scripts/release/measure-build.py cargo xtask release
+      - name: Build isolated upgrade fixtures
+        run: |
+          set -euo pipefail
+          commit='${{ inputs.commit || github.sha }}'
+          mkdir -p .local/upgrade-input
+          mv ".local/release/$commit/unsigned.tar.gz" .local/upgrade-input/unsigned.tar.gz
+          openssl genpkey -algorithm ED25519 -out .local/upgrade-input/test-key.pem
+          public=$(openssl pkey -in .local/upgrade-input/test-key.pem -pubout -outform DER | tail -c 32 | base64 | tr -d '\n')
+          export AINC_UPGRADE_TEST_PUBLIC_KEY="$public"
+          python3 scripts/release/prepare.py
+          mv ".local/release/$commit/unsigned.tar.gz" .local/upgrade-input/upgrade-candidate-unsigned.tar.gz
+          candidate_version=$(python3 -c 'import json,subprocess; print(next(p["version"] for p in json.loads(subprocess.check_output(["cargo","metadata","--no-deps","--format-version=1"]))["packages"] if p["name"]=="ainc-release"))')
+          next_version=$(python3 -c 'import sys; a,b,c=map(int,sys.argv[1].split(".")); print(f"{a}.{b}.{c+1}")' "$candidate_version")
+          export AINC_UPGRADE_TEST_VERSION="$next_version"
+          python3 scripts/release/prepare.py
+          mv ".local/release/$commit/unsigned.tar.gz" .local/upgrade-input/upgrade-newer-unsigned.tar.gz
+          cp "$CARGO_TARGET_DIR/release/ainc-release-manifest" .local/upgrade-input/ainc-release-manifest
+          unset AINC_UPGRADE_TEST_VERSION
+          for tag in $(git tag --list 'v*' --sort=version:refname); do
+            prior_version="${tag#v}"
+            if ! python3 -c 'import sys; a,b=(tuple(map(int,v.split("."))) for v in sys.argv[1:]); sys.exit(0 if a < b else 1)' "$prior_version" "$candidate_version"; then
+              continue
+            fi
+            if ! git grep -q AINC_UPGRADE_TEST_PUBLIC_KEY "$tag" -- crates/ainc-release/build.rs; then
+              echo "Legacy feed locked: $tag has no test-only feed build"
+              continue
+            fi
+            prior_dir=".local/upgrade-prior/$tag"
+            git clone --shared --quiet --no-checkout . "$prior_dir"
+            git -C "$prior_dir" checkout --quiet "$tag"
+            (cd "$prior_dir" && python3 scripts/release/prepare.py)
+            mv "$prior_dir/.local/release/$(git -C "$prior_dir" rev-parse HEAD)/unsigned.tar.gz" ".local/upgrade-input/upgrade-prior-$prior_version-unsigned.tar.gz"
+            rm -rf "$prior_dir"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: unsigned-${{ inputs.commit || github.sha }}
-          path: .local/release/${{ inputs.commit || github.sha }}/unsigned.tar.gz
+          path: .local/upgrade-input/
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
       - name: Remove per-release files
         if: always()
-        run: rm -rf .local/release .local/release-inputs
+        run: rm -rf .local/release .local/release-inputs .local/upgrade-input .local/upgrade-prior
   distribute:
     needs: [prepare, native]
     if: always() && needs.prepare.outputs.ready == 'true' && (needs.native.result == 'success' || (needs.native.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.build == false))
@@ -170,12 +206,78 @@ jobs:
           UPDATE_SIGNING_KEY_ED25519_PEM: ${{ secrets.UPDATE_SIGNING_KEY_ED25519_PEM }}
         run: |
           if [ "$NATIVE_RESULT" = success ]; then
-            archive=(--archive .local/distribution/unsigned.tar.gz)
+            archive=(--archive .local/distribution/unsigned.tar.gz --upgrade-candidate .local/distribution/upgrade-candidate-unsigned.tar.gz --upgrade-newer .local/distribution/upgrade-newer-unsigned.tar.gz)
+            for prior in .local/distribution/upgrade-prior-*-unsigned.tar.gz; do
+              [ ! -f "$prior" ] || archive+=(--upgrade-prior "$prior")
+            done
           else
             archive=()
           fi
           if [ "$TEST_RELEASE" = true ]; then
-            python3 scripts/release/distribute.py --commit "$COMMIT" "${archive[@]}" --test
+            python3 scripts/release/distribute.py --commit "$COMMIT" "${archive[@]}" --test --stage
           else
-            python3 scripts/release/distribute.py --commit "$COMMIT" "${archive[@]}"
+            python3 scripts/release/distribute.py --commit "$COMMIT" "${archive[@]}" --stage
           fi
+      - uses: actions/upload-artifact@v4
+        if: steps.handoff.outputs.ready == 'true'
+        with:
+          name: upgrade-signed-${{ inputs.commit || github.sha }}
+          path: |
+            .local/distribution/upgrade-candidate.tar.gz
+            .local/distribution/upgrade-newer.tar.gz
+            .local/distribution/upgrade-prior-*.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+  upgrade:
+    needs: [prepare, native, distribute]
+    if: needs.distribute.result == 'success'
+    runs-on: [self-hosted, macOS, ARM64, agentinc-release]
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-${{ inputs.commit || github.sha }}
+          path: .local/upgrade-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: upgrade-signed-${{ inputs.commit || github.sha }}
+          path: .local/upgrade-signed
+      - name: Gate native upgrade paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x .local/upgrade-input/ainc-release-manifest
+          prior=()
+          for archive in .local/upgrade-signed/upgrade-prior-*.tar.gz; do
+            [ ! -f "$archive" ] || prior+=(--prior "$archive")
+          done
+          python3 scripts/release/upgrade-gate.py \
+            --candidate .local/upgrade-signed/upgrade-candidate.tar.gz \
+            --newer .local/upgrade-signed/upgrade-newer.tar.gz \
+            --key .local/upgrade-input/test-key.pem \
+            --manifest-tool .local/upgrade-input/ainc-release-manifest \
+            "${prior[@]}"
+      - name: Remove upgrade fixtures
+        if: always()
+        run: rm -rf .local/upgrade-input .local/upgrade-signed
+  publish:
+    needs: [prepare, distribute, upgrade]
+    if: needs.upgrade.result == 'success' && github.ref == 'refs/heads/main' && inputs.test != true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish only after native upgrade gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version='${{ needs.prepare.outputs.version }}'
+          test -n "$version"
+          gh release edit "v$version" --draft=false --latest

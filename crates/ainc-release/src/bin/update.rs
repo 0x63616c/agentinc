@@ -27,7 +27,7 @@ fn install() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let _ = install_from(
         &args,
-        ainc_release::UPDATE_PUBLIC_KEY,
+        ainc_release::update_public_key(),
         ainc_release::VERSION,
     )?;
     Ok(())
