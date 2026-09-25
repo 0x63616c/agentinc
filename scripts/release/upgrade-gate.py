@@ -136,6 +136,7 @@ def published_predecessors(candidate_version, root):
         if len(batch) < 100:
             break
         page += 1
+    published = {}
     for release in releases:
         if release['draft'] or not release['tag_name'].startswith('v'):
             continue
@@ -150,13 +151,15 @@ def published_predecessors(candidate_version, root):
         run('gh', 'release', 'download', release['tag_name'], '--pattern', 'AgentInc.tar.gz',
             '--dir', str(directory))
         app = unpack(directory / 'AgentInc.tar.gz', directory / 'installed')
-        actual = json.loads((app / 'Contents/Resources/release.json').read_text())['version']
-        if actual != version:
-            raise RuntimeError(f'published {version} contains {actual}')
+        identity = json.loads((app / 'Contents/Resources/release.json').read_text())
+        if identity['version'] != version:
+            raise RuntimeError(f'published {version} contains {identity["version"]}')
+        published[version] = identity['commit']
         reason = KNOWN_BROKEN.get(version)
         print(f'KNOWN BROKEN {version}: {reason}' if reason else
-              f'LEGACY FEED LOCKED {version}: signed install verified; candidate upgrade unavailable before publication',
+              f'SHIPPED FEED LOCKED {version}: signed install verified; test-key rebuild required for candidate upgrade',
               flush=True)
+    return published
 
 
 def main():
@@ -165,6 +168,7 @@ def main():
     parser.add_argument('--newer', type=Path, required=True)
     parser.add_argument('--key', type=Path, required=True)
     parser.add_argument('--manifest-tool', type=Path, required=True)
+    parser.add_argument('--prior', type=Path, action='append', default=[])
     args = parser.parse_args()
     candidate = args.candidate.resolve()
     newer = args.newer.resolve()
@@ -174,7 +178,16 @@ def main():
         with tempfile.TemporaryDirectory(prefix='agentinc-candidate-') as install:
             candidate_version = json.loads((unpack(candidate, Path(install)) /
                                             'Contents/Resources/release.json').read_text())['version']
-        published_predecessors(candidate_version, Path(temporary))
+        published = published_predecessors(candidate_version, Path(temporary))
+    for prior in args.prior:
+        prior = prior.resolve()
+        with tempfile.TemporaryDirectory(prefix='agentinc-prior-') as install:
+            identity = json.loads((unpack(prior, Path(install)) /
+                                   'Contents/Resources/release.json').read_text())
+        if published.get(identity['version']) != identity['commit']:
+            raise RuntimeError(f'prior test build does not match published {identity["version"]}')
+        for mode in ('manual', 'automatic'):
+            exercise(mode, prior, candidate, key, manifest_tool)
     for mode in ('manual', 'automatic'):
         exercise(mode, candidate, newer, key, manifest_tool)
 

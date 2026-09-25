@@ -40,7 +40,13 @@ production update key would make it valid for every production client and is
 forbidden. Thus the predecessor check can verify installed release assets but
 cannot prove an old binary updates to the unpublished candidate. The gate
 reports this limitation for every version; it does not silently omit one.
-The candidate's two in-app passes prevent a newly broken updater from shipping.
+For a prior release whose tag contains the test-only feed build, Distribution
+also rebuilds that exact tagged source with this run's test key, signs and
+notarizes it, and drives both in-app paths from that version to the candidate.
+The gate checks the rebuilt version and commit against the installed published
+asset. This begins with versions shipped after this gate lands; older binaries
+cannot be rebuilt with the override. The candidate's two in-app passes prevent
+a newly broken updater from shipping.
 
 To validate a branch, dispatch `Distribution` at its exact commit with
 `test=true` and `build=true`. Never use `test=false` for branch validation.

@@ -121,6 +121,24 @@ jobs:
           python3 scripts/release/prepare.py
           mv ".local/release/$commit/unsigned.tar.gz" .local/upgrade-input/upgrade-newer-unsigned.tar.gz
           cp "$CARGO_TARGET_DIR/release/ainc-release-manifest" .local/upgrade-input/ainc-release-manifest
+          unset AINC_UPGRADE_TEST_VERSION
+          candidate_version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
+          for tag in $(git tag --list 'v*' --sort=version:refname); do
+            prior_version="${tag#v}"
+            if ! python3 -c 'import sys; a,b=(tuple(map(int,v.split("."))) for v in sys.argv[1:]); sys.exit(0 if a < b else 1)' "$prior_version" "$candidate_version"; then
+              continue
+            fi
+            if ! git grep -q AINC_UPGRADE_TEST_PUBLIC_KEY "$tag" -- crates/ainc-release/build.rs; then
+              echo "Legacy feed locked: $tag has no test-only feed build"
+              continue
+            fi
+            prior_dir=".local/upgrade-prior/$tag"
+            git clone --shared --quiet --no-checkout . "$prior_dir"
+            git -C "$prior_dir" checkout --quiet "$tag"
+            (cd "$prior_dir" && python3 scripts/release/prepare.py)
+            mv "$prior_dir/.local/release/$(git -C "$prior_dir" rev-parse HEAD)/unsigned.tar.gz" ".local/upgrade-input/upgrade-prior-$prior_version-unsigned.tar.gz"
+            rm -rf "$prior_dir"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: unsigned-${{ inputs.commit || github.sha }}
@@ -130,7 +148,7 @@ jobs:
           retention-days: 1
       - name: Remove per-release files
         if: always()
-        run: rm -rf .local/release .local/release-inputs .local/upgrade-input
+        run: rm -rf .local/release .local/release-inputs .local/upgrade-input .local/upgrade-prior
   distribute:
     needs: [prepare, native]
     if: always() && needs.prepare.outputs.ready == 'true' && (needs.native.result == 'success' || (needs.native.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.build == false))
@@ -189,6 +207,9 @@ jobs:
         run: |
           if [ "$NATIVE_RESULT" = success ]; then
             archive=(--archive .local/distribution/unsigned.tar.gz --upgrade-candidate .local/distribution/upgrade-candidate-unsigned.tar.gz --upgrade-newer .local/distribution/upgrade-newer-unsigned.tar.gz)
+            for prior in .local/distribution/upgrade-prior-*-unsigned.tar.gz; do
+              [ ! -f "$prior" ] || archive+=(--upgrade-prior "$prior")
+            done
           else
             archive=()
           fi
@@ -204,6 +225,7 @@ jobs:
           path: |
             .local/distribution/upgrade-candidate.tar.gz
             .local/distribution/upgrade-newer.tar.gz
+            .local/distribution/upgrade-prior-*.tar.gz
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -231,11 +253,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          prior=()
+          for archive in .local/upgrade-signed/upgrade-prior-*.tar.gz; do
+            [ ! -f "$archive" ] || prior+=(--prior "$archive")
+          done
           python3 scripts/release/upgrade-gate.py \
             --candidate .local/upgrade-signed/upgrade-candidate.tar.gz \
             --newer .local/upgrade-signed/upgrade-newer.tar.gz \
             --key .local/upgrade-input/test-key.pem \
-            --manifest-tool .local/upgrade-input/ainc-release-manifest
+            --manifest-tool .local/upgrade-input/ainc-release-manifest \
+            "${prior[@]}"
       - name: Remove upgrade fixtures
         if: always()
         run: rm -rf .local/upgrade-input .local/upgrade-signed

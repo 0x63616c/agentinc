@@ -28,13 +28,14 @@ def sign_bundle(bundle, archive, private):
         tar.add(bundle, arcname='AgentInc.app')
 
 
-def sign_upgrade_fixture(source, destination, private, commit):
+def sign_upgrade_fixture(source, destination, private, commit, version=None):
     with tempfile.TemporaryDirectory() as directory:
         directory = Path(directory)
         with tarfile.open(source) as tar:
             tar.extractall(directory, filter='data')
         identity = json.loads((directory / 'handoff.json').read_text())
-        if identity['commit'] != commit or identity.get('upgrade_test') is not True:
+        if (identity['commit'] != commit or identity.get('upgrade_test') is not True
+                or (version is not None and identity['version'] != version)):
             raise SystemExit(f'upgrade fixture is not a test build from {commit}')
         bundle = directory / 'AgentInc.app'
         import hashlib
@@ -52,6 +53,7 @@ def main():
     parser.add_argument('--archive', type=Path, help='Unsigned artifact from this workflow run')
     parser.add_argument('--upgrade-candidate', type=Path)
     parser.add_argument('--upgrade-newer', type=Path)
+    parser.add_argument('--upgrade-prior', type=Path, action='append', default=[])
     parser.add_argument('--stage', action='store_true', help='Leave production release as a draft until upgrade gate passes')
     args = parser.parse_args()
     if not args.test and not os.environ.get('UPDATE_SIGNING_KEY_ED25519_PEM', '').strip():
@@ -133,6 +135,11 @@ def main():
         if args.upgrade_candidate:
             sign_upgrade_fixture(args.upgrade_candidate, out / 'upgrade-candidate.tar.gz', private, commit)
             sign_upgrade_fixture(args.upgrade_newer, out / 'upgrade-newer.tar.gz', private, commit)
+        for prior in args.upgrade_prior:
+            version = prior.name.removeprefix('upgrade-prior-').removesuffix('-unsigned.tar.gz')
+            prior_commit = run('git', 'rev-parse', f'v{version}^{{commit}}')
+            sign_upgrade_fixture(prior, out / f'upgrade-prior-{version}.tar.gz', private,
+                                 prior_commit, version)
         env = dict(os.environ)
         env.pop('AINC_RELEASE_TEST_KEY', None)
         if args.test:
