@@ -606,7 +606,7 @@ pub fn run() -> Result<()> {
         );
     })?;
     suite.keys("cmd-6");
-    suite.capture("temporal-populated", Route::Temporal, None, true)?;
+    suite.capture("temporal-populated", Route::Temporal, None, false)?;
     suite.bounds("temporal.row.8a37e3d2-6a42-4918-a5d2-98fc38ea2274")?;
     let table = suite.bounds("temporal.table")?;
     let status = suite.bounds("status-bar")?;
@@ -617,7 +617,7 @@ pub fn run() -> Result<()> {
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal_loading(cx);
     })?;
-    suite.capture("temporal-loading", Route::Temporal, None, true)?;
+    suite.capture("temporal-loading", Route::Temporal, None, false)?;
     suite.bounds("temporal.loading")?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal(
@@ -629,12 +629,12 @@ pub fn run() -> Result<()> {
             cx,
         );
     })?;
-    suite.capture("temporal-empty", Route::Temporal, None, true)?;
+    suite.capture("temporal-empty", Route::Temporal, None, false)?;
     suite.bounds("temporal.empty")?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal_error(cx);
     })?;
-    suite.capture("temporal-error", Route::Temporal, None, true)?;
+    suite.capture("temporal-error", Route::Temporal, None, false)?;
     suite.bounds("temporal.error")?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal(
@@ -681,7 +681,7 @@ pub fn run() -> Result<()> {
                 );
             })?;
             suite.keys("cmd-6");
-            suite.capture("temporal-small-no-ui", Route::Temporal, None, true)?;
+            suite.capture("temporal-small-no-ui", Route::Temporal, None, false)?;
             suite.bounds("temporal.no-ui")?;
         }
         for (index, route) in [

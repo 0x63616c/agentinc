@@ -269,24 +269,21 @@ impl Render for TemporalPage {
                     }))
             })
             .collect::<Vec<_>>();
+        let header = PageHeader::new("Temporal")
+            .description("Workflow executions in this AgentInc runtime · newest first")
+            .actions(
+                self.button(
+                    "temporal.refresh",
+                    "Refresh workflows",
+                    !self.loading,
+                    |this, _, cx| this.load(false, cx),
+                    cx,
+                )
+                .child("Refresh"),
+            );
         let mut content = column()
             .w_full()
             .gap(px(22.))
-            .child(
-                PageHeader::new("Temporal")
-                    .description("Workflow executions in this AgentInc runtime · newest first")
-                    .actions(
-                        self.button(
-                            "temporal.refresh",
-                            "Refresh workflows",
-                            !self.loading,
-                            |this, _, cx| this.load(false, cx),
-                            cx,
-                        )
-                        .child("Refresh"),
-                    )
-                    .build(),
-            )
             .child(column().gap(px(7.)).children(filters));
         if !self.ui_available && self.loaded && self.error.is_none() {
             content = content.child(
@@ -478,12 +475,14 @@ impl Render for TemporalPage {
                 }),
             );
         }
-        div()
-            .id("temporal.page")
-            .accessibility_id("temporal.page")
-            .size_full()
-            .overflow_y_scroll()
-            .p(px(32.))
-            .child(content)
+        Page::document(header)
+            .child(
+                div()
+                    .id("temporal.page")
+                    .accessibility_id("temporal.page")
+                    .w_full()
+                    .child(content),
+            )
+            .build()
     }
 }

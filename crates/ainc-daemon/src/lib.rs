@@ -8,8 +8,8 @@ pub mod execution;
 pub mod inference;
 pub mod legacy;
 pub mod product;
-pub mod terminal_sessions;
 pub mod temporal;
+pub mod terminal_sessions;
 pub mod tickets;
 pub mod workspaces;
 use axum::{
