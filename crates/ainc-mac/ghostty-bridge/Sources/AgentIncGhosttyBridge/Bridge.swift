@@ -19,7 +19,8 @@ func appShortcutCommand(_ event: NSEvent, in pane: NSView, shown: Bool) -> Int32
     case "k": return -1 // AgentInc Search
     case ",": return -2 // AgentInc Settings
     default:
-        guard key.count == 1, let digit = key.first?.wholeNumberValue else { return nil }
+        guard key.count == 1, let digit = key.first?.wholeNumberValue,
+              (1...5).contains(digit) else { return nil }
         return Int32(digit)
     }
 }

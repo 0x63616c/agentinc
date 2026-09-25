@@ -71,14 +71,10 @@ pub const PAGES: &[PageSpec] = &[
 
 impl Route {
     pub fn from_shortcut(number: u8) -> Option<Self> {
-        if number > 9 {
+        if !(1..=9).contains(&number) {
             return None;
         }
-        let index = if number == 0 {
-            9
-        } else {
-            usize::from(number - 1)
-        };
+        let index = usize::from(number - 1);
         PAGES
             .iter()
             .filter(|page| page.in_sidebar)
@@ -412,6 +408,7 @@ mod tests {
             assert_eq!(Route::from_shortcut(((index + 1) % 10) as u8), Some(route));
         }
         assert_eq!(Route::from_shortcut(0), None);
+        assert_eq!(Route::from_shortcut(6), None);
         assert_eq!(Route::from_shortcut(10), None);
     }
     #[test]

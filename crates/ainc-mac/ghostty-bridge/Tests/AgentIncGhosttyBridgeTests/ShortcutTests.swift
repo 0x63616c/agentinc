@@ -29,8 +29,10 @@ final class ShortcutTests: XCTestCase {
         XCTAssertEqual(appShortcutCommand(search, in: pane, shown: true), -1)
         XCTAssertEqual(appShortcutCommand(key(",", modifiers: .command, code: 43),
                                           in: pane, shown: true), -2)
-        XCTAssertEqual(appShortcutCommand(key("0", modifiers: .command, code: 29),
-                                          in: pane, shown: true), 0)
+        XCTAssertEqual(appShortcutCommand(key("5", modifiers: .command, code: 23),
+                                          in: pane, shown: true), 5)
+        XCTAssertNil(appShortcutCommand(key("0", modifiers: .command, code: 29),
+                                        in: pane, shown: true))
         XCTAssertNil(appShortcutCommand(key("l", modifiers: .control, code: 37),
                                         in: pane, shown: true))
         XCTAssertNil(appShortcutCommand(search, in: pane, shown: false))

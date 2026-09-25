@@ -1233,12 +1233,24 @@ mod interaction_tests {
             for index in 1..=5 {
                 let badge = cx
                     .debug_bounds(
-                        ["sidebar-badge-1", "sidebar-badge-2", "sidebar-badge-3", "sidebar-badge-4", "sidebar-badge-5"][index - 1],
+                        [
+                            "sidebar-badge-1",
+                            "sidebar-badge-2",
+                            "sidebar-badge-3",
+                            "sidebar-badge-4",
+                            "sidebar-badge-5",
+                        ][index - 1],
                     )
                     .unwrap();
                 let label = cx
                     .debug_bounds(
-                        ["sidebar-label-1", "sidebar-label-2", "sidebar-label-3", "sidebar-label-4", "sidebar-label-5"][index - 1],
+                        [
+                            "sidebar-label-1",
+                            "sidebar-label-2",
+                            "sidebar-label-3",
+                            "sidebar-label-4",
+                            "sidebar-label-5",
+                        ][index - 1],
                     )
                     .unwrap();
                 assert!(

@@ -1,6 +1,6 @@
 # AgentInc
 
-A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents and Automations, with Settings in the footer. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane.
+A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents, Automations and Terminal, with Settings in the footer. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane.
 
 ## Build and run
 
