@@ -123,6 +123,16 @@ enum PaletteItem {
     CreateWorkspace,
 }
 impl Shell {
+    #[cfg(target_os = "macos")]
+    fn reset_terminal_for_workspace(&mut self) {
+        // Recreate the view with this workspace's layout while its daemon PTY keeps running.
+        self.terminal.take();
+        self.terminal_error = None;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn reset_terminal_for_workspace(&mut self) {}
+
     fn workspace_state(&self) -> crate::storage::WorkspaceState {
         self.store
             .as_ref()
@@ -187,10 +197,7 @@ impl Shell {
                 this.workspace_pending = false;
                 match result {
                     Ok(_) => {
-                        // Recreate the view with this workspace's saved layout.
-                        // Dropping an attach view leaves its daemon PTY running.
-                        this.terminal.take();
-                        this.terminal_error = None;
+                        this.reset_terminal_for_workspace();
                         this.assistant.update(cx, |page, cx| {
                             page.workspace_changed(cx);
                             cx.notify();
