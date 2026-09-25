@@ -68,7 +68,7 @@ impl Preferences {
 fn http() -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
         .user_agent("AgentInc updater")
-        .https_only(true)
+        .https_only(!cfg!(ainc_upgrade_test))
         .timeout(std::time::Duration::from_secs(300))
         .build()?)
 }

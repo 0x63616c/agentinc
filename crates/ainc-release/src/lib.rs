@@ -8,7 +8,10 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = match option_env!("AINC_UPGRADE_TEST_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
 pub mod identity {
     use std::path::PathBuf;
 
@@ -78,6 +81,28 @@ pub const BUILD: &str = match option_env!("AINC_BUILD_ID") {
 pub const UPDATE_PUBLIC_KEY: &str = "mscHoRK2B71KNlJGlNqTCkMSqvuW9YWOHa1owg7S2yc=";
 pub const FEED_URL: &str =
     "https://github.com/0x63616c/agentinc/releases/latest/download/feed.json";
+
+pub fn update_public_key() -> &'static str {
+    #[cfg(ainc_upgrade_test)]
+    {
+        return env!("AINC_UPGRADE_TEST_PUBLIC_KEY");
+    }
+    #[cfg(not(ainc_upgrade_test))]
+    {
+        UPDATE_PUBLIC_KEY
+    }
+}
+
+pub fn update_feed_url() -> String {
+    #[cfg(ainc_upgrade_test)]
+    {
+        return std::env::var("AINC_UPGRADE_TEST_FEED_URL").expect("upgrade test feed URL");
+    }
+    #[cfg(not(ainc_upgrade_test))]
+    {
+        FEED_URL.into()
+    }
+}
 
 pub fn client_header() -> String {
     format!("mac/{VERSION} (build {BUILD}; api {API})")

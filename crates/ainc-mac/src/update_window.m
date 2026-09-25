@@ -8,6 +8,9 @@ extern void ainc_update_action(int action, bool automatic);
 @property(strong) NSButton *automatic;
 @property(strong) NSProgressIndicator *bar;
 @property(strong) NSTextField *bytes;
+#ifdef AINC_UPGRADE_TEST
+@property(strong) NSButton *installButton;
+#endif
 @end
 
 @implementation AincUpdateUI
@@ -107,9 +110,21 @@ void ainc_update_offer(const char *version, const char *current, const char *htm
     install.bezelColor = NSColor.controlAccentColor;
     install.contentTintColor = NSColor.whiteColor;
     [content addSubview:install];
+#ifdef AINC_UPGRADE_TEST
+    state.installButton = install;
+#endif
     [state.offer makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
 }
+
+#ifdef AINC_UPGRADE_TEST
+void ainc_update_test_click_install(void) {
+    AincUpdateUI *state = ui();
+    NSCAssert(state.offer && state.installButton, @"upgrade offer must be visible");
+    [state.offer displayIfNeeded];
+    [state.installButton performClick:nil];
+}
+#endif
 
 void ainc_update_status(const char *message) {
     AincUpdateUI *state = ui();

@@ -51,8 +51,9 @@ architecture, build ID and commit. A published version cannot be reassigned to a
 commit. Release notes are generated once and stored in the draft; retries reuse them.
 The same notes are in the manifest and downloadable notes/changelog artifacts.
 
-Only the main branch may publish. The branch acceptance job and `test=true` dispatch
-leave signed artifacts in a draft and use a throwaway Ed25519 key. The public feed is
+Only the main branch may publish, after the [native upgrade gate](upgrade-gate.md).
+The branch acceptance job and `test=true` dispatch leave signed artifacts in a
+draft and use a throwaway Ed25519 key. The public feed is
 `https://github.com/0x63616c/agentinc/releases/latest/download/feed.json`.
 Production publishing refuses if `UPDATE_SIGNING_KEY_ED25519_PEM` is missing or empty.
 The production public key is the single `UPDATE_PUBLIC_KEY` constant in

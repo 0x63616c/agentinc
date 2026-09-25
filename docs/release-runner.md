@@ -19,7 +19,9 @@ Distribution after merge; other pushes do not.
 change pushed to `main`. Its Ubuntu prepare job checks the version, then the
 Mac runs `cargo xtask release` at that exact commit. The unsigned archive moves
 to the Ubuntu job through a one-day Actions artifact. Only Ubuntu receives the
-Apple and update-signing secrets; it signs, notarizes, staples, and publishes.
+Apple and update-signing secrets; it signs, notarizes, and staples. Distribution
+then runs the [native upgrade gate](upgrade-gate.md) on the Mac and publishes
+on main only after that job succeeds.
 The Mac job has read-only repository permission and checkout does not persist
 its token. No pull-request event invokes the Mac job. An owner
 `workflow_dispatch` may run the path in `test=true` mode, which leaves a draft
@@ -30,6 +32,8 @@ The older handoff is still available: run `cargo xtask release --upload` on a
 Mac at the desired commit, or manually upload `unsigned.tar.gz` to a draft
 `build-COMMIT` release. Dispatch Distribution with that `commit` and
 `build=false`. `--upload` itself dispatches this fallback for compatibility.
+That handoff alone cannot pass the native upgrade gate: use `build=true` for a
+publishable release until the fallback also supplies both test fixture builds.
 
 The Mac job caps Cargo at four build jobs, has a three-hour timeout, and keeps
 one Cargo target directory and its toolchain under the runner workspace for

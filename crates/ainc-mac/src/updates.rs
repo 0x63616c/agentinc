@@ -94,13 +94,13 @@ impl UpdateView {
             }
         })
         .detach();
-        if directory.join("feed.json").is_file() && !ainc_release::UPDATE_PUBLIC_KEY.is_empty() {
+        if directory.join("feed.json").is_file() && !ainc_release::update_public_key().is_empty() {
             let saved = directory.clone();
             let request = cx.background_executor().spawn(async move {
                 let signed: SignedManifest =
                     serde_json::from_slice(&std::fs::read(saved.join("feed.json"))?)?;
                 let manifest =
-                    updater::verify_download(&signed, ainc_release::UPDATE_PUBLIC_KEY, &saved)?;
+                    updater::verify_download(&signed, ainc_release::update_public_key(), &saved)?;
                 anyhow::ensure!(
                     manifest.is_upgrade(ainc_release::VERSION, std::env::consts::ARCH)?,
                     "saved update is no longer newer"
@@ -180,6 +180,10 @@ impl UpdateView {
                     self.ready,
                     self.changelog,
                 );
+                #[cfg(ainc_upgrade_test)]
+                if std::env::var_os("AINC_UPGRADE_TEST_MODE").is_some() {
+                    native_update::upgrade_test_click_install();
+                }
             }
         } else {
             native_update::status(&self.message);
@@ -252,8 +256,8 @@ impl UpdateView {
         self.present();
         let request = cx.background_executor().spawn(async {
             crate::storage::background(updater::check(
-                ainc_release::FEED_URL,
-                ainc_release::UPDATE_PUBLIC_KEY,
+                &ainc_release::update_feed_url(),
+                ainc_release::update_public_key(),
             ))
         });
         cx.spawn(async move |this, cx| {
@@ -320,7 +324,7 @@ impl UpdateView {
                 progress,
                 cancelled,
             ))?;
-            updater::verify_download(&signed, ainc_release::UPDATE_PUBLIC_KEY, &directory)
+            updater::verify_download(&signed, ainc_release::update_public_key(), &directory)
                 .map(|_| ())
         });
         cx.spawn(async move |this, cx| {
@@ -344,6 +348,12 @@ impl UpdateView {
                 if this.ready && this.install_after_download {
                     this.install(cx);
                 } else {
+                    #[cfg(ainc_upgrade_test)]
+                    if this.ready
+                        && std::env::var("AINC_UPGRADE_TEST_MODE").as_deref() == Ok("automatic")
+                    {
+                        this.visible = true;
+                    }
                     this.present();
                 }
                 this.install_after_download = false;
@@ -525,6 +535,36 @@ pub fn init(cx: &mut App) {
     cx.set_global(Updates(view));
     cx.on_action(|_: &CheckForUpdates, cx| open(cx, true));
     cx.on_action(|_: &ShowChangelog, cx| open_changelog(cx));
+}
+
+#[cfg(ainc_upgrade_test)]
+pub fn start_upgrade_test(cx: &mut App) {
+    let Ok(mode) = std::env::var("AINC_UPGRADE_TEST_MODE") else {
+        return;
+    };
+    if std::env::var("AINC_UPGRADE_TEST_FROM").as_deref() != Ok(ainc_release::VERSION) {
+        let marker = std::env::var("AINC_UPGRADE_TEST_SUCCESS_FILE").expect("upgrade test marker");
+        std::fs::write(
+            marker,
+            format!("{} {}\n", ainc_release::VERSION, std::process::id()),
+        )
+        .expect("write upgrade test marker");
+        return;
+    }
+    match mode.as_str() {
+        "manual" => open(cx, true),
+        "automatic" => {
+            let view = cx.global::<Updates>().0.clone();
+            view.update(cx, |this, cx| {
+                this.preferences.automatic_checks = true;
+                this.preferences.automatic_download = true;
+                this.preferences.last_check = 0;
+                this.visible = false;
+                this.check(false, cx);
+            });
+        }
+        _ => panic!("unknown upgrade test mode"),
+    }
 }
 
 #[cfg(test)]
