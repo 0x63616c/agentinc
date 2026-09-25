@@ -919,6 +919,33 @@ pub mod types {
             Default::default()
         }
     }
+    ///`CreateTerminalSession`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id"
+    ///  ],
+    ///  "properties": {
+    ///    "id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CreateTerminalSession {
+        pub id: ::std::string::String,
+    }
+    impl CreateTerminalSession {
+        pub fn builder() -> builder::CreateTerminalSession {
+            Default::default()
+        }
+    }
     ///`ErrorBody`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1213,6 +1240,43 @@ pub mod types {
     }
     impl Snapshot {
         pub fn builder() -> builder::Snapshot {
+            Default::default()
+        }
+    }
+    ///`TerminalSession`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "state",
+    ///    "workspace_id"
+    ///  ],
+    ///  "properties": {
+    ///    "id": {
+    ///      "type": "string"
+    ///    },
+    ///    "state": {
+    ///      "type": "string"
+    ///    },
+    ///    "workspace_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TerminalSession {
+        pub id: ::std::string::String,
+        pub state: ::std::string::String,
+        pub workspace_id: ::std::string::String,
+    }
+    impl TerminalSession {
+        pub fn builder() -> builder::TerminalSession {
             Default::default()
         }
     }
@@ -2830,6 +2894,42 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct CreateTerminalSession {
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for CreateTerminalSession {
+            fn default() -> Self {
+                Self {
+                    id: Err("no value supplied for id".to_string()),
+                }
+            }
+        }
+        impl CreateTerminalSession {
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CreateTerminalSession> for super::CreateTerminalSession {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CreateTerminalSession,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self { id: value.id? })
+            }
+        }
+        impl ::std::convert::From<super::CreateTerminalSession> for CreateTerminalSession {
+            fn from(value: super::CreateTerminalSession) -> Self {
+                Self { id: Ok(value.id) }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct ErrorBody {
             code: ::std::result::Result<::std::string::String, ::std::string::String>,
             message: ::std::result::Result<::std::string::String, ::std::string::String>,
@@ -3324,6 +3424,74 @@ pub mod types {
                     settings: Ok(value.settings),
                     todos: Ok(value.todos),
                     turns: Ok(value.turns),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TerminalSession {
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            state: ::std::result::Result<::std::string::String, ::std::string::String>,
+            workspace_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for TerminalSession {
+            fn default() -> Self {
+                Self {
+                    id: Err("no value supplied for id".to_string()),
+                    state: Err("no value supplied for state".to_string()),
+                    workspace_id: Err("no value supplied for workspace_id".to_string()),
+                }
+            }
+        }
+        impl TerminalSession {
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn state<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.state = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for state: {e}"));
+                self
+            }
+            pub fn workspace_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.workspace_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for workspace_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TerminalSession> for super::TerminalSession {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TerminalSession,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    id: value.id?,
+                    state: value.state?,
+                    workspace_id: value.workspace_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TerminalSession> for TerminalSession {
+            fn from(value: super::TerminalSession) -> Self {
+                Self {
+                    id: Ok(value.id),
+                    state: Ok(value.state),
+                    workspace_id: Ok(value.workspace_id),
                 }
             }
         }
@@ -4090,7 +4258,7 @@ pub mod types {
 
 
 
-Version: 0.2.0*/
+Version: 0.3.0*/
 pub struct Client {
     pub(crate) baseurl: String,
     pub(crate) client: reqwest::Client,
@@ -4128,7 +4296,7 @@ impl Client {
 }
 impl ClientInfo<()> for Client {
     fn api_version() -> &'static str {
-        "0.2.0"
+        "0.3.0"
     }
     fn baseurl(&self) -> &str {
         self.baseurl.as_str()
@@ -4243,6 +4411,38 @@ impl Client {
     ```*/
     pub fn product_state(&self) -> builder::ProductState<'_> {
         builder::ProductState::new(self)
+    }
+    /*Sends a `GET` request to `/v1/terminal/sessions`
+
+    ```ignore
+    let response = client.terminal_sessions_list()
+        .send()
+        .await;
+    ```*/
+    pub fn terminal_sessions_list(&self) -> builder::TerminalSessionsList<'_> {
+        builder::TerminalSessionsList::new(self)
+    }
+    /*Sends a `POST` request to `/v1/terminal/sessions`
+
+    ```ignore
+    let response = client.terminal_sessions_create()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn terminal_sessions_create(&self) -> builder::TerminalSessionsCreate<'_> {
+        builder::TerminalSessionsCreate::new(self)
+    }
+    /*Sends a `DELETE` request to `/v1/terminal/sessions/{id}`
+
+    ```ignore
+    let response = client.terminal_sessions_close()
+        .id(id)
+        .send()
+        .await;
+    ```*/
+    pub fn terminal_sessions_close(&self) -> builder::TerminalSessionsClose<'_> {
+        builder::TerminalSessionsClose::new(self)
     }
     /*Sends a `GET` request to `/v1/tickets`
 
@@ -4932,6 +5132,230 @@ pub mod builder {
                     ResponseValue::from_response(response).await?,
                 )),
                 503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::terminal_sessions_list`]
+
+    [`Client::terminal_sessions_list`]: super::Client::terminal_sessions_list*/
+    #[derive(Debug, Clone)]
+    pub struct TerminalSessionsList<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> TerminalSessionsList<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `GET` request to `/v1/terminal/sessions`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<::std::vec::Vec<types::TerminalSession>>, Error<types::ErrorBody>>
+        {
+            let Self { client } = self;
+            let url = format!("{}/v1/terminal/sessions", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "terminal_sessions_list",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::terminal_sessions_create`]
+
+    [`Client::terminal_sessions_create`]: super::Client::terminal_sessions_create*/
+    #[derive(Debug, Clone)]
+    pub struct TerminalSessionsCreate<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::CreateTerminalSession, String>,
+    }
+    impl<'a> TerminalSessionsCreate<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::CreateTerminalSession>,
+            <V as std::convert::TryInto<types::CreateTerminalSession>>::Error: std::fmt::Display,
+        {
+            self.body = value.try_into().map(From::from).map_err(|s| {
+                format!(
+                    "conversion to `CreateTerminalSession` for body failed: {}",
+                    s
+                )
+            });
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(
+                    types::builder::CreateTerminalSession,
+                ) -> types::builder::CreateTerminalSession,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/terminal/sessions`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::TerminalSession>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::CreateTerminalSession::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/terminal/sessions", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "terminal_sessions_create",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::terminal_sessions_close`]
+
+    [`Client::terminal_sessions_close`]: super::Client::terminal_sessions_close*/
+    #[derive(Debug, Clone)]
+    pub struct TerminalSessionsClose<'a> {
+        client: &'a super::Client,
+        id: Result<::std::string::String, String>,
+    }
+    impl<'a> TerminalSessionsClose<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                id: Err("id was not initialized".to_string()),
+            }
+        }
+        pub fn id<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<::std::string::String>,
+        {
+            self.id = value.try_into().map_err(|_| {
+                "conversion to `:: std :: string :: String` for id failed".to_string()
+            });
+            self
+        }
+        ///Sends a `DELETE` request to `/v1/terminal/sessions/{id}`
+        pub async fn send(self) -> Result<ResponseValue<()>, Error<types::ErrorBody>> {
+            let Self { client, id } = self;
+            let id = id.map_err(Error::InvalidRequest)?;
+            let url = format!(
+                "{}/v1/terminal/sessions/{}",
+                client.baseurl,
+                encode_path(&id.to_string()),
+            );
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .delete(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "terminal_sessions_close",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                204u16 => Ok(ResponseValue::empty(response)),
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),

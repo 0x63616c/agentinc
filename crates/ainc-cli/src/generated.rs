@@ -20,6 +20,9 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionLogin => Self::cli_connection_login(),
             CliCommand::ConnectionLogout => Self::cli_connection_logout(),
             CliCommand::ProductState => Self::cli_product_state(),
+            CliCommand::TerminalSessionsList => Self::cli_terminal_sessions_list(),
+            CliCommand::TerminalSessionsCreate => Self::cli_terminal_sessions_create(),
+            CliCommand::TerminalSessionsClose => Self::cli_terminal_sessions_close(),
             CliCommand::TicketsState => Self::cli_tickets_state(),
             CliCommand::TicketsCommand => Self::cli_tickets_command(),
             CliCommand::TicketContract => Self::cli_ticket_contract(),
@@ -96,6 +99,40 @@ impl<T: CliConfig> Cli<T> {
     pub fn cli_product_state() -> ::clap::Command {
         ::clap::Command::new("")
     }
+    pub fn cli_terminal_sessions_list() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_terminal_sessions_create() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("id")
+                    .long("id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(false)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
+    pub fn cli_terminal_sessions_close() -> ::clap::Command {
+        ::clap::Command::new("").arg(
+            ::clap::Arg::new("id")
+                .long("id")
+                .value_parser(::clap::value_parser!(::std::string::String))
+                .required(true),
+        )
+    }
     pub fn cli_tickets_state() -> ::clap::Command {
         ::clap::Command::new("")
     }
@@ -164,6 +201,13 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
             CliCommand::ConnectionLogout => self.execute_connection_logout(matches).await,
             CliCommand::ProductState => self.execute_product_state(matches).await,
+            CliCommand::TerminalSessionsList => self.execute_terminal_sessions_list(matches).await,
+            CliCommand::TerminalSessionsCreate => {
+                self.execute_terminal_sessions_create(matches).await
+            }
+            CliCommand::TerminalSessionsClose => {
+                self.execute_terminal_sessions_close(matches).await
+            }
             CliCommand::TicketsState => self.execute_tickets_state(matches).await,
             CliCommand::TicketsCommand => self.execute_tickets_command(matches).await,
             CliCommand::TicketContract => self.execute_ticket_contract(matches).await,
@@ -367,6 +411,76 @@ impl<T: CliConfig> Cli<T> {
             }
         }
     }
+    pub async fn execute_terminal_sessions_list(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.terminal_sessions_list();
+        self.config
+            .execute_terminal_sessions_list(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_terminal_sessions_create(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.terminal_sessions_create();
+        if let Some(value) = matches.get_one::<::std::string::String>("id") {
+            request = request.body_map(|body| body.id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::CreateTerminalSession>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config
+            .execute_terminal_sessions_create(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_terminal_sessions_close(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.terminal_sessions_close();
+        if let Some(value) = matches.get_one::<::std::string::String>("id") {
+            request = request.id(value.clone());
+        }
+        self.config
+            .execute_terminal_sessions_close(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_no_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
     pub async fn execute_tickets_state(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
         let mut request = self.client.tickets_state();
         self.config.execute_tickets_state(matches, &mut request)?;
@@ -544,6 +658,27 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_terminal_sessions_list(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::TerminalSessionsList,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_terminal_sessions_create(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::TerminalSessionsCreate,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_terminal_sessions_close(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::TerminalSessionsClose,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_tickets_state(
         &self,
         matches: &::clap::ArgMatches,
@@ -585,6 +720,9 @@ pub enum CliCommand {
     ConnectionLogin,
     ConnectionLogout,
     ProductState,
+    TerminalSessionsList,
+    TerminalSessionsCreate,
+    TerminalSessionsClose,
     TicketsState,
     TicketsCommand,
     TicketContract,
@@ -603,6 +741,9 @@ impl CliCommand {
             CliCommand::ConnectionLogin,
             CliCommand::ConnectionLogout,
             CliCommand::ProductState,
+            CliCommand::TerminalSessionsList,
+            CliCommand::TerminalSessionsCreate,
+            CliCommand::TerminalSessionsClose,
             CliCommand::TicketsState,
             CliCommand::TicketsCommand,
             CliCommand::TicketContract,
@@ -622,6 +763,9 @@ impl CliCommand {
             CliCommand::ConnectionLogin => "connection_login",
             CliCommand::ConnectionLogout => "connection_logout",
             CliCommand::ProductState => "product_state",
+            CliCommand::TerminalSessionsList => "terminal_sessions_list",
+            CliCommand::TerminalSessionsCreate => "terminal_sessions_create",
+            CliCommand::TerminalSessionsClose => "terminal_sessions_close",
             CliCommand::TicketsState => "tickets_state",
             CliCommand::TicketsCommand => "tickets_command",
             CliCommand::TicketContract => "ticket_contract",

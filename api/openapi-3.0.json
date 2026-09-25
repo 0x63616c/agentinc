@@ -546,6 +546,17 @@
         ],
         "type": "object"
       },
+      "CreateTerminalSession": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -693,6 +704,25 @@
           "turns",
           "todos",
           "settings"
+        ],
+        "type": "object"
+      },
+      "TerminalSession": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "state"
         ],
         "type": "object"
       },
@@ -1172,7 +1202,7 @@
       "name": "MIT"
     },
     "title": "ainc-daemon",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -1594,6 +1624,140 @@
         },
         "tags": [
           "product"
+        ]
+      }
+    },
+    "/v1/terminal/sessions": {
+      "get": {
+        "operationId": "terminal_sessions_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TerminalSession"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "terminal_sessions"
+        ]
+      },
+      "post": {
+        "operationId": "terminal_sessions_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTerminalSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminalSession"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "terminal_sessions"
+        ]
+      }
+    },
+    "/v1/terminal/sessions/{id}": {
+      "delete": {
+        "operationId": "terminal_sessions_close",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "terminal_sessions"
         ]
       }
     },
