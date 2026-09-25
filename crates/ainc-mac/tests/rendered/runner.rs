@@ -204,6 +204,7 @@ impl Suite {
         );
         check_pixels(image.as_raw(), image.width(), scale, &probes)
             .map_err(|e| anyhow::anyhow!("{name}: {e}"))?;
+        self.check_page_geometry(route)?;
         if name == "route-1-0" {
             self.check_shell_geometry()?;
         }
@@ -399,6 +400,59 @@ impl Suite {
         );
         Ok(())
     }
+
+    fn check_page_geometry(&mut self, route: Route) -> Result<()> {
+        let main = self.bounds("main-pane")?;
+        let frame = self.bounds("page-frame")?;
+        let terminal_inset = if route == Route::Terminal { 8. } else { 0. };
+        near(
+            "page frame left edge",
+            f32::from(frame.origin.x - main.origin.x),
+            terminal_inset,
+        )?;
+        near(
+            "page frame right edge",
+            f32::from(main.origin.x + main.size.width - frame.origin.x - frame.size.width),
+            terminal_inset,
+        )?;
+        if let Ok(content) = self.bounds("main-content") {
+            near(
+                "page content left inset",
+                f32::from(content.origin.x - frame.origin.x),
+                PAGE_X,
+            )?;
+            near(
+                "page content right inset",
+                f32::from(
+                    frame.origin.x + frame.size.width - content.origin.x - content.size.width,
+                ),
+                PAGE_X,
+            )?;
+            let surface = match route {
+                Route::Settings => Some("settings.row.Font"),
+                Route::Automations => Some("automations.page"),
+                _ => None,
+            };
+            if let Some(selector) = surface {
+                let surface = self.bounds(selector)?;
+                near(
+                    "page surface right edge",
+                    f32::from(
+                        content.origin.x + content.size.width
+                            - surface.origin.x
+                            - surface.size.width,
+                    ),
+                    0.,
+                )?;
+            }
+        } else {
+            ensure!(
+                matches!(route, Route::Assistant | Route::Terminal),
+                "{route:?} is missing its shared document content"
+            );
+        }
+        Ok(())
+    }
 }
 
 pub fn run() -> Result<()> {
@@ -586,6 +640,9 @@ pub fn run() -> Result<()> {
     suite.capture("settings-model-closed", Route::Settings, None, false)?;
     suite.click_selector("codex-model-select")?;
     suite.capture("model-dropdown-open", Route::Settings, None, false)?;
+    suite.keys("escape");
+    suite.keys("cmd-5");
+    suite.capture("terminal", Route::Terminal, None, false)?;
     println!(
         "{} real Metal frames passed, including region-removal negative controls",
         suite.count

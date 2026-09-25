@@ -1206,16 +1206,13 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|this, _: &FocusNext, w, cx| this.cycle_focus(false, w, cx)))
             .on_action(cx.listener(|this, _: &FocusPrevious, w, cx| this.cycle_focus(true, w, cx)))
-            .child(
-                self.layout_body(
-                    self.sidebar(cx).into_any_element(),
-                    self.main_area(content, self.session.current() == Route::Assistant)
-                        .into_any_element(),
-                    None,
-                    window,
-                    cx,
-                ),
-            )
+            .child(self.layout_body(
+                self.sidebar(cx).into_any_element(),
+                self.main_area(content).into_any_element(),
+                None,
+                window,
+                cx,
+            ))
             // Header paints after panels so the current space covers the top border.
             .child(
                 div()

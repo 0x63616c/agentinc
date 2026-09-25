@@ -2,7 +2,7 @@ use super::*;
 use crate::ui::*;
 
 impl Shell {
-    pub(super) fn main_area(&self, content: AnyElement, assistant: bool) -> Div {
+    pub(super) fn main_area(&self, content: AnyElement) -> Div {
         if self.session.current() == Route::Terminal {
             return panel()
                 .debug_selector(|| "main-pane".into())
@@ -14,43 +14,28 @@ impl Shell {
                 .p(px(8.))
                 .child(content);
         }
-        let area = panel()
+        panel()
             .debug_selector(|| "main-pane".into())
             .flex_1()
             .min_w_0()
             .min_h_0()
-            .overflow_hidden();
-        if assistant {
-            area.child(content)
-        } else {
-            area.child(
-                column()
-                    .id("page")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .px(px(PAGE_X))
-                    .py(px(PAGE_X))
-                    .child(
-                        div()
-                            .relative()
-                            .debug_selector(|| "main-content".into())
-                            .child(content),
-                    ),
-            )
-        }
+            .overflow_hidden()
+            .child(content)
     }
 
     pub(super) fn terminal_page(&self, _visible: bool) -> impl IntoElement {
         let page = column().size_full().min_h_0();
         #[cfg(target_os = "macos")]
         if let Some(host) = &self.terminal {
-            return page
-                .child(div().flex_1().min_h_0().w_full().child(terminal_surface(
-                    host.clone(),
-                    _visible,
-                    self.pending_terminal_focus,
-                )))
+            return Page::canvas()
+                .child(
+                    page.child(div().flex_1().min_h_0().w_full().child(terminal_surface(
+                        host.clone(),
+                        _visible,
+                        self.pending_terminal_focus,
+                    ))),
+                )
+                .build()
                 .into_any_element();
         }
         #[cfg(target_os = "macos")]
@@ -60,16 +45,16 @@ impl Shell {
             .unwrap_or_else(|| "Ghostty could not start.".into());
         #[cfg(not(target_os = "macos"))]
         let message = "Terminal requires macOS and the Ghostty runtime.";
-        page.child(div().text_color(rgb(MUTED)).child(message))
+        Page::canvas()
+            .child(page.child(div().text_color(rgb(MUTED)).child(message)))
+            .build()
             .into_any_element()
     }
 
     pub(super) fn static_page(&self, route: Route, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut page = column()
-            .gap(px(24.))
-            .child(PageHeader::new(route.label()).build());
+        let mut page = Page::document(PageHeader::new(route.label()));
         if route == Route::Settings {
-            page = page.w_full().max_w(px(760.)).child(
+            page = page.child(
                 column()
                     .gap(px(18.))
                     .child(settings_section(
@@ -141,6 +126,6 @@ impl Shell {
                     )),
             );
         }
-        page
+        page.build()
     }
 }
