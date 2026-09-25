@@ -71,6 +71,7 @@ pub struct Shell {
     _input_subscription: Subscription,
     command_held: bool,
     palette_transition: Option<Instant>,
+    launch_started: Option<Instant>,
     selected: usize,
     notification_items: Vec<Notification>,
     save_error: bool,
@@ -226,6 +227,7 @@ impl Shell {
             _input_subscription: subscription,
             command_held: false,
             palette_transition: None,
+            launch_started: None,
             selected: 0,
             notification_items: Vec::new(),
             save_error: !session_writable,
@@ -240,7 +242,7 @@ impl Shell {
     #[cfg(test)]
     pub(crate) fn fixture(path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let store = crate::storage::Store::open(&path.with_extension("sqlite3")).unwrap();
-        Self::with_state(
+        let mut shell = Self::with_state(
             path,
             Some(std::sync::Arc::new(store)),
             None,
@@ -250,7 +252,9 @@ impl Shell {
             },
             window,
             cx,
-        )
+        );
+        shell.launch_started = Some(Instant::now() - std::time::Duration::from_secs(1));
+        shell
     }
 
     #[cfg(test)]
@@ -260,6 +264,15 @@ impl Shell {
             self.overlays.borrow().active(),
             false,
         )
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    pub(crate) fn fixture_launch_elapsed(
+        &mut self,
+        elapsed: std::time::Duration,
+        cx: &mut Context<Self>,
+    ) {
+        self.launch_started = Some(Instant::now() - elapsed);
+        cx.notify();
     }
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
@@ -826,7 +839,9 @@ impl Render for Shell {
         let content = match self.session.current() {
             Route::Automations => self.automations.clone().into_any_element(),
             Route::Tickets => self.tickets.clone().into_any_element(),
-            Route::Agents => self.tickets.update(cx, |tickets, cx| tickets.agents(cx)),
+            Route::Agents => self
+                .tickets
+                .update(cx, |tickets, cx| tickets.agents(window, cx)),
             Route::Assistant => self.assistant.clone().into_any_element(),
             Route::Settings => self
                 .static_page(self.session.current(), cx)
@@ -1013,6 +1028,13 @@ impl Render for Shell {
                         ),
                 )
             })
+            .when_some(
+                launch_overlay(
+                    *self.launch_started.get_or_insert_with(Instant::now),
+                    window,
+                ),
+                |s, overlay| s.child(overlay),
+            )
             .into_any_element()
     }
 }

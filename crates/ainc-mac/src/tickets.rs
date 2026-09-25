@@ -4,7 +4,7 @@ use crate::{
     ui::*,
 };
 use gpui::{prelude::*, *};
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 
 fn status_name(status: TicketStatus) -> &'static str {
     match status {
@@ -35,6 +35,7 @@ pub struct TicketsPage {
     pending: bool,
     refreshing: bool,
     loaded: bool,
+    loading_started: Instant,
     page_focus: FocusHandle,
     restore_focus: bool,
     add_focus: FocusHandle,
@@ -128,6 +129,7 @@ impl TicketsPage {
             pending: false,
             refreshing: false,
             loaded: cfg!(test),
+            loading_started: Instant::now(),
             page_focus: cx.focus_handle(),
             restore_focus: false,
             add_focus: cx.focus_handle(),
@@ -166,6 +168,9 @@ impl TicketsPage {
         let Some(store) = self.store.clone() else {
             return;
         };
+        if self.error.is_some() {
+            self.loading_started = Instant::now();
+        }
         self.refreshing = true;
         let request = cx
             .background_executor()
@@ -460,7 +465,7 @@ impl TicketsPage {
             );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
-    pub fn agents(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub fn agents(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         column()
             .gap(px(24.))
             .child(
@@ -483,6 +488,12 @@ impl TicketsPage {
             )
             .when_some(self.error.clone(), |s, error| {
                 s.child(div().text_color(rgb(ERROR)).child(error))
+            })
+            .when(self.refreshing && self.error.is_some(), |s| {
+                s.child(LoadingFrame::new(self.loading_started, window).inline("Reconnecting…"))
+            })
+            .when(!self.loaded && self.error.is_none(), |s| {
+                s.child(LoadingFrame::new(self.loading_started, window).page("Loading Agents…"))
             })
             .children(
                 self.state
@@ -585,6 +596,9 @@ impl Render for TicketsPage {
             })
             .when_some(self.form_error.clone(), |s, error| {
                 s.child(div().text_color(rgb(ERROR)).child(error))
+            })
+            .when(!self.loaded && self.error.is_none(), |s| {
+                s.child(LoadingFrame::new(self.loading_started, window).page("Loading Tickets…"))
             })
             .child(if let Some(ticket) = selected {
                 self.detail(ticket, cx)
