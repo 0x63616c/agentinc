@@ -217,19 +217,20 @@ fn option<V: 'static>(
                 .hover(|item| item.bg(rgb(HOVER_CONTROL)))
                 .text_size(type_size(LABEL_SIZE))
                 .child(div().flex_1().min_w_0().truncate().child(name))
-                .when(featured, |item| {
-                    item.child(
-                        div()
-                            .px(px(6.))
-                            .py(px(1.))
-                            .rounded_full()
-                            .bg(rgb(SURFACE_SEGMENT))
-                            .text_size(type_size(CAPTION_SIZE - 1.))
-                            .text_color(rgb(TEXT_ACCENT))
-                            .child("Featured"),
-                    )
-                })
-                .when(selected, |item| item.child("✓"))
+                .child(
+                    div()
+                        .w(px(96.))
+                        .flex_shrink_0()
+                        .text_size(type_size(CAPTION_SIZE))
+                        .text_color(rgb(MUTED))
+                        .child(if featured { "Recommended" } else { "" }),
+                )
+                .child(
+                    div()
+                        .w(px(16.))
+                        .flex_shrink_0()
+                        .child(if selected { "✓" } else { "" }),
+                )
         },
         move |view: &mut V, window, cx| select(view, choice.clone(), window, cx),
         cx,

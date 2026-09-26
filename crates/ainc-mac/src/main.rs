@@ -143,21 +143,22 @@ fn main() {
                     ],
                 },
             ]);
+            let default_size = size(px(1360.), px(828.));
+            // Pilot captures the same pages at both supported review widths, and
+            // a tall window for pages that scroll, since the driver cannot scroll.
             #[cfg(feature = "automation")]
-            // Pilot captures the same pages at both supported review widths.
-            let pilot_narrow =
-                pilot_directory.is_some() && std::env::var_os("AGENTINC_PILOT_NARROW").is_some();
+            let window_size = if pilot_directory.is_none() {
+                default_size
+            } else if std::env::var_os("AGENTINC_PILOT_NARROW").is_some() {
+                size(px(1160.), px(728.))
+            } else if std::env::var_os("AGENTINC_PILOT_TALL").is_some() {
+                size(px(1360.), px(1400.))
+            } else {
+                default_size
+            };
             #[cfg(not(feature = "automation"))]
-            let pilot_narrow = false;
-            let bounds = Bounds::centered(
-                None,
-                if pilot_narrow {
-                    size(px(1160.), px(728.))
-                } else {
-                    size(px(1360.), px(828.))
-                },
-                cx,
-            );
+            let window_size = default_size;
+            let bounds = Bounds::centered(None, window_size, cx);
             #[cfg(feature = "automation")]
             let visible = pilot_directory.is_none() || pilot_visible;
             #[cfg(not(feature = "automation"))]

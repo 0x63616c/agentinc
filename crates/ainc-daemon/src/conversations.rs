@@ -386,6 +386,11 @@ async fn drive(
                 tx.commit().await?;
                 break Ok(());
             }
+            Err(turnkeel::Error::Cancelled) => {
+                // Stopped by the user: the command already recorded the outcome.
+                sqlx::query("UPDATE turns SET state='failed',error='Stopped.',draft=NULL,finished_at=COALESCE(finished_at,extract(epoch FROM now())::bigint) WHERE id=$1 AND state='running' AND attempt=$2").bind(id).bind(attempt).execute(pool).await?;
+                break Ok(());
+            }
             Err(error) => break Err(error.into()), // Infrastructure outages retain pending work.
         }
     };

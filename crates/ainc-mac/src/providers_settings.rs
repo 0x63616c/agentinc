@@ -22,6 +22,8 @@ pub struct ProvidersSettings {
     test: Option<(ProviderId, ProviderTest)>,
     notice: Option<String>,
     pending: bool,
+    /// The key field is mounted only while a key is being entered.
+    adding_key: bool,
     api_key_input: Entity<TextInput>,
     code_input: Entity<TextInput>,
     allow_input: Entity<TextInput>,
@@ -58,6 +60,7 @@ impl ProvidersSettings {
             test: None,
             notice: None,
             pending: false,
+            adding_key: false,
             api_key_input,
             code_input,
             allow_input,
@@ -125,6 +128,7 @@ impl ProvidersSettings {
                     input.reset();
                     cx.notify();
                 });
+                self.adding_key = false;
                 self.run(
                     Some(id),
                     move || providers::connect(id, Some(key), None),
@@ -484,7 +488,7 @@ impl ProvidersSettings {
                         cx,
                     ))
                 }
-                ConnectMethod::ApiKey => {
+                ConnectMethod::ApiKey if self.adding_key => {
                     controls = controls
                         .child(self.field("openrouter-key", self.api_key_input.clone()))
                         .child(settings_button(
@@ -494,9 +498,37 @@ impl ProvidersSettings {
                             move |this: &mut Self, _, cx| this.connect(id, cx),
                             cx,
                         ))
+                        .child(settings_button(
+                            "openrouter-cancel",
+                            "Cancel",
+                            true,
+                            |this: &mut Self, _, cx| {
+                                this.adding_key = false;
+                                this.api_key_input.update(cx, |input, _| input.reset());
+                                cx.notify();
+                            },
+                            cx,
+                        ))
+                }
+                ConnectMethod::ApiKey => {
+                    controls = controls.child(settings_button(
+                        "openrouter-add",
+                        "Add API key",
+                        enabled,
+                        |this: &mut Self, _, cx| {
+                            this.adding_key = true;
+                            cx.notify();
+                        },
+                        cx,
+                    ))
                 }
             },
         }
+        // Claude cannot be signed out here; say so instead of leaving the row asymmetric.
+        let managed = status
+            .as_ref()
+            .is_some_and(|status| status.connected && connect == ConnectMethod::BrowserCode)
+            .then_some("Managed by Claude Code");
         let test = self
             .test
             .as_ref()
@@ -524,17 +556,26 @@ impl ProvidersSettings {
         settings_row(
             Self::title(id),
             state,
-            column().gap(px(6.)).items_end().child(controls).when_some(
-                test,
-                |control, (text, color)| {
+            column()
+                .gap(px(6.))
+                .items_end()
+                .child(controls)
+                .when_some(managed, |control, note| {
+                    control.child(
+                        div()
+                            .text_size(type_size(CAPTION_SIZE))
+                            .text_color(rgb(MUTED))
+                            .child(note),
+                    )
+                })
+                .when_some(test, |control, (text, color)| {
                     control.child(
                         div()
                             .text_size(type_size(CAPTION_SIZE))
                             .text_color(rgb(color))
                             .child(text),
                     )
-                },
-            ),
+                }),
         )
     }
     #[cfg(test)]

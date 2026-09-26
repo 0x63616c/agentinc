@@ -368,6 +368,26 @@
             "type": "object"
           },
           {
+            "description": "Stop a queued or running reply. Recorded as a failed turn that can be retried.",
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "stop_turn"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
             "properties": {
               "kind": {
                 "enum": [

@@ -782,7 +782,7 @@ pub fn fixture_providers() -> ProvidersState {
                     true,
                     Some("fixture@example.test · Claude Max"),
                     vec![
-                        ("claude:claude-fable-5-1", "Fable 5.1", true),
+                        ("claude:claude-fable-5-1", "Fable 5.1", false),
                         ("claude:claude-sonnet-5", "Sonnet 5", false),
                     ],
                 ),
@@ -794,7 +794,7 @@ pub fn fixture_providers() -> ProvidersState {
                     true,
                     Some("fixture@example.test · Plus"),
                     vec![
-                        ("codex:model-one", "Codex One", true),
+                        ("codex:model-one", "Codex One", false),
                         ("codex:model-two", "Codex Two", false),
                     ],
                 ),
@@ -1072,8 +1072,27 @@ impl AssistantPage {
     fn toggle_step(&mut self, id: i64, cx: &mut Context<Self>) {
         if !self.expanded_steps.remove(&id) {
             self.expanded_steps.insert(id);
+            // Keep the opened details in view when they belong to the newest turn.
+            if self
+                .turns
+                .last()
+                .is_some_and(|turn| turn.steps.iter().any(|step| step.id == id))
+            {
+                self.scroll.scroll_to_bottom();
+            }
         }
         cx.notify();
+    }
+    fn stop(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.active else { return };
+        self.mutate(
+            move |db| db.command(Command::StopTurn { id }),
+            |this, _, cx| {
+                this.reload_snapshot();
+                cx.notify();
+            },
+            cx,
+        );
     }
     fn retry(&mut self, id: i64, cx: &mut Context<Self>) {
         if self.active.is_some() || self.pending {
@@ -1241,6 +1260,25 @@ fn fixture_step(id: i64, turn_id: i64, kind: &str, content: serde_json::Value) -
     }
 }
 
+/// The tool as a person would name it; the identifier stays in the details.
+fn tool_title(name: &str) -> String {
+    match name {
+        "list_tickets" => "List Tickets".into(),
+        "ticket_command" => "Ticket command".into(),
+        "list_automations" => "List Automations".into(),
+        "automation_command" => "Automation command".into(),
+        "list_runs" => "List runs".into(),
+        "http_request" => "HTTP request".into(),
+        other => {
+            let mut words = other.replace('_', " ");
+            if let Some(first) = words.get(..1) {
+                let upper = first.to_uppercase();
+                words.replace_range(..1, &upper);
+            }
+            words
+        }
+    }
+}
 /// What a tool call did, in one line: the request for HTTP, the name otherwise.
 fn tool_summary(name: &str, input: &serde_json::Value) -> String {
     match name {
@@ -1431,10 +1469,9 @@ impl AssistantPage {
                     .child(self.status_dot(color, running && result.is_none(), window))
                     .child(
                         div()
-                            .font_family("SF Mono")
-                            .text_size(type_size(CAPTION_SIZE))
+                            .text_size(type_size(LABEL_SIZE))
                             .text_color(rgb(TEXT))
-                            .child(name.clone()),
+                            .child(tool_title(&name)),
                     )
                     .child(
                         div()
@@ -1453,6 +1490,8 @@ impl AssistantPage {
                     )
                     .child(
                         div()
+                            .w(px(64.))
+                            .flex_shrink_0()
                             .text_size(type_size(CAPTION_SIZE))
                             .text_color(rgb(MUTED))
                             .child(status),
@@ -1465,18 +1504,31 @@ impl AssistantPage {
                             move |this, cx| this.toggle_step(id, cx),
                             cx,
                         )
+                        .h(px(26.))
                         .min_w(px(64.))
+                        .border_1()
+                        .border_color(rgb(BORDER))
                         .debug_selector(move || format!("step-toggle-{id}")),
                     ),
             )
             .when(expanded, |card| {
                 card.child(
                     column()
+                        .id(("step-body", id as u64))
+                        .max_h(px(240.))
+                        .overflow_y_scroll()
                         .border_t_1()
                         .border_color(rgb(BORDER_SUBTLE))
                         .px(px(12.))
                         .py(px(10.))
                         .gap(px(8.))
+                        .child(
+                            div()
+                                .font_family("SF Mono")
+                                .text_size(type_size(CAPTION_SIZE))
+                                .text_color(rgb(MUTED))
+                                .child(name.clone()),
+                        )
                         .child(
                             row()
                                 .gap(px(8.))
@@ -1546,14 +1598,16 @@ impl AssistantPage {
                 row().child(
                     self.action(
                         ("copy", turn.id as u64),
-                        "Copy reply",
+                        "Copy",
                         true,
                         move |_, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(response.clone()))
                         },
                         cx,
                     )
-                    .ml(px(-COMPACT_CONTROL_INSET_X))
+                    .h(px(26.))
+                    .border_1()
+                    .border_color(rgb(BORDER))
                     .text_size(type_size(CAPTION_SIZE))
                     .text_color(rgb(MUTED)),
                 ),
@@ -1802,6 +1856,12 @@ impl Render for AssistantPage {
                                                 .child("What are we working on?"),
                                         )
                                         .child(
+                                            div()
+                                                .text_size(type_size(LABEL_SIZE))
+                                                .text_color(rgb(MUTED))
+                                                .child("Evee can list Tickets, watch runs and fetch a URL."),
+                                        )
+                                        .child(
                                             row()
                                                 .gap(px(8.))
                                                 .child(self.suggestion_chip("/tickets", cx))
@@ -1943,7 +2003,27 @@ impl Render for AssistantPage {
                                             .text_color(rgb(TEXT_PLACEHOLDER))
                                             .child("/ for commands · ⇧⏎ for a new line"),
                                     )
-                                    .child(
+                                    .child(if let Some(active) = self.active {
+                                        let _ = active;
+                                        self.action_window(
+                                            "stop",
+                                            "",
+                                            Some("Stop reply"),
+                                            !self.pending,
+                                            |this, _, cx| this.stop(cx),
+                                            cx,
+                                        )
+                                        .debug_selector(|| "stop".into())
+                                        .size(px(32.))
+                                        .p(px(0.))
+                                        .bg(rgb(PRIMARY))
+                                        .child(
+                                            div()
+                                                .size(px(11.))
+                                                .rounded(px(2.))
+                                                .bg(rgb(TEXT_ON_PRIMARY)),
+                                        )
+                                    } else {
                                         self.action_window(
                                             "send",
                                             "",
@@ -1955,14 +2035,10 @@ impl Render for AssistantPage {
                                         .size(px(32.))
                                         .p(px(0.))
                                         .bg(rgb(if send_enabled { PRIMARY } else { HOVER_SEND }))
-                                        .child(
-                                            icon("send", 16.).text_color(rgb(if send_enabled {
-                                                TEXT_ON_PRIMARY
-                                            } else {
-                                                TEXT
-                                            })),
-                                        ),
-                                    ),
+                                        .child(icon("send", 16.).text_color(rgb(
+                                            if send_enabled { TEXT_ON_PRIMARY } else { TEXT },
+                                        )))
+                                    }),
                             ),
                     ),
             )

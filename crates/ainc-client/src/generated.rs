@@ -625,6 +625,26 @@ pub mod types {
     ///      }
     ///    },
     ///    {
+    ///      "description": "Stop a queued or running reply. Recorded as a failed turn that can be retried.",
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "stop_turn"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
     ///      "type": "object",
     ///      "required": [
     ///        "kind",
@@ -748,6 +768,9 @@ pub mod types {
         },
         #[serde(rename = "retry")]
         Retry { id: i64 },
+        ///Stop a queued or running reply. Recorded as a failed turn that can be retried.
+        #[serde(rename = "stop_turn")]
+        StopTurn { id: i64 },
         #[serde(rename = "create_todo")]
         CreateTodo { title: ::std::string::String },
         #[serde(rename = "complete_todo")]

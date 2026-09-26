@@ -244,3 +244,39 @@ async fn failed_import_rolls_back_and_future_schema_is_untouched(pool: PgPool) {
     db.execute_batch("PRAGMA user_version=2;").unwrap();
     assert!(legacy::import(&pool, directory.path()).await.unwrap());
 }
+
+#[sqlx::test]
+async fn stopping_a_queued_reply_records_the_outcome_and_allows_retry(pool: PgPool) {
+    let conversation = apply(&pool, Command::CreateConversation).await;
+    let turn = apply(
+        &pool,
+        Command::Send {
+            conversation_id: conversation,
+            prompt: "Take your time".into(),
+            command: Some("/http https://example.test".into()),
+        },
+    )
+    .await;
+    apply(&pool, Command::StopTurn { id: turn }).await;
+    let state = product::snapshot(&pool).await.unwrap();
+    let stopped = state.turns.iter().find(|t| t.id == turn).unwrap();
+    assert_eq!(stopped.state, "failed");
+    assert_eq!(stopped.error.as_deref(), Some("Stopped."));
+    assert_eq!(
+        stopped.command.as_deref(),
+        Some("/http https://example.test")
+    );
+    assert!(stopped.finished_at.is_some());
+    // Stopping twice is a conflict, and a stopped reply can be retried.
+    assert!(
+        product::execute(&pool, request(Command::StopTurn { id: turn }))
+            .await
+            .is_err()
+    );
+    apply(&pool, Command::Retry { id: turn }).await;
+    let state = product::snapshot(&pool).await.unwrap();
+    assert_eq!(
+        state.turns.iter().find(|t| t.id == turn).unwrap().state,
+        "queued"
+    );
+}

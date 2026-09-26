@@ -123,6 +123,10 @@ pub enum Command {
     Retry {
         id: i64,
     },
+    /// Stop a queued or running reply. Recorded as a failed turn that can be retried.
+    StopTurn {
+        id: i64,
+    },
     CreateTodo {
         title: String,
     },
@@ -423,6 +427,26 @@ pub async fn execute_in(
                 .await?
                 .rows_affected(),
             )?;
+            Some(id)
+        }
+        Command::StopTurn { id } => {
+            let parent: Option<i64> = sqlx::query_scalar("SELECT c.id FROM conversations c JOIN turns t ON c.id=t.conversation_id WHERE t.id=$1 AND c.workspace_id=$2 FOR UPDATE OF c").bind(id).bind(workspace).fetch_optional(&mut *tx).await?;
+            if parent.is_none() {
+                return Err(ApiError::conflict());
+            }
+            changed(
+                sqlx::query("UPDATE turns SET state='failed',error='Stopped.',draft=NULL,finished_at=extract(epoch FROM now())::bigint WHERE id=$1 AND state IN ('queued','running')")
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected(),
+            )?;
+            // Closing the session cancels its workflow; the next turn starts a fresh one.
+            sqlx::query("UPDATE conversation_sessions SET state='closed' WHERE id=(SELECT session_id FROM turns WHERE id=$1) AND state='active'").bind(id).execute(&mut *tx).await?;
+            sqlx::query("SELECT pg_notify('agentinc_results',$1)")
+                .bind(id.to_string())
+                .execute(&mut *tx)
+                .await?;
             Some(id)
         }
         Command::CreateTodo { title } => Some(
