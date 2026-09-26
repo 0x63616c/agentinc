@@ -205,8 +205,17 @@ impl Shell {
                     .child(div().flex_1().min_w_0().truncate().child("Go to…"))
                     .when(wide, |s| s.child(kbd("⌘K"))),
             )
-            .child(nav)
-            .child(div().flex_1())
+            // The navigation scrolls between the pinned search and user row, so
+            // every destination stays reachable at the smallest window size.
+            .child(
+                div()
+                    .id("sidebar-nav")
+                    .debug_selector(|| "sidebar-nav".into())
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .child(nav),
+            )
             .child(
                 // A flex column gives the floating menu the row's top-left as its origin.
                 column()

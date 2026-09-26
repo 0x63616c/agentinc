@@ -101,6 +101,16 @@ fn near(name: &str, actual: f32, expected: f32) -> Result<()> {
     Ok(())
 }
 
+/// The ⌘-number keystroke for a sidebar Route, in sidebar order.
+fn go(route: Route) -> String {
+    let index = crate::model::PAGES
+        .iter()
+        .filter(|page| page.in_sidebar)
+        .position(|page| page.route == route)
+        .expect("sidebar route");
+    format!("cmd-{}", index + 1)
+}
+
 fn rect(bounds: Bounds<Pixels>) -> [u32; 4] {
     [
         f32::from(bounds.origin.x).max(0.) as u32,
@@ -597,7 +607,7 @@ pub fn run() -> Result<()> {
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_launch_elapsed(Duration::from_secs(1), cx)
     })?;
-    suite.capture("initial", Route::Assistant, None, false)?;
+    suite.capture("initial", Route::Dashboard, None, false)?;
     suite.check_profile_row_geometry()?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_profile_name(
@@ -605,19 +615,19 @@ pub fn run() -> Result<()> {
             cx,
         );
     })?;
-    suite.capture("profile-long-name", Route::Assistant, None, false)?;
+    suite.capture("profile-long-name", Route::Dashboard, None, false)?;
     suite.check_profile_row_geometry()?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_profile_name("QA Profile", cx);
     })?;
-    let hover_target = suite.bounds("sidebar-label-1")?.center();
+    let hover_target = suite.bounds("sidebar-label-2")?.center();
     suite.cx.simulate_mouse_move(
         suite.window.into(),
         hover_target,
         None::<MouseButton>,
         Modifiers::default(),
     );
-    suite.capture("hover-tickets", Route::Assistant, None, false)?;
+    suite.capture("hover-tickets", Route::Dashboard, None, false)?;
     let workspace_card = suite.bounds("workspace-title")?.center();
     suite.cx.simulate_mouse_move(
         suite.window.into(),
@@ -625,7 +635,7 @@ pub fn run() -> Result<()> {
         None::<MouseButton>,
         Modifiers::default(),
     );
-    suite.capture("hover-workspace", Route::Assistant, None, false)?;
+    suite.capture("hover-workspace", Route::Dashboard, None, false)?;
     suite.cx.simulate_mouse_move(
         suite.window.into(),
         point(px(500.), px(500.)),
@@ -636,7 +646,7 @@ pub fn run() -> Result<()> {
     suite.click_selector("sidebar-profile")?;
     suite.capture(
         "user-menu",
-        Route::Assistant,
+        Route::Dashboard,
         Some(Overlay::UserMenu { support: false }),
         false,
     )?;
@@ -654,20 +664,20 @@ pub fn run() -> Result<()> {
     suite.click_selector("user-menu.support")?;
     suite.capture(
         "user-menu-support",
-        Route::Assistant,
+        Route::Dashboard,
         Some(Overlay::UserMenu { support: true }),
         false,
     )?;
     suite.bounds("user-menu.support.menu")?;
     suite.keys("escape");
-    suite.capture("user-menu-closed", Route::Assistant, None, false)?;
+    suite.capture("user-menu-closed", Route::Dashboard, None, false)?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_notifications(cx);
     })?;
     suite.click_selector("notifications")?;
     suite.capture(
         "notifications",
-        Route::Assistant,
+        Route::Dashboard,
         Some(Overlay::Notifications),
         false,
     )?;
@@ -676,7 +686,7 @@ pub fn run() -> Result<()> {
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_toast(cx);
     })?;
-    suite.capture("toasts", Route::Assistant, None, false)?;
+    suite.capture("toasts", Route::Dashboard, None, false)?;
     let toasts = suite.bounds("toasts")?;
     let status = suite.bounds("status-bar")?;
     ensure!(
@@ -685,11 +695,97 @@ pub fn run() -> Result<()> {
     );
     suite.click_selector("toast.close.1")?;
     suite.click_selector("toast.close.2")?;
-    suite.capture("toasts-dismissed", Route::Assistant, None, false)?;
+    suite.capture("toasts-dismissed", Route::Dashboard, None, false)?;
     ensure!(
         suite.bounds("toasts").is_err(),
         "dismissed toasts must leave the shell"
     );
+    // The Dashboard, Smart Home and Calendar with a connected home and a
+    // realistic fortnight of events.
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_life(true, cx);
+    })?;
+    suite.capture("dashboard", Route::Dashboard, None, false)?;
+    for selector in [
+        "dashboard.band",
+        "dashboard.lights",
+        "dashboard.upcoming",
+        "dashboard.work-list",
+    ] {
+        suite.bounds(selector)?;
+    }
+    suite.click_selector("dashboard.switch.under_cabinet")?;
+    suite.capture("dashboard-switched", Route::Dashboard, None, false)?;
+    suite.keys(&go(Route::SmartHome));
+    suite.capture("smart-home", Route::SmartHome, None, false)?;
+    for selector in [
+        "home.climate",
+        "home.rooms",
+        "home.history",
+        "home.climate.target",
+    ] {
+        suite.bounds(selector)?;
+    }
+    suite.click_selector("home.climate.mode.3")?;
+    suite.capture("smart-home-auto", Route::SmartHome, None, false)?;
+    suite.bounds("home.climate.low")?;
+    suite.bounds("home.climate.high")?;
+    suite.keys(&go(Route::Calendar));
+    suite.capture("calendar-month", Route::Calendar, None, false)?;
+    suite.bounds("calendar.month")?;
+    suite.bounds("calendar.day-panel")?;
+    suite.click_selector("calendar.view.1")?;
+    suite.capture("calendar-week", Route::Calendar, None, false)?;
+    suite.bounds("calendar.week")?;
+    suite.click_selector("calendar.view.0")?;
+    suite.capture("calendar-agenda", Route::Calendar, None, false)?;
+    suite.bounds("calendar.agenda")?;
+    suite.click_selector("calendar.new")?;
+    suite.capture(
+        "calendar-new-event",
+        Route::Calendar,
+        Some(Overlay::CalendarEvent),
+        false,
+    )?;
+    suite.cx.simulate_input(window.into(), "Review the roadmap");
+    suite.capture(
+        "calendar-new-typed",
+        Route::Calendar,
+        Some(Overlay::CalendarEvent),
+        false,
+    )?;
+    suite.keys("escape");
+    suite.click_selector("calendar.row.own")?;
+    suite.capture(
+        "calendar-edit-event",
+        Route::Calendar,
+        Some(Overlay::CalendarEvent),
+        false,
+    )?;
+    suite.bounds("calendar.delete")?;
+    suite.keys("escape");
+    suite.click_selector("calendar.row.dentist")?;
+    suite.capture(
+        "calendar-mirror-event",
+        Route::Calendar,
+        Some(Overlay::CalendarEvent),
+        false,
+    )?;
+    suite.bounds("calendar.done")?;
+    suite.keys("escape");
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_life(false, cx);
+    })?;
+    suite.keys(&go(Route::SmartHome));
+    suite.capture("smart-home-disconnected", Route::SmartHome, None, false)?;
+    suite.bounds("home.empty")?;
+    suite.keys("cmd-,");
+    suite.capture("settings-home", Route::Settings, None, false)?;
+    suite.bounds("settings.section.Smart Home")?;
+    suite.bounds("settings.section.Calendar")?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_life(true, cx);
+    })?;
     let now = chrono::Utc::now().timestamp_millis();
     let execution = |workflow_type: &str,
                      workflow_id: &str,
@@ -762,7 +858,7 @@ pub fn run() -> Result<()> {
             cx,
         );
     })?;
-    suite.keys("cmd-6");
+    suite.keys(&go(Route::Temporal));
     suite.capture("temporal-populated", Route::Temporal, None, false)?;
     suite.bounds("temporal.row.8a37e3d2-6a42-4918-a5d2-98fc38ea2274")?;
     let table = suite.bounds("temporal.table")?;
@@ -854,7 +950,7 @@ pub fn run() -> Result<()> {
                     cx,
                 );
             })?;
-            suite.keys("cmd-6");
+            suite.keys(&go(Route::Temporal));
             suite.capture("temporal-small-no-ui", Route::Temporal, None, false)?;
             suite.bounds("temporal.no-ui")?;
         }
@@ -867,7 +963,7 @@ pub fn run() -> Result<()> {
         .into_iter()
         .enumerate()
         {
-            suite.keys(&format!("cmd-{}", index + 1));
+            suite.keys(&go(route));
             suite.capture(&format!("route-{round}-{index}"), route, None, false)?;
             if round < 2 && route == Route::Tickets {
                 suite.click_selector("tickets.create")?;
@@ -915,7 +1011,7 @@ pub fn run() -> Result<()> {
         )?;
         suite.keys("enter");
         suite.capture(&format!("settings-{round}"), Route::Settings, None, false)?;
-        suite.keys("cmd-4");
+        suite.keys(&go(Route::Automations));
         suite.capture(
             &format!("automations-{round}"),
             Route::Automations,
@@ -932,11 +1028,15 @@ pub fn run() -> Result<()> {
             )?;
         }
         for (shortcut, route) in [(5, Route::Terminal), (6, Route::Temporal)] {
-            suite.keys(&format!("cmd-{shortcut}"));
+            suite.keys(&go(route));
             suite.capture(&format!("route-{round}-{shortcut}"), route, None, false)?;
         }
+        for route in [Route::Dashboard, Route::Calendar, Route::SmartHome] {
+            suite.keys(&go(route));
+            suite.capture(&format!("life-{round}-{route:?}"), route, None, false)?;
+        }
     }
-    suite.keys("cmd-1");
+    suite.keys(&go(Route::Tickets));
     suite.settle()?;
     suite.click_selector("tickets.create")?;
     suite.capture(
@@ -981,7 +1081,7 @@ pub fn run() -> Result<()> {
     suite.click_selector("tickets.back")?;
     suite.capture("tickets-list", Route::Tickets, None, false)?;
     suite.bounds("ticket.1")?;
-    suite.keys("cmd-3");
+    suite.keys(&go(Route::Agents));
     suite.capture("agents-list", Route::Agents, None, false)?;
     suite
         .window
@@ -1088,7 +1188,7 @@ pub fn run() -> Result<()> {
     })?;
     suite.capture("components-overlays", Route::Components, None, false)?;
     suite.check_components_geometry(&["dialog", "sheet", "menus-and-popovers", "toasts"])?;
-    suite.keys("cmd-5");
+    suite.keys(&go(Route::Terminal));
     suite.capture("terminal", Route::Terminal, None, false)?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_terminal_unavailable(cx);

@@ -335,3 +335,35 @@ impl Shell {
         )
     }
 }
+
+#[cfg(all(test, feature = "rendered-tests"))]
+impl Shell {
+    /// A connected home and a fortnight of events, or neither.
+    #[allow(dead_code)]
+    pub(crate) fn fixture_life(&mut self, connected: bool, cx: &mut Context<Self>) {
+        use crate::{calendar::fixtures::fortnight, home::fixtures};
+        let snapshot = if connected {
+            fixtures::connected()
+        } else {
+            fixtures::disconnected()
+        };
+        self.life
+            .home
+            .update(cx, |home, cx| home.fixture(Some(snapshot), cx));
+        let import = ainc_client::types::ActionView {
+            id: "import".into(),
+            summary: "Import 11 events".into(),
+            state: "completed".into(),
+            error: None,
+            created_at: crate::calendar::now() - 180,
+            finished_at: Some(crate::calendar::now() - 179),
+        };
+        self.life.calendar.update(cx, |calendar, cx| {
+            calendar.fixture(fortnight(), Access::Granted, Some(import), cx)
+        });
+        self.life.calendar_page.update(cx, |page, cx| {
+            page.fixture_view(crate::calendar_page::View::Month, cx)
+        });
+        cx.notify();
+    }
+}
