@@ -516,7 +516,6 @@ impl TicketsPage {
                             .px(px(SPACE_3))
                             .py(px(SPACE_2))
                             .rounded(px(RADIUS_MD))
-                            .bg(rgb(SURFACE_RAISED))
                             .border_1()
                             .border_color(rgb(BORDER))
                             .text_size(type_size(BODY_SIZE))
