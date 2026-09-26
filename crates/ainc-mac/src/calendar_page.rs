@@ -1063,11 +1063,21 @@ impl CalendarPage {
                     div()
                         .debug_selector(|| "calendar.now".into())
                         .absolute()
-                        .top(px(top))
+                        .top(px(top - NOW_DOT / 2. + 1.))
                         .left_0()
                         .right_0()
-                        .h(px(2.))
-                        .bg(rgb(PRIMARY)),
+                        .h(px(NOW_DOT))
+                        .flex()
+                        .items_center()
+                        // The conventional current-time marker: a dot where the line starts.
+                        .child(
+                            div()
+                                .size(px(NOW_DOT))
+                                .flex_shrink_0()
+                                .rounded_full()
+                                .bg(rgb(PRIMARY)),
+                        )
+                        .child(div().flex_1().h(px(2.)).bg(rgb(PRIMARY))),
                 );
             }
             columns = columns.child(lane);

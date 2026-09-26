@@ -215,6 +215,8 @@ pub const MONTH_TITLES_MIN: f32 = 1000.;
 pub const MONTH_CHROME: f32 = 294.;
 /// How far across a week column the last of several overlapping events starts.
 pub const CASCADE_SPAN: f32 = 0.18;
+/// The dot that starts the week view's current-time line.
+pub const NOW_DOT: f32 = 8.;
 pub const AGENDA_DATE_WIDTH: f32 = 128.;
 pub const AGENDA_TIME_WIDTH: f32 = 136.;
 /// The thermostat card's reading column, and its track: the rail, the
