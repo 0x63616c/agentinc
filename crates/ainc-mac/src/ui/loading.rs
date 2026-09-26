@@ -7,6 +7,9 @@ use super::{
 use gpui::{prelude::*, *};
 use std::time::Instant;
 
+const LAUNCH_OVERLAY_MIN_DURATION: std::time::Duration = std::time::Duration::from_millis(500);
+const LAUNCH_OVERLAY_FADE_DURATION: f32 = 0.32;
+
 pub struct LoadingFrame {
     phase: f32,
     still: bool,
@@ -110,13 +113,23 @@ impl LoadingFrame {
 
 /// A short handoff after the first shell frame; the main UI remains ready underneath.
 pub fn launch_overlay(start: Instant, window: &mut Window) -> Option<Div> {
-    let duration = if reduced_motion() { 0.12 } else { 0.32 };
-    let elapsed = start.elapsed().as_secs_f32();
-    if elapsed >= duration {
+    let elapsed = start.elapsed();
+    if elapsed
+        >= LAUNCH_OVERLAY_MIN_DURATION
+            + std::time::Duration::from_secs_f32(LAUNCH_OVERLAY_FADE_DURATION)
+    {
         return None;
     }
     let frame = LoadingFrame::new(start, window);
-    let fade = (1. - (elapsed / duration).powi(3)).clamp(0., 1.);
+    let fade_elapsed = elapsed
+        .saturating_sub(LAUNCH_OVERLAY_MIN_DURATION)
+        .as_secs_f32();
+    let fade_duration = if reduced_motion() {
+        0.12
+    } else {
+        LAUNCH_OVERLAY_FADE_DURATION
+    };
+    let fade = (1. - (fade_elapsed / fade_duration).powi(3)).clamp(0., 1.);
     Some(
         column()
             .absolute()
@@ -135,4 +148,17 @@ pub fn launch_overlay(start: Instant, window: &mut Window) -> Option<Div> {
                     .child("AGENTINC"),
             ),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LAUNCH_OVERLAY_MIN_DURATION;
+
+    #[test]
+    fn launch_overlay_minimum_duration_is_half_a_second() {
+        assert_eq!(
+            LAUNCH_OVERLAY_MIN_DURATION,
+            std::time::Duration::from_millis(500)
+        );
+    }
 }
