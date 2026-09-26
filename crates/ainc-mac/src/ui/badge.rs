@@ -67,6 +67,29 @@ pub fn status_pill(label: impl Into<SharedString>, tone: Tone) -> Div {
         .child(label.into())
 }
 
+/// A label: a bordered pill with a dot of the label's own color.
+pub fn tag(label: impl Into<SharedString>, color: u32) -> Div {
+    row()
+        .h(px(PILL_HEIGHT))
+        .px(px(SPACE_2))
+        .gap(px(6.))
+        .flex_shrink_0()
+        .rounded_full()
+        .border_1()
+        .border_color(rgb(BORDER_STRONG))
+        .text_size(type_size(CAPTION_SIZE))
+        .text_color(rgb(TEXT))
+        .whitespace_nowrap()
+        .child(
+            div()
+                .size(px(6.))
+                .flex_shrink_0()
+                .rounded_full()
+                .bg(rgb(color)),
+        )
+        .child(label.into())
+}
+
 /// A white count bubble, for unread items.
 pub fn count_badge(count: usize) -> Div {
     row()

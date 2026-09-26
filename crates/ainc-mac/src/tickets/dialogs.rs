@@ -277,30 +277,72 @@ impl TicketsPage {
                         s.child(hint("The agent starts work as soon as you create it."))
                     }),
             )
-            .child(
-                Field::new(self.draft_labels.clone())
-                    .label("Labels")
-                    .hint("Separate labels with commas.")
-                    .build(window, cx),
-            )
+            .child({
+                let known = all_labels(&self.state.tickets);
+                column_gap(FIELD_LABEL_GAP)
+                    .child(field_label("Labels"))
+                    .when(!known.is_empty(), |s| {
+                        s.child(row().flex_wrap().gap(px(CHIP_GAP)).children(
+                            known.into_iter().map(|label| {
+                                let chosen = self.draft.labels.contains(&label);
+                                let toggled = label.clone();
+                                chip(
+                                    SharedString::from(format!("tickets.draft.label.{label}")),
+                                    label,
+                                    chosen,
+                                    true,
+                                    &self.hover,
+                                    move |this: &mut Self, _, cx| {
+                                        if let Some(index) =
+                                            this.draft.labels.iter().position(|l| *l == toggled)
+                                        {
+                                            this.draft.labels.remove(index);
+                                        } else {
+                                            this.draft.labels.push(toggled.clone());
+                                        }
+                                        cx.notify();
+                                    },
+                                    cx,
+                                )
+                            }),
+                        ))
+                    })
+                    .child(
+                        Field::new(self.draft_labels.clone())
+                            .selector("Labels")
+                            .hint("New labels, separated by commas.")
+                            .build(window, cx),
+                    )
+            })
     }
 
     /// Tickets the relationship can point at: not this one, not already
-    /// related the same way, matching the search.
+    /// related, matching the search, the chosen one first, then open work.
     fn link_candidates(&self, id: i64, cx: &App) -> Vec<&Ticket> {
-        let existing = relations(&self.state.links, id);
+        let related: Vec<i64> = relations(&self.state.links, id)
+            .into_iter()
+            .map(|(_, other)| other)
+            .collect();
         let query = Filters {
             query: self.link_search.read(cx).content.to_string(),
             ..Filters::default()
         };
-        self.state
+        let mut candidates: Vec<&Ticket> = self
+            .state
             .tickets
             .iter()
-            .filter(|t| t.id != id)
-            .filter(|t| !existing.contains(&(self.link_relation, t.id)))
+            .filter(|t| t.id != id && !related.contains(&t.id))
             .filter(|t| query.matches(t))
-            .take(LINK_CANDIDATES)
-            .collect()
+            .collect();
+        candidates.sort_by_key(|t| {
+            (
+                Some(t.id) != self.link_target,
+                matches!(t.status, TicketStatus::Done | TicketStatus::Cancelled),
+                std::cmp::Reverse(t.updated_at),
+            )
+        });
+        candidates.truncate(LINK_CANDIDATES);
+        candidates
     }
 
     fn link_form(&self, id: i64, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -330,7 +372,7 @@ impl TicketsPage {
         column_gap(FORM_STACK_GAP)
             .child(
                 column_gap(FIELD_LABEL_GAP)
-                    .child(field_label(format!("{} is…", ticket_key(id))))
+                    .child(field_label("Relationship"))
                     .child(relation),
             )
             .child(

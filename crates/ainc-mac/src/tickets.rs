@@ -67,6 +67,8 @@ struct Draft {
     status: TicketStatus,
     priority: TicketPriority,
     assignee: Option<String>,
+    /// Existing labels chosen as chips; new ones are typed.
+    labels: Vec<String>,
 }
 impl Default for Draft {
     fn default() -> Self {
@@ -74,6 +76,7 @@ impl Default for Draft {
             status: TicketStatus::ToDo,
             priority: TicketPriority::None,
             assignee: None,
+            labels: vec![],
         }
     }
 }
@@ -498,14 +501,13 @@ impl TicketsPage {
             return;
         }
         let description = self.draft_description.read(cx).content.trim().to_owned();
-        let labels: Vec<String> = self
-            .draft_labels
-            .read(cx)
-            .content
-            .split(',')
-            .map(|label| label.trim().to_owned())
-            .filter(|label| !label.is_empty())
-            .collect();
+        let mut labels = self.draft.labels.clone();
+        for typed in self.draft_labels.read(cx).content.split(',') {
+            let typed = typed.trim();
+            if !typed.is_empty() && !labels.iter().any(|l| l.eq_ignore_ascii_case(typed)) {
+                labels.push(typed.to_owned());
+            }
+        }
         let draft = self.draft.clone();
         self.command(
             TicketCommand::CreateDetailed {
@@ -546,6 +548,35 @@ impl TicketsPage {
                 id,
                 revision,
                 title,
+            },
+            cx,
+        );
+    }
+    /// Remove an applied label, or apply one that is not.
+    fn toggle_label(&mut self, label: String, cx: &mut Context<Self>) {
+        let Some(ticket) = self.selected.and_then(|id| self.ticket(id)) else {
+            return;
+        };
+        if !ticket
+            .labels
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(&label))
+        {
+            return self.add_label(label, cx);
+        }
+        let labels = ticket
+            .labels
+            .iter()
+            .filter(|existing| !existing.eq_ignore_ascii_case(&label))
+            .cloned()
+            .collect();
+        let (id, revision) = (ticket.id, ticket.revision);
+        self.menu = None;
+        self.command(
+            TicketCommand::SetLabels {
+                id,
+                revision,
+                labels,
             },
             cx,
         );
@@ -640,6 +671,9 @@ impl TicketsPage {
             .map_or_else(|| "Agent".into(), |a| a.name.clone().into())
     }
     fn assignee_avatar(&self, id: &str, size: f32) -> AnyElement {
+        if self.is_agent(id) {
+            return agent_avatar(&self.assignee_name(id), size);
+        }
         let photo = (id == "owner").then(|| self.owner.1.clone()).flatten();
         avatar(&self.assignee_name(id), photo, size)
     }
@@ -681,7 +715,6 @@ impl TicketsPage {
             .child(
                 Button::new(id, label)
                     .secondary()
-                    .small()
                     .icon(icon_name)
                     .selected(open || active)
                     .trailing(icon("chevronDown", ICON_SIZE_SM))
@@ -697,12 +730,14 @@ impl TicketsPage {
                         .debug_selector(move || format!("{id}.menu"))
                         .children(items),
                     Anchor::TopLeft,
-                    point(px(0.), px(CONTROL_HEIGHT_SM + SPACE_1)),
+                    point(px(0.), px(CONTROL_HEIGHT + SPACE_1)),
                 ))
             })
     }
 
     fn filter_bar(&self, window: &Window, cx: &mut Context<Self>) -> Div {
+        let tickets = &self.state.tickets;
+        let tally = |n: usize| hint(n.to_string());
         let priority_items = PRIORITIES
             .into_iter()
             .map(|priority| {
@@ -714,6 +749,9 @@ impl TicketsPage {
                     priority_name(priority),
                 )
                 .glyph(priority_icon(priority), priority_color(priority))
+                .trailing(tally(
+                    tickets.iter().filter(|t| t.priority == priority).count(),
+                ))
                 .checked(self.filters.priorities.contains(&priority))
                 .build(
                     &self.hover,
@@ -742,7 +780,13 @@ impl TicketsPage {
                         SharedString::from(format!("tickets.filter.label.{label}")),
                         label.clone(),
                     )
-                    .leading_dot(label_tone(&label))
+                    .glyph("dot", label_color(&label))
+                    .trailing(tally(
+                        tickets
+                            .iter()
+                            .filter(|t| t.labels.iter().any(|l| l.eq_ignore_ascii_case(&label)))
+                            .count(),
+                    ))
                     .checked(checked)
                     .build(
                         &self.hover,
@@ -771,6 +815,9 @@ impl TicketsPage {
                 } else {
                     "user"
                 })
+                .trailing(tally(
+                    tickets.iter().filter(|t| t.assignee_id == id).count(),
+                ))
                 .checked(self.filters.assignees.contains(&id))
                 .build(
                     &self.hover,
@@ -835,7 +882,6 @@ impl TicketsPage {
                 s.child(
                     Button::new("tickets.filter.clear", "Clear")
                         .ghost()
-                        .small()
                         .tint(TEXT_SECONDARY)
                         .build(
                             &self.hover,
@@ -868,6 +914,10 @@ impl TicketsPage {
     }
 
     fn summary(&self) -> String {
+        if self.filters.active() {
+            let shown = self.visible().len();
+            return format!("Showing {shown} of {} Tickets", self.state.tickets.len());
+        }
         let count = |status| {
             self.state
                 .tickets
@@ -965,16 +1015,6 @@ impl TicketsPage {
                 .child(body),
         )
         .build()
-    }
-}
-
-/// A leading colored dot for a label row in a menu.
-trait LeadingDot {
-    fn leading_dot(self, tone: Tone) -> Self;
-}
-impl LeadingDot for MenuEntry {
-    fn leading_dot(self, tone: Tone) -> Self {
-        self.glyph("dot", tone.colors().0)
     }
 }
 

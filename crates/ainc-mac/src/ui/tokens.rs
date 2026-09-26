@@ -90,6 +90,18 @@ pub const STATUS_RED: u32 = 0xf08c8b;
 pub const STATUS_RED_SURFACE: u32 = 0x2c1717;
 pub const STATUS_PURPLE: u32 = 0xc1a6ec;
 pub const STATUS_PURPLE_SURFACE: u32 = 0x231a33;
+/// Label dots: eight muted hues at the status palette's lightness, so labels
+/// stay apart from each other without shouting. Red is left to status.
+pub const LABEL_COLORS: [u32; 8] = [
+    STATUS_BLUE,
+    STATUS_GREEN,
+    STATUS_AMBER,
+    STATUS_PURPLE,
+    0xeba2c8,
+    0x86d0cf,
+    0xeeaa7c,
+    0xa9b4c6,
+];
 /// The unread dot and other single accents.
 pub const ACCENT: u32 = 0xffffff;
 
@@ -187,10 +199,13 @@ pub const LANE_HEADER_HEIGHT: f32 = 38.;
 pub const EMPTY_LANE_HEIGHT: f32 = 64.;
 /// Badges, status pills and the square priority chip beside them.
 pub const PILL_HEIGHT: f32 = 22.;
+/// The empty side of a small icon-only ghost button around its glyph; bleeding
+/// by it puts the glyph, not the button, on a column edge.
+pub const GHOST_ICON_INSET: f32 = (CONTROL_HEIGHT_SM - ICON_SIZE_SM) / 2.;
 /// The remove control inside a pill.
 pub const PILL_REMOVE_SIZE: f32 = 18.;
 /// Fixed columns in the Tickets list.
-pub const LIST_KEY_WIDTH: f32 = 44.;
+pub const LIST_KEY_WIDTH: f32 = 52.;
 pub const LIST_ASSIGNEE_WIDTH: f32 = 168.;
 pub const LIST_UPDATED_WIDTH: f32 = 72.;
 /// Below this window width a record's properties stack above its content.

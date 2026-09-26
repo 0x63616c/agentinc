@@ -119,23 +119,15 @@ pub fn ticket_key(id: i64) -> String {
     format!("T-{id}")
 }
 
-/// A stable tone per label name, so a label looks the same everywhere.
-pub fn label_tone(label: &str) -> Tone {
-    // Red stays reserved for blocked and urgent work.
-    const TONES: [Tone; 5] = [
-        Tone::Info,
-        Tone::Success,
-        Tone::Warning,
-        Tone::Accent,
-        Tone::Neutral,
-    ];
+/// A stable color per label name, so a label looks the same everywhere.
+pub fn label_color(label: &str) -> u32 {
     let hash = label
         .to_lowercase()
         .bytes()
         .fold(2166136261u32, |hash, byte| {
             (hash ^ u32::from(byte)).wrapping_mul(16777619)
         });
-    TONES[hash as usize % TONES.len()]
+    LABEL_COLORS[hash as usize % LABEL_COLORS.len()]
 }
 
 /// A short age: `now`, `5m`, `3h`, `2d`, then a date.
@@ -519,7 +511,7 @@ mod tests {
         for priority in PRIORITIES {
             assert_eq!(priority_from_key(priority_key(priority)), Some(priority));
         }
-        assert_eq!(label_tone("Home"), label_tone("home"));
+        assert_eq!(label_color("Home"), label_color("home"));
         assert_eq!(relative_time(100, 130), "now");
         assert_eq!(relative_time(0, 7200), "2h");
         assert_eq!(ticket_key(42), "T-42");

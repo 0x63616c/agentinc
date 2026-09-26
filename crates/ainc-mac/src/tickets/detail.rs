@@ -30,9 +30,12 @@ impl TicketsPage {
     ) -> Stateful<Div> {
         let beside = window.viewport_size().width >= px(PROPERTIES_BESIDE_MIN_WIDTH);
         let header = self.detail_header(ticket, cx);
+        // Lower the main column so its first heading shares a line with the first
+        // property label inside the card beside it.
         let main = column()
             .flex_1()
             .min_w_0()
+            .pt(px(SPACE_2))
             .gap(px(SECTION_GAP))
             .child(self.description_section(ticket, window, cx))
             .child(self.timeline(ticket, window, cx));
@@ -95,7 +98,10 @@ impl TicketsPage {
             )
             .description(meta)
             .actions(
+                // The row ends with a ghost, so its label, not its padding,
+                // lands on the content's right edge.
                 row_gap(CONTROL_GAP)
+                    .mr(px(-CONTROL_INSET_X))
                     .when(running, |s| {
                         s.child(
                             Button::new("tickets.stop", "Cancel work")
@@ -501,7 +507,10 @@ impl TicketsPage {
         let id = ticket.id;
         let revision = ticket.revision;
         let enabled = !self.pending;
-        let width = PROPERTIES_WIDTH - 2. * SPACE_4 - PROPERTY_LABEL_WIDTH - SPACE_3;
+        // Quiet selects bleed by their inset on both sides, so their glyph starts
+        // on the value column's edge and their chevron ends on the card's.
+        let width =
+            PROPERTIES_WIDTH - 2. * SPACE_4 - PROPERTY_LABEL_WIDTH - SPACE_3 + 2. * CONTROL_INSET_X;
         let status = Select::new(
             "tickets.detail.status",
             STATUSES
@@ -603,13 +612,15 @@ impl TicketsPage {
             },
             cx,
         );
+        let bleed = |select: Div| select.ml(px(-CONTROL_INSET_X));
         card()
             .debug_selector(|| "tickets.properties".into())
-            .p(px(SPACE_4))
+            .px(px(SPACE_4))
+            .py(px(SPACE_1))
             .gap(px(SPACE_1))
-            .child(property_row("Status", status))
-            .child(property_row("Priority", priority))
-            .child(property_row("Assignee", assignee))
+            .child(property_row("Status", bleed(status)))
+            .child(property_row("Priority", bleed(priority)))
+            .child(property_row("Assignee", bleed(assignee)))
             .child(property_row(
                 "Labels",
                 self.labels_editor(ticket, window, cx),
@@ -636,12 +647,6 @@ impl TicketsPage {
         let typed = self.label_input.read(cx).content.trim().to_owned();
         let suggestions: Vec<String> = all_labels(&self.state.tickets)
             .into_iter()
-            .filter(|label| {
-                !ticket
-                    .labels
-                    .iter()
-                    .any(|existing| existing.eq_ignore_ascii_case(label))
-            })
             .filter(|label| label.to_lowercase().contains(&typed.to_lowercase()))
             .collect();
         let exists = all_labels(&self.state.tickets)
@@ -659,15 +664,20 @@ impl TicketsPage {
             );
         for label in suggestions {
             let chosen = label.clone();
+            let applied = ticket
+                .labels
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(&label));
             menu = menu.child(
                 MenuEntry::new(
                     SharedString::from(format!("tickets.labels.add.{label}")),
                     label.clone(),
                 )
-                .glyph("dot", label_tone(&label).colors().0)
+                .glyph("dot", label_color(&label))
+                .checked(applied)
                 .build(
                     &self.hover,
-                    move |this: &mut Self, _, cx| this.add_label(chosen.clone(), cx),
+                    move |this: &mut Self, _, cx| this.toggle_label(chosen.clone(), cx),
                     cx,
                 ),
             );
@@ -695,7 +705,7 @@ impl TicketsPage {
                     .filter(|other| *other != label)
                     .cloned()
                     .collect();
-                status_pill(label.clone(), label_tone(label))
+                tag(label.clone(), label_color(label))
                     .pr(px(SPACE_HALF))
                     .child(
                         Button::new(
@@ -795,7 +805,7 @@ impl TicketsPage {
                                 },
                                 cx,
                             )
-                            .mr(px(-SPACE_1)),
+                            .mr(px(-GHOST_ICON_INSET)),
                     ),
             )
             .when(found.is_empty(), |s| {
@@ -892,7 +902,7 @@ impl TicketsPage {
                     },
                     cx,
                 )
-                .mr(px(-SPACE_1)),
+                .mr(px(-GHOST_ICON_INSET)),
             )
     }
 

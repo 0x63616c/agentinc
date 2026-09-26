@@ -70,7 +70,8 @@ impl Select {
         self
     }
     /// A trigger with no surface at rest, for property rows where a column of
-    /// bordered controls would be louder than the values they hold.
+    /// bordered controls would be louder than the values they hold. Its menu
+    /// drops below the trigger, right edges aligned.
     pub fn quiet(mut self) -> Self {
         self.quiet = true;
         self
@@ -153,6 +154,15 @@ impl Select {
                 // Like a macOS pop-up button: the menu opens over the trigger with
                 // the current option on the trigger's own line, so it never has to
                 // choose between opening downward and being clamped over itself.
+                // A quiet select sits at the end of a property row, so its menu
+                // drops below it, right edges aligned, and never covers its label.
+                if quiet {
+                    return s.child(floating(
+                        menu,
+                        Anchor::TopRight,
+                        point(px(width), px(CONTROL_HEIGHT + SPACE_1)),
+                    ));
+                }
                 let current = value.unwrap_or(0) as f32;
                 s.child(floating(
                     menu,

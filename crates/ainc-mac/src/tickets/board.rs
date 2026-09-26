@@ -13,6 +13,8 @@ pub(crate) struct DraggedTicket {
     id: i64,
     key: SharedString,
     title: SharedString,
+    priority: TicketPriority,
+    labels: Vec<String>,
     width: Pixels,
 }
 impl Render for DraggedTicket {
@@ -27,12 +29,35 @@ impl Render for DraggedTicket {
             .border_color(rgb(BORDER_STRONG))
             .shadow(shadow_dialog())
             .text_color(rgb(TEXT))
+            .gap(px(SPACE_2))
             .child(hint(self.key.clone()))
             .child(
                 div()
+                    .w_full()
                     .text_size(type_size(BODY_SIZE))
-                    .line_clamp(2)
+                    .line_height(relative(TITLE_LINE_HEIGHT))
+                    .line_clamp(3)
+                    .text_ellipsis()
                     .child(self.title.clone()),
+            )
+            .when(
+                self.priority != TicketPriority::None || !self.labels.is_empty(),
+                |s| {
+                    s.child(
+                        row()
+                            .flex_wrap()
+                            .gap(px(CHIP_GAP))
+                            .when(self.priority != TicketPriority::None, |s| {
+                                s.child(priority_chip(self.priority))
+                            })
+                            .children(
+                                self.labels
+                                    .iter()
+                                    .take(CARD_LABELS)
+                                    .map(|label| tag(label.clone(), label_color(label))),
+                            ),
+                    )
+                },
             )
     }
 }
@@ -167,11 +192,10 @@ impl TicketsPage {
                         .justify_center()
                         .rounded(px(RADIUS_MD))
                         .border_1()
-                        .border_dashed()
                         .border_color(rgb(if over.is_some() {
                             BORDER_STRONG
                         } else {
-                            BORDER
+                            BORDER_SUBTLE
                         }))
                         .child(hint(if over.is_some() {
                             "Drop here"
@@ -181,6 +205,8 @@ impl TicketsPage {
                 )
             });
         let name = status_name(status);
+        // Closed work is moved there, not created there.
+        let creates = !matches!(status, TicketStatus::Done | TicketStatus::Cancelled);
         column()
             .id(SharedString::from(format!("tickets.lane.{key}")))
             .debug_selector(move || format!("tickets.lane.{key}"))
@@ -194,11 +220,13 @@ impl TicketsPage {
             } else {
                 SURFACE_SUNKEN
             }))
+            // A lane is a well, not another box: its edge shows only while a card
+            // is over it.
             .border_1()
             .border_color(rgb(if over.is_some() {
                 BORDER_STRONG
             } else {
-                BORDER_SUBTLE
+                SURFACE_SUNKEN
             }))
             .child(
                 row()
@@ -220,25 +248,27 @@ impl TicketsPage {
                     )
                     .child(hint(cards.len().to_string()))
                     .child(div().flex_1())
-                    .child(
-                        Button::new(
-                            SharedString::from(format!("tickets.lane.{key}.create")),
-                            format!("New Ticket in {name}"),
+                    .when(creates, |s| {
+                        s.child(
+                            Button::new(
+                                SharedString::from(format!("tickets.lane.{key}.create")),
+                                format!("New Ticket in {name}"),
+                            )
+                            .ghost()
+                            .small()
+                            .icon("plus")
+                            .icon_only()
+                            .tint(TEXT_TERTIARY)
+                            .enabled(self.store.is_some() && !self.pending)
+                            .build(
+                                &self.hover,
+                                move |this: &mut Self, window, cx| {
+                                    this.open_create(Some(status), window, cx)
+                                },
+                                cx,
+                            ),
                         )
-                        .ghost()
-                        .small()
-                        .icon("plus")
-                        .icon_only()
-                        .tint(TEXT_TERTIARY)
-                        .enabled(self.store.is_some() && !self.pending)
-                        .build(
-                            &self.hover,
-                            move |this: &mut Self, window, cx| {
-                                this.open_create(Some(status), window, cx)
-                            },
-                            cx,
-                        ),
-                    ),
+                    }),
             )
             .child(body)
             .on_drag_move(
@@ -284,6 +314,8 @@ impl TicketsPage {
             id,
             key: key.clone(),
             title: title.clone(),
+            priority: ticket.priority,
+            labels: ticket.labels.clone(),
             width: px(BOARD_LANE_MIN_WIDTH),
         };
         let dragging = self.drag.dragging.clone();
@@ -329,6 +361,7 @@ impl TicketsPage {
                             .line_height(relative(TITLE_LINE_HEIGHT))
                             .text_color(rgb(TEXT))
                             .line_clamp(3)
+                            .text_ellipsis()
                             .child(title.clone()),
                     )
                     .when_some(footer, |s, footer| s.child(footer))
@@ -380,20 +413,9 @@ impl TicketsPage {
                 .flex_wrap()
                 .gap(px(CHIP_GAP))
                 .when(ticket.priority != TicketPriority::None, |s| {
-                    s.child(
-                        row()
-                            .size(px(PILL_HEIGHT))
-                            .justify_center()
-                            .rounded(px(RADIUS_SM))
-                            .border_1()
-                            .border_color(rgb(BORDER_STRONG))
-                            .child(
-                                icon(priority_icon(ticket.priority), ICON_SIZE_XS)
-                                    .text_color(rgb(priority_color(ticket.priority))),
-                            ),
-                    )
+                    s.child(priority_chip(ticket.priority))
                 })
-                .children(shown_labels.map(|label| status_pill(label.clone(), label_tone(label))))
+                .children(shown_labels.map(|label| tag(label.clone(), label_color(label))))
                 .when(hidden_labels > 0, |s| {
                     s.child(hint(format!("+{hidden_labels}")))
                 })
@@ -493,6 +515,20 @@ fn card_width(geometry: &Geometry, id: i64) -> Option<Pixels> {
         .flatten()
         .find(|(card, _)| *card == id)
         .map(|(_, bounds)| bounds.size.width)
+}
+
+/// The square priority mark beside a card's labels.
+fn priority_chip(priority: TicketPriority) -> Div {
+    row()
+        .size(px(PILL_HEIGHT))
+        .flex_shrink_0()
+        .justify_center()
+        .rounded(px(RADIUS_SM))
+        .border_1()
+        .border_color(rgb(BORDER_STRONG))
+        .child(
+            icon(priority_icon(priority), ICON_SIZE_XS).text_color(rgb(priority_color(priority))),
+        )
 }
 
 /// The white line where a dragged card will land; zero height when idle.

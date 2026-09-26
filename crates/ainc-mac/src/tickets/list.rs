@@ -123,14 +123,12 @@ impl TicketsPage {
                     .text_color(rgb(priority_color(ticket.priority))),
             )
             .child(
-                div()
+                row()
                     .w(px(LIST_KEY_WIDTH))
                     .flex_shrink_0()
-                    .child(hint(ticket_key(id))),
-            )
-            .child(
-                icon(status_icon(ticket.status), ICON_SIZE_SM)
-                    .text_color(rgb(status_color(ticket.status))),
+                    .gap(px(SPACE_1))
+                    .child(hint(ticket_key(id)))
+                    .when(self.running(ticket), |s| s.child(status_dot(Tone::Info))),
             )
             .child(
                 div()
@@ -140,9 +138,6 @@ impl TicketsPage {
                     .text_size(type_size(BODY_SIZE))
                     .child(ticket.title.clone()),
             )
-            .when(self.running(ticket), |s| {
-                s.child(status_pill("Working", Tone::Info))
-            })
             .when(!blockers.is_empty(), |s| {
                 s.child(status_pill(
                     format!("Blocked by {}", ticket_key(blockers[0])),
@@ -154,7 +149,7 @@ impl TicketsPage {
                     .labels
                     .iter()
                     .take(LIST_LABELS)
-                    .map(|label| status_pill(label.clone(), label_tone(label))),
+                    .map(|label| tag(label.clone(), label_color(label))),
             );
         let assignee = row()
             .gap(px(SPACE_2))
