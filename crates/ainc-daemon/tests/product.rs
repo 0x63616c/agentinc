@@ -60,7 +60,12 @@ async fn closing_client_does_not_drop_acknowledged_turn_or_completed_reply(pool:
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
     let conversation = apply(&pool, Command::CreateConversation).await;
-    let app = ainc_daemon::product_router(Product::new(pool.clone(), "fixture".into()).unwrap());
+    let app = ainc_daemon::product_router(
+        Product::new(pool.clone(), "fixture".into()).unwrap(),
+        ainc_daemon::home::Home::new(std::sync::Arc::new(
+            ainc_daemon::secrets::MemoryStore::default(),
+        )),
+    );
     let command = request(Command::Send {
         conversation_id: conversation,
         prompt: "Keep working after close".into(),
@@ -155,7 +160,12 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
 async fn owner_credential_required_for_reads_and_writes(pool: PgPool) {
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
-    let app = ainc_daemon::product_router(Product::new(pool, "fixture".into()).unwrap());
+    let app = ainc_daemon::product_router(
+        Product::new(pool, "fixture".into()).unwrap(),
+        ainc_daemon::home::Home::new(std::sync::Arc::new(
+            ainc_daemon::secrets::MemoryStore::default(),
+        )),
+    );
     let response = app
         .oneshot(
             Request::get("/v1/state")

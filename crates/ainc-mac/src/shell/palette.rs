@@ -62,6 +62,21 @@ impl Shell {
             });
             items.push(PaletteCandidate {
                 group: "Actions",
+                entry: PaletteEntry::new("action.new-event", "New event").icon("calendar"),
+                control: Control::NewEvent,
+            });
+            for (on, id, title) in [
+                (true, "action.lights-on", "Turn all lights on"),
+                (false, "action.lights-off", "Turn all lights off"),
+            ] {
+                items.push(PaletteCandidate {
+                    group: "Actions",
+                    entry: PaletteEntry::new(id, title).icon("bulb"),
+                    control: Control::Lights(on),
+                });
+            }
+            items.push(PaletteCandidate {
+                group: "Actions",
                 entry: PaletteEntry::new("action.check-updates", "Check for Updates")
                     .icon("download"),
                 control: Control::CheckForUpdates,

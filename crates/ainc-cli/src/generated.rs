@@ -14,11 +14,18 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::HealthReady => Self::cli_health_ready(),
             CliCommand::AutomationsState => Self::cli_automations_state(),
             CliCommand::AutomationsCommand => Self::cli_automations_command(),
+            CliCommand::CalendarState => Self::cli_calendar_state(),
+            CliCommand::CalendarCommand => Self::cli_calendar_command(),
+            CliCommand::CalendarImport => Self::cli_calendar_import(),
             CliCommand::ProductCommand => Self::cli_product_command(),
             CliCommand::ConnectionStatus => Self::cli_connection_status(),
             CliCommand::ConnectionCancel => Self::cli_connection_cancel(),
             CliCommand::ConnectionLogin => Self::cli_connection_login(),
             CliCommand::ConnectionLogout => Self::cli_connection_logout(),
+            CliCommand::HomeState => Self::cli_home_state(),
+            CliCommand::HomeCommand => Self::cli_home_command(),
+            CliCommand::HomeConnect => Self::cli_home_connect(),
+            CliCommand::HomeDisconnect => Self::cli_home_disconnect(),
             CliCommand::ProductState => Self::cli_product_state(),
             CliCommand::TemporalExecutions => Self::cli_temporal_executions(),
             CliCommand::TerminalSessionsList => Self::cli_terminal_sessions_list(),
@@ -47,6 +54,75 @@ impl<T: CliConfig> Cli<T> {
                 ::clap::Arg::new("operation-id")
                     .long("operation-id")
                     .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
+    pub fn cli_calendar_state() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("from")
+                    .long("from")
+                    .value_parser(::clap::value_parser!(i64))
+                    .required(false)
+                    .help("Unix seconds; defaults to 31 days ago."),
+            )
+            .arg(
+                ::clap::Arg::new("to")
+                    .long("to")
+                    .value_parser(::clap::value_parser!(i64))
+                    .required(false)
+                    .help("Unix seconds, exclusive; defaults to 180 days ahead."),
+            )
+    }
+    pub fn cli_calendar_command() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("operation-id")
+                    .long("operation-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
+    pub fn cli_calendar_import() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("window-end")
+                    .long("window-end")
+                    .value_parser(::clap::value_parser!(i64))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("window-start")
+                    .long("window-start")
+                    .value_parser(::clap::value_parser!(i64))
                     .required_unless_present("json-body"),
             )
             .arg(
@@ -97,6 +173,73 @@ impl<T: CliConfig> Cli<T> {
         ::clap::Command::new("")
     }
     pub fn cli_connection_logout() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_home_state() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_home_command() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("operation-id")
+                    .long("operation-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
+    pub fn cli_home_connect() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("access-client-id")
+                    .long("access-client-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required(false)
+                    .help(
+                        "Cloudflare Access service token; omit both for an endpoint without Access.",
+                    ),
+            )
+            .arg(
+                ::clap::Arg::new("access-client-secret")
+                    .long("access-client-secret")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required(false),
+            )
+            .arg(
+                ::clap::Arg::new("base-url")
+                    .long("base-url")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(false)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
+    pub fn cli_home_disconnect() -> ::clap::Command {
         ::clap::Command::new("")
     }
     pub fn cli_product_state() -> ::clap::Command {
@@ -243,11 +386,18 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::HealthReady => self.execute_health_ready(matches).await,
             CliCommand::AutomationsState => self.execute_automations_state(matches).await,
             CliCommand::AutomationsCommand => self.execute_automations_command(matches).await,
+            CliCommand::CalendarState => self.execute_calendar_state(matches).await,
+            CliCommand::CalendarCommand => self.execute_calendar_command(matches).await,
+            CliCommand::CalendarImport => self.execute_calendar_import(matches).await,
             CliCommand::ProductCommand => self.execute_product_command(matches).await,
             CliCommand::ConnectionStatus => self.execute_connection_status(matches).await,
             CliCommand::ConnectionCancel => self.execute_connection_cancel(matches).await,
             CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
             CliCommand::ConnectionLogout => self.execute_connection_logout(matches).await,
+            CliCommand::HomeState => self.execute_home_state(matches).await,
+            CliCommand::HomeCommand => self.execute_home_command(matches).await,
+            CliCommand::HomeConnect => self.execute_home_connect(matches).await,
+            CliCommand::HomeDisconnect => self.execute_home_disconnect(matches).await,
             CliCommand::ProductState => self.execute_product_state(matches).await,
             CliCommand::TemporalExecutions => self.execute_temporal_executions(matches).await,
             CliCommand::TerminalSessionsList => self.execute_terminal_sessions_list(matches).await,
@@ -331,6 +481,87 @@ impl<T: CliConfig> Cli<T> {
         }
         self.config
             .execute_automations_command(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_calendar_state(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.calendar_state();
+        if let Some(value) = matches.get_one::<i64>("from") {
+            request = request.from(value.clone());
+        }
+        if let Some(value) = matches.get_one::<i64>("to") {
+            request = request.to(value.clone());
+        }
+        self.config.execute_calendar_state(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_calendar_command(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.calendar_command();
+        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
+            request = request.body_map(|body| body.operation_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::CalendarRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config
+            .execute_calendar_command(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_calendar_import(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.calendar_import();
+        if let Some(value) = matches.get_one::<i64>("window-end") {
+            request = request.body_map(|body| body.window_end(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<i64>("window-start") {
+            request = request.body_map(|body| body.window_start(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::CalendarImportRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config.execute_calendar_import(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -439,6 +670,95 @@ impl<T: CliConfig> Cli<T> {
         match result {
             Ok(r) => {
                 self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_home_state(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.home_state();
+        self.config.execute_home_state(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_home_command(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.home_command();
+        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
+            request = request.body_map(|body| body.operation_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::HomeRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config.execute_home_command(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_home_connect(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.home_connect();
+        if let Some(value) = matches.get_one::<::std::string::String>("access-client-id") {
+            request = request.body_map(|body| body.access_client_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<::std::string::String>("access-client-secret") {
+            request = request.body_map(|body| body.access_client_secret(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<::std::string::String>("base-url") {
+            request = request.body_map(|body| body.base_url(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::HomeConnectionRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config.execute_home_connect(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_home_disconnect(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.home_disconnect();
+        self.config.execute_home_disconnect(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_no_item(&r);
                 Ok(())
             }
             Err(r) => {
@@ -740,6 +1060,27 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_calendar_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::CalendarState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_calendar_command(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::CalendarCommand,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_calendar_import(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::CalendarImport,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_product_command(
         &self,
         matches: &::clap::ArgMatches,
@@ -772,6 +1113,34 @@ pub trait CliConfig {
         &self,
         matches: &::clap::ArgMatches,
         request: &mut builder::ConnectionLogout,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_home_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::HomeState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_home_command(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::HomeCommand,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_home_connect(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::HomeConnect,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_home_disconnect(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::HomeDisconnect,
     ) -> anyhow::Result<()> {
         Ok(())
     }
@@ -859,11 +1228,18 @@ pub enum CliCommand {
     HealthReady,
     AutomationsState,
     AutomationsCommand,
+    CalendarState,
+    CalendarCommand,
+    CalendarImport,
     ProductCommand,
     ConnectionStatus,
     ConnectionCancel,
     ConnectionLogin,
     ConnectionLogout,
+    HomeState,
+    HomeCommand,
+    HomeConnect,
+    HomeDisconnect,
     ProductState,
     TemporalExecutions,
     TerminalSessionsList,
@@ -883,11 +1259,18 @@ impl CliCommand {
             CliCommand::HealthReady,
             CliCommand::AutomationsState,
             CliCommand::AutomationsCommand,
+            CliCommand::CalendarState,
+            CliCommand::CalendarCommand,
+            CliCommand::CalendarImport,
             CliCommand::ProductCommand,
             CliCommand::ConnectionStatus,
             CliCommand::ConnectionCancel,
             CliCommand::ConnectionLogin,
             CliCommand::ConnectionLogout,
+            CliCommand::HomeState,
+            CliCommand::HomeCommand,
+            CliCommand::HomeConnect,
+            CliCommand::HomeDisconnect,
             CliCommand::ProductState,
             CliCommand::TemporalExecutions,
             CliCommand::TerminalSessionsList,
@@ -908,11 +1291,18 @@ impl CliCommand {
             CliCommand::HealthReady => "health_ready",
             CliCommand::AutomationsState => "automations_state",
             CliCommand::AutomationsCommand => "automations_command",
+            CliCommand::CalendarState => "calendar_state",
+            CliCommand::CalendarCommand => "calendar_command",
+            CliCommand::CalendarImport => "calendar_import",
             CliCommand::ProductCommand => "product_command",
             CliCommand::ConnectionStatus => "connection_status",
             CliCommand::ConnectionCancel => "connection_cancel",
             CliCommand::ConnectionLogin => "connection_login",
             CliCommand::ConnectionLogout => "connection_logout",
+            CliCommand::HomeState => "home_state",
+            CliCommand::HomeCommand => "home_command",
+            CliCommand::HomeConnect => "home_connect",
+            CliCommand::HomeDisconnect => "home_disconnect",
             CliCommand::ProductState => "product_state",
             CliCommand::TemporalExecutions => "temporal_executions",
             CliCommand::TerminalSessionsList => "terminal_sessions_list",

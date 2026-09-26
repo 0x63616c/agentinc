@@ -8,10 +8,20 @@ mod about;
 mod assistant;
 #[path = "../src/automations.rs"]
 mod automations;
+#[path = "../src/calendar.rs"]
+mod calendar;
+#[path = "../src/calendar_page.rs"]
+mod calendar_page;
+#[path = "../src/calendar_store.rs"]
+mod calendar_store;
 #[path = "../src/components.rs"]
 mod components;
+#[path = "../src/dashboard.rs"]
+mod dashboard;
 #[path = "../src/evee.rs"]
 mod evee;
+#[path = "../src/home.rs"]
+mod home;
 #[path = "../src/input.rs"]
 mod input;
 #[path = "../src/model.rs"]
@@ -22,6 +32,8 @@ mod native_update;
 mod profile;
 #[path = "../src/shell.rs"]
 mod shell;
+#[path = "../src/smart_home.rs"]
+mod smart_home;
 #[path = "../src/storage.rs"]
 mod storage;
 #[path = "../src/temporal.rs"]

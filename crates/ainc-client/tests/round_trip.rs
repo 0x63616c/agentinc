@@ -36,6 +36,9 @@ async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::Pg
             listener,
             ainc_daemon::product_router(
                 ainc_daemon::product::Product::new(pool, "fixture".into()).unwrap(),
+                ainc_daemon::home::Home::new(std::sync::Arc::new(
+                    ainc_daemon::secrets::MemoryStore::default(),
+                )),
             ),
         )
         .await
@@ -143,6 +146,9 @@ async fn generated_automation_rule_pause_and_run_now_round_trip(pool: sqlx::PgPo
             listener,
             ainc_daemon::product_router(
                 ainc_daemon::product::Product::new(pool, "fixture".into()).unwrap(),
+                ainc_daemon::home::Home::new(std::sync::Arc::new(
+                    ainc_daemon::secrets::MemoryStore::default(),
+                )),
             ),
         )
         .await

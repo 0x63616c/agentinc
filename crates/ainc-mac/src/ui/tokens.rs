@@ -59,6 +59,8 @@ pub const TEXT_TERTIARY: u32 = 0x858585; // AA (4.5:1 or better) on every surfac
 pub const TEXT_PLACEHOLDER: u32 = 0x5a5a5a;
 /// Ink on white primary surfaces.
 pub const TEXT_ON_PRIMARY: u32 = 0x0a0a0a;
+/// Secondary ink on white surfaces, such as the caption of a lit switch tile.
+pub const TEXT_ON_PRIMARY_SECONDARY: u32 = 0x5c5c5c;
 
 /// The white primary action.
 pub const PRIMARY: u32 = 0xffffff;
@@ -162,7 +164,7 @@ pub const FIELD_INSET_X: f32 = SPACE_3;
 pub const FORM_STACK_GAP: f32 = SPACE_4;
 pub const SECTION_GAP: f32 = SPACE_6;
 pub const SETTINGS_ROW_HEIGHT: f32 = 56.;
-pub const SETTINGS_INSET: f32 = SPACE_4;
+pub const SETTINGS_INSET: f32 = CARD_INSET;
 pub const LIST_ROW_HEIGHT: f32 = 44.;
 pub const TABLE_ROW_HEIGHT: f32 = 48.;
 pub const TABLE_HEADER_HEIGHT: f32 = 36.;
@@ -184,6 +186,53 @@ pub const PALETTE_FOOTER_HEIGHT: f32 = 40.;
 pub const PALETTE_RESULTS_MAX_HEIGHT: f32 = 420.;
 pub const POPOVER_WIDTH: f32 = 264.;
 pub const TOAST_WIDTH: f32 = 360.;
+/// The one inset inside feature cards, tiles and panels on every side.
+pub const CARD_INSET: f32 = SPACE_5;
+/// Switch tiles: the narrowest a tile shrinks to and its fixed height.
+pub const TILE_MIN_WIDTH: f32 = 132.;
+/// A tile is a control inside a card, so it takes the tighter control inset.
+pub const TILE_INSET: f32 = SPACE_4;
+pub const TILE_HEIGHT: f32 = 96.;
+/// The value column of a stepper, wide enough for "100°".
+pub const STEPPER_VALUE_WIDTH: f32 = 56.;
+/// Calendar: one hour of the week grid, the week's time
+/// gutter, the day panel beside the month, the agenda's date column, a
+/// calendar color bar and the circle that marks today.
+pub const HOUR_HEIGHT: f32 = 48.;
+pub const TIME_GUTTER: f32 = 56.;
+pub const DAY_PANEL_WIDTH: f32 = 260.;
+/// The narrowest window that shows the selected day beside the month.
+pub const MONTH_WITH_DAY_MIN: f32 = 1500.;
+/// Month rows shrink to fit short windows, but not below this.
+pub const MONTH_CELL_MIN_HEIGHT: f32 = 56.;
+/// One event line in a month cell, and the most marks a narrow cell shows.
+pub const MONTH_LINE: f32 = CONTROL_HEIGHT_SM - SPACE_1 + SPACE_HALF;
+pub const MONTH_DOTS: usize = 6;
+/// Below this window width month cells show marks instead of titles.
+pub const MONTH_TITLES_MIN: f32 = 1000.;
+/// Everything above and below the month grid in the window, including a
+/// bottom gap equal to the page inset, so the rows fill the rest.
+pub const MONTH_CHROME: f32 = 294.;
+/// How far across a week column the last of several overlapping events starts.
+pub const CASCADE_SPAN: f32 = 0.18;
+/// The dot that starts the week view's current-time line.
+pub const NOW_DOT: f32 = 8.;
+pub const AGENDA_DATE_WIDTH: f32 = 128.;
+pub const AGENDA_TIME_WIDTH: f32 = 136.;
+/// The thermostat card's reading column, and its track: the rail, the
+/// setpoint handle and the reading mark.
+pub const READING_WIDTH: f32 = 260.;
+/// Below this window width the thermostat stacks its reading above its controls.
+pub const CLIMATE_STACK_BELOW: f32 = 1000.;
+pub const TRACK_HEIGHT: f32 = 4.;
+/// Half the width reserved for the reading's label under the track.
+pub const TRACK_LABEL_HALF: f32 = 40.;
+/// The window width that fits the three Smart Home room cards side by side.
+pub const ROOMS_THREE_ACROSS: f32 = 1300.;
+pub const TRACK_HANDLE: f32 = 14.;
+pub const TRACK_MARK: f32 = 8.;
+pub const EVENT_BAR_WIDTH: f32 = 3.;
+pub const TODAY_MARK: f32 = 24.;
 pub const AVATAR_SIZE: f32 = 24.;
 pub const AVATAR_SIZE_LG: f32 = 40.;
 pub const TOGGLE_WIDTH: f32 = 36.;
@@ -217,6 +266,10 @@ pub const FIELD_RADIUS: f32 = RADIUS_MD;
 // two-point product offset and the user's chosen scale.
 // ---------------------------------------------------------------------------
 
+/// Glanceable numerals: the indoor temperature, open work.
+pub const HERO_SIZE: f32 = 54.;
+/// Glanceable numerals in a narrow window.
+pub const COMPACT_HERO_SIZE: f32 = 36.;
 pub const DISPLAY_SIZE: f32 = 22.;
 pub const TITLE_SIZE: f32 = 18.;
 pub const HEADING_SIZE: f32 = 14.;

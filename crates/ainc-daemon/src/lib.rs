@@ -1,13 +1,18 @@
 pub mod automations;
+pub mod calendar;
 mod codex;
 pub mod coding;
 mod connection;
+mod control_center;
 mod conversation_tools;
 pub mod conversations;
+pub mod durable;
 pub mod execution;
+pub mod home;
 pub mod inference;
 pub mod legacy;
 pub mod product;
+pub mod secrets;
 pub mod temporal;
 pub mod terminal_sessions;
 pub mod tickets;
@@ -86,6 +91,13 @@ async fn ticket_contract(Json(ticket): Json<TicketContract>) -> Json<TicketContr
         tickets::command,
         automations::state,
         automations::command,
+        home::state,
+        home::command,
+        home::connect,
+        home::disconnect,
+        calendar::state,
+        calendar::command,
+        calendar::import,
         terminal_sessions::list,
         terminal_sessions::create,
         terminal_sessions::close,
@@ -129,12 +141,14 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     sqlx::migrate!().run(pool).await
 }
 
-pub fn product_router(product: product::Product) -> Router {
+pub fn product_router(product: product::Product, home: home::Home) -> Router {
     router(product.pool.clone())
+        .merge(home::router(product.clone(), home))
         .merge(product::router(product.clone()))
         .merge(connection::router(product.clone()))
         .merge(tickets::router(product.clone()))
         .merge(automations::router(product.clone()))
+        .merge(calendar::router(product.clone()))
         .merge(terminal_sessions::router(product.clone()))
         .merge(workspaces::router(product))
         .layer(axum::middleware::from_fn(compatibility))

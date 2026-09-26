@@ -14,6 +14,9 @@ import tempfile
 import time
 
 
+ENTITLEMENTS = Path(__file__).resolve().with_name('AgentInc.entitlements')
+
+
 def run(*args, **kwargs):
     return subprocess.check_output(args, text=True, **kwargs).strip()
 
@@ -21,7 +24,10 @@ def run(*args, **kwargs):
 def sign_bundle(bundle, archive, private):
     subprocess.run(['rcodesign', 'sign', '--p12-file', str(private / 'identity.p12'),
                     '--p12-password-file', str(private / 'password'), '--team-name',
-                    os.environ['APPLE_TEAM_ID'], '--for-notarization', str(bundle)], check=True)
+                    os.environ['APPLE_TEAM_ID'], '--for-notarization',
+                    # Only the app executable reads calendars; nested helpers get nothing new.
+                    '--entitlements-xml-file', f'Contents/MacOS/AgentInc:{ENTITLEMENTS}',
+                    str(bundle)], check=True)
     subprocess.run(['rcodesign', 'notary-submit', '--api-key-file', str(private / 'notary.json'),
                     '--wait', '--staple', str(bundle)], check=True)
     with tarfile.open(archive, 'w:gz') as tar:

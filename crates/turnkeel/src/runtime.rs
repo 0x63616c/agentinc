@@ -74,8 +74,40 @@ impl Runtime {
         action: std::sync::Arc<dyn crate::RecurringAction>,
     ) -> Result<Self, Error> {
         Ok(Self {
-            engine: Engine::configured_recurring(config, &[], Some(action)).await?,
+            engine: Engine::configured_with(
+                config,
+                &[],
+                crate::engine::Handlers {
+                    recurring: Some(action),
+                    tasks: None,
+                },
+            )
+            .await?,
         })
+    }
+
+    /// Connect a dedicated worker for durable tasks. Use a distinct worker
+    /// group from other workers and retain the same handler on restart.
+    pub async fn tasks(
+        config: RuntimeConfig,
+        handler: std::sync::Arc<dyn crate::TaskHandler>,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            engine: Engine::configured_with(
+                config,
+                &[],
+                crate::engine::Handlers {
+                    recurring: None,
+                    tasks: Some(handler),
+                },
+            )
+            .await?,
+        })
+    }
+
+    /// Start a task once under its caller-owned ID, or attach if it already exists.
+    pub async fn start_task(&self, task: crate::Task) -> Result<(), Error> {
+        self.engine.start_task(task).await
     }
 
     /// Reconcile a recurring rule. Overlap is skipped; catch-up is limited to ten

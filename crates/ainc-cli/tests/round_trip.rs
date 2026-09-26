@@ -9,6 +9,9 @@ async fn cli_reads_and_commands_against_real_daemon(pool: sqlx::PgPool) {
             listener,
             ainc_daemon::product_router(
                 ainc_daemon::product::Product::new(pool, "fixture".into()).unwrap(),
+                ainc_daemon::home::Home::new(std::sync::Arc::new(
+                    ainc_daemon::secrets::MemoryStore::default(),
+                )),
             ),
         )
         .await

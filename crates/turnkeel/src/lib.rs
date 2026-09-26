@@ -24,6 +24,7 @@ mod recurring;
 mod run;
 mod runtime;
 mod session;
+mod task;
 pub mod testing;
 mod tool;
 
@@ -36,6 +37,7 @@ pub use recurring::{Occurrence, OccurrenceRecord, RecurringAction, RecurringRule
 pub use run::{Run, RunId};
 pub use runtime::{RunPage, RunRecord, Runtime, RuntimeConfig};
 pub use session::{Session, SessionId};
+pub use task::{Task, TaskError, TaskHandler};
 pub use tool::{Tool, ToolCtx, ToolError, ToolSet};
 pub use turnkeel_macros::tool;
 

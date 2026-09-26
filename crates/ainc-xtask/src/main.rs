@@ -324,11 +324,22 @@ fn generate(root: &Path, check: bool) -> Result<()> {
         }
         Ok(())
     }
-    // Utoipa represents nullable primitives as a JSON Schema type array.
-    // Convert exactly that shape to the OpenAPI 3.0 nullable keyword.
+    // Utoipa represents nullable primitives as a JSON Schema type array, and
+    // optional references as `oneOf: [null, $ref]`. Convert exactly those shapes
+    // to the OpenAPI 3.0 nullable keyword.
     fn nullable(value: &mut serde_json::Value) -> Result<()> {
         match value {
             serde_json::Value::Object(map) => {
+                if let Some(serde_json::Value::Array(options)) = map.get("oneOf")
+                    && options.len() == 2
+                    && options[0] == serde_json::json!({"type": "null"})
+                    && options[1].get("$ref").is_some()
+                {
+                    let reference = options[1].clone();
+                    map.remove("oneOf");
+                    map.insert("allOf".into(), serde_json::json!([reference]));
+                    map.insert("nullable".into(), true.into());
+                }
                 if let Some(serde_json::Value::Array(types)) = map.get("type") {
                     let non_null: Vec<_> =
                         types.iter().filter(|v| **v != "null").cloned().collect();

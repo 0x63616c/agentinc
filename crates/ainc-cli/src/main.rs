@@ -1,4 +1,4 @@
-#[allow(unused_variables, dead_code)]
+#[allow(unused_variables, dead_code, clippy::clone_on_copy)]
 mod generated;
 
 use ainc_client::{Client, Error, ResponseValue};
@@ -144,6 +144,8 @@ fn variants(spec: &Value, group: &str) -> Vec<Variant> {
     let request = match group {
         "tickets" => "TicketCommand",
         "automations" => "AutomationCommand",
+        "home" => "HomeCommand",
+        "calendar" => "CalendarCommand",
         "product" => "Command",
         _ => return vec![],
     };
@@ -160,7 +162,14 @@ fn variants(spec: &Value, group: &str) -> Vec<Variant> {
                 .iter()
                 .filter(|(name, _)| name.as_str() != "kind")
                 .map(|(name, field)| {
-                    let typ = if field.get("$ref").is_some()
+                    // A reference to a string enum, such as a Smart Home switch, is a plain value.
+                    let target = field["$ref"]
+                        .as_str()
+                        .and_then(|r| spec.pointer(r.trim_start_matches('#')));
+                    let enum_string = target.is_some_and(|t| t["type"] == "string");
+                    let typ = if enum_string {
+                        "string"
+                    } else if field.get("$ref").is_some()
                         || field["type"]
                             .as_str()
                             .is_some_and(|t| t == "object" || t == "array")
@@ -217,7 +226,7 @@ fn command_tree(spec: &Value) -> Command {
             .or_insert_with(|| Command::new(group).subcommand_required(true));
         *entry = entry.clone().subcommand(command);
     }
-    for group in ["tickets", "automations", "product"] {
+    for group in ["tickets", "automations", "home", "calendar", "product"] {
         if let Some(entry) = groups.get_mut(group) {
             for (kind, fields) in variants(spec, group) {
                 let mut command =
@@ -227,12 +236,13 @@ fn command_tree(spec: &Value) -> Command {
                     let flag = name.replace('_', "-");
                     let name: &'static str = Box::leak(name.into_boxed_str());
                     let flag: &'static str = Box::leak(flag.into_boxed_str());
-                    command = command.arg(
-                        Arg::new(name)
-                            .long(flag)
-                            .required_unless_present(if required { "json-body" } else { name })
-                            .help(format!("{} field", typ)),
-                    );
+                    let arg = Arg::new(name).long(flag).help(format!("{} field", typ));
+                    // Optional fields stay optional; required ones can come from --json-body.
+                    command = command.arg(if required {
+                        arg.required_unless_present("json-body")
+                    } else {
+                        arg
+                    });
                 }
                 *entry = entry.clone().subcommand(
                     command.arg(
@@ -379,6 +389,8 @@ async fn main() -> Result<()> {
     let op = operation(match group {
         "tickets" => "tickets_command",
         "automations" => "automations_command",
+        "home" => "home_command",
+        "calendar" => "calendar_command",
         "product" => "product_command",
         _ => bail!("unsupported command"),
     });
@@ -458,5 +470,40 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn enum_fields_are_plain_flags_and_structs_stay_json() {
+        let spec = schema();
+        let home = variants(&spec, "home");
+        let switch = home.iter().find(|(kind, _)| kind == "switch").unwrap();
+        assert!(switch.1.contains(&("key".into(), "string".into(), true)));
+        assert!(switch.1.contains(&("on".into(), "boolean".into(), true)));
+        let tickets = variants(&spec, "tickets");
+        let assigned = tickets
+            .iter()
+            .find(|(kind, _)| kind == "create-assigned")
+            .unwrap();
+        assert_eq!(assigned.1[0].1, "json");
+    }
+    #[test]
+    fn optional_command_fields_can_be_left_out() {
+        let tree = command_tree(&schema());
+        let parsed = tree.try_get_matches_from([
+            "ainc",
+            "calendar",
+            "create",
+            "--title",
+            "Dinner",
+            "--starts-at",
+            "10",
+            "--ends-at",
+            "20",
+            "--all-day",
+            "false",
+        ]);
+        assert!(parsed.is_ok(), "{parsed:?}");
+        let missing = command_tree(&schema())
+            .try_get_matches_from(["ainc", "calendar", "create", "--title", "Dinner"]);
+        assert!(missing.is_err(), "required fields are still required");
     }
 }

@@ -39,6 +39,7 @@ cat > "$bundle/Contents/Info.plist" <<PLIST
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
+<key>NSCalendarsFullAccessUsageDescription</key><string>AgentInc shows your upcoming events on its Calendar and Dashboard.</string>
 </dict></plist>
 PLIST
 codesign --force --deep --sign - "$bundle"

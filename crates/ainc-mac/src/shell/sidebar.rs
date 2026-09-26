@@ -32,7 +32,9 @@ impl Shell {
             route.label().to_lowercase().replace(' ', "-")
         ))
         .h(px(CONTROL_HEIGHT))
-        .when(route == Route::Agents, |s| s.mt(px(SPACE_6)))
+        .when(matches!(route, Route::Agents | Route::Calendar), |s| {
+            s.mt(px(SPACE_6))
+        })
         .px(px(SPACE_2))
         .gap(px(SIDEBAR_TEXT_GAP))
         .rounded(px(RADIUS_MD))
@@ -203,8 +205,36 @@ impl Shell {
                     .child(div().flex_1().min_w_0().truncate().child("Go to…"))
                     .when(wide, |s| s.child(kbd("⌘K"))),
             )
-            .child(nav)
-            .child(div().flex_1())
+            // The navigation scrolls between the pinned search and user row, so
+            // every destination stays reachable at the smallest window size.
+            .child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        div()
+                            .id("sidebar-nav")
+                            .debug_selector(|| "sidebar-nav".into())
+                            .size_full()
+                            .overflow_y_scroll()
+                            .child(nav),
+                    )
+                    // Rows fade out rather than cut off above the user row.
+                    .child(
+                        div()
+                            .absolute()
+                            .bottom_0()
+                            .left_0()
+                            .right_0()
+                            .h(px(SPACE_6))
+                            .bg(linear_gradient(
+                                180.,
+                                linear_color_stop(rgba(SHELL << 8), 0.),
+                                linear_color_stop(rgba((SHELL << 8) | 0xff), 1.),
+                            )),
+                    ),
+            )
             .child(
                 // A flex column gives the floating menu the row's top-left as its origin.
                 column()

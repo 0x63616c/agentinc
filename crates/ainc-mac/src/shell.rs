@@ -1,5 +1,7 @@
 #[path = "shell/header.rs"]
 mod header;
+#[path = "shell/home_pages.rs"]
+mod home_pages;
 #[path = "shell/layout.rs"]
 mod layout;
 #[path = "shell/main_content.rs"]
@@ -68,6 +70,8 @@ pub(crate) enum Control {
     SendFeedback,
     About,
     DismissToast(u64),
+    NewEvent,
+    Lights(bool),
 }
 pub struct Shell {
     store: Option<std::sync::Arc<Store>>,
@@ -78,6 +82,7 @@ pub struct Shell {
     automations: Entity<crate::automations::AutomationsPage>,
     temporal: Entity<crate::temporal::TemporalPage>,
     components: Entity<crate::components::ComponentsPage>,
+    home_pages: home_pages::HomePages,
     _components_subscription: Subscription,
     _automation_subscriptions: Vec<Subscription>,
     _temporal_subscription: Subscription,
@@ -214,6 +219,7 @@ impl Shell {
                             page.workspace_changed(cx);
                             cx.notify();
                         });
+                        this.home_pages.workspace_changed(cx);
                     }
                     Err(error) => {
                         this.workspace_error = Some(format!("Workspace unavailable: {error}"));
@@ -323,6 +329,17 @@ impl Shell {
             ),
         ];
         let tickets_subscription = cx.observe(&tickets, |_, _, cx| cx.notify());
+        let home_pages = home_pages::HomePages::new(
+            store.clone(),
+            overlays.clone(),
+            if cfg!(test) {
+                std::sync::Arc::new(crate::calendar_store::Unavailable)
+            } else {
+                crate::calendar_store::system()
+            },
+            profile.name.clone(),
+            cx,
+        );
         let input = cx.new(TextInput::new);
         let workspace_name = cx.new(|cx| {
             TextInput::new(cx)
@@ -360,6 +377,7 @@ impl Shell {
             automations,
             temporal,
             components,
+            home_pages,
             _components_subscription: components_subscription,
             _automation_subscriptions: automation_subscriptions,
             _temporal_subscription: temporal_subscription,
@@ -716,6 +734,9 @@ impl Shell {
             Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => {
                 self.assistant.read(cx).focus_handles(cx)
             }
+            Some(Overlay::CalendarEvent) => {
+                self.home_pages.calendar_page.read(cx).focus_handles(cx)
+            }
             _ => {
                 if backwards {
                     window.focus_prev(cx);
@@ -841,6 +862,7 @@ impl Shell {
                 self.temporal.update(cx, |_, cx| cx.notify());
                 self.input.update(cx, |_, cx| cx.notify());
                 self.components.update(cx, |_, cx| cx.notify());
+                self.home_pages.notify(cx);
                 if let Some(updates) = cx.try_global::<crate::updates::Updates>().cloned() {
                     updates.0.update(cx, |_, cx| cx.notify());
                 }
@@ -913,6 +935,17 @@ impl Shell {
             }
             Control::Dismiss => {
                 self.overlays.borrow_mut().dismiss(window, cx);
+            }
+            Control::NewEvent => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                // Open after navigation settles: a Route change dismisses overlays.
+                cx.defer_in(window, |this, window, cx| this.open_new_event(window, cx));
+            }
+            Control::Lights(on) => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                self.home_pages.home.update(cx, |home, cx| {
+                    home.switch(ainc_client::types::SwitchKey::All, on, cx)
+                });
             }
         }
         #[cfg(target_os = "macos")]
@@ -1154,7 +1187,13 @@ impl Render for Shell {
                 }
             }
         }
-        let content = match self.session.current() {
+        let route = self.session.current();
+        self.home_pages.showing(route, &self.profile.name, cx);
+        let content = match route {
+            Route::Dashboard | Route::SmartHome | Route::Calendar => self
+                .home_pages
+                .page(route)
+                .expect("Dashboard, Smart Home and Calendar pages"),
             Route::Automations => self.automations.clone().into_any_element(),
             Route::Temporal => {
                 self.temporal.update(cx, |view, cx| view.ensure_loaded(cx));
@@ -1185,6 +1224,10 @@ impl Render for Shell {
             Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => self
                 .assistant
                 .update(cx, |assistant, cx| assistant.overlay(window, cx)),
+            Some(Overlay::CalendarEvent) => self
+                .home_pages
+                .calendar_page
+                .update(cx, |page, cx| page.overlay(window, cx)),
             _ => None,
         };
         let update_ready = cx
@@ -1447,7 +1490,7 @@ mod interaction_tests {
         let back = cx.debug_bounds("back").unwrap().center();
         double_click(cx, back);
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Assistant);
+            assert_eq!(shell.session.current(), Route::Dashboard);
             assert_eq!(shell.titlebar_zoom_requests, 0);
         });
         let forward = cx.debug_bounds("forward").unwrap().center();
@@ -1589,11 +1632,11 @@ mod interaction_tests {
         }
         cx.simulate_keystrokes("cmd-alt-left");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Automations)
+            assert_eq!(Some(shell.session.current()), Route::from_shortcut(4))
         });
         cx.simulate_keystrokes("cmd-alt-right");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Terminal)
+            assert_eq!(Some(shell.session.current()), Route::from_shortcut(5))
         });
         cx.simulate_keystrokes("cmd-,");
         shell.read_with(cx, |shell, _| {
@@ -1720,7 +1763,7 @@ mod interaction_tests {
         cx.update(|window, cx| window.draw(cx).clear(cx));
         cx.simulate_keystrokes("cmd-3");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Agents)
+            assert_eq!(Some(shell.session.current()), Route::from_shortcut(3))
         });
     }
 

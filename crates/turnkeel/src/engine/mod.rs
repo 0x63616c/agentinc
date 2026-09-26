@@ -4,6 +4,7 @@ mod activities;
 mod conversation;
 mod recurring;
 mod session;
+mod task;
 mod test_server;
 mod visibility;
 mod workflow;
@@ -26,6 +27,13 @@ use temporalio_sdk::{
 };
 
 type ShutdownFn = Box<dyn Fn() + Send + Sync>;
+
+/// The caller-owned code a worker runs besides agents.
+#[derive(Clone, Default)]
+pub(crate) struct Handlers {
+    pub recurring: Option<Arc<dyn crate::RecurringAction>>,
+    pub tasks: Option<Arc<dyn crate::TaskHandler>>,
+}
 
 /// Engine behaviour switches. Internal; surfaced through `Runtime::local()` / `Runtime::test()`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -61,7 +69,7 @@ impl Engine {
             options,
             format!("agentinc-{}", uuid::Uuid::new_v4()),
             &[],
-            None,
+            Handlers::default(),
         )
         .await
     }
@@ -79,13 +87,13 @@ impl Engine {
     }
 
     pub(crate) async fn configured(config: RuntimeConfig, agents: &[Agent]) -> Result<Self, Error> {
-        Self::configured_recurring(config, agents, None).await
+        Self::configured_with(config, agents, Handlers::default()).await
     }
 
-    pub(crate) async fn configured_recurring(
+    pub(crate) async fn configured_with(
         config: RuntimeConfig,
         agents: &[Agent],
-        action: Option<Arc<dyn crate::RecurringAction>>,
+        handlers: Handlers,
     ) -> Result<Self, Error> {
         if config.scope.trim().is_empty() || config.worker_group.trim().is_empty() {
             return Err(Error::Connection(
@@ -108,7 +116,7 @@ impl Engine {
             EngineOptions::default(),
             config.worker_group,
             agents,
-            action,
+            handlers,
         )
         .await
     }
@@ -119,7 +127,7 @@ impl Engine {
         options: EngineOptions,
         task_queue: String,
         agents: &[Agent],
-        action: Option<Arc<dyn crate::RecurringAction>>,
+        handlers: Handlers,
     ) -> Result<Self, Error> {
         let registry = Registry::default();
         for agent in agents {
@@ -150,7 +158,7 @@ impl Engine {
                         worker_queue,
                         worker_registry,
                         options,
-                        action,
+                        handlers,
                     );
                     let mut worker = match worker {
                         Ok(w) => w,
@@ -310,7 +318,7 @@ fn build_worker(
     task_queue: String,
     registry: Registry,
     options: EngineOptions,
-    action: Option<Arc<dyn crate::RecurringAction>>,
+    handlers: Handlers,
 ) -> Result<Worker, String> {
     let runtime = Runtime::from_current_tokio(Default::default()).map_err(|e| e.to_string())?;
     let options = WorkerOptions::new(task_queue)
@@ -320,7 +328,10 @@ fn build_worker(
         .map_err(|e| e.to_string())?
         .register_workflow::<recurring::OccurrenceWorkflow>()
         .map_err(|e| e.to_string())?
-        .register_activities(recurring::RecurringActivities(action))
+        .register_workflow::<task::TaskWorkflow>()
+        .map_err(|e| e.to_string())?
+        .register_activities(recurring::RecurringActivities(handlers.recurring))
+        .register_activities(task::TaskActivities(handlers.tasks))
         .register_activities(AgentActivities {
             registry,
             check_idempotency: options.check_idempotency,

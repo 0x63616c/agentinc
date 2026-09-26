@@ -212,6 +212,7 @@ dependencies = [
  "libc",
  "reqwest",
  "rusqlite",
+ "security-framework",
  "serde",
  "serde_json",
  "sha2",
@@ -223,6 +224,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "turnkeel",
+ "url",
  "utoipa",
  "uuid",
 ]

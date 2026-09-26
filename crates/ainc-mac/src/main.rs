@@ -1,13 +1,19 @@
 mod about;
 mod assistant;
 mod automations;
+mod calendar;
+mod calendar_page;
+mod calendar_store;
 mod components;
+mod dashboard;
 mod evee;
+mod home;
 mod input;
 mod model;
 mod native_update;
 mod profile;
 mod shell;
+mod smart_home;
 mod storage;
 mod temporal;
 #[cfg(target_os = "macos")]
