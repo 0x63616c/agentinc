@@ -111,7 +111,7 @@ fn regions(width: u32, height: u32, dimmed: bool) -> Vec<(&'static str, [u32; 4]
     .into_iter()
     .enumerate()
     {
-        let y = 163 + index as u32 * 34 + group_offset;
+        let y = 233 + index as u32 * 34 + group_offset;
         regions.push((name, [20, y, 165, y + 28], text, 35));
     }
     regions
@@ -524,6 +524,19 @@ pub fn run() -> Result<()> {
         shell.fixture_launch_elapsed(Duration::from_secs(1), cx)
     })?;
     suite.capture("initial", Route::Assistant, None, false)?;
+    suite.cx.simulate_mouse_move(
+        suite.window.into(),
+        point(px(100.), px(115.)),
+        None::<MouseButton>,
+        Modifiers::default(),
+    );
+    suite.capture("hover-workspace", Route::Assistant, None, false)?;
+    suite.cx.simulate_mouse_move(
+        suite.window.into(),
+        point(px(500.), px(500.)),
+        None::<MouseButton>,
+        Modifiers::default(),
+    );
     suite.check_profile_row_geometry()?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_profile_name(
@@ -538,7 +551,7 @@ pub fn run() -> Result<()> {
     })?;
     suite.cx.simulate_mouse_move(
         suite.window.into(),
-        point(px(125.), px(167.)),
+        point(px(125.), px(245.)),
         None::<MouseButton>,
         Modifiers::default(),
     );

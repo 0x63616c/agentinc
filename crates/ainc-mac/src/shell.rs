@@ -720,6 +720,7 @@ impl Shell {
             .to_owned()
             .into();
         let hover_open = matches!(&control, Control::Open(_));
+        let hover_workspace = matches!(&control, Control::WorkspacePicker);
         let click_control = control.clone();
         let button = action_button(
             ButtonSpec {
@@ -732,6 +733,8 @@ impl Shell {
                 button.gap(px(8.)).hover(move |s| {
                     if hover_open {
                         s.text_color(rgb(TEXT))
+                    } else if hover_workspace {
+                        s.bg(rgb(HOVER_CONTROL)).text_color(rgb(TEXT))
                     } else {
                         s.bg(rgb(HOVER)).text_color(rgb(TEXT))
                     }
