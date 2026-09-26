@@ -229,6 +229,7 @@ jobs:
             .local/distribution/upgrade-candidate.tar.gz
             .local/distribution/upgrade-newer.tar.gz
             .local/distribution/upgrade-prior-*.tar.gz
+            !.local/distribution/upgrade-prior-*-unsigned.tar.gz
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -263,6 +264,7 @@ jobs:
           chmod +x .local/upgrade-input/ainc-release-manifest
           prior=()
           for archive in .local/upgrade-signed/upgrade-prior-*.tar.gz; do
+            case "$archive" in *-unsigned.tar.gz) continue;; esac
             [ ! -f "$archive" ] || prior+=(--prior "$archive")
           done
           python3 scripts/release/upgrade-gate.py \

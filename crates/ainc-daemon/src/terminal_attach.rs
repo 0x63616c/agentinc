@@ -117,10 +117,9 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
             Err(tokio_tungstenite::tungstenite::Error::Http(response))
                 if response.status().as_u16() == 404 =>
             {
-                stdout
-                    .write_all(b"\r\n[Terminal session ended]\r\n")
-                    .await?;
-                return Ok(());
+                // Saved pane IDs can outlive the daemon after an update.
+                existing = false;
+                continue;
             }
             Err(tokio_tungstenite::tungstenite::Error::Http(response))
                 if response.status().as_u16() == 401 || response.status().as_u16() == 426 =>
@@ -135,6 +134,8 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
                 continue;
             }
         };
+        stdout.write_all(b"\x1bc").await?;
+        stdout.flush().await?;
         let _ = socket.send(Message::Binary(size().to_vec().into())).await;
         loop {
             tokio::select! {
@@ -144,7 +145,7 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
                     Err(error) => return Err(error.into()),
                 },
                 received = socket.next() => match received {
-                    Some(Ok(Message::Binary(bytes))) => stdout.write_all(&bytes).await?,
+                    Some(Ok(Message::Binary(bytes))) => { stdout.write_all(&bytes).await?; stdout.flush().await?; },
                     Some(Ok(Message::Text(text))) if text == "ended" => { stdout.write_all(b"\r\n[Terminal session ended]\r\n").await?; return Ok(()); },
                     _ => break,
                 },

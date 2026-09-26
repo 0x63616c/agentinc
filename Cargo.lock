@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "agentinc-os"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "accesskit",
  "ainc-client",
@@ -166,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-cli"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "ainc-client",
  "ainc-daemon",
@@ -187,7 +187,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-client"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "ainc-daemon",
  "ainc-release",
@@ -203,7 +203,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-daemon"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "ainc-release",
  "anyhow",
@@ -229,7 +229,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-release"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
