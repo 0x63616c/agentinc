@@ -4,7 +4,9 @@ use crate::{
     calendar_store::{Access, CalendarSource},
     storage::{self, api_error},
 };
-use ainc_client::types::{ActionView, CalendarCommand, CalendarEvent, CalendarImportRequest};
+use ainc_client::types::{
+    ActionState, ActionView, CalendarCommand, CalendarEvent, CalendarImportRequest,
+};
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveTime, TimeZone, Weekday};
 use gpui::{prelude::*, *};
 use std::{sync::Arc, time::Instant};
@@ -12,7 +14,9 @@ use std::{sync::Arc, time::Instant};
 const DAY: i64 = 86_400;
 /// How far back and ahead the Mac's calendars are mirrored.
 const IMPORT_BEHIND: i64 = 31 * DAY;
-const IMPORT_AHEAD: i64 = 365 * DAY;
+const IMPORT_AHEAD: i64 = 180 * DAY;
+/// Notes are kept short; long invite boilerplate stays in the Calendar app.
+const NOTES_LIMIT: usize = 1_000;
 /// How often an authorized Mac calendar is mirrored again while AgentInc runs.
 #[cfg(not(test))]
 const SYNC_EVERY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
@@ -71,10 +75,9 @@ impl CalendarModel {
             cx.spawn(async move |this, cx| {
                 loop {
                     let alive = this.update(cx, |this, cx| {
-                        let importing = this
-                            .last_import
-                            .as_ref()
-                            .is_some_and(|i| matches!(i.state.as_str(), "queued" | "running"));
+                        let importing = this.last_import.as_ref().is_some_and(|i| {
+                            matches!(i.state, ActionState::Queued | ActionState::Running)
+                        });
                         if importing {
                             this.refresh(cx);
                         }
@@ -191,7 +194,14 @@ impl CalendarModel {
         let window_start = day_start(today()) - IMPORT_BEHIND;
         let window_end = day_start(today()) + IMPORT_AHEAD;
         let work = cx.background_executor().spawn(async move {
-            let events = source.events(window_start, window_end)?;
+            let mut events = source.events(window_start, window_end)?;
+            for event in &mut events {
+                if let Some(notes) = &mut event.notes
+                    && notes.chars().count() > NOTES_LIMIT
+                {
+                    *notes = notes.chars().take(NOTES_LIMIT).collect();
+                }
+            }
             storage::background(async move {
                 let client = storage::client().await?;
                 client
@@ -224,7 +234,7 @@ impl CalendarModel {
             || self
                 .last_import
                 .as_ref()
-                .is_some_and(|i| matches!(i.state.as_str(), "queued" | "running"))
+                .is_some_and(|i| matches!(i.state, ActionState::Queued | ActionState::Running))
     }
     /// Create, edit or delete an AgentInc event.
     pub fn command(
@@ -296,11 +306,18 @@ pub fn on_day(events: &[CalendarEvent], date: NaiveDate) -> Vec<&CalendarEvent> 
     day
 }
 
-/// Six Monday-first weeks that cover `month`.
+/// The Monday-first weeks that cover `month`.
 pub fn month_grid(month: NaiveDate) -> Vec<NaiveDate> {
     let first = month.with_day(1).unwrap_or(month);
     let lead = first.weekday().num_days_from_monday() as i64;
-    (0..42).map(|i| first + Duration::days(i - lead)).collect()
+    let days = first
+        .checked_add_months(chrono::Months::new(1))
+        .map_or(31, |next| (next - first).num_days());
+    // Only the weeks the month touches: four, five or six.
+    let cells = (lead + days + 6) / 7 * 7;
+    (0..cells)
+        .map(|i| first + Duration::days(i - lead))
+        .collect()
 }
 /// The Monday-first week containing `date`.
 pub fn week(date: NaiveDate) -> Vec<NaiveDate> {
@@ -571,7 +588,11 @@ mod tests {
     fn month_grids_start_on_monday_and_cover_the_month() {
         let september = NaiveDate::from_ymd_opt(2026, 9, 26).unwrap();
         let grid = month_grid(september);
-        assert_eq!(grid.len(), 42);
+        assert_eq!(grid.len(), 35, "September 2026 spans five weeks");
+        assert_eq!(
+            month_grid(NaiveDate::from_ymd_opt(2026, 8, 1).unwrap()).len(),
+            42
+        );
         assert_eq!(grid[0], NaiveDate::from_ymd_opt(2026, 8, 31).unwrap());
         assert_eq!(grid[1], NaiveDate::from_ymd_opt(2026, 9, 1).unwrap());
         assert_eq!(

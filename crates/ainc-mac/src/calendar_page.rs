@@ -61,7 +61,7 @@ pub fn event_color(event: &CalendarEvent) -> Rgba {
         .and_then(|c| u32::from_str_radix(c.trim_start_matches('#'), 16).ok());
     match (event.source, parsed) {
         (EventSource::Agentinc, _) => rgb(PRIMARY),
-        (_, Some(color)) => blend(color, STATUS_NEUTRAL, 0.25),
+        (_, Some(color)) => blend(color, STATUS_NEUTRAL, 0.45),
         (_, None) => rgb(STATUS_NEUTRAL),
     }
 }
@@ -141,7 +141,7 @@ impl CalendarPage {
         let (first, last) = match self.view {
             View::Month => {
                 let grid = month_grid(self.anchor);
-                (grid[0], grid[41])
+                (grid[0], grid[grid.len() - 1])
             }
             View::Week => {
                 let days = week(self.anchor);
@@ -679,7 +679,7 @@ impl CalendarPage {
             .child(date.day().to_string())
     }
 
-    fn month(&self, events: &[CalendarEvent], cx: &mut Context<Self>) -> Div {
+    fn month(&self, events: &[CalendarEvent], wide: bool, cx: &mut Context<Self>) -> Div {
         let grid = month_grid(self.anchor);
         let month = self.anchor.month();
         let mut header = row()
@@ -691,7 +691,9 @@ impl CalendarPage {
             header = header.child(
                 div()
                     .flex_1()
-                    .px(px(SPACE_3))
+                    .min_w_0()
+                    .overflow_hidden()
+                    .px(px(SPACE_2))
                     .child(eyebrow(day.to_string())),
             );
         }
@@ -771,7 +773,8 @@ impl CalendarPage {
             .items_stretch()
             .gap(px(SPACE_4))
             .child(grid)
-            .child(self.day_panel(events, cx))
+            // The selected day sits beside the month when there is room for both.
+            .when(wide, |s| s.child(self.day_panel(events, cx)))
     }
 
     /// The selected day beside the month.
@@ -850,6 +853,7 @@ impl CalendarPage {
             .child(div().w(px(TIME_GUTTER)).flex_shrink_0());
         let mut all_day = row()
             .w_full()
+            .items_stretch()
             .min_h(px(CONTROL_HEIGHT))
             .border_b_1()
             .border_color(rgb(BORDER_SUBTLE))
@@ -876,7 +880,7 @@ impl CalendarPage {
                         ((hour - FIRST_HOUR) as f32 * HOUR_HEIGHT - SPACE_2).max(0.)
                     ))
                     .right(px(SPACE_2))
-                    .child(hint(label)),
+                    .when(hour > FIRST_HOUR, |s| s.child(hint(label))),
             );
         }
         columns = columns.child(gutter);
@@ -963,7 +967,15 @@ impl CalendarPage {
                                     .truncate()
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(rgb(TEXT))
-                                    .child(event.title.clone());
+                                    .child(if tall {
+                                        event.title.clone()
+                                    } else {
+                                        format!(
+                                            "{} {}",
+                                            crate::calendar::clock(event.starts_at),
+                                            event.title
+                                        )
+                                    });
                                 button
                                     .size_full()
                                     .items_stretch()
@@ -1210,7 +1222,9 @@ impl CalendarPage {
     fn status(&self, cx: &App) -> String {
         let calendar = self.calendar.read(cx);
         match (calendar.access, &calendar.last_import) {
-            (Access::Granted, Some(import)) if import.state == "failed" => {
+            (Access::Granted, Some(import))
+                if import.state == ainc_client::types::ActionState::Failed =>
+            {
                 "Your Mac's calendars could not be imported.".into()
             }
             (Access::Granted, Some(import)) => format!(
@@ -1218,7 +1232,7 @@ impl CalendarPage {
                 ago(import.finished_at.unwrap_or(import.created_at), now())
             ),
             (Access::Granted, None) => "Your events and your Mac's calendars.".into(),
-            _ => "Your AgentInc events. Show your Mac's calendars here too.".into(),
+            _ => "Your AgentInc events.".into(),
         }
     }
 }
@@ -1342,7 +1356,10 @@ impl Render for CalendarPage {
             skeleton_rows("calendar.loading", 5).into_any_element()
         } else {
             match self.view {
-                View::Month => self.month(&events, cx).into_any_element(),
+                View::Month => {
+                    let wide = window.viewport_size().width >= px(MONTH_WITH_DAY_MIN);
+                    self.month(&events, wide, cx).into_any_element()
+                }
                 View::Week => self.week_view(&events, cx).into_any_element(),
                 View::Agenda => self.agenda(&events, cx).into_any_element(),
             }

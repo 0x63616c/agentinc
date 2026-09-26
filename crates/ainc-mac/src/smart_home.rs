@@ -1,40 +1,34 @@
 //! The Smart Home page: the thermostat and every light, arranged by room.
 use crate::{
     calendar::{ago, now},
-    home::{
-        DEFAULT_HIGH, DEFAULT_LOW, DEFAULT_TARGET, HomeModel, RANGE_GAP, SETPOINT_MAX,
-        SETPOINT_MIN, glyph, tile_state,
-    },
+    home::{DEFAULT_HIGH, DEFAULT_LOW, DEFAULT_TARGET, HomeModel, glyph, tile_state},
     model::{OpenRoute, Route},
     ui::*,
 };
-use ainc_client::types::{ActionView, ClimateMode, HomeClimate, HomeSnapshot, SwitchKey};
+use ainc_client::types::{
+    ActionState, ActionView, ClimateMode, HomeClimate, HomeSnapshot, SwitchKey,
+};
 use gpui::{prelude::*, *};
 
-/// Rooms as a two-by-two grid: the two-light rooms above, the one-light
-/// rooms below, each switch named for its place in the room.
+/// Rooms in one row, each as wide as its lights, so every tile matches.
 type Room = (&'static str, &'static [(SwitchKey, &'static str)]);
-const ROOMS: [[Room; 2]; 2] = [
-    [
-        (
-            "Everywhere",
-            &[
-                (SwitchKey::All, "All lights"),
-                (SwitchKey::Lamps, "All lamps"),
-            ],
-        ),
-        (
-            "Kitchen",
-            &[
-                (SwitchKey::KitchenCeiling, "Ceiling"),
-                (SwitchKey::UnderCabinet, "Under cabinet"),
-            ],
-        ),
-    ],
-    [
-        ("Living room", &[(SwitchKey::LivingRoomLamps, "Lamps")]),
-        ("Bedroom", &[(SwitchKey::BedroomLamps, "Lamps")]),
-    ],
+const ROOMS: [Room; 4] = [
+    (
+        "Everywhere",
+        &[
+            (SwitchKey::All, "All lights"),
+            (SwitchKey::Lamps, "All lamps"),
+        ],
+    ),
+    (
+        "Kitchen",
+        &[
+            (SwitchKey::KitchenCeiling, "Ceiling"),
+            (SwitchKey::UnderCabinet, "Under cabinet"),
+        ],
+    ),
+    ("Living room", &[(SwitchKey::LivingRoomLamps, "Lamps")]),
+    ("Bedroom", &[(SwitchKey::BedroomLamps, "Lamps")]),
 ];
 pub const MODES: [(ClimateMode, &str); 4] = [
     (ClimateMode::Off, "Off"),
@@ -64,7 +58,7 @@ pub fn climate_status(climate: &HomeClimate) -> (String, Tone) {
         _ => (format!("Holding {target}"), Tone::Neutral),
     }
 }
-/// The host a connection points at, for "Live from …".
+/// The host a connection points at.
 pub fn host(base_url: &str) -> String {
     base_url
         .split("://")
@@ -73,12 +67,29 @@ pub fn host(base_url: &str) -> String {
         .trim_end_matches('/')
         .to_owned()
 }
-
-/// The thermostat's scale: a little wider than the setpoint band.
-const TRACK_MIN: f64 = (SETPOINT_MIN - 3) as f64;
-const TRACK_MAX: f64 = (SETPOINT_MAX + 3) as f64;
-fn along(value: f64) -> f32 {
-    ((value - TRACK_MIN) / (TRACK_MAX - TRACK_MIN)).clamp(0., 1.) as f32
+/// How many of a room's lights are on: a group already counts its lights
+/// (Everywhere counts the whole home); otherwise count the room's switches.
+fn room_lights(snapshot: &HomeSnapshot, switches: &[(SwitchKey, &str)]) -> (i64, i64) {
+    let states: Vec<_> = switches
+        .iter()
+        .filter_map(|(key, _)| snapshot.switches.iter().find(|s| s.key == *key))
+        .collect();
+    match states.iter().max_by_key(|s| s.total) {
+        Some(group) if group.total > 1 => (group.lit, group.total),
+        _ => (
+            states.iter().filter(|s| s.on).count() as i64,
+            states.len() as i64,
+        ),
+    }
+}
+/// One pattern for every room: "All on", "N of M on", "On" or "Off".
+pub fn room_summary(lit: i64, total: i64) -> String {
+    match (lit, total) {
+        (0, _) => "Off".into(),
+        (1, 1) => "On".into(),
+        (lit, total) if lit == total => "All on".into(),
+        (lit, total) => format!("{lit} of {total} on"),
+    }
 }
 
 pub struct SmartHomePage {
@@ -106,12 +117,16 @@ impl SmartHomePage {
         self.home.update(cx, |home, cx| home.switch(key, on, cx));
     }
 
-    /// The thermostat's scale with the indoor reading and what it is holding to.
+    /// The thermostat's scale, a little wider than what it accepts, with the
+    /// indoor reading as a hollow mark and the setpoints as handles.
     fn track(climate: &HomeClimate) -> Div {
+        let (low_end, high_end) = ((climate.min - 3) as f64, (climate.max + 3) as f64);
+        let along = |value: f64| ((value - low_end) / (high_end - low_end)).clamp(0., 1.) as f32;
+        let middle = (TRACK_HANDLE - TRACK_HEIGHT) / 2.;
         let mut rail = div().relative().w_full().h(px(TRACK_HANDLE)).child(
             div()
                 .absolute()
-                .top(px((TRACK_HANDLE - TRACK_HEIGHT) / 2.))
+                .top(px(middle))
                 .left_0()
                 .right_0()
                 .h(px(TRACK_HEIGHT))
@@ -139,11 +154,11 @@ impl SmartHomePage {
                     .child(
                         div()
                             .absolute()
-                            .top(px((TRACK_HANDLE - TRACK_HEIGHT) / 2.))
+                            .top(px(middle))
                             .left(relative(low))
                             .w(relative(high - low))
                             .h(px(TRACK_HEIGHT))
-                            .bg(rgb(TEXT_SECONDARY)),
+                            .bg(rgb(TEXT_TERTIARY)),
                     )
                     .child(handle(low))
                     .child(handle(high));
@@ -151,7 +166,7 @@ impl SmartHomePage {
             _ => {
                 rail = rail.child(handle(along(
                     climate.target.unwrap_or(DEFAULT_TARGET) as f64
-                )));
+                )))
             }
         }
         if let Some(ambient) = climate.ambient {
@@ -164,6 +179,7 @@ impl SmartHomePage {
                     .ml(px(-TRACK_MARK / 2.))
                     .size(px(TRACK_MARK))
                     .rounded_full()
+                    .bg(rgb(SURFACE_RAISED))
                     .border_2()
                     .border_color(rgb(TEXT)),
             );
@@ -176,75 +192,87 @@ impl SmartHomePage {
             .child(
                 row()
                     .justify_between()
-                    .child(hint(format!("{}°", TRACK_MIN as i64)))
-                    .child(hint("○ inside  ● set"))
-                    .child(hint(format!("{}°", TRACK_MAX as i64))),
+                    .child(hint(format!("{}°", low_end as i64)))
+                    .child(hint(format!("{}°", high_end as i64))),
             )
+    }
+
+    /// A stepper with its label on the same line.
+    #[allow(clippy::too_many_arguments)]
+    fn setpoint(
+        &self,
+        id: &'static str,
+        label: &'static str,
+        value: i64,
+        can_lower: bool,
+        can_raise: bool,
+        step: impl Fn(&mut HomeModel, i64, &mut Context<HomeModel>) + Clone + 'static,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        row().gap(px(SPACE_3)).child(hint(label)).child(stepper(
+            id,
+            label,
+            format!("{value}°"),
+            can_lower,
+            can_raise,
+            &self.hover,
+            move |this: &mut Self, delta, _, cx| {
+                let step = step.clone();
+                this.home.update(cx, |home, cx| step(home, delta, cx))
+            },
+            cx,
+        ))
     }
 
     fn climate(&self, climate: &HomeClimate, cx: &mut Context<Self>) -> Div {
         let (status, tone) = climate_status(climate);
+        let status = if climate.pending {
+            format!("{status} · updating")
+        } else {
+            status
+        };
         let mode = MODES
             .iter()
             .position(|(mode, _)| *mode == climate.mode)
             .unwrap_or(0);
+        let (min, max, gap) = (climate.min, climate.max, climate.gap);
         let controls: AnyElement = match climate.mode {
-            ClimateMode::Off => caption("Choose a mode to set a temperature.").into_any_element(),
+            ClimateMode::Off => hint("Choose a mode to set a temperature.").into_any_element(),
             ClimateMode::HeatCool => {
                 let low = climate.target_low.unwrap_or(DEFAULT_LOW);
                 let high = climate.target_high.unwrap_or(DEFAULT_HIGH);
                 row()
                     .gap(px(SPACE_6))
-                    .child(labelled(
+                    .child(self.setpoint(
+                        "home.climate.low",
                         "Heat to",
-                        stepper(
-                            "home.climate.low",
-                            "heating setpoint",
-                            format!("{low}°"),
-                            low > SETPOINT_MIN,
-                            high - low > RANGE_GAP,
-                            &self.hover,
-                            |this: &mut Self, delta, _, cx| {
-                                this.home
-                                    .update(cx, |home, cx| home.step_range(false, delta, cx))
-                            },
-                            cx,
-                        ),
+                        low,
+                        low > min,
+                        high - low > gap,
+                        |home, delta, cx| home.step_range(false, delta, cx),
+                        cx,
                     ))
-                    .child(labelled(
+                    .child(self.setpoint(
+                        "home.climate.high",
                         "Cool to",
-                        stepper(
-                            "home.climate.high",
-                            "cooling setpoint",
-                            format!("{high}°"),
-                            high - low > RANGE_GAP,
-                            high < SETPOINT_MAX,
-                            &self.hover,
-                            |this: &mut Self, delta, _, cx| {
-                                this.home
-                                    .update(cx, |home, cx| home.step_range(true, delta, cx))
-                            },
-                            cx,
-                        ),
+                        high,
+                        high - low > gap,
+                        high < max,
+                        |home, delta, cx| home.step_range(true, delta, cx),
+                        cx,
                     ))
                     .into_any_element()
             }
             _ => {
                 let target = climate.target.unwrap_or(DEFAULT_TARGET);
-                labelled(
+                self.setpoint(
+                    "home.climate.target",
                     "Target",
-                    stepper(
-                        "home.climate.target",
-                        "target temperature",
-                        format!("{target}°"),
-                        target > SETPOINT_MIN,
-                        target < SETPOINT_MAX,
-                        &self.hover,
-                        |this: &mut Self, delta, _, cx| {
-                            this.home.update(cx, |home, cx| home.step_target(delta, cx))
-                        },
-                        cx,
-                    ),
+                    target,
+                    target > min,
+                    target < max,
+                    |home, delta, cx| home.step_target(delta, cx),
+                    cx,
                 )
                 .into_any_element()
             }
@@ -261,12 +289,13 @@ impl SmartHomePage {
             .border_color(rgb(BORDER))
             .bg(rgb(SURFACE_RAISED))
             .child(
+                // A fixed column, so the controls never move when the mode does.
                 column()
+                    .w(px(READING_WIDTH))
                     .flex_shrink_0()
                     .gap(px(SPACE_3))
                     .child(
                         row()
-                            .h(px(CONTROL_HEIGHT_SM))
                             .gap(px(SPACE_2))
                             .child(icon("thermometer", ICON_SIZE_SM))
                             .child(eyebrow("Inside")),
@@ -278,21 +307,20 @@ impl SmartHomePage {
                             .text_size(type_size(LABEL_SIZE))
                             .text_color(rgb(TEXT_SECONDARY))
                             .child(status_dot(tone))
-                            .child(if climate.pending {
-                                "Updating…".to_owned()
-                            } else {
-                                status
-                            }),
+                            .child(div().truncate().child(status)),
                     ),
             )
             .child(
                 column()
                     .flex_1()
                     .min_w_0()
-                    .gap(px(SPACE_5))
+                    .h_full()
+                    .justify_between()
+                    .gap(px(SPACE_6))
                     .child(
                         row()
                             .w_full()
+                            .flex_wrap()
                             .justify_between()
                             .gap(px(SPACE_4))
                             .child(segmented(
@@ -315,81 +343,66 @@ impl SmartHomePage {
 
     fn rooms(&self, snapshot: &HomeSnapshot, cx: &mut Context<Self>) -> Div {
         let enabled = snapshot.reachable;
-        let mut grid = column()
+        let mut rooms = row()
             .debug_selector(|| "home.rooms".into())
             .w_full()
+            .flex_wrap()
+            .items_stretch()
             .gap(px(SPACE_4));
-        for line in ROOMS {
-            let mut cards = row().w_full().items_stretch().gap(px(SPACE_4));
-            for (room, switches) in line {
-                // Everywhere counts the home's lights; a room counts its own.
-                let summary = if switches.iter().any(|(key, _)| *key == SwitchKey::All) {
-                    let all = tile_state(snapshot, SwitchKey::All);
-                    all.detail.unwrap_or_else(|| {
-                        if all.on {
-                            "All on".into()
-                        } else {
-                            "Off".into()
-                        }
-                    })
-                } else {
-                    match switches
-                        .iter()
-                        .filter(|(key, _)| tile_state(snapshot, *key).on)
-                        .count()
-                    {
-                        0 => "Off".into(),
-                        lit => format!("{lit} on"),
-                    }
-                };
-                let mut tiles = row().w_full().gap(px(SPACE_3));
-                for (key, label) in switches.iter().copied() {
-                    let state = tile_state(snapshot, key);
-                    let on = state.on;
-                    let mut tile = SwitchTile::new(
-                        SharedString::from(format!("home.switch.{key}")),
-                        label,
-                        glyph(key),
-                    )
-                    .on(on)
-                    .mixed(state.mixed)
-                    .pending(state.pending)
-                    .enabled(enabled);
-                    if let Some(detail) = state.detail {
-                        tile = tile.detail(detail);
-                    }
-                    tiles = tiles.child(tile.build(
-                        &self.hover,
-                        move |this: &mut Self, _, cx| this.switch(key, !on, cx),
-                        cx,
-                    ));
+        for (room, switches) in ROOMS {
+            let (lit, total) = room_lights(snapshot, switches);
+            let mut tiles = row().w_full().gap(px(SPACE_3));
+            for (key, label) in switches.iter().copied() {
+                let state = tile_state(snapshot, key);
+                let on = state.on;
+                let mut tile = SwitchTile::new(
+                    SharedString::from(format!("home.switch.{key}")),
+                    label,
+                    glyph(key),
+                )
+                .on(on)
+                .mixed(state.mixed)
+                .pending(state.pending)
+                .enabled(enabled);
+                if let Some(detail) = state.detail {
+                    tile = tile.detail(detail);
                 }
-                cards = cards.child(
-                    column()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(SPACE_4))
-                        .p(px(CARD_INSET))
-                        .rounded(px(RADIUS_LG))
-                        .border_1()
-                        .border_color(rgb(BORDER))
-                        .child(
-                            row()
-                                .justify_between()
-                                .child(
-                                    div()
-                                        .text_size(type_size(BODY_SIZE))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .child(room),
-                                )
-                                .child(hint(summary)),
-                        )
-                        .child(tiles),
-                );
+                tiles = tiles.child(tile.build(
+                    &self.hover,
+                    move |this: &mut Self, _, cx| this.switch(key, !on, cx),
+                    cx,
+                ));
             }
-            grid = grid.child(cards);
+            let slots = switches.len() as f32;
+            let mut card = column()
+                .flex_basis(relative(0.))
+                .min_w(px(slots * TILE_MIN_WIDTH
+                    + (slots - 1.) * SPACE_3
+                    + CARD_INSET * 2.))
+                .gap(px(SPACE_4))
+                .p(px(CARD_INSET))
+                .rounded(px(RADIUS_LG))
+                .border_1()
+                .border_color(rgb(BORDER));
+            // Wider for more lights, so tiles are the same width in every room.
+            card.style().flex_grow = Some(slots);
+            rooms = rooms.child(
+                card.child(
+                    row()
+                        .justify_between()
+                        .gap(px(SPACE_2))
+                        .child(
+                            div()
+                                .text_size(type_size(BODY_SIZE))
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(room),
+                        )
+                        .child(hint(room_summary(lit, total))),
+                )
+                .child(tiles),
+            );
         }
-        grid
+        rooms
     }
 
     fn history(&self, actions: &[ActionView]) -> Div {
@@ -400,13 +413,18 @@ impl SmartHomePage {
                 rows = rows.child(divider());
             }
             // Done is the norm; only waiting and failed changes are marked.
-            let (mark, state) = match action.state.as_str() {
-                "completed" => (None, ago(action.created_at, now)),
-                "failed" => (
+            let (mark, state) = match action.state {
+                ActionState::Completed => (None, ago(action.created_at, now)),
+                ActionState::Superseded => {
+                    (None, format!("Replaced · {}", ago(action.created_at, now)))
+                }
+                ActionState::Failed => (
                     Some(Tone::Danger),
                     format!("Failed · {}", ago(action.created_at, now)),
                 ),
-                _ => (Some(Tone::Info), "Applying…".to_owned()),
+                ActionState::Queued | ActionState::Running => {
+                    (Some(Tone::Info), "Applying…".to_owned())
+                }
             };
             rows = rows.child(
                 row()
@@ -451,15 +469,6 @@ impl SmartHomePage {
     }
 }
 
-/// A caption above a control.
-pub fn labelled(label: &'static str, control: impl IntoElement) -> Div {
-    column()
-        .items_center()
-        .gap(px(SPACE_2))
-        .child(eyebrow(label))
-        .child(control)
-}
-
 impl Render for SmartHomePage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
@@ -470,9 +479,8 @@ impl Render for SmartHomePage {
         let connected = snapshot.as_ref().is_some_and(|s| s.connection.is_some());
         let reachable = snapshot.as_ref().is_some_and(|s| s.reachable);
         let description = match (connected, reachable) {
-            (true, true) => "Lights and the thermostat, live from your control center.",
             (true, false) => "Your control center can't be reached right now.",
-            (false, _) => "Lights and the thermostat, through your control center.",
+            _ => "Lights and the thermostat, from your World Wide Webb control center.",
         };
         let mut page = Page::document(PageHeader::new("Smart Home").description(description));
         match snapshot {
@@ -546,6 +554,10 @@ mod tests {
         climate.mode = ClimateMode::Off;
         assert_eq!(climate_status(&climate).0, "Thermostat off");
         assert_eq!(degrees(71.6), "72°");
+        assert_eq!(room_summary(4, 4), "All on");
+        assert_eq!(room_summary(3, 4), "3 of 4 on");
+        assert_eq!(room_summary(1, 1), "On");
+        assert_eq!(room_summary(0, 2), "Off");
         assert_eq!(
             host("https://app.worldwidewebb.co/"),
             "app.worldwidewebb.co"

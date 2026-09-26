@@ -703,7 +703,7 @@ pub fn run() -> Result<()> {
     // The Dashboard, Smart Home and Calendar with a connected home and a
     // realistic fortnight of events.
     suite.window.update(&mut suite.cx, |shell, _, cx| {
-        shell.fixture_life(true, cx);
+        shell.fixture_home_pages(true, cx);
     })?;
     suite.capture("dashboard", Route::Dashboard, None, false)?;
     for selector in [
@@ -774,7 +774,7 @@ pub fn run() -> Result<()> {
     suite.bounds("calendar.done")?;
     suite.keys("escape");
     suite.window.update(&mut suite.cx, |shell, _, cx| {
-        shell.fixture_life(false, cx);
+        shell.fixture_home_pages(false, cx);
     })?;
     suite.keys(&go(Route::SmartHome));
     suite.capture("smart-home-disconnected", Route::SmartHome, None, false)?;
@@ -809,7 +809,7 @@ pub fn run() -> Result<()> {
         },
     );
     suite.window.update(&mut suite.cx, |shell, _, cx| {
-        shell.fixture_life(true, cx);
+        shell.fixture_home_pages(true, cx);
     })?;
     let now = chrono::Utc::now().timestamp_millis();
     let execution = |workflow_type: &str,
@@ -1057,11 +1057,11 @@ pub fn run() -> Result<()> {
             suite.capture(&format!("route-{round}-{shortcut}"), route, None, false)?;
         }
         suite.window.update(&mut suite.cx, |shell, _, cx| {
-            shell.fixture_life(true, cx);
+            shell.fixture_home_pages(true, cx);
         })?;
         for route in [Route::Dashboard, Route::Calendar, Route::SmartHome] {
             suite.keys(&go(route));
-            suite.capture(&format!("life-{round}-{route:?}"), route, None, false)?;
+            suite.capture(&format!("home-pages-{round}-{route:?}"), route, None, false)?;
         }
     }
     suite.keys(&go(Route::Tickets));

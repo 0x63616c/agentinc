@@ -164,7 +164,7 @@ pub const FIELD_INSET_X: f32 = SPACE_3;
 pub const FORM_STACK_GAP: f32 = SPACE_4;
 pub const SECTION_GAP: f32 = SPACE_6;
 pub const SETTINGS_ROW_HEIGHT: f32 = 56.;
-pub const SETTINGS_INSET: f32 = SPACE_4;
+pub const SETTINGS_INSET: f32 = CARD_INSET;
 pub const LIST_ROW_HEIGHT: f32 = 44.;
 pub const TABLE_ROW_HEIGHT: f32 = 48.;
 pub const TABLE_HEADER_HEIGHT: f32 = 36.;
@@ -190,7 +190,7 @@ pub const TOAST_WIDTH: f32 = 360.;
 pub const CARD_INSET: f32 = SPACE_5;
 /// Switch tiles: the narrowest a tile shrinks to and its fixed height.
 pub const TILE_MIN_WIDTH: f32 = 148.;
-pub const TILE_HEIGHT: f32 = 112.;
+pub const TILE_HEIGHT: f32 = 96.;
 /// The value column of a stepper, wide enough for "100°".
 pub const STEPPER_VALUE_WIDTH: f32 = 56.;
 /// Calendar: a month cell, one hour of the week grid, the week's time
@@ -199,10 +199,14 @@ pub const STEPPER_VALUE_WIDTH: f32 = 56.;
 pub const MONTH_CELL_HEIGHT: f32 = 100.;
 pub const HOUR_HEIGHT: f32 = 48.;
 pub const TIME_GUTTER: f32 = 56.;
-pub const DAY_PANEL_WIDTH: f32 = 300.;
+pub const DAY_PANEL_WIDTH: f32 = 260.;
+/// The narrowest window that shows the selected day beside the month.
+pub const MONTH_WITH_DAY_MIN: f32 = 1100.;
 pub const AGENDA_DATE_WIDTH: f32 = 128.;
 pub const AGENDA_TIME_WIDTH: f32 = 136.;
-/// The thermostat track: its rail, the setpoint handle and the reading mark.
+/// The thermostat card's reading column, and its track: the rail, the
+/// setpoint handle and the reading mark.
+pub const READING_WIDTH: f32 = 200.;
 pub const TRACK_HEIGHT: f32 = 4.;
 pub const TRACK_HANDLE: f32 = 14.;
 pub const TRACK_MARK: f32 = 8.;

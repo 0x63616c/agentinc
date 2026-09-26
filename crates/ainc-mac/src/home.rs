@@ -6,10 +6,6 @@ use ainc_client::types::{
 };
 use gpui::{prelude::*, *};
 
-/// The control center's setpoint band in whole °F, and the Auto gap.
-pub const SETPOINT_MIN: i64 = 67;
-pub const SETPOINT_MAX: i64 = 77;
-pub const RANGE_GAP: i64 = 2;
 /// What a thermostat without remembered setpoints starts from.
 pub const DEFAULT_TARGET: i64 = 72;
 pub const DEFAULT_LOW: i64 = 68;
@@ -41,22 +37,8 @@ pub fn glyph(key: SwitchKey) -> &'static str {
     }
 }
 
-/// The individual switches a group covers; empty for a single switch.
-fn members(key: SwitchKey) -> &'static [SwitchKey] {
-    match key {
-        SwitchKey::All => &[
-            SwitchKey::BedroomLamps,
-            SwitchKey::LivingRoomLamps,
-            SwitchKey::KitchenCeiling,
-            SwitchKey::UnderCabinet,
-        ],
-        SwitchKey::Lamps => &[SwitchKey::BedroomLamps, SwitchKey::LivingRoomLamps],
-        _ => &[],
-    }
-}
-
 /// How a tile should read: on, partly on, and a line such as "2 of 4 on".
-/// Groups are judged by their members, so a tile never contradicts them.
+/// The daemon counts each group's lights, so a tile never contradicts them.
 pub struct TileState {
     pub on: bool,
     pub mixed: bool,
@@ -64,69 +46,55 @@ pub struct TileState {
     pub detail: Option<String>,
 }
 pub fn tile_state(snapshot: &HomeSnapshot, key: SwitchKey) -> TileState {
-    let find = |key: SwitchKey| snapshot.switches.iter().find(|s| s.key == key);
-    let pending = find(key).is_some_and(|s| s.pending);
-    let group = members(key);
-    if group.is_empty() {
+    let Some(switch) = snapshot.switches.iter().find(|s| s.key == key) else {
         return TileState {
-            on: find(key).is_some_and(|s| s.on),
+            on: false,
             mixed: false,
-            pending,
+            pending: false,
             detail: None,
         };
-    }
-    let lit = group
-        .iter()
-        .filter(|&&m| find(m).is_some_and(|s| s.on))
-        .count();
-    // A group only says it is turning on or off when the group itself was pressed.
+    };
+    let mixed = switch.lit > 0 && switch.lit < switch.total;
     TileState {
-        on: lit == group.len(),
-        mixed: lit > 0 && lit < group.len(),
-        pending,
-        detail: (lit > 0 && lit < group.len()).then(|| format!("{lit} of {} on", group.len())),
+        on: switch.on,
+        mixed,
+        pending: switch.pending,
+        detail: mixed.then(|| format!("{} of {} on", switch.lit, switch.total)),
     }
 }
 
-/// Mirror the control center's group rules so a switch and the groups that
-/// contain it agree the moment it is pressed: a group is on while any member
-/// is, and All is on only when everything is.
+/// Show a press at once: the lights it covers take the new state, and every
+/// group recounts from the membership the daemon reported.
 pub fn apply_switch(snapshot: &mut HomeSnapshot, key: SwitchKey, on: bool) {
-    let covers = |group: SwitchKey, member: SwitchKey| match group {
-        SwitchKey::All => true,
-        SwitchKey::Lamps => matches!(
-            member,
-            SwitchKey::Lamps | SwitchKey::BedroomLamps | SwitchKey::LivingRoomLamps
-        ),
-        other => other == member,
+    let covered = |switch: &ainc_client::types::HomeSwitch| -> Vec<SwitchKey> {
+        if switch.members.is_empty() {
+            vec![switch.key]
+        } else {
+            switch.members.clone()
+        }
     };
+    let Some(pressed) = snapshot.switches.iter().find(|s| s.key == key) else {
+        return;
+    };
+    let lights = covered(pressed);
     for switch in &mut snapshot.switches {
-        if covers(key, switch.key) {
+        if switch.members.is_empty() && lights.contains(&switch.key) {
             switch.on = on;
             switch.pending = true;
         }
     }
-    let state = |key: SwitchKey| {
-        snapshot
-            .switches
-            .iter()
-            .find(|s| s.key == key)
-            .is_some_and(|s| s.on)
-    };
-    let lamps = state(SwitchKey::BedroomLamps) || state(SwitchKey::LivingRoomLamps);
-    let everything = [
-        SwitchKey::BedroomLamps,
-        SwitchKey::LivingRoomLamps,
-        SwitchKey::KitchenCeiling,
-        SwitchKey::UnderCabinet,
-    ]
-    .into_iter()
-    .all(state);
+    let lit: Vec<SwitchKey> = snapshot
+        .switches
+        .iter()
+        .filter(|s| s.members.is_empty() && s.on)
+        .map(|s| s.key)
+        .collect();
     for switch in &mut snapshot.switches {
-        match switch.key {
-            SwitchKey::Lamps if key != SwitchKey::Lamps => switch.on = lamps,
-            SwitchKey::All if key != SwitchKey::All => switch.on = everything,
-            _ => {}
+        let members = covered(switch);
+        switch.lit = members.iter().filter(|m| lit.contains(m)).count() as i64;
+        switch.on = switch.lit == switch.total;
+        if switch.key == key {
+            switch.pending = true;
         }
     }
 }
@@ -226,12 +194,12 @@ impl HomeModel {
             return;
         };
         let target =
-            (climate.target.unwrap_or(DEFAULT_TARGET) + delta).clamp(SETPOINT_MIN, SETPOINT_MAX);
+            (climate.target.unwrap_or(DEFAULT_TARGET) + delta).clamp(climate.min, climate.max);
         climate.target = Some(target);
         climate.pending = true;
         self.command(HomeCommand::SetClimateTarget { target }, cx);
     }
-    /// Move one end of the Auto range, keeping the ends `RANGE_GAP` apart.
+    /// Move one end of the Auto range, keeping the ends the thermostat's gap apart.
     pub fn step_range(&mut self, high: bool, delta: i64, cx: &mut Context<Self>) {
         let Some(climate) = self.snapshot.as_mut().and_then(|s| s.climate.as_mut()) else {
             return;
@@ -239,9 +207,9 @@ impl HomeModel {
         let mut low = climate.target_low.unwrap_or(DEFAULT_LOW);
         let mut top = climate.target_high.unwrap_or(DEFAULT_HIGH);
         if high {
-            top = (top + delta).clamp(low + RANGE_GAP, SETPOINT_MAX);
+            top = (top + delta).clamp(low + climate.gap, climate.max);
         } else {
-            low = (low + delta).clamp(SETPOINT_MIN, top - RANGE_GAP);
+            low = (low + delta).clamp(climate.min, top - climate.gap);
         }
         climate.target_low = Some(low);
         climate.target_high = Some(top);
@@ -345,13 +313,18 @@ pub(crate) mod fixtures {
 
     /// A connected home: bedroom lamps and the kitchen ceiling on, cooling to 72°.
     pub fn connected() -> HomeSnapshot {
-        let switch = |key, label: &str, room: &str, on| HomeSwitch {
-            key,
-            label: label.into(),
-            room: room.into(),
-            on,
-            pending: false,
-        };
+        let switch =
+            |key, label: &str, room: &str, on: bool, members: Vec<SwitchKey>, lit| HomeSwitch {
+                key,
+                label: label.into(),
+                room: room.into(),
+                on,
+                pending: false,
+                total: members.len().max(1) as i64,
+                members,
+                lit,
+            };
+        use SwitchKey::*;
         HomeSnapshot {
             connection: Some(HomeConnection {
                 base_url: "https://app.worldwidewebb.co".into(),
@@ -360,22 +333,40 @@ pub(crate) mod fixtures {
             reachable: true,
             error: None,
             switches: vec![
-                switch(SwitchKey::All, "All lights", "Everywhere", false),
-                switch(SwitchKey::Lamps, "All lamps", "Everywhere", true),
-                switch(SwitchKey::BedroomLamps, "Bedroom lamps", "Bedroom", true),
                 switch(
-                    SwitchKey::LivingRoomLamps,
+                    All,
+                    "All lights",
+                    "Everywhere",
+                    false,
+                    vec![BedroomLamps, LivingRoomLamps, KitchenCeiling, UnderCabinet],
+                    2,
+                ),
+                switch(
+                    Lamps,
+                    "All lamps",
+                    "Everywhere",
+                    false,
+                    vec![BedroomLamps, LivingRoomLamps],
+                    1,
+                ),
+                switch(BedroomLamps, "Bedroom lamps", "Bedroom", true, vec![], 1),
+                switch(
+                    LivingRoomLamps,
                     "Living room lamps",
                     "Living room",
                     false,
+                    vec![],
+                    0,
                 ),
                 switch(
-                    SwitchKey::KitchenCeiling,
+                    KitchenCeiling,
                     "Kitchen ceiling",
                     "Kitchen",
                     true,
+                    vec![],
+                    1,
                 ),
-                switch(SwitchKey::UnderCabinet, "Under cabinet", "Kitchen", false),
+                switch(UnderCabinet, "Under cabinet", "Kitchen", false, vec![], 0),
             ],
             climate: Some(HomeClimate {
                 mode: ClimateMode::Cool,
@@ -385,12 +376,15 @@ pub(crate) mod fixtures {
                 target_low: None,
                 target_high: None,
                 pending: false,
+                min: 67,
+                max: 77,
+                gap: 2,
             }),
             actions: vec![
                 ActionView {
                     id: "a2".into(),
                     summary: "Bedroom lamps on".into(),
-                    state: "completed".into(),
+                    state: ainc_client::types::ActionState::Completed,
                     error: None,
                     created_at: chrono::Utc::now().timestamp() - 240,
                     finished_at: Some(chrono::Utc::now().timestamp() - 239),
@@ -398,7 +392,7 @@ pub(crate) mod fixtures {
                 ActionView {
                     id: "a1".into(),
                     summary: "Climate to 72°".into(),
-                    state: "completed".into(),
+                    state: ainc_client::types::ActionState::Completed,
                     error: None,
                     created_at: chrono::Utc::now().timestamp() - 3_900,
                     finished_at: Some(chrono::Utc::now().timestamp() - 3_899),
@@ -445,7 +439,14 @@ mod tests {
             ]
         );
         apply_switch(&mut home, SwitchKey::All, true);
-        assert!(home.switches.iter().all(|s| s.on && s.pending));
+        assert!(home.switches.iter().all(|s| s.on));
+        assert!(
+            home.switches
+                .iter()
+                .filter(|s| s.key != SwitchKey::Lamps)
+                .all(|s| s.pending),
+            "the pressed switch and its lights travel; other groups just recount"
+        );
         apply_switch(&mut home, SwitchKey::UnderCabinet, false);
         assert_eq!(
             on(&home)[0],

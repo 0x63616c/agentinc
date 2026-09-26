@@ -72,7 +72,9 @@ impl SwitchTile {
             detail,
         } = self;
         let (progress, on_hover) = hover.track(&id, enabled, cx);
-        let (surface, surface_hover, ink, secondary) = if on {
+        // A light still on its way reads as outlined, not yet lit.
+        let lit = on && !pending;
+        let (surface, surface_hover, ink, secondary) = if lit {
             (
                 PRIMARY,
                 PRIMARY_HOVER,
@@ -108,7 +110,7 @@ impl SwitchTile {
                     .p(px(CARD_INSET))
                     .rounded(px(RADIUS_LG))
                     .border_1()
-                    .border_color(rgb(if on {
+                    .border_color(rgb(if on || pending {
                         PRIMARY
                     } else if mixed {
                         FOCUS_FIELD

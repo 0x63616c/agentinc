@@ -39,6 +39,19 @@ _Avoid_: run, job
 A user's link to an external account or provider that makes its capabilities available in AgentInc.
 _Avoid_: integration, account
 
+**Dashboard**:
+The AgentInc home screen: the indoor temperature, what's next on the Calendar, open work and the lights at a glance.
+
+**Smart Home**:
+Lights and the thermostat, controlled through the user's World Wide Webb control center. Its link to the control center is a Connection.
+
+**Calendar**:
+Events the user and Evee create in AgentInc, plus read-only mirrors of the Mac's calendars.
+
+**Durable action**:
+A product effect outside Postgres, such as switching a light, recorded with its command and applied by a durable task that retries safely.
+_Avoid_: job, background task
+
 **Route**:
 A named destination in the AgentInc app's navigation.
 _Avoid_: tab index, screen ID

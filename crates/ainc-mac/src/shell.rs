@@ -1,9 +1,9 @@
 #[path = "shell/header.rs"]
 mod header;
+#[path = "shell/home_pages.rs"]
+mod home_pages;
 #[path = "shell/layout.rs"]
 mod layout;
-#[path = "shell/life.rs"]
-mod life;
 #[path = "shell/main_content.rs"]
 mod main_content;
 #[path = "shell/menus.rs"]
@@ -82,7 +82,7 @@ pub struct Shell {
     automations: Entity<crate::automations::AutomationsPage>,
     temporal: Entity<crate::temporal::TemporalPage>,
     components: Entity<crate::components::ComponentsPage>,
-    life: life::Life,
+    home_pages: home_pages::HomePages,
     _components_subscription: Subscription,
     _automation_subscriptions: Vec<Subscription>,
     _temporal_subscription: Subscription,
@@ -219,7 +219,7 @@ impl Shell {
                             page.workspace_changed(cx);
                             cx.notify();
                         });
-                        this.life.workspace_changed(cx);
+                        this.home_pages.workspace_changed(cx);
                     }
                     Err(error) => {
                         this.workspace_error = Some(format!("Workspace unavailable: {error}"));
@@ -329,7 +329,7 @@ impl Shell {
             ),
         ];
         let tickets_subscription = cx.observe(&tickets, |_, _, cx| cx.notify());
-        let life = life::Life::new(
+        let home_pages = home_pages::HomePages::new(
             store.clone(),
             overlays.clone(),
             if cfg!(test) {
@@ -377,7 +377,7 @@ impl Shell {
             automations,
             temporal,
             components,
-            life,
+            home_pages,
             _components_subscription: components_subscription,
             _automation_subscriptions: automation_subscriptions,
             _temporal_subscription: temporal_subscription,
@@ -734,7 +734,9 @@ impl Shell {
             Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => {
                 self.assistant.read(cx).focus_handles(cx)
             }
-            Some(Overlay::CalendarEvent) => self.life.calendar_page.read(cx).focus_handles(cx),
+            Some(Overlay::CalendarEvent) => {
+                self.home_pages.calendar_page.read(cx).focus_handles(cx)
+            }
             _ => {
                 if backwards {
                     window.focus_prev(cx);
@@ -860,7 +862,7 @@ impl Shell {
                 self.temporal.update(cx, |_, cx| cx.notify());
                 self.input.update(cx, |_, cx| cx.notify());
                 self.components.update(cx, |_, cx| cx.notify());
-                self.life.notify(cx);
+                self.home_pages.notify(cx);
                 if let Some(updates) = cx.try_global::<crate::updates::Updates>().cloned() {
                     updates.0.update(cx, |_, cx| cx.notify());
                 }
@@ -941,7 +943,7 @@ impl Shell {
             }
             Control::Lights(on) => {
                 self.overlays.borrow_mut().dismiss(window, cx);
-                self.life.home.update(cx, |home, cx| {
+                self.home_pages.home.update(cx, |home, cx| {
                     home.switch(ainc_client::types::SwitchKey::All, on, cx)
                 });
             }
@@ -1186,11 +1188,12 @@ impl Render for Shell {
             }
         }
         let route = self.session.current();
-        self.life.showing(route, &self.profile.name, cx);
+        self.home_pages.showing(route, &self.profile.name, cx);
         let content = match route {
-            Route::Dashboard | Route::SmartHome | Route::Calendar => {
-                self.life.page(route).expect("life pages")
-            }
+            Route::Dashboard | Route::SmartHome | Route::Calendar => self
+                .home_pages
+                .page(route)
+                .expect("Dashboard, Smart Home and Calendar pages"),
             Route::Automations => self.automations.clone().into_any_element(),
             Route::Temporal => {
                 self.temporal.update(cx, |view, cx| view.ensure_loaded(cx));
@@ -1222,7 +1225,7 @@ impl Render for Shell {
                 .assistant
                 .update(cx, |assistant, cx| assistant.overlay(window, cx)),
             Some(Overlay::CalendarEvent) => self
-                .life
+                .home_pages
                 .calendar_page
                 .update(cx, |page, cx| page.overlay(window, cx)),
             _ => None,

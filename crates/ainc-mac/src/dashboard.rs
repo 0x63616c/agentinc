@@ -2,7 +2,7 @@
 //! on the calendar and what the agents are doing.
 use crate::{
     automations::OpenTicket,
-    calendar::{CalendarModel, day_label, local, now, span, today, until},
+    calendar::{CalendarModel, clock, day_label, local, now, span, today, until},
     calendar_page::event_color,
     home::{HomeModel, glyph, tile_state},
     model::{OpenRoute, Route},
@@ -191,48 +191,44 @@ impl DashboardPage {
             ),
         };
         let now = now();
-        let headline = |text: String, muted: bool| {
-            div()
-                .w_full()
-                .truncate()
-                .text_size(type_size(DISPLAY_SIZE))
-                .font_weight(FontWeight::SEMIBOLD)
-                .line_height(relative(1.))
-                .when(muted, |s| s.text_color(rgb(TEXT_SECONDARY)))
-                .child(text)
-                .into_any_element()
-        };
+        // Next up leads with its time, so all three values share one baseline.
         let (next_value, next_detail) = match next {
             Some(event) => (
-                headline(event.title.clone(), false),
+                hero(if event.all_day {
+                    "All day".to_owned()
+                } else {
+                    clock(event.starts_at)
+                })
+                .into_any_element(),
                 caption(format!(
-                    "{} · {} · {}",
-                    day_label(local(event.starts_at).date_naive(), today()),
-                    span(event),
+                    "{} · {}",
+                    event.title,
                     if event.starts_at <= now {
                         "now".to_owned()
                     } else {
-                        until(event.starts_at, now)
+                        let day = local(event.starts_at).date_naive();
+                        if day == today() {
+                            until(event.starts_at, now)
+                        } else {
+                            day_label(day, today())
+                        }
                     }
                 ))
                 .into_any_element(),
             ),
             None => (
-                headline("Nothing scheduled".into(), true),
-                caption("Your calendar is clear").into_any_element(),
+                hero("—").text_color(rgb(TEXT_TERTIARY)).into_any_element(),
+                caption("Nothing scheduled").into_any_element(),
             ),
         };
         let in_progress = open
             .iter()
             .filter(|t| t.status == TicketStatus::InProgress)
             .count();
-        let work_detail = match (in_progress, running) {
-            (0, 0) => "Nothing in progress".to_owned(),
-            (p, 0) => format!("{p} in progress"),
-            (p, r) => format!(
-                "{p} in progress · {r} agent {}",
-                if r == 1 { "run" } else { "runs" }
-            ),
+        let work_detail = if open.is_empty() {
+            "All clear".to_owned()
+        } else {
+            format!("{in_progress} in progress · {running} running")
         };
         row()
             .debug_selector(|| "dashboard.band".into())
@@ -540,7 +536,7 @@ impl DashboardPage {
             .min_w_0()
             .gap(px(SPACE_3))
             .child(self.section(
-                "Agent work",
+                "Open work",
                 "dashboard.tickets.open",
                 "Tickets",
                 Route::Tickets,
@@ -592,10 +588,13 @@ impl Render for DashboardPage {
         if let Some(lights) = self.lights(cx) {
             page = page.child(lights);
         }
+        // Equal heights only when both sides have something to show.
+        let both = !open.is_empty() && self.calendar.read(cx).upcoming(1).len() == 1;
         page = page.child(
             row()
                 .w_full()
-                .items_stretch()
+                .when(both, |s| s.items_stretch())
+                .when(!both, |s| s.items_start())
                 .gap(px(SPACE_6))
                 .child(self.upcoming(cx))
                 .child(self.work(&open, cx)),

@@ -12,7 +12,7 @@ use crate::{
 };
 use ainc_client::types::HomeConnectionRequest;
 
-pub(super) struct Life {
+pub(super) struct HomePages {
     pub home: Entity<HomeModel>,
     pub calendar: Entity<CalendarModel>,
     pub dashboard: Entity<DashboardPage>,
@@ -26,7 +26,7 @@ pub(super) struct Life {
     _subscriptions: Vec<Subscription>,
 }
 
-impl Life {
+impl HomePages {
     pub(super) fn new(
         store: Option<std::sync::Arc<Store>>,
         overlays: Rc<RefCell<OverlayHost<Overlay>>>,
@@ -139,7 +139,7 @@ impl Shell {
     pub(super) fn open_new_event(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.session.navigate(Route::Calendar);
         self.save(cx);
-        self.life.calendar_page.update(cx, |page, cx| {
+        self.home_pages.calendar_page.update(cx, |page, cx| {
             page.open_new(crate::calendar::today(), window, cx)
         });
     }
@@ -148,28 +148,28 @@ impl Shell {
             Some(input.read(cx).content.trim().to_owned()).filter(|t| !t.is_empty())
         };
         let request = HomeConnectionRequest {
-            base_url: text(&self.life.url, cx).unwrap_or_default(),
-            access_client_id: text(&self.life.client_id, cx),
-            access_client_secret: text(&self.life.client_secret, cx),
+            base_url: text(&self.home_pages.url, cx).unwrap_or_default(),
+            access_client_id: text(&self.home_pages.client_id, cx),
+            access_client_secret: text(&self.home_pages.client_secret, cx),
         };
-        self.life.connecting = true;
-        self.life.connect_error = None;
+        self.home_pages.connecting = true;
+        self.home_pages.connect_error = None;
         let task = self
-            .life
+            .home_pages
             .home
             .update(cx, |home, cx| home.connect(request, cx));
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
-                this.life.connecting = false;
+                this.home_pages.connecting = false;
                 match result {
                     Ok(_) => {
-                        this.life
+                        this.home_pages
                             .client_secret
                             .update(cx, |input, cx| input.set_text("", cx));
                         this.toast("Control center connected", None, Tone::Success, cx);
                     }
-                    Err(error) => this.life.connect_error = Some(error.to_string()),
+                    Err(error) => this.home_pages.connect_error = Some(error.to_string()),
                 }
                 cx.notify();
             });
@@ -177,7 +177,10 @@ impl Shell {
         .detach();
     }
     fn disconnect_home(&mut self, cx: &mut Context<Self>) {
-        let task = self.life.home.update(cx, |home, cx| home.disconnect(cx));
+        let task = self
+            .home_pages
+            .home
+            .update(cx, |home, cx| home.disconnect(cx));
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -196,7 +199,7 @@ impl Shell {
     }
 
     pub(super) fn smart_home_settings(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let snapshot = self.life.home.read(cx).snapshot.clone();
+        let snapshot = self.home_pages.home.read(cx).snapshot.clone();
         let connection = snapshot.as_ref().and_then(|s| s.connection.clone());
         let rows = match connection {
             Some(connection) => {
@@ -243,38 +246,38 @@ impl Shell {
                     column()
                         .max_w(px(FORM_WIDTH))
                         .gap(px(FORM_STACK_GAP))
-                        .child(Field::new(self.life.url.clone()).label("Address").build(window, cx))
+                        .child(Field::new(self.home_pages.url.clone()).label("Address").build(window, cx))
                         .child(
                             row()
                                 .gap(px(CONTROL_GAP))
                                 .child(
                                     div().flex_1().child(
-                                        Field::new(self.life.client_id.clone())
+                                        Field::new(self.home_pages.client_id.clone())
                                             .label("Access client ID")
                                             .build(window, cx),
                                     ),
                                 )
                                 .child(
                                     div().flex_1().child(
-                                        Field::new(self.life.client_secret.clone())
+                                        Field::new(self.home_pages.client_secret.clone())
                                             .label("Access client secret")
                                             .build(window, cx),
                                     ),
                                 ),
                         )
-                        .when_some(self.life.connect_error.clone(), |s, error| {
+                        .when_some(self.home_pages.connect_error.clone(), |s, error| {
                             s.child(error_text(error))
                         })
                         .child(
                             row().child(
                                 Button::new(
                                     "settings.home.connect",
-                                    if self.life.connecting { "Connecting…" } else { "Connect" },
+                                    if self.home_pages.connecting { "Connecting…" } else { "Connect" },
                                 )
                                 .primary()
                                 .enabled(
-                                    !self.life.connecting
-                                        && !self.life.url.read(cx).content.trim().is_empty(),
+                                    !self.home_pages.connecting
+                                        && !self.home_pages.url.read(cx).content.trim().is_empty(),
                                 )
                                 .build(
                                     &self.hover,
@@ -290,7 +293,7 @@ impl Shell {
 
     pub(super) fn calendar_settings(&self, cx: &mut Context<Self>) -> Div {
         let (access, syncing) = {
-            let calendar = self.life.calendar.read(cx);
+            let calendar = self.home_pages.calendar.read(cx);
             (calendar.access, calendar.syncing())
         };
         let (description, control): (&str, AnyElement) = match access {
@@ -305,7 +308,9 @@ impl Shell {
                 .enabled(!syncing)
                 .build(
                     &self.hover,
-                    |this: &mut Self, _, cx| this.life.calendar.update(cx, |c, cx| c.sync(cx)),
+                    |this: &mut Self, _, cx| {
+                        this.home_pages.calendar.update(cx, |c, cx| c.sync(cx))
+                    },
                     cx,
                 )
                 .into_any_element(),
@@ -318,7 +323,9 @@ impl Shell {
                     .build(
                         &self.hover,
                         |this: &mut Self, _, cx| {
-                            this.life.calendar.update(cx, |c, cx| c.request_access(cx))
+                            this.home_pages
+                                .calendar
+                                .update(cx, |c, cx| c.request_access(cx))
                         },
                         cx,
                     )
@@ -340,28 +347,28 @@ impl Shell {
 impl Shell {
     /// A connected home and a fortnight of events, or neither.
     #[allow(dead_code)]
-    pub(crate) fn fixture_life(&mut self, connected: bool, cx: &mut Context<Self>) {
+    pub(crate) fn fixture_home_pages(&mut self, connected: bool, cx: &mut Context<Self>) {
         use crate::{calendar::fixtures::fortnight, home::fixtures};
         let snapshot = if connected {
             fixtures::connected()
         } else {
             fixtures::disconnected()
         };
-        self.life
+        self.home_pages
             .home
             .update(cx, |home, cx| home.fixture(Some(snapshot), cx));
         let import = ainc_client::types::ActionView {
             id: "import".into(),
             summary: "Import 11 events".into(),
-            state: "completed".into(),
+            state: ainc_client::types::ActionState::Completed,
             error: None,
             created_at: crate::calendar::now() - 180,
             finished_at: Some(crate::calendar::now() - 179),
         };
-        self.life.calendar.update(cx, |calendar, cx| {
+        self.home_pages.calendar.update(cx, |calendar, cx| {
             calendar.fixture(fortnight(), Access::Granted, Some(import), cx)
         });
-        self.life.calendar_page.update(cx, |page, cx| {
+        self.home_pages.calendar_page.update(cx, |page, cx| {
             page.fixture_view(crate::calendar_page::View::Month, cx)
         });
         cx.notify();
