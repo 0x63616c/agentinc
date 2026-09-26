@@ -224,6 +224,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "turnkeel",
+ "url",
  "utoipa",
  "uuid",
 ]

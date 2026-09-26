@@ -141,8 +141,9 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     sqlx::migrate!().run(pool).await
 }
 
-pub fn product_router(product: product::Product) -> Router {
+pub fn product_router(product: product::Product, home: home::Home) -> Router {
     router(product.pool.clone())
+        .merge(home::router(product.clone(), home))
         .merge(product::router(product.clone()))
         .merge(connection::router(product.clone()))
         .merge(tickets::router(product.clone()))

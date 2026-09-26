@@ -16,7 +16,12 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 
 fn app(pool: &PgPool) -> Router {
-    ainc_daemon::product_router(Product::new(pool.clone(), "owner-fixture".into()).unwrap())
+    ainc_daemon::product_router(
+        Product::new(pool.clone(), "owner-fixture".into()).unwrap(),
+        ainc_daemon::home::Home::new(std::sync::Arc::new(
+            ainc_daemon::secrets::MemoryStore::default(),
+        )),
+    )
 }
 fn request(command: Command) -> Request {
     Request {

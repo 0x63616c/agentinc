@@ -11,7 +11,12 @@ async fn main() -> anyhow::Result<()> {
     fs::write(discovery.with_file_name("owner-token"), &token)?;
     axum::serve(
         listener,
-        ainc_daemon::product_router(ainc_daemon::product::Product::new(pool, token)?),
+        ainc_daemon::product_router(
+            ainc_daemon::product::Product::new(pool, token)?,
+            ainc_daemon::home::Home::new(std::sync::Arc::new(
+                ainc_daemon::secrets::MemoryStore::default(),
+            )),
+        ),
     )
     .await?;
     Ok(())

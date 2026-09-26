@@ -17,6 +17,17 @@
         ],
         "type": "object"
       },
+      "ActionState": {
+        "description": "Where an action is in its life.",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed",
+          "superseded"
+        ],
+        "type": "string"
+      },
       "ActionView": {
         "description": "One durable action as people see it.",
         "properties": {
@@ -37,8 +48,7 @@
             "type": "string"
           },
           "state": {
-            "description": "queued, running, completed or failed.",
-            "type": "string"
+            "$ref": "#/components/schemas/ActionState"
           },
           "summary": {
             "type": "string"
@@ -981,6 +991,19 @@
             "nullable": true,
             "type": "number"
           },
+          "gap": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "max": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "min": {
+            "description": "The setpoints the thermostat accepts, and the Auto gap.",
+            "format": "int64",
+            "type": "integer"
+          },
           "mode": {
             "$ref": "#/components/schemas/ClimateMode"
           },
@@ -1005,7 +1028,10 @@
         },
         "required": [
           "mode",
-          "pending"
+          "pending",
+          "min",
+          "max",
+          "gap"
         ],
         "type": "object"
       },
@@ -1213,7 +1239,20 @@
           "label": {
             "type": "string"
           },
+          "lit": {
+            "description": "How many of the lights it covers are on, out of `total`.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "members": {
+            "description": "The single switches a group covers; empty for a single switch.",
+            "items": {
+              "$ref": "#/components/schemas/SwitchKey"
+            },
+            "type": "array"
+          },
           "on": {
+            "description": "Every light it covers is on.",
             "type": "boolean"
           },
           "pending": {
@@ -1222,6 +1261,10 @@
           },
           "room": {
             "type": "string"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
@@ -1229,7 +1272,10 @@
           "label",
           "room",
           "on",
-          "pending"
+          "pending",
+          "members",
+          "lit",
+          "total"
         ],
         "type": "object"
       },

@@ -29,6 +29,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid.workspace = true
 rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 utoipa = { version = "5.5", features = ["axum_extras"] }
+url = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"

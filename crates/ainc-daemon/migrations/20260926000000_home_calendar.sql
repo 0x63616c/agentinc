@@ -1,5 +1,5 @@
--- Durable actions: a committed row is the acknowledgement; a Temporal workflow
--- named after the row applies its idempotent effect and records the outcome.
+-- Durable actions: a committed row is the acknowledgement; a durable task named
+-- after the row applies its idempotent effect and records the outcome.
 CREATE TABLE durable_actions (
     id text PRIMARY KEY,
     seq bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
@@ -7,9 +7,10 @@ CREATE TABLE durable_actions (
     actor_id text NOT NULL,
     kind text NOT NULL CHECK (kind IN ('home','calendar_import')),
     input jsonb NOT NULL,
+    summary text NOT NULL,
     digest text,
     state text NOT NULL DEFAULT 'queued'
-        CHECK (state IN ('queued','running','completed','failed')),
+        CHECK (state IN ('queued','running','completed','failed','superseded')),
     error text,
     dispatched boolean NOT NULL DEFAULT false,
     created_at bigint NOT NULL DEFAULT extract(epoch FROM now())::bigint,
@@ -54,6 +55,14 @@ CREATE TABLE calendar_events (
     UNIQUE (workspace_id, user_id, source, external_id)
 );
 CREATE INDEX calendar_events_range ON calendar_events(workspace_id, user_id, starts_at);
+-- The newest import applied per user, so an older import that runs late
+-- never overwrites a newer one.
+CREATE TABLE calendar_import_heads (
+    workspace_id text NOT NULL REFERENCES workspaces,
+    user_id text NOT NULL,
+    applied_seq bigint NOT NULL,
+    PRIMARY KEY (workspace_id, user_id)
+);
 CREATE TABLE calendar_receipts (
     workspace_id text NOT NULL REFERENCES workspaces,
     actor_id text NOT NULL,

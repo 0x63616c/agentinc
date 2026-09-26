@@ -1,8 +1,9 @@
 //! Smart Home: switches and climate from World Wide Webb's control center.
 //! Reads go straight to the control center; changes are durable actions.
+//! The control-center link is the workspace's Smart Home Connection.
 use crate::{
     control_center::{AccessToken, ControlCenter},
-    durable::{self, ActionKind, ActionRow, ActionView},
+    durable::{self, ActionKind, ActionRow, ActionState, ActionView, Applied},
     product::{ApiError, ErrorBody, Product},
     secrets::SecretStore,
     tickets::Actor,
@@ -16,11 +17,14 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{FromRow, PgPool};
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use utoipa::ToSchema;
 
 /// The switches AgentInc exposes, each one control-center group.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, ToSchema, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, ToSchema, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum SwitchKey {
     All,
@@ -67,6 +71,31 @@ impl SwitchKey {
             Self::KitchenCeiling | Self::UnderCabinet => "Kitchen",
         }
     }
+    /// The individual switches a group covers; empty for a single switch.
+    pub fn members(self) -> &'static [Self] {
+        match self {
+            Self::All => &[
+                Self::BedroomLamps,
+                Self::LivingRoomLamps,
+                Self::KitchenCeiling,
+                Self::UnderCabinet,
+            ],
+            Self::Lamps => &[Self::BedroomLamps, Self::LivingRoomLamps],
+            _ => &[],
+        }
+    }
+    /// The single switches this one sets.
+    fn covers(self) -> &'static [Self] {
+        match self.members() {
+            [] => std::slice::from_ref(match self {
+                Self::BedroomLamps => &Self::BedroomLamps,
+                Self::LivingRoomLamps => &Self::LivingRoomLamps,
+                Self::KitchenCeiling => &Self::KitchenCeiling,
+                _ => &Self::UnderCabinet,
+            }),
+            members => members,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, ToSchema, PartialEq, Eq)]
@@ -106,9 +135,15 @@ pub struct HomeSwitch {
     pub key: SwitchKey,
     pub label: String,
     pub room: String,
+    /// Every light it covers is on.
     pub on: bool,
     /// A change is on its way to the lights.
     pub pending: bool,
+    /// The single switches a group covers; empty for a single switch.
+    pub members: Vec<SwitchKey>,
+    /// How many of the lights it covers are on, out of `total`.
+    pub lit: i64,
+    pub total: i64,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema, PartialEq)]
 pub struct HomeClimate {
@@ -121,6 +156,10 @@ pub struct HomeClimate {
     pub target_low: Option<i64>,
     pub target_high: Option<i64>,
     pub pending: bool,
+    /// The setpoints the thermostat accepts, and the Auto gap.
+    pub min: i64,
+    pub max: i64,
+    pub gap: i64,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema, FromRow, PartialEq)]
 pub struct HomeConnection {
@@ -155,6 +194,17 @@ impl HomeCommand {
             Self::SetClimateMode { mode } => format!("Climate {}", mode.label()),
             Self::SetClimateTarget { target } => format!("Climate to {target}°"),
             Self::SetClimateRange { low, high } => format!("Climate {low}–{high}°"),
+        }
+    }
+    /// A later `self` makes an earlier `other` moot when it sets everything
+    /// `other` would set.
+    fn covers(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Switch { key: newer, .. }, Self::Switch { key: older, .. }) => older
+                .covers()
+                .iter()
+                .all(|light| newer.covers().contains(light)),
+            (newer, older) => std::mem::discriminant(newer) == std::mem::discriminant(older),
         }
     }
     fn validate(&self) -> Result<(), ApiError> {
@@ -202,12 +252,15 @@ fn invalid(message: &str) -> ApiError {
 pub struct Home {
     secrets: Arc<dyn SecretStore>,
     http: reqwest::Client,
+    /// Access tokens by workspace, so polling never waits on the Keychain.
+    tokens: Arc<Mutex<HashMap<String, AccessToken>>>,
 }
 impl Home {
     pub fn new(secrets: Arc<dyn SecretStore>) -> Self {
         Self {
             secrets,
             http: ControlCenter::http(),
+            tokens: Arc::default(),
         }
     }
     fn secret_names(workspace: &str) -> [String; 2] {
@@ -215,6 +268,41 @@ impl Home {
             format!("control-center/{workspace}/access-client-id"),
             format!("control-center/{workspace}/access-client-secret"),
         ]
+    }
+    /// Keychain calls block, so they run off the async threads.
+    async fn keychain<T: Send + 'static>(
+        &self,
+        work: impl FnOnce(&dyn SecretStore) -> anyhow::Result<T> + Send + 'static,
+    ) -> anyhow::Result<T> {
+        let secrets = self.secrets.clone();
+        tokio::task::spawn_blocking(move || work(secrets.as_ref())).await?
+    }
+    async fn access_token(&self, workspace: &str) -> anyhow::Result<AccessToken> {
+        if let Some(token) = self.tokens.lock().expect("token cache").get(workspace) {
+            return Ok(token.clone());
+        }
+        let [id, secret] = Self::secret_names(workspace);
+        let token = self
+            .keychain(
+                move |secrets| match (secrets.get(&id)?, secrets.get(&secret)?) {
+                    (Some(client_id), Some(client_secret)) => Ok(AccessToken {
+                        client_id,
+                        client_secret,
+                    }),
+                    _ => anyhow::bail!(
+                        "The Access token is missing from the Keychain. Reconnect in Settings."
+                    ),
+                },
+            )
+            .await?;
+        self.tokens
+            .lock()
+            .expect("token cache")
+            .insert(workspace.to_owned(), token.clone());
+        Ok(token)
+    }
+    fn forget(&self, workspace: &str) {
+        self.tokens.lock().expect("token cache").remove(workspace);
     }
     /// The workspace's control center, or `None` when it is not connected.
     pub(crate) async fn control_center(
@@ -226,16 +314,7 @@ impl Home {
             return Ok(None);
         };
         let access = if connection.access_token {
-            let [id, secret] = Self::secret_names(workspace);
-            match (self.secrets.get(&id)?, self.secrets.get(&secret)?) {
-                (Some(client_id), Some(client_secret)) => Some(AccessToken {
-                    client_id,
-                    client_secret,
-                }),
-                _ => anyhow::bail!(
-                    "The Access token is missing from the Keychain. Reconnect in Settings."
-                ),
-            }
+            Some(self.access_token(workspace).await?)
         } else {
             None
         };
@@ -308,13 +387,22 @@ pub async fn disconnect(
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     let actor = owner(&state, &headers).await?;
-    for name in Home::secret_names(&actor.workspace) {
-        state.home.secrets.delete(&name).map_err(keychain)?;
-    }
     sqlx::query("DELETE FROM home_connections WHERE workspace_id=$1")
         .bind(&actor.workspace)
         .execute(&state.product.pool)
         .await?;
+    state.home.forget(&actor.workspace);
+    let names = Home::secret_names(&actor.workspace);
+    state
+        .home
+        .keychain(move |secrets| {
+            for name in &names {
+                secrets.delete(name)?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(keychain)?;
     Ok(StatusCode::NO_CONTENT)
 }
 fn keychain(error: anyhow::Error) -> ApiError {
@@ -323,6 +411,17 @@ fn keychain(error: anyhow::Error) -> ApiError {
         "keychain_unavailable",
         &error.to_string(),
     )
+}
+/// A token may travel in the clear only to this Mac or across the tailnet.
+fn private_host(url: &reqwest::Url) -> bool {
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) => {
+            ip.is_loopback() || (ip.octets()[0] == 100 && (64..=127).contains(&ip.octets()[1]))
+        }
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        Some(url::Host::Domain(host)) => host == "localhost" || host.ends_with(".ts.net"),
+        None => false,
+    }
 }
 
 pub(crate) async fn save_connection(
@@ -340,13 +439,11 @@ pub(crate) async fn save_connection(
     let token = match (
         request
             .access_client_id
-            .as_deref()
-            .map(str::trim)
+            .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty()),
         request
             .access_client_secret
-            .as_deref()
-            .map(str::trim)
+            .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty()),
     ) {
         (Some(id), Some(secret)) => Some((id, secret)),
@@ -357,18 +454,14 @@ pub(crate) async fn save_connection(
             ));
         }
     };
-    let [id_name, secret_name] = Home::secret_names(&actor.workspace);
-    match token {
-        Some((id, secret)) => {
-            home.secrets.set(&id_name, id).map_err(keychain)?;
-            home.secrets.set(&secret_name, secret).map_err(keychain)?;
-        }
-        None => {
-            home.secrets.delete(&id_name).map_err(keychain)?;
-            home.secrets.delete(&secret_name).map_err(keychain)?;
-        }
+    if token.is_some() && parsed.scheme() != "https" && !private_host(&parsed) {
+        return Err(invalid(
+            "Use an https address so the Access token is never sent in the clear.",
+        ));
     }
-    Ok(sqlx::query_as(
+    // The row and the Keychain change together: a Keychain failure rolls the row back.
+    let mut tx = pool.begin().await?;
+    let saved: HomeConnection = sqlx::query_as(
         "INSERT INTO home_connections(workspace_id,base_url,access_token) VALUES($1,$2,$3)
          ON CONFLICT(workspace_id) DO UPDATE SET base_url=excluded.base_url,access_token=excluded.access_token
          RETURNING base_url,access_token",
@@ -376,8 +469,24 @@ pub(crate) async fn save_connection(
     .bind(&actor.workspace)
     .bind(base_url)
     .bind(token.is_some())
-    .fetch_one(pool)
-    .await?)
+    .fetch_one(&mut *tx)
+    .await?;
+    home.forget(&actor.workspace);
+    let [id_name, secret_name] = Home::secret_names(&actor.workspace);
+    home.keychain(move |secrets| match token {
+        Some((id, secret)) => {
+            secrets.set(&id_name, &id)?;
+            secrets.set(&secret_name, &secret)
+        }
+        None => {
+            secrets.delete(&id_name)?;
+            secrets.delete(&secret_name)
+        }
+    })
+    .await
+    .map_err(keychain)?;
+    tx.commit().await?;
+    Ok(saved)
 }
 
 pub(crate) async fn execute(
@@ -421,7 +530,15 @@ pub(crate) async fn execute(
             "Connect the control center in Settings first.",
         ));
     }
-    let result_id = durable::enqueue(&mut tx, actor, ActionKind::Home, &payload, None).await?;
+    let result_id = durable::enqueue(
+        &mut tx,
+        actor,
+        ActionKind::Home,
+        &payload,
+        &request.command.summary(),
+        None,
+    )
+    .await?;
     sqlx::query("INSERT INTO home_receipts(workspace_id,actor_id,operation_id,command,result_id) VALUES($1,$2,$3,$4,$5)")
         .bind(&actor.workspace)
         .bind(&actor.id)
@@ -434,28 +551,85 @@ pub(crate) async fn execute(
     Ok(HomeReceipt { result_id })
 }
 
+/// The home's single lights, from the control center and then from changes
+/// still on their way, with every group derived from its members.
+fn switches(
+    reading: Option<&crate::control_center::Controls>,
+    open: &[HomeCommand],
+) -> Vec<HomeSwitch> {
+    let mut lights: HashMap<SwitchKey, (bool, bool)> = HashMap::new();
+    let mut pressed: Vec<SwitchKey> = vec![];
+    if let Some(controls) = reading {
+        for (key, group) in [
+            (SwitchKey::BedroomLamps, controls.bedroom_lamps),
+            (SwitchKey::LivingRoomLamps, controls.other_lamps),
+            (SwitchKey::KitchenCeiling, controls.ceiling),
+            (SwitchKey::UnderCabinet, controls.cabinet),
+        ] {
+            lights.insert(key, (group.on, group.pending));
+        }
+        for (key, group) in [
+            (SwitchKey::All, controls.all),
+            (SwitchKey::Lamps, controls.lamps),
+        ] {
+            if group.pending {
+                pressed.push(key);
+            }
+        }
+    }
+    // Oldest first, so the newest wanted state is what shows while it travels.
+    for command in open {
+        if let HomeCommand::Switch { key, on } = command {
+            for light in key.covers() {
+                lights.insert(*light, (*on, true));
+            }
+            pressed.push(*key);
+        }
+    }
+    SwitchKey::ALL
+        .into_iter()
+        .map(|key| {
+            let covered = key.covers();
+            let lit = covered
+                .iter()
+                .filter(|light| lights.get(light).is_some_and(|(on, _)| *on))
+                .count() as i64;
+            let pending = pressed.contains(&key)
+                || (key.members().is_empty()
+                    && lights.get(&key).is_some_and(|(_, pending)| *pending));
+            HomeSwitch {
+                key,
+                label: key.label().into(),
+                room: key.room().into(),
+                on: lit == covered.len() as i64,
+                pending,
+                members: key.members().to_vec(),
+                lit,
+                total: covered.len() as i64,
+            }
+        })
+        .collect()
+}
+
 pub(crate) async fn snapshot(
     pool: &PgPool,
     home: &Home,
     actor: &Actor,
 ) -> Result<HomeSnapshot, ApiError> {
     let actions = durable::recent(pool, &actor.workspace, ActionKind::Home, 8).await?;
+    let open: Vec<HomeCommand> = actions
+        .iter()
+        .rev()
+        .filter(|a| a.is_open())
+        .filter_map(|a| serde_json::from_value(a.input.clone()).ok())
+        .collect();
     let mut snapshot = HomeSnapshot {
         connection: connection(pool, &actor.workspace).await?,
         reachable: false,
         error: None,
-        switches: SwitchKey::ALL
-            .into_iter()
-            .map(|key| HomeSwitch {
-                key,
-                label: key.label().into(),
-                room: key.room().into(),
-                on: false,
-                pending: false,
-            })
-            .collect(),
+        switches: switches(None, &open),
         climate: None,
-        actions: vec![],
+        actions: actions.iter().map(ActionRow::view).collect(),
     };
     match home.control_center(pool, &actor.workspace).await {
         Ok(None) => {}
@@ -464,19 +638,8 @@ pub(crate) async fn snapshot(
             Err(error) => snapshot.error = Some(error.to_string()),
             Ok((controls, climate)) => {
                 snapshot.reachable = true;
-                for switch in &mut snapshot.switches {
-                    let group = match switch.key {
-                        SwitchKey::All => controls.all,
-                        SwitchKey::Lamps => controls.lamps,
-                        SwitchKey::BedroomLamps => controls.bedroom_lamps,
-                        SwitchKey::LivingRoomLamps => controls.other_lamps,
-                        SwitchKey::KitchenCeiling => controls.ceiling,
-                        SwitchKey::UnderCabinet => controls.cabinet,
-                    };
-                    switch.on = group.on;
-                    switch.pending = group.pending;
-                }
-                snapshot.climate = Some(HomeClimate {
+                snapshot.switches = switches(Some(&controls), &open);
+                let mut reading = HomeClimate {
                     mode: match climate.mode.as_str() {
                         "cool" => ClimateMode::Cool,
                         "heat" => ClimateMode::Heat,
@@ -489,52 +652,68 @@ pub(crate) async fn snapshot(
                     target_low: climate.target_low,
                     target_high: climate.target_high,
                     pending: false,
-                });
-            }
-        },
-    }
-    // Unfinished actions win over the last reading, oldest first, so the newest
-    // intent is what the page shows while it travels.
-    for action in actions.iter().rev().filter(|a| a.is_open()) {
-        let Ok(command) = serde_json::from_value::<HomeCommand>(action.input.clone()) else {
-            continue;
-        };
-        match command {
-            HomeCommand::Switch { key, on } => {
-                if let Some(switch) = snapshot.switches.iter_mut().find(|s| s.key == key) {
-                    switch.on = on;
-                    switch.pending = true;
-                }
-            }
-            command => {
-                if let Some(climate) = &mut snapshot.climate {
-                    climate.pending = true;
+                    min: SETPOINT_MIN,
+                    max: SETPOINT_MAX,
+                    gap: RANGE_GAP,
+                };
+                for command in &open {
+                    reading.pending |= !matches!(command, HomeCommand::Switch { .. });
                     match command {
-                        HomeCommand::SetClimateMode { mode } => climate.mode = mode,
-                        HomeCommand::SetClimateTarget { target } => climate.target = Some(target),
+                        HomeCommand::SetClimateMode { mode } => reading.mode = *mode,
+                        HomeCommand::SetClimateTarget { target } => reading.target = Some(*target),
                         HomeCommand::SetClimateRange { low, high } => {
-                            climate.target_low = Some(low);
-                            climate.target_high = Some(high);
+                            reading.target_low = Some(*low);
+                            reading.target_high = Some(*high);
                         }
                         HomeCommand::Switch { .. } => {}
                     }
                 }
+                snapshot.climate = Some(reading);
             }
-        }
+        },
     }
-    snapshot.actions = actions.iter().map(ActionRow::view).collect();
     Ok(snapshot)
 }
 
-/// Apply one Smart Home action. Every command sets a state, so a retry after a
-/// lost answer cannot double-apply.
+/// Apply one Smart Home action, in order. Changes in a workspace apply one at
+/// a time; a newer change that sets everything this one would makes it moot,
+/// and an older unfinished change goes first. Every command sets a state, so
+/// a retry after a lost answer cannot double-apply.
 pub(crate) async fn apply(
     pool: &PgPool,
     home: &Home,
     workspace: &str,
+    seq: i64,
     input: &Value,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Applied> {
     let command: HomeCommand = serde_json::from_value(input.clone())?;
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!("home-effects/{workspace}"))
+        .execute(&mut *tx)
+        .await?;
+    let others: Vec<(i64, Value, ActionState)> = sqlx::query_as(
+        "SELECT seq,input,state FROM durable_actions WHERE workspace_id=$1 AND kind='home' AND seq<>$2
+         AND state IN ('queued','running','completed') AND created_at > extract(epoch FROM now())::bigint-120",
+    )
+    .bind(workspace)
+    .bind(seq)
+    .fetch_all(&mut *tx)
+    .await?;
+    for (other, input, _) in others.iter().filter(|(other, ..)| *other > seq) {
+        let _ = other;
+        if serde_json::from_value::<HomeCommand>(input.clone())
+            .is_ok_and(|newer| newer.covers(&command))
+        {
+            return Ok(Applied::Superseded);
+        }
+    }
+    if others
+        .iter()
+        .any(|(other, _, state)| *other < seq && *state != ActionState::Completed)
+    {
+        anyhow::bail!("Waiting for an earlier change to finish.");
+    }
     let center = home
         .control_center(pool, workspace)
         .await?
@@ -544,5 +723,70 @@ pub(crate) async fn apply(
         HomeCommand::SetClimateMode { mode } => center.set_mode(mode.wire()).await,
         HomeCommand::SetClimateTarget { target } => center.set_target(target).await,
         HomeCommand::SetClimateRange { low, high } => center.set_range(low, high).await,
+    }?;
+    tx.commit().await?;
+    Ok(Applied::Done)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_newer_change_only_supersedes_what_it_fully_covers() {
+        let switch = |key, on| HomeCommand::Switch { key, on };
+        let all_off = switch(SwitchKey::All, false);
+        let bedroom_on = switch(SwitchKey::BedroomLamps, true);
+        assert!(all_off.covers(&bedroom_on));
+        assert!(
+            !bedroom_on.covers(&all_off),
+            "the other lights still go off"
+        );
+        assert!(switch(SwitchKey::Lamps, true).covers(&switch(SwitchKey::LivingRoomLamps, false)));
+        let target = HomeCommand::SetClimateTarget { target: 70 };
+        assert!(HomeCommand::SetClimateTarget { target: 72 }.covers(&target));
+        assert!(
+            !HomeCommand::SetClimateMode {
+                mode: ClimateMode::Cool
+            }
+            .covers(&target)
+        );
+    }
+
+    #[test]
+    fn groups_follow_their_members_and_pending_changes() {
+        let reading = crate::control_center::Controls {
+            all: Default::default(),
+            lamps: Default::default(),
+            bedroom_lamps: crate::control_center::Group {
+                on: true,
+                pending: false,
+            },
+            other_lamps: Default::default(),
+            ceiling: crate::control_center::Group {
+                on: true,
+                pending: false,
+            },
+            cabinet: Default::default(),
+        };
+        let state = |switches: &[HomeSwitch], key| {
+            let s = switches.iter().find(|s| s.key == key).unwrap();
+            (s.on, s.lit, s.total, s.pending)
+        };
+        let now = switches(Some(&reading), &[]);
+        assert_eq!(state(&now, SwitchKey::All), (false, 2, 4, false));
+        assert_eq!(state(&now, SwitchKey::Lamps), (false, 1, 2, false));
+        let travelling = switches(
+            Some(&reading),
+            &[HomeCommand::Switch {
+                key: SwitchKey::All,
+                on: true,
+            }],
+        );
+        assert_eq!(state(&travelling, SwitchKey::All), (true, 4, 4, true));
+        assert_eq!(
+            state(&travelling, SwitchKey::UnderCabinet),
+            (true, 1, 1, true)
+        );
     }
 }

@@ -67,6 +67,95 @@ pub mod types {
             Default::default()
         }
     }
+    ///Where an action is in its life.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "Where an action is in its life.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "queued",
+    ///    "running",
+    ///    "completed",
+    ///    "failed",
+    ///    "superseded"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum ActionState {
+        #[serde(rename = "queued")]
+        Queued,
+        #[serde(rename = "running")]
+        Running,
+        #[serde(rename = "completed")]
+        Completed,
+        #[serde(rename = "failed")]
+        Failed,
+        #[serde(rename = "superseded")]
+        Superseded,
+    }
+    impl ::std::fmt::Display for ActionState {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Queued => f.write_str("queued"),
+                Self::Running => f.write_str("running"),
+                Self::Completed => f.write_str("completed"),
+                Self::Failed => f.write_str("failed"),
+                Self::Superseded => f.write_str("superseded"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ActionState {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "queued" => Ok(Self::Queued),
+                "running" => Ok(Self::Running),
+                "completed" => Ok(Self::Completed),
+                "failed" => Ok(Self::Failed),
+                "superseded" => Ok(Self::Superseded),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ActionState {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for ActionState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for ActionState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
     ///One durable action as people see it.
     ///
     /// <details><summary>JSON schema</summary>
@@ -103,8 +192,7 @@ pub mod types {
     ///      "type": "string"
     ///    },
     ///    "state": {
-    ///      "description": "queued, running, completed or failed.",
-    ///      "type": "string"
+    ///      "$ref": "#/components/schemas/ActionState"
     ///    },
     ///    "summary": {
     ///      "type": "string"
@@ -121,8 +209,7 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub finished_at: ::std::option::Option<i64>,
         pub id: ::std::string::String,
-        ///queued, running, completed or failed.
-        pub state: ::std::string::String,
+        pub state: ActionState,
         pub summary: ::std::string::String,
     }
     impl ActionView {
@@ -1794,6 +1881,9 @@ pub mod types {
     ///{
     ///  "type": "object",
     ///  "required": [
+    ///    "gap",
+    ///    "max",
+    ///    "min",
     ///    "mode",
     ///    "pending"
     ///  ],
@@ -1812,6 +1902,19 @@ pub mod types {
     ///        "null"
     ///      ],
     ///      "format": "double"
+    ///    },
+    ///    "gap": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "max": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "min": {
+    ///      "description": "The setpoints the thermostat accepts, and the Auto gap.",
+    ///      "type": "integer",
+    ///      "format": "int64"
     ///    },
     ///    "mode": {
     ///      "$ref": "#/components/schemas/ClimateMode"
@@ -1852,6 +1955,10 @@ pub mod types {
         ///Indoor temperature in °F.
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub ambient: ::std::option::Option<f64>,
+        pub gap: i64,
+        pub max: i64,
+        ///The setpoints the thermostat accepts, and the Auto gap.
+        pub min: i64,
         pub mode: ClimateMode,
         pub pending: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -2207,9 +2314,12 @@ pub mod types {
     ///  "required": [
     ///    "key",
     ///    "label",
+    ///    "lit",
+    ///    "members",
     ///    "on",
     ///    "pending",
-    ///    "room"
+    ///    "room",
+    ///    "total"
     ///  ],
     ///  "properties": {
     ///    "key": {
@@ -2218,7 +2328,20 @@ pub mod types {
     ///    "label": {
     ///      "type": "string"
     ///    },
+    ///    "lit": {
+    ///      "description": "How many of the lights it covers are on, out of `total`.",
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "members": {
+    ///      "description": "The single switches a group covers; empty for a single switch.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/SwitchKey"
+    ///      }
+    ///    },
     ///    "on": {
+    ///      "description": "Every light it covers is on.",
     ///      "type": "boolean"
     ///    },
     ///    "pending": {
@@ -2227,6 +2350,10 @@ pub mod types {
     ///    },
     ///    "room": {
     ///      "type": "string"
+    ///    },
+    ///    "total": {
+    ///      "type": "integer",
+    ///      "format": "int64"
     ///    }
     ///  }
     ///}
@@ -2236,10 +2363,16 @@ pub mod types {
     pub struct HomeSwitch {
         pub key: SwitchKey,
         pub label: ::std::string::String,
+        ///How many of the lights it covers are on, out of `total`.
+        pub lit: i64,
+        ///The single switches a group covers; empty for a single switch.
+        pub members: ::std::vec::Vec<SwitchKey>,
+        ///Every light it covers is on.
         pub on: bool,
         ///A change is on its way to the lights.
         pub pending: bool,
         pub room: ::std::string::String,
+        pub total: i64,
     }
     impl HomeSwitch {
         pub fn builder() -> builder::HomeSwitch {
@@ -3741,7 +3874,7 @@ pub mod types {
             >,
             finished_at: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
             id: ::std::result::Result<::std::string::String, ::std::string::String>,
-            state: ::std::result::Result<::std::string::String, ::std::string::String>,
+            state: ::std::result::Result<super::ActionState, ::std::string::String>,
             summary: ::std::result::Result<::std::string::String, ::std::string::String>,
         }
         impl ::std::default::Default for ActionView {
@@ -3799,7 +3932,7 @@ pub mod types {
             }
             pub fn state<T>(mut self, value: T) -> Self
             where
-                T: ::std::convert::TryInto<::std::string::String>,
+                T: ::std::convert::TryInto<super::ActionState>,
                 T::Error: ::std::fmt::Display,
             {
                 self.state = value
@@ -5455,6 +5588,9 @@ pub mod types {
                 ::std::string::String,
             >,
             ambient: ::std::result::Result<::std::option::Option<f64>, ::std::string::String>,
+            gap: ::std::result::Result<i64, ::std::string::String>,
+            max: ::std::result::Result<i64, ::std::string::String>,
+            min: ::std::result::Result<i64, ::std::string::String>,
             mode: ::std::result::Result<super::ClimateMode, ::std::string::String>,
             pending: ::std::result::Result<bool, ::std::string::String>,
             target: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
@@ -5466,6 +5602,9 @@ pub mod types {
                 Self {
                     action: Ok(Default::default()),
                     ambient: Ok(Default::default()),
+                    gap: Err("no value supplied for gap".to_string()),
+                    max: Err("no value supplied for max".to_string()),
+                    min: Err("no value supplied for min".to_string()),
                     mode: Err("no value supplied for mode".to_string()),
                     pending: Err("no value supplied for pending".to_string()),
                     target: Ok(Default::default()),
@@ -5493,6 +5632,36 @@ pub mod types {
                 self.ambient = value
                     .try_into()
                     .map_err(|e| format!("error converting supplied value for ambient: {e}"));
+                self
+            }
+            pub fn gap<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.gap = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for gap: {e}"));
+                self
+            }
+            pub fn max<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.max = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for max: {e}"));
+                self
+            }
+            pub fn min<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.min = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for min: {e}"));
                 self
             }
             pub fn mode<T>(mut self, value: T) -> Self
@@ -5554,6 +5723,9 @@ pub mod types {
                 Ok(Self {
                     action: value.action?,
                     ambient: value.ambient?,
+                    gap: value.gap?,
+                    max: value.max?,
+                    min: value.min?,
                     mode: value.mode?,
                     pending: value.pending?,
                     target: value.target?,
@@ -5567,6 +5739,9 @@ pub mod types {
                 Self {
                     action: Ok(value.action),
                     ambient: Ok(value.ambient),
+                    gap: Ok(value.gap),
+                    max: Ok(value.max),
+                    min: Ok(value.min),
                     mode: Ok(value.mode),
                     pending: Ok(value.pending),
                     target: Ok(value.target),
@@ -5922,18 +6097,25 @@ pub mod types {
         pub struct HomeSwitch {
             key: ::std::result::Result<super::SwitchKey, ::std::string::String>,
             label: ::std::result::Result<::std::string::String, ::std::string::String>,
+            lit: ::std::result::Result<i64, ::std::string::String>,
+            members:
+                ::std::result::Result<::std::vec::Vec<super::SwitchKey>, ::std::string::String>,
             on: ::std::result::Result<bool, ::std::string::String>,
             pending: ::std::result::Result<bool, ::std::string::String>,
             room: ::std::result::Result<::std::string::String, ::std::string::String>,
+            total: ::std::result::Result<i64, ::std::string::String>,
         }
         impl ::std::default::Default for HomeSwitch {
             fn default() -> Self {
                 Self {
                     key: Err("no value supplied for key".to_string()),
                     label: Err("no value supplied for label".to_string()),
+                    lit: Err("no value supplied for lit".to_string()),
+                    members: Err("no value supplied for members".to_string()),
                     on: Err("no value supplied for on".to_string()),
                     pending: Err("no value supplied for pending".to_string()),
                     room: Err("no value supplied for room".to_string()),
+                    total: Err("no value supplied for total".to_string()),
                 }
             }
         }
@@ -5956,6 +6138,26 @@ pub mod types {
                 self.label = value
                     .try_into()
                     .map_err(|e| format!("error converting supplied value for label: {e}"));
+                self
+            }
+            pub fn lit<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.lit = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for lit: {e}"));
+                self
+            }
+            pub fn members<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::SwitchKey>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.members = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for members: {e}"));
                 self
             }
             pub fn on<T>(mut self, value: T) -> Self
@@ -5988,6 +6190,16 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for room: {e}"));
                 self
             }
+            pub fn total<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.total = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for total: {e}"));
+                self
+            }
         }
         impl ::std::convert::TryFrom<HomeSwitch> for super::HomeSwitch {
             type Error = super::error::ConversionError;
@@ -5997,9 +6209,12 @@ pub mod types {
                 Ok(Self {
                     key: value.key?,
                     label: value.label?,
+                    lit: value.lit?,
+                    members: value.members?,
                     on: value.on?,
                     pending: value.pending?,
                     room: value.room?,
+                    total: value.total?,
                 })
             }
         }
@@ -6008,9 +6223,12 @@ pub mod types {
                 Self {
                     key: Ok(value.key),
                     label: Ok(value.label),
+                    lit: Ok(value.lit),
+                    members: Ok(value.members),
                     on: Ok(value.on),
                     pending: Ok(value.pending),
                     room: Ok(value.room),
+                    total: Ok(value.total),
                 }
             }
         }

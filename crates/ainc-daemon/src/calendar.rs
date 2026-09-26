@@ -2,13 +2,13 @@
 //! calendars. The Mac app reads the calendar store (it holds the permission) and
 //! hands each snapshot over as an import; the import is a durable action.
 use crate::{
-    durable::{self, ActionKind, ActionRow, ActionView},
+    durable::{self, ActionKind, ActionRow, ActionView, Applied},
     product::{ApiError, ErrorBody, Product},
     tickets::Actor,
 };
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{DefaultBodyLimit, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
@@ -22,6 +22,8 @@ const DAY: i64 = 86_400;
 /// The longest event and the widest import window AgentInc accepts.
 const MAX_SPAN: i64 = 400 * DAY;
 const MAX_IMPORT: usize = 5_000;
+/// Five thousand events with notes fit comfortably; a whole mirror is one request.
+const MAX_IMPORT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, ToSchema, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "text", rename_all = "snake_case")]
@@ -142,7 +144,10 @@ pub fn router(product: Product) -> Router {
     Router::new()
         .route("/v1/calendar", get(state))
         .route("/v1/calendar/commands", post(command))
-        .route("/v1/calendar/imports", post(import))
+        .route(
+            "/v1/calendar/imports",
+            post(import).layer(DefaultBodyLimit::max(MAX_IMPORT_BYTES)),
+        )
         .with_state(product)
 }
 async fn owner(product: &Product, headers: &HeaderMap) -> Result<Actor, ApiError> {
@@ -158,12 +163,9 @@ pub async fn state(
     Query(range): Query<CalendarRange>,
 ) -> Result<Json<CalendarSnapshot>, ApiError> {
     let actor = owner(&product, &headers).await?;
-    let from = range.from.unwrap_or_else(|| now() - 31 * DAY);
-    let to = range.to.unwrap_or_else(|| now() + 180 * DAY);
-    if to <= from || to - from > MAX_SPAN {
-        return Err(invalid("Ask for a range of up to 400 days."));
-    }
-    Ok(Json(snapshot(&product.pool, &actor, from, to).await?))
+    Ok(Json(
+        snapshot(&product.pool, &actor, range.from, range.to).await?,
+    ))
 }
 #[utoipa::path(post,path="/v1/calendar/commands",operation_id="calendar_command",request_body=CalendarRequest,responses((status=200,body=CalendarReceipt),(status=400,body=ErrorBody),(status=401,body=ErrorBody),(status=409,body=ErrorBody),(status=503,body=ErrorBody)))]
 pub async fn command(
@@ -184,12 +186,19 @@ pub async fn import(
     Ok(Json(enqueue_import(&product.pool, &actor, request).await?))
 }
 
+/// Events overlapping `[from, to)`: by default from a month ago to half a
+/// year ahead, and never wider than 400 days.
 pub(crate) async fn snapshot(
     pool: &PgPool,
     actor: &Actor,
-    from: i64,
-    to: i64,
+    from: Option<i64>,
+    to: Option<i64>,
 ) -> Result<CalendarSnapshot, ApiError> {
+    let from = from.unwrap_or_else(|| now() - 31 * DAY);
+    let to = to.unwrap_or_else(|| now() + 180 * DAY);
+    if to <= from || to - from > MAX_SPAN {
+        return Err(invalid("Ask for a range of up to 400 days."));
+    }
     let events = sqlx::query_as(
         "SELECT id,source,calendar,color,title,location,notes,starts_at,ends_at,all_day,revision FROM calendar_events
          WHERE workspace_id=$1 AND user_id=$2 AND ends_at>=$3 AND starts_at<$4 ORDER BY starts_at,ends_at,title,id",
@@ -200,14 +209,7 @@ pub(crate) async fn snapshot(
     .bind(to)
     .fetch_all(pool)
     .await?;
-    let last_import: Option<ActionRow> = sqlx::query_as(
-        "SELECT id,kind,input,state,error,created_at,finished_at FROM durable_actions
-         WHERE workspace_id=$1 AND actor_id=$2 AND kind='calendar_import' ORDER BY seq DESC LIMIT 1",
-    )
-    .bind(&actor.workspace)
-    .bind(&actor.id)
-    .fetch_optional(pool)
-    .await?;
+    let last_import = durable::latest_for(pool, actor, ActionKind::CalendarImport).await?;
     Ok(CalendarSnapshot {
         events,
         last_import: last_import.as_ref().map(ActionRow::view),
@@ -427,7 +429,14 @@ pub(crate) async fn enqueue_import(
     request: CalendarImportRequest,
 ) -> Result<CalendarReceipt, ApiError> {
     let request = normalize(request)?;
-    let input = json!(request);
+    let count = request.events.len();
+    let summary = format!(
+        "Import {count} {}",
+        if count == 1 { "event" } else { "events" }
+    );
+    let mut input = json!(request);
+    // The mirror belongs to the person whose calendars were read.
+    input["user_id"] = json!(actor.id);
     let digest = format!("{:x}", Sha256::digest(input.to_string().as_bytes()));
     let mut tx = pool.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
@@ -452,6 +461,7 @@ pub(crate) async fn enqueue_import(
         actor,
         ActionKind::CalendarImport,
         &input,
+        &summary,
         Some(&digest),
     )
     .await?;
@@ -460,30 +470,38 @@ pub(crate) async fn enqueue_import(
 }
 
 /// Mirror one import. Upserts by external ID and removals within the window
-/// make a retry harmless; an older import never overwrites a newer one.
-pub(crate) async fn apply_import(pool: &PgPool, action_id: &str) -> anyhow::Result<()> {
-    let (workspace, user, seq, input): (String, String, i64, Value) =
-        sqlx::query_as("SELECT workspace_id,actor_id,seq,input FROM durable_actions WHERE id=$1")
+/// make a retry harmless. The per-user head records the newest import applied,
+/// in the same transaction, so an older import that runs late is superseded.
+pub(crate) async fn apply_import(pool: &PgPool, action_id: &str) -> anyhow::Result<Applied> {
+    let (workspace, seq, input): (String, i64, Value) =
+        sqlx::query_as("SELECT workspace_id,seq,input FROM durable_actions WHERE id=$1")
             .bind(action_id)
             .fetch_one(pool)
             .await?;
-    let request: CalendarImportRequest = serde_json::from_value(input)?;
+    let user = input["user_id"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("The import names no user."))?
+        .to_owned();
     let mut tx = pool.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
         .bind(format!("calendar-import/{workspace}/{user}"))
         .execute(&mut *tx)
         .await?;
-    let superseded: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM durable_actions WHERE workspace_id=$1 AND actor_id=$2 AND kind='calendar_import' AND state='completed' AND seq>$3)",
+    let newest: Option<i64> = sqlx::query_scalar(
+        "INSERT INTO calendar_import_heads(workspace_id,user_id,applied_seq) VALUES($1,$2,$3)
+         ON CONFLICT(workspace_id,user_id) DO UPDATE SET applied_seq=excluded.applied_seq
+         WHERE calendar_import_heads.applied_seq <= excluded.applied_seq
+         RETURNING applied_seq",
     )
     .bind(&workspace)
     .bind(&user)
     .bind(seq)
-    .fetch_one(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
-    if superseded {
-        return Ok(());
+    if newest.is_none() {
+        return Ok(Applied::Superseded);
     }
+    let request: CalendarImportRequest = serde_json::from_value(input)?;
     for event in &request.events {
         sqlx::query(
             "INSERT INTO calendar_events(id,workspace_id,user_id,source,external_id,calendar,color,title,location,notes,starts_at,ends_at,all_day)
@@ -528,8 +546,19 @@ pub(crate) async fn apply_import(pool: &PgPool, action_id: &str) -> anyhow::Resu
     .bind(&kept)
     .execute(&mut *tx)
     .await?;
+    // Older snapshots have done their job; keep their summaries, not their contents.
+    sqlx::query(
+        "UPDATE durable_actions SET input=jsonb_build_object('user_id',$2::text,'pruned',true)
+         WHERE workspace_id=$1 AND kind='calendar_import' AND input->>'user_id'=$2 AND seq<$3
+         AND NOT (input ? 'pruned')",
+    )
+    .bind(&workspace)
+    .bind(&user)
+    .bind(seq)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
-    Ok(())
+    Ok(Applied::Done)
 }
 
 #[cfg(test)]
@@ -563,16 +592,11 @@ mod tests {
         .unwrap()
         .result_id
     }
-    async fn complete(pool: &PgPool, id: &str) {
-        apply_import(pool, id).await.unwrap();
-        sqlx::query("UPDATE durable_actions SET state='completed' WHERE id=$1")
-            .bind(id)
-            .execute(pool)
-            .await
-            .unwrap();
+    async fn apply(pool: &PgPool, id: &str) -> bool {
+        matches!(apply_import(pool, id).await.unwrap(), Applied::Done)
     }
     async fn titles(pool: &PgPool, actor: &Actor) -> Vec<(String, i64)> {
-        snapshot(pool, actor, 0, 1_000_000)
+        snapshot(pool, actor, Some(0), Some(1_000_000))
             .await
             .unwrap()
             .events
@@ -594,8 +618,8 @@ mod tests {
             vec![event("a@2000", "Standup", 2000), event("b@3000", "", 3000)],
         )
         .await;
-        complete(&pool, &first).await;
-        complete(&pool, &first).await; // A retry is harmless.
+        assert!(apply(&pool, &first).await);
+        assert!(apply(&pool, &first).await, "a retry is harmless");
         assert_eq!(
             titles(&pool, &owner).await,
             [
@@ -607,9 +631,12 @@ mod tests {
 
         let older = import(&pool, vec![event("a@2000", "Standup", 2000)]).await;
         let newer = import(&pool, vec![event("a@2000", "Standup moved", 2000)]).await;
-        complete(&pool, &newer).await;
+        assert!(apply(&pool, &newer).await);
         // The older snapshot arrives late and must not resurrect or rename.
-        complete(&pool, &older).await;
+        assert!(
+            !apply(&pool, &older).await,
+            "an older import never overwrites a newer one"
+        );
         assert_eq!(
             titles(&pool, &owner).await,
             [("Standup moved".into(), 1), ("Far away".into(), 0)]

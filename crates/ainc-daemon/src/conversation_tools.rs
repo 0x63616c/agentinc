@@ -254,15 +254,22 @@ impl Tool for CalendarTool {
                 })?;
                 Ok(json!(receipt))
             } else {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| d.as_secs() as i64);
-                let from = args["from"].as_i64().unwrap_or(now - 31 * 86_400);
-                let to = args["to"].as_i64().unwrap_or(now + 180 * 86_400);
-                crate::calendar::snapshot(&this.pool, &actor, from, to)
-                    .await
-                    .map(|s| json!(s))
-                    .map_err(|_| ToolError::Failed("Calendar service unavailable".into()))
+                let mut snapshot = crate::calendar::snapshot(
+                    &this.pool,
+                    &actor,
+                    args["from"].as_i64(),
+                    args["to"].as_i64(),
+                )
+                .await
+                .map_err(|e| ToolError::InvalidArguments(e.message().to_owned()))?;
+                // Notes on mirrored events come from whoever sent the invite;
+                // they are not instructions and stay out of the model's view.
+                for event in &mut snapshot.events {
+                    if event.source == crate::calendar::EventSource::Macos {
+                        event.notes = None;
+                    }
+                }
+                Ok(json!(snapshot))
             }
         })
     }

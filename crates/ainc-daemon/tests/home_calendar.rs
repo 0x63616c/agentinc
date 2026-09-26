@@ -1,6 +1,6 @@
 //! Smart Home and Calendar through the HTTP API, with changes applied by the
-//! real durable-action runner on a Temporal test server and a fake control
-//! center reached over real HTTP.
+//! real durable-action runner on a test runtime and a fake control center
+//! reached over real HTTP.
 use ainc_daemon::{
     durable::{Effects, Runner},
     home::Home,
@@ -142,8 +142,7 @@ async fn home_and_calendar_changes_run_as_durable_actions(pool: PgPool) {
     let secrets = Arc::new(MemoryStore::default());
     let home = Home::new(secrets.clone());
     let product = Product::new(pool.clone(), "owner-fixture".into()).unwrap();
-    let app = ainc_daemon::product_router(product.clone())
-        .merge(ainc_daemon::home::router(product, home.clone()));
+    let app = ainc_daemon::product_router(product, home.clone());
 
     // Unconnected: every switch is listed, nothing is reachable, commands wait.
     let (status, state) = call(&app, Method::GET, "/v1/home", None).await;
@@ -332,7 +331,7 @@ async fn home_and_calendar_changes_run_as_durable_actions(pool: PgPool) {
 #[sqlx::test]
 async fn calendar_events_are_revisioned_and_mirrors_are_read_only(pool: PgPool) {
     let product = Product::new(pool.clone(), "owner-fixture".into()).unwrap();
-    let app = ainc_daemon::product_router(product);
+    let app = ainc_daemon::product_router(product, Home::new(Arc::new(MemoryStore::default())));
     let (status, _) = call(&app, Method::POST, "/v1/calendar/commands", Some(operation(json!({
         "kind":"create","title":"  ","starts_at":10,"ends_at":20,"all_day":false,"location":null,"notes":null
     })))).await;
@@ -424,4 +423,74 @@ async fn calendar_events_are_revisioned_and_mirrors_are_read_only(pool: PgPool) 
     assert_eq!(status, StatusCode::OK);
     let (_, calendar) = call(&app, Method::GET, range, None).await;
     assert_eq!(calendar["events"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test]
+async fn home_routes_share_the_version_contract_and_protect_the_token(pool: PgPool) {
+    let product = Product::new(pool.clone(), "owner-fixture".into()).unwrap();
+    let app = ainc_daemon::product_router(product, Home::new(Arc::new(MemoryStore::default())));
+    let stale = app
+        .clone()
+        .oneshot(
+            Request::get("/v1/home")
+                .header("agent-inc-client", "mac/0.0.1 (api 1)")
+                .header("authorization", "Bearer owner-fixture")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), StatusCode::UPGRADE_REQUIRED);
+    assert!(stale.headers().contains_key("agent-inc-server"));
+    let (status, body) = call(
+        &app,
+        Method::PUT,
+        "/v1/home/connection",
+        Some(json!({
+            "base_url": "http://control.example.com",
+            "access_client_id": "id", "access_client_secret": "secret"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    let (status, _) = call(
+        &app,
+        Method::PUT,
+        "/v1/home/connection",
+        Some(json!({
+            "base_url": "http://100.76.3.102:4201",
+            "access_client_id": "id", "access_client_secret": "secret"
+        })),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "a tailnet address may carry the token"
+    );
+}
+
+#[sqlx::test]
+async fn a_full_calendar_imports_in_one_request(pool: PgPool) {
+    let product = Product::new(pool.clone(), "owner-fixture".into()).unwrap();
+    let app = ainc_daemon::product_router(product, Home::new(Arc::new(MemoryStore::default())));
+    let notes = "Join the video call: https://meet.example.com/abc-defg-hij ".repeat(130);
+    let events: Vec<Value> = (0..5_000)
+        .map(|i| {
+            json!({"external_id": format!("busy-{i}@{}", 1_000_000 + i * 600),
+        "calendar": "Work", "color": null, "title": format!("Meeting {i}"),
+        "location": null, "notes": notes, "starts_at": 1_000_000 + i * 600,
+        "ends_at": 1_000_000 + i * 600 + 1_800, "all_day": false})
+        })
+        .collect();
+    let (status, body) = call(
+        &app,
+        Method::POST,
+        "/v1/calendar/imports",
+        Some(json!({
+            "window_start": 1_000_000, "window_end": 5_000_000, "events": events
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
 }
