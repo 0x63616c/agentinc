@@ -6,7 +6,7 @@ import CoreGraphics
 import Foundation
 
 let args = CommandLine.arguments
-precondition(args.count == 4, "native_input PID WINDOW_TITLE drag|command|nav-N|settings")
+precondition(args.count == 4 || args.count == 5, "native_input PID WINDOW_TITLE drag-start|drag-move|drag-end|command|nav-N|settings [OFFSET]")
 guard let pid = Int32(args[1]), AXIsProcessTrusted() else {
     fatalError("CI runner needs Accessibility permission for native terminal input")
 }
@@ -25,7 +25,25 @@ let height = bounds["Height"]!
 precondition(width >= 1200 && height >= 700, "Unexpected app window geometry")
 let source = CGEventSource(stateID: .hidSystemState)
 precondition(source != nil, "Cannot create native event source")
-_ = NSRunningApplication(processIdentifier: pid)?.activate()
+_ = NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
+let accessibilityApp = AXUIElementCreateApplication(pid)
+let frontmost = AXUIElementSetAttributeValue(accessibilityApp,
+                                             kAXFrontmostAttribute as CFString,
+                                             kCFBooleanTrue)
+precondition(frontmost == .success, "Cannot make owned app frontmost: \(frontmost.rawValue)")
+var accessibilityWindows: CFTypeRef?
+let windowStatus = AXUIElementCopyAttributeValue(accessibilityApp,
+                                                  kAXWindowsAttribute as CFString,
+                                                  &accessibilityWindows)
+precondition(windowStatus == .success, "Cannot access owned app windows")
+for window in accessibilityWindows as? [AXUIElement] ?? [] {
+    var windowTitle: CFTypeRef?
+    if AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &windowTitle) == .success,
+       windowTitle as? String == title {
+        precondition(AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success,
+                     "Cannot raise owned app window")
+    }
+}
 
 func mouse(_ kind: CGEventType, _ point: CGPoint) {
     guard let event = CGEvent(mouseEventSource: source, mouseType: kind, mouseCursorPosition: point,
@@ -46,30 +64,36 @@ func key(_ code: CGKeyCode, _ down: Bool, text: String? = nil, command: Bool = f
     event.postToPid(pid)
 }
 
-// The fixed review window has a 216-point sidebar. Both input targets are in
-// the middle of the native terminal surface, clear of its toolbar and edges.
-let contentLeft = origin.x + 224
-let contentWidth = width - 240
-let y = origin.y + height * 0.55
+// The test window is fixed at 1360 logical points (clamped to the runner's
+// screen). The sidebar is 216, with 8-point panel gaps and 8-point padding.
+// The restored split starts at a 0.5 ratio. Offsets let the caller account for
+// a narrow WindowServer frame border without assuming the divider is 1 pixel.
+let dividerX = origin.x + width / 2 + 104 + (args.count == 5 ? Double(args[4])! : 0)
+let paneY = origin.y + height * 0.55
 switch args[3] {
-case "drag":
-    let start = CGPoint(x: contentLeft + contentWidth * 0.5, y: y)
-    let end = CGPoint(x: start.x + 120, y: y)
+case "drag-start":
+    let start = CGPoint(x: dividerX, y: paneY)
     mouse(.leftMouseDown, start)
-    for step in 1...8 {
-        mouse(.leftMouseDragged, CGPoint(x: start.x + CGFloat(step) * 15, y: y))
-    }
-    mouse(.leftMouseUp, end)
+case "drag-move":
+    mouse(.leftMouseDragged, CGPoint(x: dividerX + 120, y: paneY))
+case "drag-end":
+    mouse(.leftMouseUp, CGPoint(x: dividerX + 120, y: paneY))
 case "command":
-    let point = CGPoint(x: contentLeft + contentWidth * 0.2, y: y)
+    let point = CGPoint(x: origin.x + 216 + (dividerX - origin.x - 216) / 2, y: paneY)
     mouse(.leftMouseDown, point)
     mouse(.leftMouseUp, point)
-    for character in "printf AGENTINCUIOUTPUT" {
-        key(0, true, text: String(character))
-        key(0, false, text: String(character))
+    // The first key can race AppKit's focus transfer from the click. Escape is
+    // inert at an empty prompt; the second command checks the settled focus.
+    key(53, true)
+    key(53, false)
+    for _ in 0..<2 {
+        for character in "echo AI1UI" {
+            key(0, true, text: String(character))
+            key(0, false, text: String(character))
+        }
+        key(36, true)
+        key(36, false)
     }
-    key(36, true)
-    key(36, false)
 case "nav-1", "nav-2", "nav-3", "nav-4", "nav-5", "nav-6", "settings":
     let codes: [String: CGKeyCode] = ["nav-1": 18, "nav-2": 19, "nav-3": 20,
                                    "nav-4": 21, "nav-5": 23, "nav-6": 22,
