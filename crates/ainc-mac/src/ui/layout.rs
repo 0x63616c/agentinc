@@ -229,19 +229,28 @@ pub fn card() -> Div {
 /// A labeled value in a record's properties column: a fixed label column and a
 /// value or control that takes the rest of the row.
 pub fn property_row(label: impl Into<SharedString>, value: impl IntoElement) -> Div {
+    // The label keeps the first line's height, so a value that wraps onto more
+    // lines grows downward with its label beside the first.
     row()
         .w_full()
-        .min_h(px(PROPERTY_ROW_HEIGHT))
+        .items_start()
         .gap(px(SPACE_3))
         .child(
-            div()
+            row()
+                .h(px(PROPERTY_ROW_HEIGHT))
                 .w(px(PROPERTY_LABEL_WIDTH))
                 .flex_shrink_0()
                 .text_size(type_size(LABEL_SIZE))
                 .text_color(rgb(TEXT_SECONDARY))
                 .child(label.into()),
         )
-        .child(div().flex_1().min_w_0().child(value))
+        .child(
+            row()
+                .flex_1()
+                .min_w_0()
+                .min_h(px(PROPERTY_ROW_HEIGHT))
+                .child(value),
+        )
 }
 
 /// A hairline between stacked content.

@@ -700,8 +700,14 @@ impl Store {
                 } else {
                     ActivityKind::Unlinked
                 };
-                record(from_id, kind, None, Some(to_id.to_string()));
-                record(to_id, kind, None, Some(from_id.to_string()));
+                let (source, target) = match link {
+                    LinkKind::Blocks => ("blocks", "blocked_by"),
+                    LinkKind::RelatesTo => ("relates_to", "relates_to"),
+                    LinkKind::Duplicates => ("duplicates", "duplicated_by"),
+                    LinkKind::ParentOf => ("parent_of", "child_of"),
+                };
+                record(from_id, kind, Some(source.into()), Some(to_id.to_string()));
+                record(to_id, kind, Some(target.into()), Some(from_id.to_string()));
                 Ok(Some(from_id))
             }
             TicketCommand::AddComment { ticket_id, body } => {

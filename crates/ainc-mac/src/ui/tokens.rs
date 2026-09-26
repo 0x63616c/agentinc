@@ -178,7 +178,7 @@ pub const SHEET_WIDTH: f32 = 420.;
 /// The search field at the start of a page toolbar.
 pub const TOOLBAR_SEARCH_WIDTH: f32 = 260.;
 /// The narrowest a board lane gets before the board scrolls sideways.
-pub const BOARD_LANE_MIN_WIDTH: f32 = 208.;
+pub const BOARD_LANE_MIN_WIDTH: f32 = 168.;
 /// The inset inside a board lane, around its cards.
 pub const BOARD_LANE_INSET: f32 = SPACE_2;
 /// A board lane's header row.

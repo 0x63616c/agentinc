@@ -179,10 +179,13 @@ impl TicketsPage {
             for entry in history.iter_mut() {
                 entry.created_at = now - 30 * HOUR;
             }
+            if let Some(ticket) = snapshot.tickets.iter_mut().find(|t| t.id == budget) {
+                ticket.generation = 1;
+            }
             snapshot.runs.push(WorkRun {
                 run_id: "8a37e3d2-6a42-4918-a5d2-98fc38ea2274".into(),
                 ticket_id: budget,
-                generation: 0,
+                generation: 1,
                 state: "running".into(),
                 error: None,
             });

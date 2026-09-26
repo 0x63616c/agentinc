@@ -121,12 +121,13 @@ pub fn ticket_key(id: i64) -> String {
 
 /// A stable tone per label name, so a label looks the same everywhere.
 pub fn label_tone(label: &str) -> Tone {
+    // Red stays reserved for blocked and urgent work.
     const TONES: [Tone; 5] = [
         Tone::Info,
         Tone::Success,
         Tone::Warning,
         Tone::Accent,
-        Tone::Danger,
+        Tone::Neutral,
     ];
     let hash = label
         .to_lowercase()

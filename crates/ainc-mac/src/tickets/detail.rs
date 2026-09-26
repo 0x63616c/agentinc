@@ -803,87 +803,97 @@ impl TicketsPage {
                     "Nothing blocks, relates to or duplicates this Ticket.",
                 ))
             })
-            .children(found.into_iter().map(|(relation, other)| {
-                let title = self
-                    .ticket(other)
-                    .map_or_else(String::new, |t| t.title.clone());
-                let other_status = self.ticket(other).map(|t| t.status);
-                let (from, to, link) = relation.link(id, other);
-                let mut related = Button::new(
-                    ElementId::NamedInteger("tickets.related".into(), other as u64),
-                    format!("{} {title}", ticket_key(other)),
+            .children({
+                // Grouped under their relation, so each Ticket gets the full row.
+                let mut rows: Vec<AnyElement> = Vec::new();
+                let mut previous = None;
+                for (relation, other) in found {
+                    if previous != Some(relation) {
+                        previous = Some(relation);
+                        let open_blocker = relation == Relation::BlockedBy
+                            && !matches!(
+                                self.ticket(other).map(|t| t.status),
+                                Some(TicketStatus::Done | TicketStatus::Cancelled)
+                            );
+                        rows.push(
+                            div()
+                                .pt(px(SPACE_2))
+                                .text_size(type_size(CAPTION_SIZE))
+                                .text_color(rgb(if open_blocker {
+                                    STATUS_RED
+                                } else {
+                                    TEXT_TERTIARY
+                                }))
+                                .child(relation.name())
+                                .into_any_element(),
+                        );
+                    }
+                    rows.push(self.related_row(id, relation, other, cx).into_any_element());
+                }
+                rows
+            })
+    }
+
+    /// One related Ticket: open it, or remove the relationship.
+    fn related_row(&self, id: i64, relation: Relation, other: i64, cx: &mut Context<Self>) -> Div {
+        let title = self
+            .ticket(other)
+            .map_or_else(String::new, |t| t.title.clone());
+        let other_status = self.ticket(other).map(|t| t.status);
+        let (from, to, link) = relation.link(id, other);
+        let mut related = Button::new(
+            ElementId::NamedInteger("tickets.related".into(), other as u64),
+            format!("{} {title}", ticket_key(other)),
+        )
+        .ghost()
+        .small()
+        .full_width()
+        .align_start();
+        if let Some(status) = other_status {
+            related = related.leading(
+                icon(status_icon(status), ICON_SIZE_XS).text_color(rgb(status_color(status))),
+            );
+        }
+        row()
+            .gap(px(SPACE_1))
+            .child(
+                div().flex_1().min_w_0().child(
+                    related
+                        .build(
+                            &self.hover,
+                            move |this: &mut Self, _, cx| this.select(other, cx),
+                            cx,
+                        )
+                        .ml(px(-CONTROL_INSET_X_SM)),
+                ),
+            )
+            .child(
+                Button::new(
+                    ElementId::NamedInteger("tickets.unlink".into(), other as u64),
+                    format!("Remove {} {}", relation.name(), ticket_key(other)),
                 )
                 .ghost()
                 .small()
-                .full_width()
-                .align_start();
-                if let Some(status) = other_status {
-                    related = related.leading(
-                        icon(status_icon(status), ICON_SIZE_XS)
-                            .text_color(rgb(status_color(status))),
-                    );
-                }
-                row()
-                    .min_h(px(PROPERTY_ROW_HEIGHT))
-                    .gap(px(SPACE_2))
-                    .child(
-                        div()
-                            .w(px(PROPERTY_LABEL_WIDTH))
-                            .flex_shrink_0()
-                            .text_size(type_size(LABEL_SIZE))
-                            .text_color(
-                                if relation == Relation::BlockedBy
-                                    && !matches!(
-                                        other_status,
-                                        Some(TicketStatus::Done | TicketStatus::Cancelled)
-                                    )
-                                {
-                                    rgb(STATUS_RED)
-                                } else {
-                                    rgb(TEXT_SECONDARY)
-                                },
-                            )
-                            .child(relation.name()),
-                    )
-                    .child(
-                        div().flex_1().min_w_0().child(
-                            related
-                                .build(
-                                    &self.hover,
-                                    move |this: &mut Self, _, cx| this.select(other, cx),
-                                    cx,
-                                )
-                                .ml(px(-CONTROL_INSET_X_SM)),
-                        ),
-                    )
-                    .child(
-                        Button::new(
-                            ElementId::NamedInteger("tickets.unlink".into(), other as u64),
-                            format!("Remove {} {}", relation.name(), ticket_key(other)),
-                        )
-                        .ghost()
-                        .small()
-                        .icon("close")
-                        .icon_only()
-                        .tint(TEXT_TERTIARY)
-                        .enabled(!self.pending)
-                        .build(
-                            &self.hover,
-                            move |this: &mut Self, _, cx| {
-                                this.command(
-                                    TicketCommand::Unlink {
-                                        from_id: from,
-                                        to_id: to,
-                                        link,
-                                    },
-                                    cx,
-                                )
+                .icon("close")
+                .icon_only()
+                .tint(TEXT_TERTIARY)
+                .enabled(!self.pending)
+                .build(
+                    &self.hover,
+                    move |this: &mut Self, _, cx| {
+                        this.command(
+                            TicketCommand::Unlink {
+                                from_id: from,
+                                to_id: to,
+                                link,
                             },
                             cx,
                         )
-                        .mr(px(-SPACE_1)),
-                    )
-            }))
+                    },
+                    cx,
+                )
+                .mr(px(-SPACE_1)),
+            )
     }
 
     /// The agent runs behind this Ticket and the Conversation it came from.
