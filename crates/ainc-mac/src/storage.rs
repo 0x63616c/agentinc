@@ -136,6 +136,7 @@ impl Store {
                 tickets: vec![],
                 comments: vec![],
                 runs: vec![],
+                links: vec![],
                 assignees: vec![Assignee {
                     id: "owner".into(),
                     name: "You".into(),
@@ -530,11 +531,18 @@ impl Store {
                     Ticket {
                         id,
                         title: title.into(),
+                        description: String::new(),
                         status: TicketStatus::ToDo,
+                        priority: ainc_client::types::TicketPriority::None,
+                        labels: vec![],
                         assignee_id: "owner".into(),
                         assignee_kind: AssigneeKind::Human,
+                        position: -id,
                         generation: 0,
                         revision: 0,
+                        created_at: 0,
+                        updated_at: 0,
+                        conversation_id: None,
                     },
                 );
                 Ok(Some(id))

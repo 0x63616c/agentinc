@@ -25,7 +25,7 @@ impl Tool for TicketsTool {
         if self.mutation {
             "Apply a Ticket command requested in this Conversation. Read current revisions and assignee IDs first. Assigning actionable work to an agent starts that work. Autonomous file, shell and git work must use an assigned Ticket."
         } else {
-            "Read the owner's Tickets, Comments, assignees and work results."
+            "Read the owner's Tickets (status, priority, labels, board order), relationships, Comments, assignees and work results."
         }
     }
     fn schema(&self) -> Value {
@@ -61,13 +61,17 @@ impl Tool for TicketsTool {
     fn call(&self, ctx: ToolCtx, args: Value) -> BoxFuture<'static, Result<Value, ToolError>> {
         let this = self.clone();
         Box::pin(async move {
-            let workspace: Option<String> = sqlx::query_scalar("SELECT c.workspace_id FROM conversation_sessions s JOIN conversations c ON c.id=s.conversation_id WHERE s.id=$1 AND s.state='active'").bind(&this.session_id).fetch_optional(&this.pool).await.map_err(|_|ToolError::Failed("Ticket service unavailable".into()))?;
-            let Some(workspace) = workspace else {
+            let origin: Option<(String, i64)> = sqlx::query_as("SELECT c.workspace_id,c.id FROM conversation_sessions s JOIN conversations c ON c.id=s.conversation_id WHERE s.id=$1 AND s.state='active'").bind(&this.session_id).fetch_optional(&this.pool).await.map_err(|_|ToolError::Failed("Ticket service unavailable".into()))?;
+            let Some((workspace, conversation)) = origin else {
                 return Err(ToolError::InvalidArguments(
                     "Conversation is no longer active".into(),
                 ));
             };
-            let actor = Actor::owner_in(workspace);
+            // History records that this Conversation made the change through Evee.
+            let actor = Actor {
+                conversation: Some(conversation),
+                ..Actor::owner_in(workspace)
+            };
             if this.mutation {
                 let command = serde_json::from_value(args["command"].clone()).map_err(|e| {
                     ToolError::InvalidArguments(format!("Invalid Ticket command: {e}"))

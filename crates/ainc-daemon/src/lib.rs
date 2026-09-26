@@ -84,6 +84,7 @@ async fn ticket_contract(Json(ticket): Json<TicketContract>) -> Json<TicketContr
         product::command,
         tickets::state,
         tickets::command,
+        tickets::history,
         automations::state,
         automations::command,
         terminal_sessions::list,

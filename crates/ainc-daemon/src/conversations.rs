@@ -348,6 +348,14 @@ mod tests {
                 .unwrap(),
             1
         );
+        // The Ticket and its history name the Conversation that asked for it.
+        let origin: (Option<i64>, Option<i64>) = sqlx::query_as(
+            "SELECT t.conversation_id,a.conversation_id FROM tickets t JOIN ticket_activity a ON a.ticket_id=t.id AND a.kind='created'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(origin, (Some(conversation), Some(conversation)));
         let tool = TicketsTool {
             pool: pool.clone(),
             session_id: session.clone(),

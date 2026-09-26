@@ -287,11 +287,7 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
             let digest = Sha256::digest(occurrence.id.as_bytes());
             let operation_id =
                 uuid::Uuid::from_bytes(digest[..16].try_into().expect("digest length")).to_string();
-            let actor = Actor {
-                workspace: rule.0,
-                id: "owner".into(),
-                assignment: None,
-            };
+            let actor = Actor::owner_in(rule.0);
             ticket = tickets::execute_in(
                 &mut tx,
                 &actor,
@@ -559,11 +555,7 @@ mod tests {
             paused: true,
         };
         assert!(execute(&pool, &Actor::owner(), other).await.is_err());
-        let alien = Actor {
-            workspace: "other".into(),
-            id: "owner".into(),
-            assignment: None,
-        };
+        let alien = Actor::owner_in("other".into());
         assert!(snapshot(&pool, &alien).await.unwrap().rules.is_empty());
         assert!(execute(&pool, &alien, request.clone()).await.is_err());
         let assigned = Actor {

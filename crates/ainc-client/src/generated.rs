@@ -67,6 +67,119 @@ pub mod types {
             Default::default()
         }
     }
+    ///`ActivityKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "created",
+    ///    "renamed",
+    ///    "described",
+    ///    "status",
+    ///    "priority",
+    ///    "assigned",
+    ///    "labels",
+    ///    "linked",
+    ///    "unlinked",
+    ///    "work"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum ActivityKind {
+        #[serde(rename = "created")]
+        Created,
+        #[serde(rename = "renamed")]
+        Renamed,
+        #[serde(rename = "described")]
+        Described,
+        #[serde(rename = "status")]
+        Status,
+        #[serde(rename = "priority")]
+        Priority,
+        #[serde(rename = "assigned")]
+        Assigned,
+        #[serde(rename = "labels")]
+        Labels,
+        #[serde(rename = "linked")]
+        Linked,
+        #[serde(rename = "unlinked")]
+        Unlinked,
+        #[serde(rename = "work")]
+        Work,
+    }
+    impl ::std::fmt::Display for ActivityKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Created => f.write_str("created"),
+                Self::Renamed => f.write_str("renamed"),
+                Self::Described => f.write_str("described"),
+                Self::Status => f.write_str("status"),
+                Self::Priority => f.write_str("priority"),
+                Self::Assigned => f.write_str("assigned"),
+                Self::Labels => f.write_str("labels"),
+                Self::Linked => f.write_str("linked"),
+                Self::Unlinked => f.write_str("unlinked"),
+                Self::Work => f.write_str("work"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ActivityKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "created" => Ok(Self::Created),
+                "renamed" => Ok(Self::Renamed),
+                "described" => Ok(Self::Described),
+                "status" => Ok(Self::Status),
+                "priority" => Ok(Self::Priority),
+                "assigned" => Ok(Self::Assigned),
+                "labels" => Ok(Self::Labels),
+                "linked" => Ok(Self::Linked),
+                "unlinked" => Ok(Self::Unlinked),
+                "work" => Ok(Self::Work),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ActivityKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for ActivityKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for ActivityKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
     ///`Assignee`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1163,6 +1276,89 @@ pub mod types {
             Default::default()
         }
     }
+    ///`LinkKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "blocks",
+    ///    "relates_to",
+    ///    "duplicates",
+    ///    "parent_of"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum LinkKind {
+        #[serde(rename = "blocks")]
+        Blocks,
+        #[serde(rename = "relates_to")]
+        RelatesTo,
+        #[serde(rename = "duplicates")]
+        Duplicates,
+        #[serde(rename = "parent_of")]
+        ParentOf,
+    }
+    impl ::std::fmt::Display for LinkKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Blocks => f.write_str("blocks"),
+                Self::RelatesTo => f.write_str("relates_to"),
+                Self::Duplicates => f.write_str("duplicates"),
+                Self::ParentOf => f.write_str("parent_of"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for LinkKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "blocks" => Ok(Self::Blocks),
+                "relates_to" => Ok(Self::RelatesTo),
+                "duplicates" => Ok(Self::Duplicates),
+                "parent_of" => Ok(Self::ParentOf),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for LinkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for LinkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for LinkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
     ///`Model`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1398,11 +1594,17 @@ pub mod types {
     ///  "required": [
     ///    "assignee_id",
     ///    "assignee_kind",
+    ///    "created_at",
+    ///    "description",
     ///    "generation",
     ///    "id",
+    ///    "labels",
+    ///    "position",
+    ///    "priority",
     ///    "revision",
     ///    "status",
-    ///    "title"
+    ///    "title",
+    ///    "updated_at"
     ///  ],
     ///  "properties": {
     ///    "assignee_id": {
@@ -1411,6 +1613,21 @@ pub mod types {
     ///    "assignee_kind": {
     ///      "$ref": "#/components/schemas/AssigneeKind"
     ///    },
+    ///    "conversation_id": {
+    ///      "description": "The Conversation that created this Ticket, if any.",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    },
+    ///    "created_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "description": {
+    ///      "type": "string"
+    ///    },
     ///    "generation": {
     ///      "type": "integer",
     ///      "format": "int64"
@@ -1418,6 +1635,20 @@ pub mod types {
     ///    "id": {
     ///      "type": "integer",
     ///      "format": "int64"
+    ///    },
+    ///    "labels": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "position": {
+    ///      "description": "Order inside its status column, lowest first.",
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "priority": {
+    ///      "$ref": "#/components/schemas/TicketPriority"
     ///    },
     ///    "revision": {
     ///      "type": "integer",
@@ -1428,6 +1659,10 @@ pub mod types {
     ///    },
     ///    "title": {
     ///      "type": "string"
+    ///    },
+    ///    "updated_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
     ///    }
     ///  }
     ///}
@@ -1437,14 +1672,109 @@ pub mod types {
     pub struct Ticket {
         pub assignee_id: ::std::string::String,
         pub assignee_kind: AssigneeKind,
+        ///The Conversation that created this Ticket, if any.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub conversation_id: ::std::option::Option<i64>,
+        pub created_at: i64,
+        pub description: ::std::string::String,
         pub generation: i64,
         pub id: i64,
+        pub labels: ::std::vec::Vec<::std::string::String>,
+        ///Order inside its status column, lowest first.
+        pub position: i64,
+        pub priority: TicketPriority,
         pub revision: i64,
         pub status: TicketStatus,
         pub title: ::std::string::String,
+        pub updated_at: i64,
     }
     impl Ticket {
         pub fn builder() -> builder::Ticket {
+            Default::default()
+        }
+    }
+    ///`TicketActivity`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "actor_id",
+    ///    "created_at",
+    ///    "id",
+    ///    "kind",
+    ///    "ticket_id"
+    ///  ],
+    ///  "properties": {
+    ///    "actor_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "conversation_id": {
+    ///      "description": "The Conversation that made the change through Evee, if any.",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    },
+    ///    "created_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "from_value": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "kind": {
+    ///      "$ref": "#/components/schemas/ActivityKind"
+    ///    },
+    ///    "run_id": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "ticket_id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "to_value": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TicketActivity {
+        pub actor_id: ::std::string::String,
+        ///The Conversation that made the change through Evee, if any.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub conversation_id: ::std::option::Option<i64>,
+        pub created_at: i64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub from_value: ::std::option::Option<::std::string::String>,
+        pub id: i64,
+        pub kind: ActivityKind,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub run_id: ::std::option::Option<::std::string::String>,
+        pub ticket_id: i64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub to_value: ::std::option::Option<::std::string::String>,
+    }
+    impl TicketActivity {
+        pub fn builder() -> builder::TicketActivity {
             Default::default()
         }
     }
@@ -1485,6 +1815,43 @@ pub mod types {
     ///          "enum": [
     ///            "create"
     ///          ]
+    ///        },
+    ///        "title": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "description": "Create with any of the board's fields. Omitted fields take their defaults:\nTo do, no priority, no labels, assigned to the owner. Assigning an agent\nin To do or In progress starts its work.",
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "title"
+    ///      ],
+    ///      "properties": {
+    ///        "assignee_id": {
+    ///          "type": "string"
+    ///        },
+    ///        "description": {
+    ///          "type": "string"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "create_detailed"
+    ///          ]
+    ///        },
+    ///        "labels": {
+    ///          "type": "array",
+    ///          "items": {
+    ///            "type": "string"
+    ///          }
+    ///        },
+    ///        "priority": {
+    ///          "$ref": "#/components/schemas/TicketPriority"
+    ///        },
+    ///        "status": {
+    ///          "$ref": "#/components/schemas/TicketStatus"
     ///        },
     ///        "title": {
     ///          "type": "string"
@@ -1546,6 +1913,34 @@ pub mod types {
     ///    {
     ///      "type": "object",
     ///      "required": [
+    ///        "description",
+    ///        "id",
+    ///        "kind",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "description": {
+    ///          "type": "string"
+    ///        },
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "describe"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
     ///        "id",
     ///        "kind",
     ///        "revision",
@@ -1560,6 +1955,102 @@ pub mod types {
     ///          "type": "string",
     ///          "enum": [
     ///            "set_status"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "status": {
+    ///          "$ref": "#/components/schemas/TicketStatus"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "priority",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "set_priority"
+    ///          ]
+    ///        },
+    ///        "priority": {
+    ///          "$ref": "#/components/schemas/TicketPriority"
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "description": "Replace the Ticket's labels: up to ten, 1–32 characters, no commas.",
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "labels",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "set_labels"
+    ///          ]
+    ///        },
+    ///        "labels": {
+    ///          "type": "array",
+    ///          "items": {
+    ///            "type": "string"
+    ///          }
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "description": "Put a Ticket into `status` directly below `after` (a Ticket already in\nthat column), or at the top of the column when `after` is absent.\nChanging status has the same effect on agent work as `set_status`.",
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "revision",
+    ///        "status"
+    ///      ],
+    ///      "properties": {
+    ///        "after": {
+    ///          "type": [
+    ///            "integer",
+    ///            "null"
+    ///          ],
+    ///          "format": "int64"
+    ///        },
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "move"
     ///          ]
     ///        },
     ///        "revision": {
@@ -1628,6 +2119,63 @@ pub mod types {
     ///      }
     ///    },
     ///    {
+    ///      "description": "`from_id` blocks, relates to, duplicates or is the parent of `to_id`.",
+    ///      "type": "object",
+    ///      "required": [
+    ///        "from_id",
+    ///        "kind",
+    ///        "link",
+    ///        "to_id"
+    ///      ],
+    ///      "properties": {
+    ///        "from_id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "link"
+    ///          ]
+    ///        },
+    ///        "link": {
+    ///          "$ref": "#/components/schemas/LinkKind"
+    ///        },
+    ///        "to_id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "from_id",
+    ///        "kind",
+    ///        "link",
+    ///        "to_id"
+    ///      ],
+    ///      "properties": {
+    ///        "from_id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "unlink"
+    ///          ]
+    ///        },
+    ///        "link": {
+    ///          "$ref": "#/components/schemas/LinkKind"
+    ///        },
+    ///        "to_id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
     ///      "type": "object",
     ///      "required": [
     ///        "body",
@@ -1687,6 +2235,23 @@ pub mod types {
         CreateAssigned { proposal: TicketProposal },
         #[serde(rename = "create")]
         Create { title: ::std::string::String },
+        /*Create with any of the board's fields. Omitted fields take their defaults:
+        To do, no priority, no labels, assigned to the owner. Assigning an agent
+        in To do or In progress starts its work.*/
+        #[serde(rename = "create_detailed")]
+        CreateDetailed {
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            assignee_id: ::std::option::Option<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            description: ::std::option::Option<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+            labels: ::std::vec::Vec<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            priority: ::std::option::Option<TicketPriority>,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            status: ::std::option::Option<TicketStatus>,
+            title: ::std::string::String,
+        },
         #[serde(rename = "delete")]
         Delete { id: i64, revision: i64 },
         #[serde(rename = "rename")]
@@ -1695,8 +2260,38 @@ pub mod types {
             revision: i64,
             title: ::std::string::String,
         },
+        #[serde(rename = "describe")]
+        Describe {
+            description: ::std::string::String,
+            id: i64,
+            revision: i64,
+        },
         #[serde(rename = "set_status")]
         SetStatus {
+            id: i64,
+            revision: i64,
+            status: TicketStatus,
+        },
+        #[serde(rename = "set_priority")]
+        SetPriority {
+            id: i64,
+            priority: TicketPriority,
+            revision: i64,
+        },
+        ///Replace the Ticket's labels: up to ten, 1–32 characters, no commas.
+        #[serde(rename = "set_labels")]
+        SetLabels {
+            id: i64,
+            labels: ::std::vec::Vec<::std::string::String>,
+            revision: i64,
+        },
+        /*Put a Ticket into `status` directly below `after` (a Ticket already in
+        that column), or at the top of the column when `after` is absent.
+        Changing status has the same effect on agent work as `set_status`.*/
+        #[serde(rename = "move")]
+        Move {
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            after: ::std::option::Option<i64>,
             id: i64,
             revision: i64,
             status: TicketStatus,
@@ -1710,6 +2305,19 @@ pub mod types {
         },
         #[serde(rename = "cancel")]
         Cancel { id: i64, revision: i64 },
+        ///`from_id` blocks, relates to, duplicates or is the parent of `to_id`.
+        #[serde(rename = "link")]
+        Link {
+            from_id: i64,
+            link: LinkKind,
+            to_id: i64,
+        },
+        #[serde(rename = "unlink")]
+        Unlink {
+            from_id: i64,
+            link: LinkKind,
+            to_id: i64,
+        },
         #[serde(rename = "add_comment")]
         AddComment {
             body: ::std::string::String,
@@ -1779,6 +2387,133 @@ pub mod types {
     impl TicketContract {
         pub fn builder() -> builder::TicketContract {
             Default::default()
+        }
+    }
+    ///`TicketLink`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "from_id",
+    ///    "kind",
+    ///    "to_id"
+    ///  ],
+    ///  "properties": {
+    ///    "from_id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "kind": {
+    ///      "$ref": "#/components/schemas/LinkKind"
+    ///    },
+    ///    "to_id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TicketLink {
+        pub from_id: i64,
+        pub kind: LinkKind,
+        pub to_id: i64,
+    }
+    impl TicketLink {
+        pub fn builder() -> builder::TicketLink {
+            Default::default()
+        }
+    }
+    ///`TicketPriority`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "urgent",
+    ///    "high",
+    ///    "medium",
+    ///    "low",
+    ///    "none"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum TicketPriority {
+        #[serde(rename = "urgent")]
+        Urgent,
+        #[serde(rename = "high")]
+        High,
+        #[serde(rename = "medium")]
+        Medium,
+        #[serde(rename = "low")]
+        Low,
+        #[serde(rename = "none")]
+        None,
+    }
+    impl ::std::fmt::Display for TicketPriority {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Urgent => f.write_str("urgent"),
+                Self::High => f.write_str("high"),
+                Self::Medium => f.write_str("medium"),
+                Self::Low => f.write_str("low"),
+                Self::None => f.write_str("none"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for TicketPriority {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "urgent" => Ok(Self::Urgent),
+                "high" => Ok(Self::High),
+                "medium" => Ok(Self::Medium),
+                "low" => Ok(Self::Low),
+                "none" => Ok(Self::None),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for TicketPriority {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for TicketPriority {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for TicketPriority {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
     /*A bounded proposal to create one actionable Ticket for a registered agent.
@@ -1861,6 +2596,7 @@ pub mod types {
     ///  "required": [
     ///    "assignees",
     ///    "comments",
+    ///    "links",
     ///    "runs",
     ///    "tickets"
     ///  ],
@@ -1877,6 +2613,12 @@ pub mod types {
     ///        "$ref": "#/components/schemas/Comment"
     ///      }
     ///    },
+    ///    "links": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/TicketLink"
+    ///      }
+    ///    },
     ///    "runs": {
     ///      "type": "array",
     ///      "items": {
@@ -1884,6 +2626,7 @@ pub mod types {
     ///      }
     ///    },
     ///    "tickets": {
+    ///      "description": "Board order: by status column, then position.",
     ///      "type": "array",
     ///      "items": {
     ///        "$ref": "#/components/schemas/Ticket"
@@ -1897,7 +2640,9 @@ pub mod types {
     pub struct TicketSnapshot {
         pub assignees: ::std::vec::Vec<Assignee>,
         pub comments: ::std::vec::Vec<Comment>,
+        pub links: ::std::vec::Vec<TicketLink>,
         pub runs: ::std::vec::Vec<WorkRun>,
+        ///Board order: by status column, then position.
         pub tickets: ::std::vec::Vec<Ticket>,
     }
     impl TicketSnapshot {
@@ -1905,18 +2650,22 @@ pub mod types {
             Default::default()
         }
     }
-    ///`TicketStatus`
+    /*Where a Ticket sits on the board. Only To do and In progress dispatch an
+    agent assignee; the other four stop any live work.*/
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
+    ///  "description": "Where a Ticket sits on the board. Only To do and In progress dispatch an\nagent assignee; the other four stop any live work.",
     ///  "type": "string",
     ///  "enum": [
     ///    "backlog",
     ///    "to_do",
     ///    "in_progress",
-    ///    "done"
+    ///    "blocked",
+    ///    "done",
+    ///    "cancelled"
     ///  ]
     ///}
     /// ```
@@ -1941,8 +2690,12 @@ pub mod types {
         ToDo,
         #[serde(rename = "in_progress")]
         InProgress,
+        #[serde(rename = "blocked")]
+        Blocked,
         #[serde(rename = "done")]
         Done,
+        #[serde(rename = "cancelled")]
+        Cancelled,
     }
     impl ::std::fmt::Display for TicketStatus {
         fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -1950,7 +2703,9 @@ pub mod types {
                 Self::Backlog => f.write_str("backlog"),
                 Self::ToDo => f.write_str("to_do"),
                 Self::InProgress => f.write_str("in_progress"),
+                Self::Blocked => f.write_str("blocked"),
                 Self::Done => f.write_str("done"),
+                Self::Cancelled => f.write_str("cancelled"),
             }
         }
     }
@@ -1961,7 +2716,9 @@ pub mod types {
                 "backlog" => Ok(Self::Backlog),
                 "to_do" => Ok(Self::ToDo),
                 "in_progress" => Ok(Self::InProgress),
+                "blocked" => Ok(Self::Blocked),
                 "done" => Ok(Self::Done),
+                "cancelled" => Ok(Self::Cancelled),
                 _ => Err("invalid value".into()),
             }
         }
@@ -4048,22 +4805,40 @@ pub mod types {
         pub struct Ticket {
             assignee_id: ::std::result::Result<::std::string::String, ::std::string::String>,
             assignee_kind: ::std::result::Result<super::AssigneeKind, ::std::string::String>,
+            conversation_id:
+                ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+            created_at: ::std::result::Result<i64, ::std::string::String>,
+            description: ::std::result::Result<::std::string::String, ::std::string::String>,
             generation: ::std::result::Result<i64, ::std::string::String>,
             id: ::std::result::Result<i64, ::std::string::String>,
+            labels: ::std::result::Result<
+                ::std::vec::Vec<::std::string::String>,
+                ::std::string::String,
+            >,
+            position: ::std::result::Result<i64, ::std::string::String>,
+            priority: ::std::result::Result<super::TicketPriority, ::std::string::String>,
             revision: ::std::result::Result<i64, ::std::string::String>,
             status: ::std::result::Result<super::TicketStatus, ::std::string::String>,
             title: ::std::result::Result<::std::string::String, ::std::string::String>,
+            updated_at: ::std::result::Result<i64, ::std::string::String>,
         }
         impl ::std::default::Default for Ticket {
             fn default() -> Self {
                 Self {
                     assignee_id: Err("no value supplied for assignee_id".to_string()),
                     assignee_kind: Err("no value supplied for assignee_kind".to_string()),
+                    conversation_id: Ok(Default::default()),
+                    created_at: Err("no value supplied for created_at".to_string()),
+                    description: Err("no value supplied for description".to_string()),
                     generation: Err("no value supplied for generation".to_string()),
                     id: Err("no value supplied for id".to_string()),
+                    labels: Err("no value supplied for labels".to_string()),
+                    position: Err("no value supplied for position".to_string()),
+                    priority: Err("no value supplied for priority".to_string()),
                     revision: Err("no value supplied for revision".to_string()),
                     status: Err("no value supplied for status".to_string()),
                     title: Err("no value supplied for title".to_string()),
+                    updated_at: Err("no value supplied for updated_at".to_string()),
                 }
             }
         }
@@ -4088,6 +4863,36 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for assignee_kind: {e}"));
                 self
             }
+            pub fn conversation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.conversation_id = value.try_into().map_err(|e| {
+                    format!("error converting supplied value for conversation_id: {e}")
+                });
+                self
+            }
+            pub fn created_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.created_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for created_at: {e}"));
+                self
+            }
+            pub fn description<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.description = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for description: {e}"));
+                self
+            }
             pub fn generation<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<i64>,
@@ -4106,6 +4911,36 @@ pub mod types {
                 self.id = value
                     .try_into()
                     .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn labels<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.labels = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for labels: {e}"));
+                self
+            }
+            pub fn position<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.position = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for position: {e}"));
+                self
+            }
+            pub fn priority<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::TicketPriority>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.priority = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for priority: {e}"));
                 self
             }
             pub fn revision<T>(mut self, value: T) -> Self
@@ -4138,6 +4973,16 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for title: {e}"));
                 self
             }
+            pub fn updated_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.updated_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for updated_at: {e}"));
+                self
+            }
         }
         impl ::std::convert::TryFrom<Ticket> for super::Ticket {
             type Error = super::error::ConversionError;
@@ -4147,11 +4992,18 @@ pub mod types {
                 Ok(Self {
                     assignee_id: value.assignee_id?,
                     assignee_kind: value.assignee_kind?,
+                    conversation_id: value.conversation_id?,
+                    created_at: value.created_at?,
+                    description: value.description?,
                     generation: value.generation?,
                     id: value.id?,
+                    labels: value.labels?,
+                    position: value.position?,
+                    priority: value.priority?,
                     revision: value.revision?,
                     status: value.status?,
                     title: value.title?,
+                    updated_at: value.updated_at?,
                 })
             }
         }
@@ -4160,11 +5012,180 @@ pub mod types {
                 Self {
                     assignee_id: Ok(value.assignee_id),
                     assignee_kind: Ok(value.assignee_kind),
+                    conversation_id: Ok(value.conversation_id),
+                    created_at: Ok(value.created_at),
+                    description: Ok(value.description),
                     generation: Ok(value.generation),
                     id: Ok(value.id),
+                    labels: Ok(value.labels),
+                    position: Ok(value.position),
+                    priority: Ok(value.priority),
                     revision: Ok(value.revision),
                     status: Ok(value.status),
                     title: Ok(value.title),
+                    updated_at: Ok(value.updated_at),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TicketActivity {
+            actor_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            conversation_id:
+                ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+            created_at: ::std::result::Result<i64, ::std::string::String>,
+            from_value: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            id: ::std::result::Result<i64, ::std::string::String>,
+            kind: ::std::result::Result<super::ActivityKind, ::std::string::String>,
+            run_id: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            ticket_id: ::std::result::Result<i64, ::std::string::String>,
+            to_value: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+        }
+        impl ::std::default::Default for TicketActivity {
+            fn default() -> Self {
+                Self {
+                    actor_id: Err("no value supplied for actor_id".to_string()),
+                    conversation_id: Ok(Default::default()),
+                    created_at: Err("no value supplied for created_at".to_string()),
+                    from_value: Ok(Default::default()),
+                    id: Err("no value supplied for id".to_string()),
+                    kind: Err("no value supplied for kind".to_string()),
+                    run_id: Ok(Default::default()),
+                    ticket_id: Err("no value supplied for ticket_id".to_string()),
+                    to_value: Ok(Default::default()),
+                }
+            }
+        }
+        impl TicketActivity {
+            pub fn actor_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.actor_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for actor_id: {e}"));
+                self
+            }
+            pub fn conversation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.conversation_id = value.try_into().map_err(|e| {
+                    format!("error converting supplied value for conversation_id: {e}")
+                });
+                self
+            }
+            pub fn created_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.created_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for created_at: {e}"));
+                self
+            }
+            pub fn from_value<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.from_value = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for from_value: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn kind<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::ActivityKind>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.kind = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for kind: {e}"));
+                self
+            }
+            pub fn run_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.run_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for run_id: {e}"));
+                self
+            }
+            pub fn ticket_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.ticket_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for ticket_id: {e}"));
+                self
+            }
+            pub fn to_value<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.to_value = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for to_value: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TicketActivity> for super::TicketActivity {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TicketActivity,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    actor_id: value.actor_id?,
+                    conversation_id: value.conversation_id?,
+                    created_at: value.created_at?,
+                    from_value: value.from_value?,
+                    id: value.id?,
+                    kind: value.kind?,
+                    run_id: value.run_id?,
+                    ticket_id: value.ticket_id?,
+                    to_value: value.to_value?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TicketActivity> for TicketActivity {
+            fn from(value: super::TicketActivity) -> Self {
+                Self {
+                    actor_id: Ok(value.actor_id),
+                    conversation_id: Ok(value.conversation_id),
+                    created_at: Ok(value.created_at),
+                    from_value: Ok(value.from_value),
+                    id: Ok(value.id),
+                    kind: Ok(value.kind),
+                    run_id: Ok(value.run_id),
+                    ticket_id: Ok(value.ticket_id),
+                    to_value: Ok(value.to_value),
                 }
             }
         }
@@ -4259,6 +5280,74 @@ pub mod types {
             fn from(value: super::TicketContract) -> Self {
                 Self {
                     title: Ok(value.title),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TicketLink {
+            from_id: ::std::result::Result<i64, ::std::string::String>,
+            kind: ::std::result::Result<super::LinkKind, ::std::string::String>,
+            to_id: ::std::result::Result<i64, ::std::string::String>,
+        }
+        impl ::std::default::Default for TicketLink {
+            fn default() -> Self {
+                Self {
+                    from_id: Err("no value supplied for from_id".to_string()),
+                    kind: Err("no value supplied for kind".to_string()),
+                    to_id: Err("no value supplied for to_id".to_string()),
+                }
+            }
+        }
+        impl TicketLink {
+            pub fn from_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.from_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for from_id: {e}"));
+                self
+            }
+            pub fn kind<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::LinkKind>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.kind = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for kind: {e}"));
+                self
+            }
+            pub fn to_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.to_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for to_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TicketLink> for super::TicketLink {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TicketLink,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    from_id: value.from_id?,
+                    kind: value.kind?,
+                    to_id: value.to_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TicketLink> for TicketLink {
+            fn from(value: super::TicketLink) -> Self {
+                Self {
+                    from_id: Ok(value.from_id),
+                    kind: Ok(value.kind),
+                    to_id: Ok(value.to_id),
                 }
             }
         }
@@ -4375,6 +5464,7 @@ pub mod types {
             assignees:
                 ::std::result::Result<::std::vec::Vec<super::Assignee>, ::std::string::String>,
             comments: ::std::result::Result<::std::vec::Vec<super::Comment>, ::std::string::String>,
+            links: ::std::result::Result<::std::vec::Vec<super::TicketLink>, ::std::string::String>,
             runs: ::std::result::Result<::std::vec::Vec<super::WorkRun>, ::std::string::String>,
             tickets: ::std::result::Result<::std::vec::Vec<super::Ticket>, ::std::string::String>,
         }
@@ -4383,6 +5473,7 @@ pub mod types {
                 Self {
                     assignees: Err("no value supplied for assignees".to_string()),
                     comments: Err("no value supplied for comments".to_string()),
+                    links: Err("no value supplied for links".to_string()),
                     runs: Err("no value supplied for runs".to_string()),
                     tickets: Err("no value supplied for tickets".to_string()),
                 }
@@ -4407,6 +5498,16 @@ pub mod types {
                 self.comments = value
                     .try_into()
                     .map_err(|e| format!("error converting supplied value for comments: {e}"));
+                self
+            }
+            pub fn links<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::TicketLink>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.links = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for links: {e}"));
                 self
             }
             pub fn runs<T>(mut self, value: T) -> Self
@@ -4438,6 +5539,7 @@ pub mod types {
                 Ok(Self {
                     assignees: value.assignees?,
                     comments: value.comments?,
+                    links: value.links?,
                     runs: value.runs?,
                     tickets: value.tickets?,
                 })
@@ -4448,6 +5550,7 @@ pub mod types {
                 Self {
                     assignees: Ok(value.assignees),
                     comments: Ok(value.comments),
+                    links: Ok(value.links),
                     runs: Ok(value.runs),
                     tickets: Ok(value.tickets),
                 }
@@ -5276,6 +6379,21 @@ impl Client {
     ```*/
     pub fn ticket_contract(&self) -> builder::TicketContract<'_> {
         builder::TicketContract::new(self)
+    }
+    /*One Ticket's history, oldest first. Comments stay in the snapshot
+
+    Sends a `GET` request to `/v1/tickets/{id}/activity`
+
+    Arguments:
+    - `id`: Ticket ID
+    ```ignore
+    let response = client.tickets_activity()
+        .id(id)
+        .send()
+        .await;
+    ```*/
+    pub fn tickets_activity(&self) -> builder::TicketsActivity<'_> {
+        builder::TicketsActivity::new(self)
     }
     /*Sends a `GET` request to `/v1/workspaces`
 
@@ -6505,6 +7623,84 @@ pub mod builder {
             let response = result?;
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::tickets_activity`]
+
+    [`Client::tickets_activity`]: super::Client::tickets_activity*/
+    #[derive(Debug, Clone)]
+    pub struct TicketsActivity<'a> {
+        client: &'a super::Client,
+        id: Result<i64, String>,
+    }
+    impl<'a> TicketsActivity<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                id: Err("id was not initialized".to_string()),
+            }
+        }
+        pub fn id<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<i64>,
+        {
+            self.id = value
+                .try_into()
+                .map_err(|_| "conversion to `i64` for id failed".to_string());
+            self
+        }
+        ///Sends a `GET` request to `/v1/tickets/{id}/activity`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<::std::vec::Vec<types::TicketActivity>>, Error<types::ErrorBody>>
+        {
+            let Self { client, id } = self;
+            let id = id.map_err(Error::InvalidRequest)?;
+            let url = format!(
+                "{}/v1/tickets/{}/activity",
+                client.baseurl,
+                encode_path(&id.to_string()),
+            );
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "tickets_activity",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                403u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 _ => Err(Error::UnexpectedResponse(response)),
             }
         }

@@ -12,7 +12,9 @@ fn status_tone(status: TicketStatus) -> Tone {
         TicketStatus::Backlog => Tone::Neutral,
         TicketStatus::ToDo => Tone::Info,
         TicketStatus::InProgress => Tone::Warning,
+        TicketStatus::Blocked => Tone::Danger,
         TicketStatus::Done => Tone::Success,
+        TicketStatus::Cancelled => Tone::Neutral,
     }
 }
 fn status_name(status: TicketStatus) -> &'static str {
@@ -20,14 +22,18 @@ fn status_name(status: TicketStatus) -> &'static str {
         TicketStatus::Backlog => "Backlog",
         TicketStatus::ToDo => "To do",
         TicketStatus::InProgress => "In progress",
+        TicketStatus::Blocked => "Blocked",
         TicketStatus::Done => "Done",
+        TicketStatus::Cancelled => "Cancelled",
     }
 }
-const STATUSES: [TicketStatus; 4] = [
+const STATUSES: [TicketStatus; 6] = [
     TicketStatus::Backlog,
     TicketStatus::ToDo,
     TicketStatus::InProgress,
+    TicketStatus::Blocked,
     TicketStatus::Done,
+    TicketStatus::Cancelled,
 ];
 pub struct TicketsPage {
     store: Option<Arc<Store>>,
@@ -131,6 +137,7 @@ impl TicketsPage {
                 comments: vec![],
                 assignees: vec![],
                 runs: vec![],
+                links: vec![],
             },
             selected: None,
             input,

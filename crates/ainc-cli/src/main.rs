@@ -1,4 +1,4 @@
-#[allow(unused_variables, dead_code)]
+#[allow(unused_variables, dead_code, clippy::clone_on_copy)] // Progenitor output.
 mod generated;
 
 use ainc_client::{Client, Error, ResponseValue};

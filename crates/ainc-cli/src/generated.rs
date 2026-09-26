@@ -27,6 +27,7 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::TicketsState => Self::cli_tickets_state(),
             CliCommand::TicketsCommand => Self::cli_tickets_command(),
             CliCommand::TicketContract => Self::cli_ticket_contract(),
+            CliCommand::TicketsActivity => Self::cli_tickets_activity(),
             CliCommand::WorkspacesState => Self::cli_workspaces_state(),
             CliCommand::WorkspacesCommand => Self::cli_workspaces_command(),
             CliCommand::GetVersion => Self::cli_get_version(),
@@ -204,6 +205,17 @@ impl<T: CliConfig> Cli<T> {
                     .help("XXX"),
             )
     }
+    pub fn cli_tickets_activity() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("id")
+                    .long("id")
+                    .value_parser(::clap::value_parser!(i64))
+                    .required(true)
+                    .help("Ticket ID"),
+            )
+            .about("One Ticket's history, oldest first. Comments stay in the snapshot.")
+    }
     pub fn cli_workspaces_state() -> ::clap::Command {
         ::clap::Command::new("")
     }
@@ -260,6 +272,7 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::TicketsState => self.execute_tickets_state(matches).await,
             CliCommand::TicketsCommand => self.execute_tickets_command(matches).await,
             CliCommand::TicketContract => self.execute_ticket_contract(matches).await,
+            CliCommand::TicketsActivity => self.execute_tickets_activity(matches).await,
             CliCommand::WorkspacesState => self.execute_workspaces_state(matches).await,
             CliCommand::WorkspacesCommand => self.execute_workspaces_command(matches).await,
             CliCommand::GetVersion => self.execute_get_version(matches).await,
@@ -628,6 +641,28 @@ impl<T: CliConfig> Cli<T> {
             }
         }
     }
+    pub async fn execute_tickets_activity(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.tickets_activity();
+        if let Some(value) = matches.get_one::<i64>("id") {
+            request = request.id(value.clone());
+        }
+        self.config
+            .execute_tickets_activity(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
     pub async fn execute_workspaces_state(
         &self,
         matches: &::clap::ArgMatches,
@@ -831,6 +866,13 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_tickets_activity(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::TicketsActivity,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_workspaces_state(
         &self,
         matches: &::clap::ArgMatches,
@@ -872,6 +914,7 @@ pub enum CliCommand {
     TicketsState,
     TicketsCommand,
     TicketContract,
+    TicketsActivity,
     WorkspacesState,
     WorkspacesCommand,
     GetVersion,
@@ -896,6 +939,7 @@ impl CliCommand {
             CliCommand::TicketsState,
             CliCommand::TicketsCommand,
             CliCommand::TicketContract,
+            CliCommand::TicketsActivity,
             CliCommand::WorkspacesState,
             CliCommand::WorkspacesCommand,
             CliCommand::GetVersion,
@@ -921,6 +965,7 @@ impl CliCommand {
             CliCommand::TicketsState => "tickets_state",
             CliCommand::TicketsCommand => "tickets_command",
             CliCommand::TicketContract => "ticket_contract",
+            CliCommand::TicketsActivity => "tickets_activity",
             CliCommand::WorkspacesState => "workspaces_state",
             CliCommand::WorkspacesCommand => "workspaces_command",
             CliCommand::GetVersion => "get_version",
