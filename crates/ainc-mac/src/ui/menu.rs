@@ -15,6 +15,7 @@ pub struct MenuEntry {
     id: ElementId,
     label: SharedString,
     icon: Option<&'static str>,
+    glyph: Option<(&'static str, u32)>,
     shortcut: Option<SharedString>,
     trailing: Option<AnyElement>,
     checked: bool,
@@ -29,6 +30,7 @@ impl MenuEntry {
             id: id.into(),
             label: label.into(),
             icon: None,
+            glyph: None,
             shortcut: None,
             trailing: None,
             checked: false,
@@ -39,6 +41,11 @@ impl MenuEntry {
     }
     pub fn icon(mut self, icon: &'static str) -> Self {
         self.icon = Some(icon);
+        self
+    }
+    /// A colored leading icon, such as a Ticket status.
+    pub fn glyph(mut self, name: &'static str, color: u32) -> Self {
+        self.glyph = Some((name, color));
         self
     }
     pub fn shortcut(mut self, shortcut: impl Into<SharedString>) -> Self {
@@ -76,6 +83,7 @@ impl MenuEntry {
             id,
             label,
             icon: icon_name,
+            glyph,
             shortcut,
             trailing,
             checked,
@@ -93,6 +101,9 @@ impl MenuEntry {
         }
         if let Some(name) = icon_name {
             button = button.icon(name);
+        }
+        if let Some((name, color)) = glyph {
+            button = button.leading(icon(name, ICON_SIZE_SM).text_color(rgb(color)));
         }
         let mut trail = row().gap(px(SPACE_2));
         if let Some(shortcut) = shortcut {

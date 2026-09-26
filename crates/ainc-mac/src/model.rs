@@ -36,6 +36,8 @@ pub enum Overlay {
     AddTicket,
     AddAgent,
     DeleteTicket(i64),
+    RenameTicket(i64),
+    LinkTicket(i64),
     RenameConversation(i64),
     DeleteConversation(i64),
     ConversationMenu(i64),
@@ -48,8 +50,21 @@ impl Overlay {
             Self::AddTicket
                 | Self::AddAgent
                 | Self::DeleteTicket(_)
+                | Self::RenameTicket(_)
+                | Self::LinkTicket(_)
                 | Self::RenameConversation(_)
                 | Self::DeleteConversation(_)
+        )
+    }
+    /// The dialogs the Tickets page draws.
+    pub fn is_ticket_dialog(self) -> bool {
+        matches!(
+            self,
+            Self::AddTicket
+                | Self::AddAgent
+                | Self::DeleteTicket(_)
+                | Self::RenameTicket(_)
+                | Self::LinkTicket(_)
         )
     }
     /// Light surfaces that close when the pointer lands outside them.
@@ -556,6 +571,8 @@ mod tests {
         assert!(Overlay::AddTicket.is_dialog());
         assert!(!Overlay::AddTicket.is_popover());
         assert!(!Overlay::Search.is_dialog());
+        assert!(Overlay::LinkTicket(1).is_dialog() && Overlay::LinkTicket(1).is_ticket_dialog());
+        assert!(!Overlay::RenameConversation(1).is_ticket_dialog());
     }
     #[test]
     fn recent_commands_dedupe_and_persist() {

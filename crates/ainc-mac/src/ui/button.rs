@@ -185,6 +185,7 @@ pub struct Button {
     selected: bool,
     full_width: bool,
     focus: Option<FocusHandle>,
+    leading: Option<AnyElement>,
     trailing: Option<AnyElement>,
     align_start: bool,
     tint: Option<u32>,
@@ -203,6 +204,7 @@ impl Button {
             selected: false,
             full_width: false,
             focus: None,
+            leading: None,
             trailing: None,
             align_start: false,
             tint: None,
@@ -265,6 +267,11 @@ impl Button {
         self.focus = Some(focus.clone());
         self
     }
+    /// A leading element in place of a plain icon, such as a colored status glyph.
+    pub fn leading(mut self, element: impl IntoElement) -> Self {
+        self.leading = Some(element.into_any_element());
+        self
+    }
     /// A trailing element such as a shortcut hint or a chevron.
     pub fn trailing(mut self, element: impl IntoElement) -> Self {
         self.trailing = Some(element.into_any_element());
@@ -296,6 +303,7 @@ impl Button {
             selected,
             full_width,
             focus,
+            leading,
             trailing,
             align_start,
             tint,
@@ -355,6 +363,7 @@ impl Button {
                     .when(!enabled && kind == ButtonKind::Primary, |s| s.opacity(1.))
                     .on_hover(on_hover)
                     .when_some(focus, |s, focus| s.track_focus(&focus))
+                    .when_some(leading, |s, leading| s.child(leading))
                     .when_some(icon_name, |s, name| {
                         s.child(icon(name, size.icon()).text_color(text_color))
                     })

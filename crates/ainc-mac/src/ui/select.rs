@@ -6,6 +6,7 @@ use gpui::{prelude::*, *};
 pub struct SelectOption {
     pub label: SharedString,
     pub description: Option<SharedString>,
+    pub glyph: Option<(&'static str, u32)>,
 }
 
 impl SelectOption {
@@ -13,7 +14,13 @@ impl SelectOption {
         Self {
             label: label.into(),
             description: None,
+            glyph: None,
         }
+    }
+    /// A colored leading icon shown on the trigger and in the menu.
+    pub fn glyph(mut self, name: &'static str, color: u32) -> Self {
+        self.glyph = Some((name, color));
+        self
     }
     pub fn description(mut self, description: impl Into<SharedString>) -> Self {
         self.description = Some(description.into());
@@ -29,6 +36,7 @@ pub struct Select {
     placeholder: SharedString,
     open: bool,
     enabled: bool,
+    quiet: bool,
     width: f32,
 }
 
@@ -41,6 +49,7 @@ impl Select {
             placeholder: "Choose…".into(),
             open: false,
             enabled: true,
+            quiet: false,
             width: MENU_WIDTH,
         }
     }
@@ -58,6 +67,12 @@ impl Select {
     }
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+    /// A trigger with no surface at rest, for property rows where a column of
+    /// bordered controls would be louder than the values they hold.
+    pub fn quiet(mut self) -> Self {
+        self.quiet = true;
         self
     }
     pub fn width(mut self, width: f32) -> Self {
@@ -79,13 +94,23 @@ impl Select {
             placeholder,
             open,
             enabled,
+            quiet,
             width,
         } = self;
         let current = value.and_then(|index| options.get(index));
         let label = current.map_or(placeholder, |option| option.label.clone());
+        let glyph = current.and_then(|option| option.glyph);
         let trigger_selector = id.to_string();
-        let trigger = Button::new(ElementId::Name(id.clone()), label)
-            .secondary()
+        let mut trigger = Button::new(ElementId::Name(id.clone()), label);
+        if let Some((name, color)) = glyph {
+            trigger = trigger.leading(icon(name, ICON_SIZE_SM).text_color(rgb(color)));
+        }
+        let trigger = trigger
+            .kind(if quiet {
+                ButtonKind::Ghost
+            } else {
+                ButtonKind::Secondary
+            })
             .full_width()
             .align_start()
             .enabled(enabled)
@@ -93,7 +118,7 @@ impl Select {
             .trailing(icon("chevronDown", ICON_SIZE_SM))
             .build(hover, on_toggle, cx)
             .debug_selector(move || trigger_selector.clone())
-            .when(!open, |s| s.bg(rgb(SURFACE_INPUT)))
+            .when(!open && !quiet, |s| s.bg(rgb(SURFACE_INPUT)))
             .when(value.is_none(), |s| s.text_color(rgb(TEXT_SECONDARY)));
         column()
             .relative()
@@ -113,6 +138,9 @@ impl Select {
                     )
                     .checked(value == Some(index))
                     .enabled(enabled);
+                    if let Some((name, color)) = option.glyph {
+                        item = item.glyph(name, color);
+                    }
                     if let Some(description) = option.description {
                         item = item.trailing(caption(description));
                     }

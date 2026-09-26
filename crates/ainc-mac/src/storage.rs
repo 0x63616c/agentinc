@@ -1,13 +1,14 @@
 //! Generated daemon client plus an owned presentation snapshot. The foreground
 //! reads this cache only; refresh and command methods run on the background executor.
 pub use ainc_client::types::{
-    AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, Command, Conversation, Ticket,
-    TicketCommand, TicketProposal, TicketSnapshot, TicketStatus, Turn, Workspace, WorkspaceCommand,
-    WorkspaceState,
+    ActivityKind, Assignee, AssigneeKind, Automation, AutomationCommand, AutomationSnapshot,
+    Command, Comment, Conversation, LinkKind, Ticket, TicketActivity, TicketCommand, TicketLink,
+    TicketPriority, TicketProposal, TicketSnapshot, TicketStatus, Turn, Workspace,
+    WorkspaceCommand, WorkspaceState,
 };
 use ainc_client::{
     Client,
-    types::{Assignee, CommandRequest, Snapshot, TicketCommandRequest},
+    types::{CommandRequest, Snapshot, TicketCommandRequest},
 };
 #[cfg(test)]
 use anyhow::bail;
@@ -122,6 +123,8 @@ pub struct Store {
     pending: Mutex<Option<CommandRequest>>,
     #[cfg(test)]
     fixture: bool,
+    #[cfg(test)]
+    fixture_activity: Mutex<Vec<TicketActivity>>,
 }
 impl Store {
     pub fn new() -> Self {
@@ -164,6 +167,8 @@ impl Store {
             pending: Mutex::new(None),
             #[cfg(test)]
             fixture: false,
+            #[cfg(test)]
+            fixture_activity: Mutex::new(vec![]),
         }
     }
     #[cfg(test)]
@@ -227,6 +232,18 @@ impl Store {
     }
     pub fn tickets(&self) -> TicketSnapshot {
         self.tickets.lock().expect("Ticket snapshot").clone()
+    }
+    /// One Ticket's history, oldest first. Blocks; run it on the background executor.
+    pub fn ticket_activity(&self, id: i64) -> Result<Vec<TicketActivity>> {
+        #[cfg(test)]
+        if self.fixture {
+            let log = self.fixture_activity.lock().expect("fixture history");
+            return Ok(log.iter().filter(|a| a.ticket_id == id).cloned().collect());
+        }
+        background(async {
+            let client = client().await?;
+            Ok(client.tickets_activity().id(id).send().await?.into_inner())
+        })
     }
     pub fn automations(&self) -> AutomationSnapshot {
         self.automations
@@ -511,47 +528,137 @@ impl Store {
             _ => bail!("No rendered fixture for this command"),
         }
     }
+    /// Edit the fixture snapshot and history directly, for what no command
+    /// produces on its own: runs, agent Comments and times in the past.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub fn fixture_edit(&self, edit: impl FnOnce(&mut TicketSnapshot, &mut Vec<TicketActivity>)) {
+        let mut snapshot = self.tickets.lock().expect("Ticket snapshot");
+        let mut history = self.fixture_activity.lock().expect("fixture history");
+        edit(&mut snapshot, &mut history);
+    }
     #[cfg(test)]
     fn fixture_ticket(&self, command: TicketCommand) -> Result<Option<i64>> {
+        use crate::tickets::model::{apply_move, status_key};
         let mut s = self.tickets.lock().unwrap();
+        let mut log = self.fixture_activity.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64);
+        let mut record = |ticket_id: i64, kind, from: Option<String>, to: Option<String>| {
+            let id = log.len() as i64 + 1;
+            log.push(TicketActivity {
+                id,
+                ticket_id,
+                actor_id: "owner".into(),
+                kind,
+                from_value: from,
+                to_value: to,
+                conversation_id: None,
+                run_id: None,
+                created_at: now,
+            });
+        };
+        let ticket = |s: &TicketSnapshot, id: i64| -> Result<usize> {
+            s.tickets
+                .iter()
+                .position(|t| t.id == id)
+                .context("No such fixture Ticket")
+        };
         match command {
             TicketCommand::Delete { id, .. } => {
                 s.tickets.retain(|t| t.id != id);
                 s.comments.retain(|c| c.ticket_id != id);
+                s.links.retain(|l| l.from_id != id && l.to_id != id);
                 Ok(Some(id))
             }
-            TicketCommand::Create { title } => {
-                let title = title.trim();
-                if title.is_empty() || title.chars().count() > 500 {
-                    bail!("Invalid title");
-                }
-                let id = s.tickets.iter().map(|t| t.id).max().unwrap_or(0) + 1;
-                s.tickets.insert(
-                    0,
-                    Ticket {
+            TicketCommand::Create { title } => self.fixture_ticket_create(
+                &mut s,
+                TicketCommand::CreateDetailed {
+                    title,
+                    description: None,
+                    status: None,
+                    priority: None,
+                    labels: vec![],
+                    assignee_id: None,
+                },
+                now,
+                &mut record,
+            ),
+            command @ TicketCommand::CreateDetailed { .. } => {
+                self.fixture_ticket_create(&mut s, command, now, &mut record)
+            }
+            TicketCommand::SetStatus { id, status, .. } => {
+                let from = s.tickets[ticket(&s, id)?].status;
+                if from != status {
+                    apply_move(&mut s.tickets, id, status, None);
+                    record(
                         id,
-                        title: title.into(),
-                        description: String::new(),
-                        status: TicketStatus::ToDo,
-                        priority: ainc_client::types::TicketPriority::None,
-                        labels: vec![],
-                        assignee_id: "owner".into(),
-                        assignee_kind: AssigneeKind::Human,
-                        position: -id,
-                        generation: 0,
-                        revision: 0,
-                        created_at: 0,
-                        updated_at: 0,
-                        conversation_id: None,
-                    },
+                        ActivityKind::Status,
+                        Some(status_key(from).into()),
+                        Some(status_key(status).into()),
+                    );
+                }
+                Ok(Some(id))
+            }
+            TicketCommand::Move {
+                id, status, after, ..
+            } => {
+                let from = s.tickets[ticket(&s, id)?].status;
+                anyhow::ensure!(apply_move(&mut s.tickets, id, status, after), "Stale board");
+                if from != status {
+                    record(
+                        id,
+                        ActivityKind::Status,
+                        Some(status_key(from).into()),
+                        Some(status_key(status).into()),
+                    );
+                }
+                Ok(Some(id))
+            }
+            TicketCommand::Rename { id, title, .. } => {
+                let index = ticket(&s, id)?;
+                let old = std::mem::replace(&mut s.tickets[index].title, title.trim().into());
+                s.tickets[index].revision += 1;
+                record(
+                    id,
+                    ActivityKind::Renamed,
+                    Some(old),
+                    Some(title.trim().into()),
                 );
                 Ok(Some(id))
             }
-            TicketCommand::SetStatus { id, status, .. } => {
-                if let Some(t) = s.tickets.iter_mut().find(|t| t.id == id) {
-                    t.status = status;
-                    t.revision += 1;
-                }
+            TicketCommand::Describe {
+                id, description, ..
+            } => {
+                let index = ticket(&s, id)?;
+                s.tickets[index].description = description.trim().into();
+                s.tickets[index].revision += 1;
+                record(id, ActivityKind::Described, None, None);
+                Ok(Some(id))
+            }
+            TicketCommand::SetPriority { id, priority, .. } => {
+                let index = ticket(&s, id)?;
+                s.tickets[index].priority = priority;
+                s.tickets[index].revision += 1;
+                record(
+                    id,
+                    ActivityKind::Priority,
+                    None,
+                    Some(crate::tickets::model::priority_key(priority).into()),
+                );
+                Ok(Some(id))
+            }
+            TicketCommand::SetLabels { id, labels, .. } => {
+                let index = ticket(&s, id)?;
+                let old = std::mem::replace(&mut s.tickets[index].labels, labels.clone());
+                s.tickets[index].revision += 1;
+                record(
+                    id,
+                    ActivityKind::Labels,
+                    Some(old.join(",")),
+                    Some(labels.join(",")),
+                );
                 Ok(Some(id))
             }
             TicketCommand::Assign {
@@ -560,23 +667,51 @@ impl Store {
                 assignee_kind,
                 ..
             } => {
-                if let Some(t) = s.tickets.iter_mut().find(|t| t.id == id) {
-                    t.assignee_id = assignee_id;
-                    t.assignee_kind = assignee_kind;
-                    t.revision += 1;
-                }
+                let index = ticket(&s, id)?;
+                let old = std::mem::replace(&mut s.tickets[index].assignee_id, assignee_id.clone());
+                s.tickets[index].assignee_kind = assignee_kind;
+                s.tickets[index].revision += 1;
+                record(id, ActivityKind::Assigned, Some(old), Some(assignee_id));
                 Ok(Some(id))
+            }
+            TicketCommand::Link {
+                from_id,
+                to_id,
+                link,
+            }
+            | TicketCommand::Unlink {
+                from_id,
+                to_id,
+                link,
+            } => {
+                let adding = s
+                    .links
+                    .iter()
+                    .all(|l| (l.from_id, l.to_id, l.kind) != (from_id, to_id, link));
+                s.links
+                    .retain(|l| (l.from_id, l.to_id, l.kind) != (from_id, to_id, link));
+                let kind = if adding {
+                    s.links.push(TicketLink {
+                        from_id,
+                        to_id,
+                        kind: link,
+                    });
+                    ActivityKind::Linked
+                } else {
+                    ActivityKind::Unlinked
+                };
+                record(from_id, kind, None, Some(to_id.to_string()));
+                record(to_id, kind, None, Some(from_id.to_string()));
+                Ok(Some(from_id))
             }
             TicketCommand::AddComment { ticket_id, body } => {
                 let id = s.comments.len() as i64 + 1;
-                s.comments.push(ainc_client::types::Comment {
+                s.comments.push(Comment {
                     id,
                     ticket_id,
                     body,
                     author_id: "owner".into(),
-                    created_at: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map_or(0, |d| d.as_secs() as i64),
+                    created_at: now,
                 });
                 Ok(Some(id))
             }
@@ -591,5 +726,61 @@ impl Store {
             }
             _ => bail!("No rendered fixture for this Ticket command"),
         }
+    }
+    #[cfg(test)]
+    fn fixture_ticket_create(
+        &self,
+        s: &mut TicketSnapshot,
+        command: TicketCommand,
+        now: i64,
+        record: &mut impl FnMut(i64, ActivityKind, Option<String>, Option<String>),
+    ) -> Result<Option<i64>> {
+        let TicketCommand::CreateDetailed {
+            title,
+            description,
+            status,
+            priority,
+            labels,
+            assignee_id,
+        } = command
+        else {
+            bail!("Not a create command");
+        };
+        let title = title.trim();
+        if title.is_empty() || title.chars().count() > 500 {
+            bail!("Invalid title");
+        }
+        let id = s.tickets.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+        let status = status.unwrap_or(TicketStatus::ToDo);
+        let (assignee_kind, assignee_id) = match assignee_id {
+            Some(id) => (
+                s.assignees
+                    .iter()
+                    .find(|a| a.id == id)
+                    .context("Unknown fixture assignee")?
+                    .kind,
+                id,
+            ),
+            None => (AssigneeKind::Human, "owner".into()),
+        };
+        s.tickets.push(Ticket {
+            id,
+            title: title.into(),
+            description: description.unwrap_or_default(),
+            status,
+            priority: priority.unwrap_or(TicketPriority::None),
+            labels,
+            assignee_id,
+            assignee_kind,
+            position: 0,
+            generation: 0,
+            revision: 0,
+            created_at: now,
+            updated_at: now,
+            conversation_id: None,
+        });
+        crate::tickets::model::apply_move(&mut s.tickets, id, status, None);
+        record(id, ActivityKind::Created, None, Some(title.into()));
+        Ok(Some(id))
     }
 }
