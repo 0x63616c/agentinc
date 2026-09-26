@@ -118,9 +118,11 @@ impl TicketsPage {
         let summary = row()
             .w_full()
             .gap(px(SPACE_3))
+            // No priority leaves its slot empty, as on the board.
             .child(
                 icon(priority_icon(ticket.priority), ICON_SIZE_SM)
-                    .text_color(rgb(priority_color(ticket.priority))),
+                    .text_color(rgb(priority_color(ticket.priority)))
+                    .when(ticket.priority == TicketPriority::None, |s| s.opacity(0.)),
             )
             .child(
                 div()

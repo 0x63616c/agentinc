@@ -7,6 +7,15 @@ use ainc_client::types::WorkRun;
 
 const HOUR: i64 = 3600;
 
+/// Title, status, priority, labels and assignee of one seeded Ticket.
+type Row<'a> = (
+    &'a str,
+    TicketStatus,
+    TicketPriority,
+    &'a [&'a str],
+    Option<&'a String>,
+);
+
 impl TicketsPage {
     pub(crate) fn fixture_board(&mut self, cx: &mut Context<Self>) -> i64 {
         let store = self.store.clone().expect("fixture store");
@@ -30,7 +39,7 @@ impl TicketsPage {
             .map(|a| a.id)
             .collect();
         let (evee, scout) = (agents[0].clone(), agents[1].clone());
-        let rows: [(&str, TicketStatus, TicketPriority, &[&str], Option<&String>); 13] = [
+        let rows: [Row; 13] = [
             (
                 "Sell the old bike on Marketplace",
                 TicketStatus::Cancelled,

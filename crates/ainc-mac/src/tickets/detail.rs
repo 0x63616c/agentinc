@@ -704,7 +704,8 @@ impl TicketsPage {
                                     cx.notify();
                                 },
                                 cx,
-                            ),
+                            )
+                            .mr(px(TRAILING_ICON_INSET)),
                     ),
             )
             .when(found.is_empty(), |s| {
@@ -801,7 +802,8 @@ impl TicketsPage {
                         )
                     },
                     cx,
-                ),
+                )
+                .mr(px(TRAILING_ICON_INSET)),
             )
     }
 
@@ -848,7 +850,7 @@ impl TicketsPage {
                                     |_: &mut Self, _, cx| cx.emit(TicketsEvent::OpenRuns),
                                     cx,
                                 )
-                                .mr(px(-CONTROL_INSET_X_SM)),
+                                .mr(px(CONTROL_INSET_X - CONTROL_INSET_X_SM)),
                         )
                     }),
             )

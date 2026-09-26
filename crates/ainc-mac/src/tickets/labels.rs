@@ -152,14 +152,18 @@ impl TicketsPage {
                 row()
                     .relative()
                     .flex_grow(1.)
-                    .child(
-                        Button::new("tickets.labels.open", "Add label")
+                    .child({
+                        // With labels applied, a bare + keeps the line short enough
+                        // to stay inside its column.
+                        let add = Button::new("tickets.labels.open", "Add label")
                             .ghost()
                             .small()
                             .icon("plus")
                             .tint(TEXT_SECONDARY)
                             .selected(open)
-                            .enabled(!self.pending && applied.len() < 10)
+                            .enabled(!self.pending && applied.len() < 10);
+                        let compact = !applied.is_empty();
+                        if compact { add.icon_only() } else { add }
                             .build(
                                 &self.hover,
                                 move |this: &mut Self, window, cx| {
@@ -170,8 +174,8 @@ impl TicketsPage {
                                 },
                                 cx,
                             )
-                            .ml(px(-CONTROL_INSET_X_SM)),
-                    )
+                            .when(!compact, |s| s.ml(px(-CONTROL_INSET_X_SM)))
+                    })
                     .when(open, |s| {
                         s.child(
                             deferred(

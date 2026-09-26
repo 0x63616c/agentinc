@@ -4,8 +4,16 @@ use super::*;
 
 /// Candidates shown in the relationship picker.
 const LINK_CANDIDATES: usize = 5;
-/// Room for every candidate row, inside the list's inset and border.
-const LINK_LIST_HEIGHT: f32 = LINK_CANDIDATES as f32 * LIST_ROW_HEIGHT + 2. * SPACE_1 + 2.;
+/// A candidate row with its subtitle and hairline.
+const LINK_ROW_HEIGHT: f32 = 53.;
+/// Room for every candidate row, inside the list's inset and border. The list
+/// keeps this height so the dialog never jumps while a search narrows it.
+const LINK_LIST_HEIGHT: f32 = LINK_CANDIDATES as f32 * LINK_ROW_HEIGHT + 2. * SPACE_1 + 2.;
+
+/// The width inside a dialog's padding and border, so selects match fields.
+fn dialog_content_width() -> f32 {
+    DIALOG_WIDTH - 2. * DIALOG_PADDING - 2.
+}
 
 impl TicketsPage {
     pub fn overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -155,8 +163,8 @@ impl TicketsPage {
     }
 
     fn create_form(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let half = (DIALOG_WIDTH - 2. * DIALOG_PADDING - SPACE_3) / 2.;
-        let full = DIALOG_WIDTH - 2. * DIALOG_PADDING;
+        let full = dialog_content_width();
+        let half = (full - SPACE_3) / 2.;
         let status = Select::new(
             "tickets.draft.status",
             STATUSES
@@ -210,19 +218,8 @@ impl TicketsPage {
             assignees
                 .iter()
                 .map(|a| {
-                    let option = SelectOption::new(self.assignee_name(&a.id)).glyph(
-                        if a.kind == AssigneeKind::Agent {
-                            "agents"
-                        } else {
-                            "user"
-                        },
-                        TEXT_SECONDARY,
-                    );
-                    if a.kind == AssigneeKind::Agent {
-                        option.description("Agent")
-                    } else {
-                        option
-                    }
+                    let name = self.assignee_name(&a.id);
+                    SelectOption::new(name.clone()).avatar(name, a.kind == AssigneeKind::Agent)
                 })
                 .collect(),
         )
@@ -319,7 +316,7 @@ impl TicketsPage {
     }
 
     fn link_form(&self, id: i64, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let full = DIALOG_WIDTH - 2. * DIALOG_PADDING;
+        let full = dialog_content_width();
         let relation = Select::new(
             "tickets.link.relation",
             Relation::ALL.map(|r| SelectOption::new(r.name())).into(),
@@ -366,7 +363,9 @@ impl TicketsPage {
             } else {
                 card()
                     .debug_selector(|| "tickets.link.candidates".into())
+                    .id("tickets.link.candidates")
                     .h(px(LINK_LIST_HEIGHT))
+                    .overflow_y_scroll()
                     .justify_start()
                     .p(px(SPACE_1))
                     .gap_0()

@@ -362,6 +362,7 @@ impl TicketsPage {
                     .items_start()
                     .w_full()
                     .p(px(SPACE_3))
+                    .pt(px(SPACE_3 - CARD_OPTICAL_LIFT))
                     .gap(px(SPACE_2))
                     .rounded(px(RADIUS_MD))
                     .bg(blend(SURFACE_RAISED, HOVER, progress))
@@ -383,6 +384,7 @@ impl TicketsPage {
                                 )
                             })
                             .child(div().flex_1())
+                            .children(self.card_counts(ticket))
                             .child(self.assignee_avatar(&ticket.assignee_id, AVATAR_SIZE_SM)),
                     )
                     .child(
@@ -416,18 +418,11 @@ impl TicketsPage {
     /// the Ticket has none of them.
     fn card_footer(&self, ticket: &Ticket) -> Option<Div> {
         let blockers = open_blockers(&self.state.tickets, &self.state.links, ticket.id);
-        let children = relations(&self.state.links, ticket.id)
-            .into_iter()
-            .filter(|(relation, _)| *relation == Relation::SubIssue)
-            .count();
-        let comments = self.comment_count(ticket.id);
         let shown_labels = ticket.labels.iter().take(CARD_LABELS);
         let hidden_labels = ticket.labels.len().saturating_sub(CARD_LABELS);
         if ticket.priority == TicketPriority::None
             && ticket.labels.is_empty()
             && blockers.is_empty()
-            && children == 0
-            && comments == 0
         {
             return None;
         }
@@ -459,24 +454,27 @@ impl TicketsPage {
                         .join(", ");
                     // Only the glyph is red; the keys stay quiet so text leads.
                     s.child(meta("status-blocked", text, STATUS_RED, TEXT_SECONDARY))
-                })
-                .when(children > 0, |s| {
-                    s.child(meta(
-                        "list",
-                        children.to_string(),
-                        TEXT_TERTIARY,
-                        TEXT_TERTIARY,
-                    ))
-                })
-                .when(comments > 0, |s| {
-                    s.child(meta(
-                        "feedback",
-                        comments.to_string(),
-                        TEXT_TERTIARY,
-                        TEXT_TERTIARY,
-                    ))
                 }),
         )
+    }
+
+    /// Sub-Tickets and Comments, quiet, beside the avatar.
+    fn card_counts(&self, ticket: &Ticket) -> Vec<Div> {
+        let children = relations(&self.state.links, ticket.id)
+            .into_iter()
+            .filter(|(relation, _)| *relation == Relation::SubIssue)
+            .count();
+        let comments = self.comment_count(ticket.id);
+        [("list", children), ("feedback", comments)]
+            .into_iter()
+            .filter(|(_, count)| *count > 0)
+            .map(|(name, count)| {
+                row()
+                    .gap(px(SPACE_1))
+                    .child(icon(name, ICON_SIZE_XS).text_color(rgb(TEXT_TERTIARY)))
+                    .child(hint(count.to_string()))
+            })
+            .collect()
     }
 
     fn drop_ticket(&mut self, id: i64, status: TicketStatus, cx: &mut Context<Self>) {
@@ -486,8 +484,7 @@ impl TicketsPage {
             _ => in_column(&self.state.tickets, status)
                 .iter()
                 .map(|t| t.id)
-                .filter(|other| *other != id)
-                .last(),
+                .rfind(|other| *other != id),
         };
         self.drag.dragging.set(None);
         self.move_ticket(id, status, after, cx);

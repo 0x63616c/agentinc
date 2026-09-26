@@ -199,6 +199,12 @@ pub const LANE_HEADER_HEIGHT: f32 = 38.;
 pub const EMPTY_LANE_HEIGHT: f32 = 64.;
 /// Badges, status pills and the square priority chip beside them.
 pub const PILL_HEIGHT: f32 = 22.;
+/// Where a trailing icon button sits so its glyph, like a select's chevron,
+/// ends one control inset in from its column's edge.
+pub const TRAILING_ICON_INSET: f32 = CONTROL_INSET_X - (CONTROL_HEIGHT_SM - ICON_SIZE_SM) / 2.;
+/// A card's top inset less the space above its first line's cap height, so the
+/// text sits as far from the top as from the side.
+pub const CARD_OPTICAL_LIFT: f32 = 4.;
 /// The remove control inside a pill.
 pub const PILL_REMOVE_SIZE: f32 = 18.;
 /// Fixed columns in the Tickets list.
