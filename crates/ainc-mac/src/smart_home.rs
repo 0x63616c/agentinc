@@ -203,7 +203,9 @@ impl SmartHomePage {
                 .iter()
                 .all(|point| (ambient - *point as f64).abs() >= 1.)
         };
-        if let Some(ambient) = climate.ambient.filter(|ambient| clear(*ambient)) {
+        // The reading is placed where its label says: at the rounded degree.
+        let reading = climate.ambient.map(f64::round);
+        if let Some(ambient) = reading.filter(|ambient| clear(*ambient)) {
             rail = rail.child(
                 div()
                     .debug_selector(|| "home.climate.now".into())
@@ -241,7 +243,7 @@ impl SmartHomePage {
                             .right_0()
                             .child(hint(format!("{}°", high_end as i64))),
                     )
-                    .when_some(climate.ambient, |s, ambient| {
+                    .when_some(reading, |s, ambient| {
                         s.child(
                             div()
                                 .absolute()

@@ -723,8 +723,9 @@ impl CalendarPage {
                 // Only as many lines as the cell holds; the rest become "N more".
                 // Narrow columns, or a busy day with room for one line, show one
                 // mark per event rather than clipped titles.
-                let fits =
-                    ((cell_height - TODAY_MARK - SPACE_2 * 2.) / MONTH_LINE).floor() as usize;
+                // Lines are separated by gaps, so n lines need n lines less one gap.
+                let fits = ((cell_height - TODAY_MARK - SPACE_2 * 2. + SPACE_HALF) / MONTH_LINE)
+                    .floor() as usize;
                 if dots || (day.len() > fits && fits < 2) {
                     cell = cell.child(
                         row()
@@ -1003,7 +1004,9 @@ impl CalendarPage {
                                 // The title always shows. A tall block alone in its
                                 // column adds the time; a shared or short one gives
                                 // its room to the title, which wraps when it can.
-                                let with_time = tall;
+                                // Only a block with the column to itself shows its time, so a
+                                // cascaded event never leaves a fragment peeking out.
+                                let with_time = tall && count == 1;
                                 let title = div()
                                     .w_full()
                                     .font_weight(FontWeight::MEDIUM)
