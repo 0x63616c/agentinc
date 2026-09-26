@@ -27,9 +27,9 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 | Text | `TEXT`, `TEXT_SECONDARY`, `TEXT_TERTIARY`, `TEXT_PLACEHOLDER`, `TEXT_ON_PRIMARY` | Body, descriptions, eyebrows and hints, placeholders, ink on white. |
 | Actions | `PRIMARY`, `PRIMARY_HOVER`, `PRIMARY_ACTIVE`, `DESTRUCTIVE`, `DESTRUCTIVE_HOVER`, `DESTRUCTIVE_TEXT`, `ERROR` | The white button, the red button, red text. |
 | Status | `STATUS_{NEUTRAL,GREEN,BLUE,AMBER,RED,PURPLE}` and `_SURFACE` pairs, `ACCENT` | Badge and pill tones; the unread dot. |
-| Spacing | `SPACE_HALF`, `SPACE_1` … `SPACE_10`, `PAGE_X`, `PANEL_GAP`, `SIDEBAR_INSET`, `SECTION_GAP`, control and row sizes | Every gap, inset and control dimension. |
+| Spacing | `SPACE_HALF`, `SPACE_1` … `SPACE_10`, `PAGE_X`, `PANEL_GAP`, `SIDEBAR_INSET`, `SECTION_GAP`, `CARD_INSET`, control and row sizes | Every gap, inset and control dimension. `CARD_INSET` is the one inset on every side of feature cards, tiles and panels; start a card that opens with an eyebrow `EYEBROW_OPTICAL_LIFT` higher so its cap height lands on the inset. |
 | Radius | `RADIUS_XS` … `RADIUS_XL`, `PANEL_RADIUS`, `CONTROL_RADIUS`, `FIELD_RADIUS` | Chips and hints, controls, cards, panels. |
-| Type | `DISPLAY_SIZE`, `TITLE_SIZE`, `HEADING_SIZE`, `BODY_SIZE`, `LABEL_SIZE`, `CAPTION_SIZE`, `MICRO_SIZE`; `type_size()` | Page titles, dialog titles, section headings, body, labels, captions, hints. |
+| Type | `HERO_SIZE`, `DISPLAY_SIZE`, `TITLE_SIZE`, `HEADING_SIZE`, `BODY_SIZE`, `LABEL_SIZE`, `CAPTION_SIZE`, `MICRO_SIZE`; `type_size()` | Page titles, dialog titles, section headings, body, labels, captions, hints. |
 | Shadow | `shadow_overlay()`, `shadow_dialog()`, `shadow_toast()`, `focus_ring()` | Menus, dialogs and the palette, toasts, keyboard focus. Focus rings appear after keyboard navigation and hide on the next pointer press. |
 | Motion | `HOVER_MS`, `PANEL_MS`, `MESSAGE_MS`, `SKELETON_MS`, `SPRING_SNAPPY`, `SPRING_GENTLE` | Fades, panel reveal, message arrival, skeleton pulse, springs. |
 
@@ -56,6 +56,7 @@ exercised only on the Components page today.
 | `MenuEntry`, `menu_label`, `menu_divider`, `floating` | `menu.rs` | Dropdown and context menu rows and the deferred, anchored placement they share with popovers. `menu_shell` and `popover_shell` in `overlay.rs` are their surfaces. |
 | `banner`, `error_text` | `banner.rs` | A toned full-width notice inside a page; short red copy under a field or inside a dialog. |
 | `toggle`, `checkbox` | `toggle.rs` | Boolean settings. Toggles for immediate effect, checkboxes inside forms. |
+| `SwitchTile`, `stepper`, `hero` | `tile.rs` | Glanceable home controls. A tile switches one light or group: white with black ink when on, outlined with an "N of M on" line when a group is partly on. A stepper moves a bounded number such as a setpoint; `hero` sets a numeral light and large. |
 | `segmented`, `tabs`, `chip` | `segmented.rs` | One of a few options (segments hug their content), switching views inside a page (tabs underline their label), picking a value in a form (chips: the chosen one is filled with full-strength text, the rest are outlined). |
 | `badge`, `status_pill`, `status_dot`, `count_badge`, `Tone` | `badge.rs` | States and counts. Badges in lists and headers, pills in tables. |
 | `avatar` | `avatar.rs` | People and agents, with an initials fallback. |

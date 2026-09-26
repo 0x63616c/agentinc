@@ -12,6 +12,8 @@ pub struct ComponentsPage {
     checked: bool,
     segment: usize,
     chip: usize,
+    lamp: bool,
+    setpoint: i64,
     select_value: Option<usize>,
     select_open: bool,
     text: Entity<TextInput>,
@@ -84,6 +86,8 @@ impl ComponentsPage {
             checked: true,
             segment: 1,
             chip: 0,
+            lamp: true,
+            setpoint: 72,
             select_value: Some(0),
             select_open: false,
             text,
@@ -348,6 +352,50 @@ impl ComponentsPage {
                                 }),
                         ),
                     ),
+            ))
+            .child(specimen(
+                "Switch tiles and steppers",
+                "Tiles switch a light: white when on, outlined when a group is partly on. Steppers move a bounded number; hero numerals are for glanceable values.",
+                row()
+                    .gap(px(SPACE_6))
+                    .items_center()
+                    .child(
+                        row()
+                            .flex_1()
+                            .gap(px(SPACE_3))
+                            .child(
+                                SwitchTile::new("components.tile", "Desk lamp", "lamp")
+                                    .on(self.lamp)
+                                    .build(
+                                        &self.hover,
+                                        |this, _, cx| {
+                                            this.lamp = !this.lamp;
+                                            cx.notify();
+                                        },
+                                        cx,
+                                    ),
+                            )
+                            .child(
+                                SwitchTile::new("components.tile-mixed", "All lamps", "bulb")
+                                    .mixed(true)
+                                    .detail("2 of 4 on")
+                                    .build(&self.hover, |_, _, _| {}, cx),
+                            ),
+                    )
+                    .child(hero(format!("{}°", self.setpoint)))
+                    .child(stepper(
+                        "components.stepper",
+                        "setpoint",
+                        format!("{}°", self.setpoint),
+                        self.setpoint > 67,
+                        self.setpoint < 77,
+                        &self.hover,
+                        |this, delta, _, cx| {
+                            this.setpoint += delta;
+                            cx.notify();
+                        },
+                        cx,
+                    )),
             ))
     }
 

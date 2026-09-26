@@ -1,6 +1,6 @@
 # AgentInc
 
-A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents, Automations, Terminal and Temporal, with Settings and the user row in the footer. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane. The design system behind every screen is documented in [docs/design-system.md](../../docs/design-system.md) and rendered live on the **Components** page (⌘K, "Components").
+A native macOS workspace built with Rust and GPUI. Its sidebar contains the Dashboard, Tickets, Assistant, Agents, Automations, Terminal, Temporal, Calendar and Smart Home, with Settings and the user row in the footer. The Dashboard is the home screen. Calendar and Smart Home are described in [Dashboard, Smart Home and Calendar](../../docs/home-and-calendar.md). The design system behind every screen is documented in [docs/design-system.md](../../docs/design-system.md) and rendered live on the **Components** page (⌘K, "Components").
 
 ## Build and run
 
@@ -66,7 +66,7 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | --- | --- |
 | Cmd+K | Go to… pages, actions and workspaces |
 | Cmd+Option+Left / Right | Back / forward |
-| Cmd+1…6 | Tickets, Assistant, Agents, Automations, Terminal, Temporal |
+| Cmd+1…9 | Dashboard, Tickets, Assistant, Agents, Automations, Terminal, Temporal, Calendar, Smart Home |
 | Cmd+, | Settings |
 | Cmd+B | Toggle sidebar |
 | Escape | Dismiss Search, task dialogs or notifications |
@@ -75,7 +75,7 @@ Go to… (⌘K) fuzzy-matches pages, actions and workspaces, groups the results,
 
 Terminal hosts a live Ghostty session in your home directory. It loads your Ghostty configuration, including font, keybinds and included files, then applies AgentInc's colors. The session and split panes stay alive when you visit another page; drag their dividers to resize them. With a Terminal pane focused, Cmd+D splits right, Cmd+Shift+D splits below, Cmd+W closes the focused pane when another exists, and Cmd+Shift+Enter or Cmd+Shift+= toggles a pane to fill the Terminal page. Cmd+K opens AgentInc Search without clearing the terminal; Cmd+, and Cmd+number retain their app navigation actions. Other Ghostty bindings, including Ctrl+L, remain available.
 
-Development sessions save to `~/Library/Application Support/AgentInc Development/session.json`; installed production sessions retain `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/phase-5-distribution.md). Older multi-tab sessions restore retained destinations into the single space view; removed destinations and missing or invalid state start on Assistant. The account name/photo is read locally at runtime and is not bundled.
+Development sessions save to `~/Library/Application Support/AgentInc Development/session.json`; installed production sessions retain `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/phase-5-distribution.md). Older multi-tab sessions restore retained destinations into the single space view; removed destinations and missing or invalid state start on the Dashboard. The account name/photo is read locally at runtime and is not bundled.
 
 For an isolated session without changing the regular app's state:
 

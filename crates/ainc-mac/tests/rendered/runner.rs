@@ -1189,6 +1189,7 @@ pub fn run() -> Result<()> {
         "text-area",
         "select",
         "toggles-and-checkboxes",
+        "switch-tiles-and-steppers",
     ])?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_components(1, true, cx);
