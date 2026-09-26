@@ -128,6 +128,17 @@ async fn run() -> Result<()> {
     let tickets =
         ainc_daemon::execution::Runner::start(pool.clone(), config.clone(), models, policy).await?;
     let automations = ainc_daemon::automations::Runner::start(pool.clone(), config.clone()).await?;
+    let home = ainc_daemon::home::Home::new(std::sync::Arc::new(
+        ainc_daemon::secrets::Keychain::for_area("home"),
+    ));
+    let actions = ainc_daemon::durable::Runner::start(
+        ainc_daemon::durable::Effects {
+            pool: pool.clone(),
+            home: home.clone(),
+        },
+        config.clone(),
+    )
+    .await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     publish_address(Path::new(&discovery), address)?;
@@ -157,6 +168,7 @@ async fn run() -> Result<()> {
             axum::serve(
                 listener,
                 ainc_daemon::product_router(product.clone())
+                    .merge(ainc_daemon::home::router(product.clone(), home))
                     .merge(ainc_daemon::temporal::router(product, config, ui_url))
                     .route("/internal/drain", drain),
             )
@@ -167,6 +179,7 @@ async fn run() -> Result<()> {
         runner.run_until(stopping(receiver.clone())),
         tickets.run_until(stopping(receiver.clone())),
         automations.run_until(stopping(receiver.clone())),
+        actions.run_until(stopping(receiver.clone())),
     );
     signal_task.abort();
     let _ = fs::remove_file(&discovery);
