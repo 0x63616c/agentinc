@@ -5,7 +5,7 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("Go to…", "⌘ K"),
     ("Toggle sidebar", "⌘ B"),
     ("Back / Forward", "⌘ ⌥ ← →"),
-    ("Tickets, Assistant, Agents…", "⌘1–6"),
+    ("Dashboard, Tickets, Assistant…", "⌘1–9"),
     ("Settings", "⌘ ,"),
     ("Dismiss", "esc"),
 ];
@@ -177,7 +177,7 @@ impl Shell {
     ) -> impl IntoElement {
         let mut page = Page::document(
             PageHeader::new(route.label())
-                .description("Appearance, updates, connections and shortcuts."),
+                .description("Appearance, updates, connections, home, calendar and shortcuts."),
         );
         if route == Route::Settings {
             page = page.child(
@@ -195,6 +195,8 @@ impl Shell {
                         self.assistant
                             .update(cx, |this, cx| this.settings_view(window, cx)),
                     ))
+                    .child(self.smart_home_settings(window, cx))
+                    .child(self.calendar_settings(cx))
                     .child(self.shortcuts_section()),
             );
         }

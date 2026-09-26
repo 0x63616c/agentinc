@@ -13,12 +13,16 @@ pub struct PanePreference {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Route {
+    /// The home screen.
+    Dashboard,
     #[serde(alias = "tasks")]
     Tickets,
     Agents,
     Automations,
     Terminal,
     Temporal,
+    SmartHome,
+    Calendar,
     #[serde(rename = "evee", alias = "assistant")]
     Assistant,
     Settings,
@@ -26,6 +30,9 @@ pub enum Route {
     #[serde(alias = "design_system")]
     Components,
 }
+
+/// A page asks the shell to show another Route.
+pub struct OpenRoute(pub Route);
 
 /// The one surface that can float over the shell at a time.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,6 +46,7 @@ pub enum Overlay {
     RenameConversation(i64),
     DeleteConversation(i64),
     ConversationMenu(i64),
+    CalendarEvent,
 }
 impl Overlay {
     /// Modal surfaces on a scrim that block the page beneath.
@@ -50,6 +58,7 @@ impl Overlay {
                 | Self::DeleteTicket(_)
                 | Self::RenameConversation(_)
                 | Self::DeleteConversation(_)
+                | Self::CalendarEvent
         )
     }
     /// Light surfaces that close when the pointer lands outside them.
@@ -69,6 +78,12 @@ pub struct PageSpec {
 }
 
 pub const PAGES: &[PageSpec] = &[
+    PageSpec {
+        route: Route::Dashboard,
+        title: "Dashboard",
+        icon: "dashboard",
+        in_sidebar: true,
+    },
     PageSpec {
         route: Route::Tickets,
         title: "Tickets",
@@ -103,6 +118,18 @@ pub const PAGES: &[PageSpec] = &[
         route: Route::Temporal,
         title: "Temporal",
         icon: "temporal",
+        in_sidebar: true,
+    },
+    PageSpec {
+        route: Route::Calendar,
+        title: "Calendar",
+        icon: "calendar",
+        in_sidebar: true,
+    },
+    PageSpec {
+        route: Route::SmartHome,
+        title: "Smart Home",
+        icon: "home",
         in_sidebar: true,
     },
     PageSpec {
@@ -155,7 +182,7 @@ pub struct Router {
 impl Default for Router {
     fn default() -> Self {
         Self {
-            current: Route::Assistant,
+            current: Route::Dashboard,
             back: vec![],
             forward: vec![],
         }
@@ -330,7 +357,7 @@ impl Session {
             session.router.current = router
                 .get("current")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
-                .unwrap_or(Route::Assistant);
+                .unwrap_or(Route::Dashboard);
             for (key, history) in [
                 ("back", &mut session.router.back),
                 ("forward", &mut session.router.forward),
@@ -427,8 +454,12 @@ mod tests {
     use super::*;
     #[test]
     fn catalogue_and_history() {
-        assert_eq!(PAGES.len(), 8);
+        assert_eq!(PAGES.len(), 11);
+        assert_eq!(Session::default().current(), Route::Dashboard);
         for route in [
+            Route::Dashboard,
+            Route::Calendar,
+            Route::SmartHome,
             Route::Tickets,
             Route::Agents,
             Route::Automations,
@@ -459,20 +490,23 @@ mod tests {
         assert_eq!(
             sidebar,
             [
+                Route::Dashboard,
                 Route::Tickets,
                 Route::Assistant,
                 Route::Agents,
                 Route::Automations,
                 Route::Terminal,
                 Route::Temporal,
+                Route::Calendar,
+                Route::SmartHome,
             ]
         );
         for (index, route) in sidebar.into_iter().enumerate() {
             assert_eq!(Route::from_shortcut(((index + 1) % 10) as u8), Some(route));
         }
         assert_eq!(Route::from_shortcut(0), None);
-        assert_eq!(Route::from_shortcut(6), Some(Route::Temporal));
-        assert_eq!(Route::from_shortcut(7), None);
+        assert_eq!(Route::from_shortcut(7), Some(Route::Temporal));
+        assert_eq!(Route::from_shortcut(9), Some(Route::SmartHome));
         assert_eq!(Route::from_shortcut(10), None);
     }
     #[test]
@@ -490,11 +524,11 @@ mod tests {
         );
         let unknown =
             Session::from_json(r#"{"tabs":["future"],"font":"helvetica_neue","sidebar":false}"#);
-        assert_eq!(unknown.current(), Route::Assistant);
+        assert_eq!(unknown.current(), Route::Dashboard);
         let removed = Session::from_json(
             r#"{"router":{"current":"today","back":["home"],"forward":[]},"panes":[{"open":false,"width":286},{"open":true,"width":390}]}"#,
         );
-        assert_eq!(removed.current(), Route::Assistant);
+        assert_eq!(removed.current(), Route::Dashboard);
         assert_eq!(removed.panes[0].width, 286.);
         assert!(!removed.panes[0].open);
         assert!(!serde_json::to_string(&removed).unwrap().contains("390"));

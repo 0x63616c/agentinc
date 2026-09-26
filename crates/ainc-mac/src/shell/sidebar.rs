@@ -32,7 +32,9 @@ impl Shell {
             route.label().to_lowercase().replace(' ', "-")
         ))
         .h(px(CONTROL_HEIGHT))
-        .when(route == Route::Agents, |s| s.mt(px(SPACE_6)))
+        .when(matches!(route, Route::Agents | Route::Calendar), |s| {
+            s.mt(px(SPACE_6))
+        })
         .px(px(SPACE_2))
         .gap(px(SIDEBAR_TEXT_GAP))
         .rounded(px(RADIUS_MD))

@@ -116,11 +116,6 @@ impl HomeModel {
         }
         self.visible = visible;
     }
-    pub fn connected(&self) -> bool {
-        self.snapshot
-            .as_ref()
-            .is_some_and(|s| s.connection.is_some())
-    }
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         if self.refreshing {
             return;

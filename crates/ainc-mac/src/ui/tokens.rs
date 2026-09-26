@@ -191,6 +191,17 @@ pub const TILE_MIN_WIDTH: f32 = 148.;
 pub const TILE_HEIGHT: f32 = 104.;
 /// The value column of a stepper, wide enough for "100°".
 pub const STEPPER_VALUE_WIDTH: f32 = 56.;
+/// Calendar: a month cell, one hour of the week grid, the week's time
+/// gutter, the day panel beside the month, the agenda's date column, a
+/// calendar color bar and the circle that marks today.
+pub const MONTH_CELL_HEIGHT: f32 = 112.;
+pub const HOUR_HEIGHT: f32 = 48.;
+pub const TIME_GUTTER: f32 = 56.;
+pub const DAY_PANEL_WIDTH: f32 = 300.;
+pub const AGENDA_DATE_WIDTH: f32 = 96.;
+pub const AGENDA_TIME_WIDTH: f32 = 136.;
+pub const EVENT_BAR_WIDTH: f32 = 3.;
+pub const TODAY_MARK: f32 = 24.;
 pub const AVATAR_SIZE: f32 = 24.;
 pub const AVATAR_SIZE_LG: f32 = 40.;
 pub const TOGGLE_WIDTH: f32 = 36.;
