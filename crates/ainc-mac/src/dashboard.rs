@@ -347,7 +347,7 @@ impl DashboardPage {
                 list = list.child(
                     div()
                         .px(px(SPACE_4))
-                        .pt(px(if last_day.is_some() { SPACE_4 } else { SPACE_3 }))
+                        .pt(px(SPACE_4))
                         .pb(px(SPACE_1))
                         .child(eyebrow(day_label(date, today))),
                 );

@@ -586,12 +586,7 @@ impl CalendarPage {
     // ----- Views ----------------------------------------------------------
 
     /// One event as a compact line: dot, optional time, title.
-    fn chip(
-        &self,
-        event: &CalendarEvent,
-        show_time: bool,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
+    fn chip(&self, event: &CalendarEvent, cx: &mut Context<Self>) -> Stateful<Div> {
         let id = event.id.clone();
         let (progress, on_hover) = self.hover.track(
             &ElementId::from(SharedString::from(format!("calendar.chip.{id}"))),
@@ -626,14 +621,6 @@ impl CalendarPage {
                             .rounded_full()
                             .bg(event_color(event)),
                     )
-                    .when(show_time && !event.all_day, |s| {
-                        s.child(
-                            div()
-                                .flex_shrink_0()
-                                .text_color(rgb(TEXT_TERTIARY))
-                                .child(crate::calendar::clock(event.starts_at)),
-                        )
-                    })
                     .child(
                         div()
                             .flex_1()
@@ -702,7 +689,7 @@ impl CalendarPage {
                     .gap(px(SPACE_HALF))
                     .child(Self::numeral(date, date.month() != month));
                 for event in day.iter().take(3) {
-                    cell = cell.child(self.chip(event, true, cx));
+                    cell = cell.child(self.chip(event, cx));
                 }
                 if day.len() > 3 {
                     cell = cell.child(
@@ -768,9 +755,10 @@ impl CalendarPage {
     fn day_panel(&self, events: &[CalendarEvent], cx: &mut Context<Self>) -> Div {
         let date = self.selected;
         let day = on_day(events, date);
-        let mut list = column().gap(px(SPACE_1));
+        // Rows carry their own inset; pull them out so their marks align with the heading.
+        let mut list = column().gap(px(SPACE_1)).mx(px(-SPACE_3));
         if day.is_empty() {
-            list = list.child(caption("Nothing scheduled."));
+            list = list.child(div().px(px(SPACE_3)).child(caption("Nothing scheduled.")));
         }
         for event in day {
             let id = event.id.clone();
@@ -894,7 +882,7 @@ impl CalendarPage {
                 .border_l_1()
                 .border_color(rgb(BORDER_SUBTLE));
             for event in untimed {
-                strip = strip.child(self.chip(event, false, cx));
+                strip = strip.child(self.chip(event, cx));
             }
             all_day = all_day.child(strip);
             let mut lane = div()
@@ -929,10 +917,10 @@ impl CalendarPage {
                 }
                 let top = (from - grid_start) as f32 / 3600. * HOUR_HEIGHT;
                 let height =
-                    ((to - from) as f32 / 3600. * HOUR_HEIGHT).max(CONTROL_HEIGHT_SM - SPACE_1);
+                    ((to - from) as f32 / 3600. * HOUR_HEIGHT).max(CONTROL_HEIGHT_SM + SPACE_1);
                 let width = 1. / count as f32;
                 let id = event.id.clone();
-                let tall = height >= HOUR_HEIGHT * 0.9;
+                let tall = height >= HOUR_HEIGHT * 0.75;
                 let color = event_color(event);
                 lane = lane.child(
                     div()
@@ -949,37 +937,48 @@ impl CalendarPage {
                                 enabled: true,
                             },
                             |button| {
+                                // Short blocks read on one line; taller ones add the time.
+                                let title = div()
+                                    .w_full()
+                                    .truncate()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(rgb(TEXT))
+                                    .child(event.title.clone());
                                 button
                                     .size_full()
-                                    .flex_col()
-                                    .items_start()
+                                    .items_stretch()
                                     .overflow_hidden()
-                                    .pl(px(SPACE_2))
+                                    .gap(px(SPACE_2))
+                                    .p(px(SPACE_HALF))
                                     .pr(px(SPACE_1))
-                                    .py(px(SPACE_1))
                                     .rounded(px(RADIUS_SM))
-                                    .border_l_2()
-                                    .border_color(color)
                                     .bg(rgb(SURFACE_CONTROL))
                                     .hover(|s| s.bg(rgb(HOVER_STRONG)))
                                     .text_size(type_size(CAPTION_SIZE))
                                     .child(
                                         div()
-                                            .w_full()
-                                            .truncate()
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(rgb(TEXT))
-                                            .child(event.title.clone()),
+                                            .w(px(EVENT_BAR_WIDTH))
+                                            .flex_shrink_0()
+                                            .rounded_full()
+                                            .bg(color),
                                     )
-                                    .when(tall, |s| {
-                                        s.child(
-                                            div()
-                                                .w_full()
-                                                .truncate()
-                                                .text_color(rgb(TEXT_SECONDARY))
-                                                .child(span(event)),
-                                        )
-                                    })
+                                    .child(
+                                        column()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .when(tall, |s| s.py(px(SPACE_1)))
+                                            .when(!tall, |s| s.justify_center())
+                                            .child(title)
+                                            .when(tall, |s| {
+                                                s.child(
+                                                    div()
+                                                        .w_full()
+                                                        .truncate()
+                                                        .text_color(rgb(TEXT_SECONDARY))
+                                                        .child(span(event)),
+                                                )
+                                            }),
+                                    )
                             },
                             move |this: &mut Self, window, cx| this.open_event(&id, window, cx),
                             cx,
