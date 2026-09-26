@@ -64,6 +64,7 @@ async fn closing_client_does_not_drop_acknowledged_turn_or_completed_reply(pool:
     let command = request(Command::Send {
         conversation_id: conversation,
         prompt: "Keep working after close".into(),
+        command: None,
     });
     let response = app
         .clone()
@@ -113,6 +114,7 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
         Command::Send {
             conversation_id: first,
             prompt: "first".into(),
+            command: None,
         },
     )
     .await;
@@ -121,7 +123,8 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
             &pool,
             request(Command::Send {
                 conversation_id: first,
-                prompt: "overlap".into()
+                prompt: "overlap".into(),
+                command: None,
             })
         )
         .await
@@ -137,6 +140,7 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
         Command::Send {
             conversation_id: second,
             prompt: "independent".into(),
+            command: None,
         },
     )
     .await;

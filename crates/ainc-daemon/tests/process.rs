@@ -179,6 +179,7 @@ async fn daemon_finishes_reply_after_http_client_exits(pool: PgPool) {
         Command::Send {
             conversation_id: conversation,
             prompt: "Keep working after client close".into(),
+            command: None,
         },
     )
     .await;
@@ -205,6 +206,7 @@ async fn daemon_finishes_reply_after_http_client_exits(pool: PgPool) {
         Command::Send {
             conversation_id: conversation,
             prompt: "Retain the prior dialogue".into(),
+            command: None,
         },
     )
     .await;
@@ -238,6 +240,7 @@ async fn killed_daemon_recovers_accepted_conversation_in_a_new_process(pool: PgP
         Command::Send {
             conversation_id: conversation,
             prompt: "Survive process death".into(),
+            command: None,
         },
     )
     .await;

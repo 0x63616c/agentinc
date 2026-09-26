@@ -389,9 +389,14 @@ fn generate(root: &Path, check: bool) -> Result<()> {
     let client = format(prettyplease::unparse(&syn::parse2(
         generator.generate_tokens(&parsed)?,
     )?))?;
-    let cli = format(prettyplease::unparse(&syn::parse2(
-        generator.cli(&parsed, "ainc_client")?,
-    )?))?;
+    // Progenitor clones Copy query parameters (for example `bool`), which
+    // strict Clippy rejects; the generated CLI is not hand-maintained.
+    let cli = format!(
+        "#![allow(clippy::clone_on_copy)]\n{}",
+        format(prettyplease::unparse(&syn::parse2(
+            generator.cli(&parsed, "ainc_client")?,
+        )?))?
+    );
     for (path, content) in [
         (root.join("api/openapi-3.0.json"), spec_text),
         (root.join("crates/ainc-client/src/generated.rs"), client),

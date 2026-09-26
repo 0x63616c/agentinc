@@ -14,6 +14,16 @@ use turnkeel::{
 /// Tests supply scripted models; production supplies the Connection's model adapter.
 pub trait ModelCatalog: Send + Sync + 'static {
     fn resolve(&self, id: &str) -> Result<Arc<dyn Model>, ModelError>;
+    /// Resolve a model that reports reply text as it streams. Catalogs without
+    /// streaming transports return the plain model.
+    fn resolve_streaming(
+        &self,
+        id: &str,
+        sink: crate::providers::DeltaSink,
+    ) -> Result<Arc<dyn Model>, ModelError> {
+        let _ = sink;
+        self.resolve(id)
+    }
 }
 #[derive(Clone)]
 struct SharedModel(Arc<dyn Model>);

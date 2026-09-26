@@ -1,3 +1,4 @@
+#![allow(clippy::clone_on_copy)]
 use ainc_client::*;
 use anyhow::Context as _;
 pub struct Cli<T: CliConfig> {
@@ -19,6 +20,11 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionCancel => Self::cli_connection_cancel(),
             CliCommand::ConnectionLogin => Self::cli_connection_login(),
             CliCommand::ConnectionLogout => Self::cli_connection_logout(),
+            CliCommand::ProvidersState => Self::cli_providers_state(),
+            CliCommand::ProviderCancel => Self::cli_provider_cancel(),
+            CliCommand::ProviderConnect => Self::cli_provider_connect(),
+            CliCommand::ProviderDisconnect => Self::cli_provider_disconnect(),
+            CliCommand::ProviderTest => Self::cli_provider_test(),
             CliCommand::ProductState => Self::cli_product_state(),
             CliCommand::TemporalExecutions => Self::cli_temporal_executions(),
             CliCommand::TerminalSessionsList => Self::cli_terminal_sessions_list(),
@@ -98,6 +104,99 @@ impl<T: CliConfig> Cli<T> {
     }
     pub fn cli_connection_logout() -> ::clap::Command {
         ::clap::Command::new("")
+    }
+    pub fn cli_providers_state() -> ::clap::Command {
+        ::clap::Command::new("").arg(
+            ::clap::Arg::new("refresh")
+                .long("refresh")
+                .value_parser(::clap::value_parser!(bool))
+                .required(false)
+                .help("Re-check every provider instead of using the recent snapshot"),
+        )
+    }
+    pub fn cli_provider_cancel() -> ::clap::Command {
+        ::clap::Command::new("").arg(
+            ::clap::Arg::new("id")
+                .long("id")
+                .value_parser(::clap::value_parser!(::std::string::String))
+                .required(true)
+                .help("claude, codex or openrouter"),
+        )
+    }
+    pub fn cli_provider_connect() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("api-key")
+                    .long("api-key")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required(false),
+            )
+            .arg(
+                ::clap::Arg::new("code")
+                    .long("code")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required(false),
+            )
+            .arg(
+                ::clap::Arg::new("id")
+                    .long("id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required(true)
+                    .help("claude, codex or openrouter"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(false)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
+    pub fn cli_provider_disconnect() -> ::clap::Command {
+        ::clap::Command::new("").arg(
+            ::clap::Arg::new("id")
+                .long("id")
+                .value_parser(::clap::value_parser!(::std::string::String))
+                .required(true)
+                .help("claude, codex or openrouter"),
+        )
+    }
+    pub fn cli_provider_test() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("id")
+                    .long("id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required(true)
+                    .help("claude, codex or openrouter"),
+            )
+            .arg(
+                ::clap::Arg::new("model")
+                    .long("model")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required(false),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(false)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
     }
     pub fn cli_product_state() -> ::clap::Command {
         ::clap::Command::new("")
@@ -248,6 +347,11 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionCancel => self.execute_connection_cancel(matches).await,
             CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
             CliCommand::ConnectionLogout => self.execute_connection_logout(matches).await,
+            CliCommand::ProvidersState => self.execute_providers_state(matches).await,
+            CliCommand::ProviderCancel => self.execute_provider_cancel(matches).await,
+            CliCommand::ProviderConnect => self.execute_provider_connect(matches).await,
+            CliCommand::ProviderDisconnect => self.execute_provider_disconnect(matches).await,
+            CliCommand::ProviderTest => self.execute_provider_test(matches).await,
             CliCommand::ProductState => self.execute_product_state(matches).await,
             CliCommand::TemporalExecutions => self.execute_temporal_executions(matches).await,
             CliCommand::TerminalSessionsList => self.execute_terminal_sessions_list(matches).await,
@@ -435,6 +539,133 @@ impl<T: CliConfig> Cli<T> {
         let mut request = self.client.connection_logout();
         self.config
             .execute_connection_logout(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_providers_state(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.providers_state();
+        if let Some(value) = matches.get_one::<bool>("refresh") {
+            request = request.refresh(value.clone());
+        }
+        self.config.execute_providers_state(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_provider_cancel(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.provider_cancel();
+        if let Some(value) = matches.get_one::<::std::string::String>("id") {
+            request = request.id(value.clone());
+        }
+        self.config.execute_provider_cancel(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_provider_connect(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.provider_connect();
+        if let Some(value) = matches.get_one::<::std::string::String>("api-key") {
+            request = request.body_map(|body| body.api_key(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<::std::string::String>("code") {
+            request = request.body_map(|body| body.code(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<::std::string::String>("id") {
+            request = request.id(value.clone());
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::ConnectRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config
+            .execute_provider_connect(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_provider_disconnect(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.provider_disconnect();
+        if let Some(value) = matches.get_one::<::std::string::String>("id") {
+            request = request.id(value.clone());
+        }
+        self.config
+            .execute_provider_disconnect(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_provider_test(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.provider_test();
+        if let Some(value) = matches.get_one::<::std::string::String>("id") {
+            request = request.id(value.clone());
+        }
+        if let Some(value) = matches.get_one::<::std::string::String>("model") {
+            request = request.body_map(|body| body.model(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::TestRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config.execute_provider_test(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -775,6 +1006,41 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_providers_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ProvidersState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_provider_cancel(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ProviderCancel,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_provider_connect(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ProviderConnect,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_provider_disconnect(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ProviderDisconnect,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_provider_test(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ProviderTest,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_product_state(
         &self,
         matches: &::clap::ArgMatches,
@@ -864,6 +1130,11 @@ pub enum CliCommand {
     ConnectionCancel,
     ConnectionLogin,
     ConnectionLogout,
+    ProvidersState,
+    ProviderCancel,
+    ProviderConnect,
+    ProviderDisconnect,
+    ProviderTest,
     ProductState,
     TemporalExecutions,
     TerminalSessionsList,
@@ -888,6 +1159,11 @@ impl CliCommand {
             CliCommand::ConnectionCancel,
             CliCommand::ConnectionLogin,
             CliCommand::ConnectionLogout,
+            CliCommand::ProvidersState,
+            CliCommand::ProviderCancel,
+            CliCommand::ProviderConnect,
+            CliCommand::ProviderDisconnect,
+            CliCommand::ProviderTest,
             CliCommand::ProductState,
             CliCommand::TemporalExecutions,
             CliCommand::TerminalSessionsList,
@@ -913,6 +1189,11 @@ impl CliCommand {
             CliCommand::ConnectionCancel => "connection_cancel",
             CliCommand::ConnectionLogin => "connection_login",
             CliCommand::ConnectionLogout => "connection_logout",
+            CliCommand::ProvidersState => "providers_state",
+            CliCommand::ProviderCancel => "provider_cancel",
+            CliCommand::ProviderConnect => "provider_connect",
+            CliCommand::ProviderDisconnect => "provider_disconnect",
+            CliCommand::ProviderTest => "provider_test",
             CliCommand::ProductState => "product_state",
             CliCommand::TemporalExecutions => "temporal_executions",
             CliCommand::TerminalSessionsList => "terminal_sessions_list",

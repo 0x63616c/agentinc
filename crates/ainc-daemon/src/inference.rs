@@ -1,9 +1,13 @@
 //! Personal subscription model steps. OAuth remains owned by the official Codex
 //! sign-in client; the Responses request and agent loop are ours.
+use crate::providers::{DeltaSink, sse::SseReader};
 use futures::{StreamExt, future::BoxFuture};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use turnkeel::{Content, Model, ModelError, ModelRequest, ModelResponse, Role, StopReason};
 
 const ENDPOINT: &str = "https://chatgpt.com/backend-api/codex/responses";
@@ -14,6 +18,7 @@ const MAX_RESPONSE: usize = 4 * 1024 * 1024;
 pub struct CodexModel {
     model: String,
     connection: Arc<CodexModels>,
+    sink: Option<DeltaSink>,
 }
 
 /// One personal Connection shared across selected models and agent definitions.
@@ -60,16 +65,30 @@ impl CodexModels {
             auth_lock: Arc::default(),
         })
     }
-}
-impl crate::execution::ModelCatalog for CodexModels {
-    fn resolve(&self, id: &str) -> Result<Arc<dyn Model>, ModelError> {
+    pub fn profile(&self) -> &Path {
+        &self.profile
+    }
+    pub fn resolve_with(
+        &self,
+        id: &str,
+        sink: Option<DeltaSink>,
+    ) -> Result<Arc<dyn Model>, ModelError> {
         if id.trim().is_empty() {
             return Err(ModelError::fatal("Select a model before starting work."));
         }
         Ok(Arc::new(CodexModel {
             model: id.into(),
             connection: Arc::new(self.clone()),
+            sink,
         }))
+    }
+}
+impl crate::execution::ModelCatalog for CodexModels {
+    fn resolve(&self, id: &str) -> Result<Arc<dyn Model>, ModelError> {
+        self.resolve_with(id, None)
+    }
+    fn resolve_streaming(&self, id: &str, sink: DeltaSink) -> Result<Arc<dyn Model>, ModelError> {
+        self.resolve_with(id, Some(sink))
     }
 }
 
@@ -91,6 +110,7 @@ impl CodexModel {
         Ok(Self {
             model,
             connection: Arc::new(CodexModels::new(profile)?),
+            sink: None,
         })
     }
 
@@ -169,18 +189,13 @@ impl CodexModel {
             });
         }
         let mut stream = response.bytes_stream();
-        let mut data = Vec::new();
+        let mut parser = ResponseParser::new(self.sink.clone());
         while let Some(chunk) = stream.next().await {
             let chunk =
                 chunk.map_err(|_| ModelError::retryable("Model response was interrupted."))?;
-            if data.len() + chunk.len() > MAX_RESPONSE {
-                return Err(ModelError::fatal(
-                    "Model response exceeded the supported size.",
-                ));
-            }
-            data.extend_from_slice(&chunk);
+            parser.push(&chunk)?;
         }
-        parse_stream(&data)
+        parser.finish()
     }
 }
 
@@ -230,32 +245,53 @@ fn request_body(model: &str, request: ModelRequest) -> Result<Value, ModelError>
     )
 }
 
-fn parse_stream(bytes: &[u8]) -> Result<ModelResponse, ModelError> {
-    let body = std::str::from_utf8(bytes)
-        .map_err(|_| ModelError::fatal("Model response was not UTF-8."))?;
-    let normalized = body.replace("\r\n", "\n");
-    for event in normalized.split("\n\n") {
-        let data = event
-            .lines()
-            .filter_map(|line| line.strip_prefix("data:").map(str::trim_start))
-            .collect::<Vec<_>>()
-            .join("\n");
-        if data.is_empty() || data == "[DONE]" {
-            continue;
-        }
-        let value: Value = serde_json::from_str(&data)
-            .map_err(|_| ModelError::fatal("Model sent an invalid event."))?;
-        match value["type"].as_str() {
-            Some("response.completed") => return parse_output(&value["response"]),
-            Some("response.failed" | "response.incomplete" | "error") => {
-                return Err(ModelError::fatal("Model could not finish the response."));
-            }
-            _ => {}
+/// Incremental Responses stream: text deltas go to the sink, the completed
+/// response becomes the model step.
+struct ResponseParser {
+    reader: SseReader,
+    sink: Option<DeltaSink>,
+    done: Option<ModelResponse>,
+}
+impl ResponseParser {
+    fn new(sink: Option<DeltaSink>) -> Self {
+        Self {
+            reader: SseReader::new(MAX_RESPONSE),
+            sink,
+            done: None,
         }
     }
-    Err(ModelError::retryable(
-        "Model stream ended before completion.",
-    ))
+    fn push(&mut self, chunk: &[u8]) -> Result<(), ModelError> {
+        for data in self.reader.push(chunk)? {
+            if self.done.is_some() {
+                continue;
+            }
+            let value: Value = serde_json::from_str(&data)
+                .map_err(|_| ModelError::fatal("Model sent an invalid event."))?;
+            match value["type"].as_str() {
+                Some("response.output_text.delta") => {
+                    if let (Some(sink), Some(delta)) = (&self.sink, value["delta"].as_str()) {
+                        sink(delta);
+                    }
+                }
+                Some("response.completed") => self.done = Some(parse_output(&value["response"])?),
+                Some("response.failed" | "response.incomplete" | "error") => {
+                    return Err(ModelError::fatal("Model could not finish the response."));
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+    fn finish(self) -> Result<ModelResponse, ModelError> {
+        self.done
+            .ok_or_else(|| ModelError::retryable("Model stream ended before completion."))
+    }
+}
+#[cfg(test)]
+fn parse_stream(bytes: &[u8]) -> Result<ModelResponse, ModelError> {
+    let mut parser = ResponseParser::new(None);
+    parser.push(bytes)?;
+    parser.finish()
 }
 
 fn parse_output(response: &Value) -> Result<ModelResponse, ModelError> {

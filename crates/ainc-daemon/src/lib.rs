@@ -1,3 +1,4 @@
+pub mod agent_tools;
 pub mod automations;
 mod codex;
 pub mod coding;
@@ -8,6 +9,7 @@ pub mod execution;
 pub mod inference;
 pub mod legacy;
 pub mod product;
+pub mod providers;
 pub mod temporal;
 pub mod terminal_sessions;
 pub mod tickets;
@@ -101,6 +103,7 @@ pub fn openapi() -> serde_json::Value {
     serde_json::to_value({
         let mut api = Api::openapi();
         api.merge(connection::openapi());
+        api.merge(providers::openapi());
         api
     })
     .expect("OpenAPI serialization")
@@ -129,10 +132,22 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     sqlx::migrate!().run(pool).await
 }
 
+/// The product API with offline providers: fixtures, examples and round trips
+/// that never touch a profile, Keychain or network.
 pub fn product_router(product: product::Product) -> Router {
+    let dir = std::env::temp_dir().join(format!("ainc-offline-{}", uuid::Uuid::new_v4()));
+    let providers = providers::Providers::offline(&dir).expect("offline providers");
+    product_router_with(product, std::sync::Arc::new(providers))
+}
+
+pub fn product_router_with(
+    product: product::Product,
+    providers: std::sync::Arc<providers::Providers>,
+) -> Router {
     router(product.pool.clone())
         .merge(product::router(product.clone()))
-        .merge(connection::router(product.clone()))
+        .merge(connection::router(product.clone(), providers.clone()))
+        .merge(providers::router(product.clone(), providers))
         .merge(tickets::router(product.clone()))
         .merge(automations::router(product.clone()))
         .merge(terminal_sessions::router(product.clone()))

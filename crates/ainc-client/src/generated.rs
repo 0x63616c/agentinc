@@ -583,6 +583,13 @@ pub mod types {
     ///        "prompt"
     ///      ],
     ///      "properties": {
+    ///        "command": {
+    ///          "description": "The slash command that produced this prompt, for the transcript.",
+    ///          "type": [
+    ///            "string",
+    ///            "null"
+    ///          ]
+    ///        },
     ///        "conversation_id": {
     ///          "type": "integer",
     ///          "format": "int64"
@@ -694,6 +701,24 @@ pub mod types {
     ///          "type": "string"
     ///        }
     ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "policy"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "set_http_policy"
+    ///          ]
+    ///        },
+    ///        "policy": {
+    ///          "$ref": "#/components/schemas/HttpPolicy"
+    ///        }
+    ///      }
     ///    }
     ///  ]
     ///}
@@ -715,6 +740,9 @@ pub mod types {
         SelectConversation { id: i64 },
         #[serde(rename = "send")]
         Send {
+            ///The slash command that produced this prompt, for the transcript.
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            command: ::std::option::Option<::std::string::String>,
             conversation_id: i64,
             prompt: ::std::string::String,
         },
@@ -728,6 +756,8 @@ pub mod types {
         DeleteTodo { id: i64 },
         #[serde(rename = "select_model")]
         SelectModel { model: ::std::string::String },
+        #[serde(rename = "set_http_policy")]
+        SetHttpPolicy { policy: HttpPolicy },
     }
     ///`CommandRequest`
     ///
@@ -808,6 +838,128 @@ pub mod types {
     }
     impl Comment {
         pub fn builder() -> builder::Comment {
+            Default::default()
+        }
+    }
+    ///`ConnectMethod`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "browser",
+    ///    "browser_code",
+    ///    "api_key"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum ConnectMethod {
+        #[serde(rename = "browser")]
+        Browser,
+        #[serde(rename = "browser_code")]
+        BrowserCode,
+        #[serde(rename = "api_key")]
+        ApiKey,
+    }
+    impl ::std::fmt::Display for ConnectMethod {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Browser => f.write_str("browser"),
+                Self::BrowserCode => f.write_str("browser_code"),
+                Self::ApiKey => f.write_str("api_key"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ConnectMethod {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "browser" => Ok(Self::Browser),
+                "browser_code" => Ok(Self::BrowserCode),
+                "api_key" => Ok(Self::ApiKey),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ConnectMethod {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for ConnectMethod {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for ConnectMethod {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`ConnectRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "api_key": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "code": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ConnectRequest {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub api_key: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub code: ::std::option::Option<::std::string::String>,
+    }
+    impl ::std::default::Default for ConnectRequest {
+        fn default() -> Self {
+            Self {
+                api_key: Default::default(),
+                code: Default::default(),
+            }
+        }
+    }
+    impl ConnectRequest {
+        pub fn builder() -> builder::ConnectRequest {
             Default::default()
         }
     }
@@ -1163,6 +1315,47 @@ pub mod types {
             Default::default()
         }
     }
+    /*Which hosts the agent may call. Patterns are exact hosts or `*.suffix`;
+    `*` allows every public host. Loopback, private and link-local addresses
+    are always refused, whatever the policy says.*/
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "Which hosts the agent may call. Patterns are exact hosts or `*.suffix`;\n`*` allows every public host. Loopback, private and link-local addresses\nare always refused, whatever the policy says.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "allow",
+    ///    "deny"
+    ///  ],
+    ///  "properties": {
+    ///    "allow": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "deny": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct HttpPolicy {
+        pub allow: ::std::vec::Vec<::std::string::String>,
+        pub deny: ::std::vec::Vec<::std::string::String>,
+    }
+    impl HttpPolicy {
+        pub fn builder() -> builder::HttpPolicy {
+            Default::default()
+        }
+    }
     ///`Model`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1255,6 +1448,305 @@ pub mod types {
             Default::default()
         }
     }
+    ///`ProviderId`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "claude",
+    ///    "codex",
+    ///    "openrouter"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum ProviderId {
+        #[serde(rename = "claude")]
+        Claude,
+        #[serde(rename = "codex")]
+        Codex,
+        #[serde(rename = "openrouter")]
+        Openrouter,
+    }
+    impl ::std::fmt::Display for ProviderId {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Claude => f.write_str("claude"),
+                Self::Codex => f.write_str("codex"),
+                Self::Openrouter => f.write_str("openrouter"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ProviderId {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "claude" => Ok(Self::Claude),
+                "codex" => Ok(Self::Codex),
+                "openrouter" => Ok(Self::Openrouter),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ProviderId {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for ProviderId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for ProviderId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`ProviderModel`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "featured",
+    ///    "id",
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "featured": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "id": {
+    ///      "type": "string"
+    ///    },
+    ///    "name": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ProviderModel {
+        pub featured: bool,
+        pub id: ::std::string::String,
+        pub name: ::std::string::String,
+    }
+    impl ProviderModel {
+        pub fn builder() -> builder::ProviderModel {
+            Default::default()
+        }
+    }
+    ///`ProviderStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "awaiting_code",
+    ///    "connect",
+    ///    "connected",
+    ///    "description",
+    ///    "id",
+    ///    "models",
+    ///    "name",
+    ///    "signing_in"
+    ///  ],
+    ///  "properties": {
+    ///    "account": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "auth_url": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "awaiting_code": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "connect": {
+    ///      "$ref": "#/components/schemas/ConnectMethod"
+    ///    },
+    ///    "connected": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "description": {
+    ///      "type": "string"
+    ///    },
+    ///    "error": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "id": {
+    ///      "$ref": "#/components/schemas/ProviderId"
+    ///    },
+    ///    "models": {
+    ///      "description": "Canonical model IDs (`provider:model`), featured models first.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ProviderModel"
+    ///      }
+    ///    },
+    ///    "name": {
+    ///      "type": "string"
+    ///    },
+    ///    "signing_in": {
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ProviderStatus {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub account: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub auth_url: ::std::option::Option<::std::string::String>,
+        pub awaiting_code: bool,
+        pub connect: ConnectMethod,
+        pub connected: bool,
+        pub description: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub error: ::std::option::Option<::std::string::String>,
+        pub id: ProviderId,
+        ///Canonical model IDs (`provider:model`), featured models first.
+        pub models: ::std::vec::Vec<ProviderModel>,
+        pub name: ::std::string::String,
+        pub signing_in: bool,
+    }
+    impl ProviderStatus {
+        pub fn builder() -> builder::ProviderStatus {
+            Default::default()
+        }
+    }
+    ///`ProviderTest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "elapsed_ms",
+    ///    "model",
+    ///    "ok"
+    ///  ],
+    ///  "properties": {
+    ///    "elapsed_ms": {
+    ///      "type": "integer",
+    ///      "format": "int64",
+    ///      "minimum": 0.0
+    ///    },
+    ///    "error": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "model": {
+    ///      "type": "string"
+    ///    },
+    ///    "ok": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "reply": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ProviderTest {
+        pub elapsed_ms: i64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub error: ::std::option::Option<::std::string::String>,
+        pub model: ::std::string::String,
+        pub ok: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub reply: ::std::option::Option<::std::string::String>,
+    }
+    impl ProviderTest {
+        pub fn builder() -> builder::ProviderTest {
+            Default::default()
+        }
+    }
+    ///`ProvidersState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "providers"
+    ///  ],
+    ///  "properties": {
+    ///    "default_model": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "providers": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ProviderStatus"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ProvidersState {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub default_model: ::std::option::Option<::std::string::String>,
+        pub providers: ::std::vec::Vec<ProviderStatus>,
+    }
+    impl ProvidersState {
+        pub fn builder() -> builder::ProvidersState {
+            Default::default()
+        }
+    }
     ///`Settings`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1263,6 +1755,9 @@ pub mod types {
     ///{
     ///  "type": "object",
     ///  "properties": {
+    ///    "http_policy": {
+    ///      "$ref": "#/components/schemas/HttpPolicy"
+    ///    },
     ///    "model": {
     ///      "type": [
     ///        "string",
@@ -1283,6 +1778,8 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
     pub struct Settings {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub http_policy: ::std::option::Option<HttpPolicy>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub model: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub selected_conversation: ::std::option::Option<i64>,
@@ -1290,6 +1787,7 @@ pub mod types {
     impl ::std::default::Default for Settings {
         fn default() -> Self {
             Self {
+                http_policy: Default::default(),
                 model: Default::default(),
                 selected_conversation: Default::default(),
             }
@@ -1385,6 +1883,41 @@ pub mod types {
     }
     impl TerminalSession {
         pub fn builder() -> builder::TerminalSession {
+            Default::default()
+        }
+    }
+    ///`TestRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "model": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TestRequest {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub model: ::std::option::Option<::std::string::String>,
+    }
+    impl ::std::default::Default for TestRequest {
+        fn default() -> Self {
+            Self {
+                model: Default::default(),
+            }
+        }
+    }
+    impl TestRequest {
+        pub fn builder() -> builder::TestRequest {
             Default::default()
         }
     }
@@ -2035,14 +2568,33 @@ pub mod types {
     ///  "type": "object",
     ///  "required": [
     ///    "conversation_id",
+    ///    "created_at",
     ///    "id",
     ///    "prompt",
     ///    "state"
     ///  ],
     ///  "properties": {
+    ///    "command": {
+    ///      "description": "The slash command the user typed, shown as a chip instead of the prompt.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "conversation_id": {
     ///      "type": "integer",
     ///      "format": "int64"
+    ///    },
+    ///    "created_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "draft": {
+    ///      "description": "Reply text still streaming in; cleared once its step is recorded.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    },
     ///    "error": {
     ///      "type": [
@@ -2050,9 +2602,22 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "finished_at": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    },
     ///    "id": {
     ///      "type": "integer",
     ///      "format": "int64"
+    ///    },
+    ///    "model": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    },
     ///    "prompt": {
     ///      "type": "string"
@@ -2063,8 +2628,21 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "started_at": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    },
     ///    "state": {
     ///      "type": "string"
+    ///    },
+    ///    "steps": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/TurnStep"
+    ///      }
     ///    }
     ///  }
     ///}
@@ -2072,17 +2650,79 @@ pub mod types {
     /// </details>
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
     pub struct Turn {
+        ///The slash command the user typed, shown as a chip instead of the prompt.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub command: ::std::option::Option<::std::string::String>,
         pub conversation_id: i64,
+        pub created_at: i64,
+        ///Reply text still streaming in; cleared once its step is recorded.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub draft: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub error: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub finished_at: ::std::option::Option<i64>,
         pub id: i64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub model: ::std::option::Option<::std::string::String>,
         pub prompt: ::std::string::String,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub response: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub started_at: ::std::option::Option<i64>,
         pub state: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub steps: ::std::vec::Vec<TurnStep>,
     }
     impl Turn {
         pub fn builder() -> builder::Turn {
+            Default::default()
+        }
+    }
+    ///One durable step of a turn: reply text, a tool call or a tool result.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "One durable step of a turn: reply text, a tool call or a tool result.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "content",
+    ///    "id",
+    ///    "kind",
+    ///    "turn_id"
+    ///  ],
+    ///  "properties": {
+    ///    "content": {
+    ///      "type": "object"
+    ///    },
+    ///    "id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "kind": {
+    ///      "description": "`text`, `tool_use` or `tool_result`.",
+    ///      "type": "string"
+    ///    },
+    ///    "turn_id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TurnStep {
+        pub content: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+        pub id: i64,
+        ///`text`, `tool_use` or `tool_result`.
+        pub kind: ::std::string::String,
+        pub turn_id: i64,
+    }
+    impl TurnStep {
+        pub fn builder() -> builder::TurnStep {
             Default::default()
         }
     }
@@ -3043,6 +3683,66 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct ConnectRequest {
+            api_key: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            code: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+        }
+        impl ::std::default::Default for ConnectRequest {
+            fn default() -> Self {
+                Self {
+                    api_key: Ok(Default::default()),
+                    code: Ok(Default::default()),
+                }
+            }
+        }
+        impl ConnectRequest {
+            pub fn api_key<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.api_key = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for api_key: {e}"));
+                self
+            }
+            pub fn code<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.code = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for code: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ConnectRequest> for super::ConnectRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ConnectRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    api_key: value.api_key?,
+                    code: value.code?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ConnectRequest> for ConnectRequest {
+            fn from(value: super::ConnectRequest) -> Self {
+                Self {
+                    api_key: Ok(value.api_key),
+                    code: Ok(value.code),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct ConnectionStatus {
             account: ::std::result::Result<
                 ::std::option::Option<::std::string::String>,
@@ -3669,6 +4369,66 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct HttpPolicy {
+            allow: ::std::result::Result<
+                ::std::vec::Vec<::std::string::String>,
+                ::std::string::String,
+            >,
+            deny: ::std::result::Result<
+                ::std::vec::Vec<::std::string::String>,
+                ::std::string::String,
+            >,
+        }
+        impl ::std::default::Default for HttpPolicy {
+            fn default() -> Self {
+                Self {
+                    allow: Err("no value supplied for allow".to_string()),
+                    deny: Err("no value supplied for deny".to_string()),
+                }
+            }
+        }
+        impl HttpPolicy {
+            pub fn allow<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.allow = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for allow: {e}"));
+                self
+            }
+            pub fn deny<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.deny = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for deny: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<HttpPolicy> for super::HttpPolicy {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: HttpPolicy,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    allow: value.allow?,
+                    deny: value.deny?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::HttpPolicy> for HttpPolicy {
+            fn from(value: super::HttpPolicy) -> Self {
+                Self {
+                    allow: Ok(value.allow),
+                    deny: Ok(value.deny),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct Model {
             id: ::std::result::Result<::std::string::String, ::std::string::String>,
             name: ::std::result::Result<::std::string::String, ::std::string::String>,
@@ -3836,7 +4596,431 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct ProviderModel {
+            featured: ::std::result::Result<bool, ::std::string::String>,
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            name: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for ProviderModel {
+            fn default() -> Self {
+                Self {
+                    featured: Err("no value supplied for featured".to_string()),
+                    id: Err("no value supplied for id".to_string()),
+                    name: Err("no value supplied for name".to_string()),
+                }
+            }
+        }
+        impl ProviderModel {
+            pub fn featured<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.featured = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for featured: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn name<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.name = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for name: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ProviderModel> for super::ProviderModel {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ProviderModel,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    featured: value.featured?,
+                    id: value.id?,
+                    name: value.name?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ProviderModel> for ProviderModel {
+            fn from(value: super::ProviderModel) -> Self {
+                Self {
+                    featured: Ok(value.featured),
+                    id: Ok(value.id),
+                    name: Ok(value.name),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ProviderStatus {
+            account: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            auth_url: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            awaiting_code: ::std::result::Result<bool, ::std::string::String>,
+            connect: ::std::result::Result<super::ConnectMethod, ::std::string::String>,
+            connected: ::std::result::Result<bool, ::std::string::String>,
+            description: ::std::result::Result<::std::string::String, ::std::string::String>,
+            error: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            id: ::std::result::Result<super::ProviderId, ::std::string::String>,
+            models:
+                ::std::result::Result<::std::vec::Vec<super::ProviderModel>, ::std::string::String>,
+            name: ::std::result::Result<::std::string::String, ::std::string::String>,
+            signing_in: ::std::result::Result<bool, ::std::string::String>,
+        }
+        impl ::std::default::Default for ProviderStatus {
+            fn default() -> Self {
+                Self {
+                    account: Ok(Default::default()),
+                    auth_url: Ok(Default::default()),
+                    awaiting_code: Err("no value supplied for awaiting_code".to_string()),
+                    connect: Err("no value supplied for connect".to_string()),
+                    connected: Err("no value supplied for connected".to_string()),
+                    description: Err("no value supplied for description".to_string()),
+                    error: Ok(Default::default()),
+                    id: Err("no value supplied for id".to_string()),
+                    models: Err("no value supplied for models".to_string()),
+                    name: Err("no value supplied for name".to_string()),
+                    signing_in: Err("no value supplied for signing_in".to_string()),
+                }
+            }
+        }
+        impl ProviderStatus {
+            pub fn account<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.account = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for account: {e}"));
+                self
+            }
+            pub fn auth_url<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.auth_url = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for auth_url: {e}"));
+                self
+            }
+            pub fn awaiting_code<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.awaiting_code = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for awaiting_code: {e}"));
+                self
+            }
+            pub fn connect<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::ConnectMethod>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.connect = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for connect: {e}"));
+                self
+            }
+            pub fn connected<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.connected = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for connected: {e}"));
+                self
+            }
+            pub fn description<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.description = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for description: {e}"));
+                self
+            }
+            pub fn error<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.error = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for error: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::ProviderId>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn models<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::ProviderModel>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.models = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for models: {e}"));
+                self
+            }
+            pub fn name<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.name = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for name: {e}"));
+                self
+            }
+            pub fn signing_in<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.signing_in = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for signing_in: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ProviderStatus> for super::ProviderStatus {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ProviderStatus,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    account: value.account?,
+                    auth_url: value.auth_url?,
+                    awaiting_code: value.awaiting_code?,
+                    connect: value.connect?,
+                    connected: value.connected?,
+                    description: value.description?,
+                    error: value.error?,
+                    id: value.id?,
+                    models: value.models?,
+                    name: value.name?,
+                    signing_in: value.signing_in?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ProviderStatus> for ProviderStatus {
+            fn from(value: super::ProviderStatus) -> Self {
+                Self {
+                    account: Ok(value.account),
+                    auth_url: Ok(value.auth_url),
+                    awaiting_code: Ok(value.awaiting_code),
+                    connect: Ok(value.connect),
+                    connected: Ok(value.connected),
+                    description: Ok(value.description),
+                    error: Ok(value.error),
+                    id: Ok(value.id),
+                    models: Ok(value.models),
+                    name: Ok(value.name),
+                    signing_in: Ok(value.signing_in),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ProviderTest {
+            elapsed_ms: ::std::result::Result<i64, ::std::string::String>,
+            error: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            model: ::std::result::Result<::std::string::String, ::std::string::String>,
+            ok: ::std::result::Result<bool, ::std::string::String>,
+            reply: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+        }
+        impl ::std::default::Default for ProviderTest {
+            fn default() -> Self {
+                Self {
+                    elapsed_ms: Err("no value supplied for elapsed_ms".to_string()),
+                    error: Ok(Default::default()),
+                    model: Err("no value supplied for model".to_string()),
+                    ok: Err("no value supplied for ok".to_string()),
+                    reply: Ok(Default::default()),
+                }
+            }
+        }
+        impl ProviderTest {
+            pub fn elapsed_ms<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.elapsed_ms = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for elapsed_ms: {e}"));
+                self
+            }
+            pub fn error<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.error = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for error: {e}"));
+                self
+            }
+            pub fn model<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.model = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for model: {e}"));
+                self
+            }
+            pub fn ok<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.ok = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for ok: {e}"));
+                self
+            }
+            pub fn reply<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.reply = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for reply: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ProviderTest> for super::ProviderTest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ProviderTest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    elapsed_ms: value.elapsed_ms?,
+                    error: value.error?,
+                    model: value.model?,
+                    ok: value.ok?,
+                    reply: value.reply?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ProviderTest> for ProviderTest {
+            fn from(value: super::ProviderTest) -> Self {
+                Self {
+                    elapsed_ms: Ok(value.elapsed_ms),
+                    error: Ok(value.error),
+                    model: Ok(value.model),
+                    ok: Ok(value.ok),
+                    reply: Ok(value.reply),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ProvidersState {
+            default_model: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            providers: ::std::result::Result<
+                ::std::vec::Vec<super::ProviderStatus>,
+                ::std::string::String,
+            >,
+        }
+        impl ::std::default::Default for ProvidersState {
+            fn default() -> Self {
+                Self {
+                    default_model: Ok(Default::default()),
+                    providers: Err("no value supplied for providers".to_string()),
+                }
+            }
+        }
+        impl ProvidersState {
+            pub fn default_model<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.default_model = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for default_model: {e}"));
+                self
+            }
+            pub fn providers<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::ProviderStatus>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.providers = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for providers: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ProvidersState> for super::ProvidersState {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ProvidersState,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    default_model: value.default_model?,
+                    providers: value.providers?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ProvidersState> for ProvidersState {
+            fn from(value: super::ProvidersState) -> Self {
+                Self {
+                    default_model: Ok(value.default_model),
+                    providers: Ok(value.providers),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct Settings {
+            http_policy: ::std::result::Result<
+                ::std::option::Option<super::HttpPolicy>,
+                ::std::string::String,
+            >,
             model: ::std::result::Result<
                 ::std::option::Option<::std::string::String>,
                 ::std::string::String,
@@ -3847,12 +5031,23 @@ pub mod types {
         impl ::std::default::Default for Settings {
             fn default() -> Self {
                 Self {
+                    http_policy: Ok(Default::default()),
                     model: Ok(Default::default()),
                     selected_conversation: Ok(Default::default()),
                 }
             }
         }
         impl Settings {
+            pub fn http_policy<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<super::HttpPolicy>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.http_policy = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for http_policy: {e}"));
+                self
+            }
             pub fn model<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
@@ -3880,6 +5075,7 @@ pub mod types {
                 value: Settings,
             ) -> ::std::result::Result<Self, super::error::ConversionError> {
                 Ok(Self {
+                    http_policy: value.http_policy?,
                     model: value.model?,
                     selected_conversation: value.selected_conversation?,
                 })
@@ -3888,6 +5084,7 @@ pub mod types {
         impl ::std::convert::From<super::Settings> for Settings {
             fn from(value: super::Settings) -> Self {
                 Self {
+                    http_policy: Ok(value.http_policy),
                     model: Ok(value.model),
                     selected_conversation: Ok(value.selected_conversation),
                 }
@@ -4041,6 +5238,49 @@ pub mod types {
                     id: Ok(value.id),
                     state: Ok(value.state),
                     workspace_id: Ok(value.workspace_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TestRequest {
+            model: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+        }
+        impl ::std::default::Default for TestRequest {
+            fn default() -> Self {
+                Self {
+                    model: Ok(Default::default()),
+                }
+            }
+        }
+        impl TestRequest {
+            pub fn model<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.model = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for model: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TestRequest> for super::TestRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TestRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    model: value.model?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TestRequest> for TestRequest {
+            fn from(value: super::TestRequest) -> Self {
+                Self {
+                    model: Ok(value.model),
                 }
             }
         }
@@ -4521,32 +5761,65 @@ pub mod types {
         }
         #[derive(Clone, Debug)]
         pub struct Turn {
+            command: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
             conversation_id: ::std::result::Result<i64, ::std::string::String>,
+            created_at: ::std::result::Result<i64, ::std::string::String>,
+            draft: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
             error: ::std::result::Result<
                 ::std::option::Option<::std::string::String>,
                 ::std::string::String,
             >,
+            finished_at: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
             id: ::std::result::Result<i64, ::std::string::String>,
+            model: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
             prompt: ::std::result::Result<::std::string::String, ::std::string::String>,
             response: ::std::result::Result<
                 ::std::option::Option<::std::string::String>,
                 ::std::string::String,
             >,
+            started_at: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
             state: ::std::result::Result<::std::string::String, ::std::string::String>,
+            steps: ::std::result::Result<::std::vec::Vec<super::TurnStep>, ::std::string::String>,
         }
         impl ::std::default::Default for Turn {
             fn default() -> Self {
                 Self {
+                    command: Ok(Default::default()),
                     conversation_id: Err("no value supplied for conversation_id".to_string()),
+                    created_at: Err("no value supplied for created_at".to_string()),
+                    draft: Ok(Default::default()),
                     error: Ok(Default::default()),
+                    finished_at: Ok(Default::default()),
                     id: Err("no value supplied for id".to_string()),
+                    model: Ok(Default::default()),
                     prompt: Err("no value supplied for prompt".to_string()),
                     response: Ok(Default::default()),
+                    started_at: Ok(Default::default()),
                     state: Err("no value supplied for state".to_string()),
+                    steps: Ok(Default::default()),
                 }
             }
         }
         impl Turn {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
             pub fn conversation_id<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<i64>,
@@ -4555,6 +5828,26 @@ pub mod types {
                 self.conversation_id = value.try_into().map_err(|e| {
                     format!("error converting supplied value for conversation_id: {e}")
                 });
+                self
+            }
+            pub fn created_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.created_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for created_at: {e}"));
+                self
+            }
+            pub fn draft<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.draft = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for draft: {e}"));
                 self
             }
             pub fn error<T>(mut self, value: T) -> Self
@@ -4567,6 +5860,16 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for error: {e}"));
                 self
             }
+            pub fn finished_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.finished_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for finished_at: {e}"));
+                self
+            }
             pub fn id<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<i64>,
@@ -4575,6 +5878,16 @@ pub mod types {
                 self.id = value
                     .try_into()
                     .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn model<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.model = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for model: {e}"));
                 self
             }
             pub fn prompt<T>(mut self, value: T) -> Self
@@ -4597,6 +5910,16 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for response: {e}"));
                 self
             }
+            pub fn started_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.started_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for started_at: {e}"));
+                self
+            }
             pub fn state<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<::std::string::String>,
@@ -4607,29 +5930,140 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for state: {e}"));
                 self
             }
+            pub fn steps<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::TurnStep>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.steps = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for steps: {e}"));
+                self
+            }
         }
         impl ::std::convert::TryFrom<Turn> for super::Turn {
             type Error = super::error::ConversionError;
             fn try_from(value: Turn) -> ::std::result::Result<Self, super::error::ConversionError> {
                 Ok(Self {
+                    command: value.command?,
                     conversation_id: value.conversation_id?,
+                    created_at: value.created_at?,
+                    draft: value.draft?,
                     error: value.error?,
+                    finished_at: value.finished_at?,
                     id: value.id?,
+                    model: value.model?,
                     prompt: value.prompt?,
                     response: value.response?,
+                    started_at: value.started_at?,
                     state: value.state?,
+                    steps: value.steps?,
                 })
             }
         }
         impl ::std::convert::From<super::Turn> for Turn {
             fn from(value: super::Turn) -> Self {
                 Self {
+                    command: Ok(value.command),
                     conversation_id: Ok(value.conversation_id),
+                    created_at: Ok(value.created_at),
+                    draft: Ok(value.draft),
                     error: Ok(value.error),
+                    finished_at: Ok(value.finished_at),
                     id: Ok(value.id),
+                    model: Ok(value.model),
                     prompt: Ok(value.prompt),
                     response: Ok(value.response),
+                    started_at: Ok(value.started_at),
                     state: Ok(value.state),
+                    steps: Ok(value.steps),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TurnStep {
+            content: ::std::result::Result<
+                ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+                ::std::string::String,
+            >,
+            id: ::std::result::Result<i64, ::std::string::String>,
+            kind: ::std::result::Result<::std::string::String, ::std::string::String>,
+            turn_id: ::std::result::Result<i64, ::std::string::String>,
+        }
+        impl ::std::default::Default for TurnStep {
+            fn default() -> Self {
+                Self {
+                    content: Err("no value supplied for content".to_string()),
+                    id: Err("no value supplied for id".to_string()),
+                    kind: Err("no value supplied for kind".to_string()),
+                    turn_id: Err("no value supplied for turn_id".to_string()),
+                }
+            }
+        }
+        impl TurnStep {
+            pub fn content<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<
+                        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+                    >,
+                T::Error: ::std::fmt::Display,
+            {
+                self.content = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for content: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn kind<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.kind = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for kind: {e}"));
+                self
+            }
+            pub fn turn_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.turn_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for turn_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TurnStep> for super::TurnStep {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TurnStep,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    content: value.content?,
+                    id: value.id?,
+                    kind: value.kind?,
+                    turn_id: value.turn_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TurnStep> for TurnStep {
+            fn from(value: super::TurnStep) -> Self {
+                Self {
+                    content: Ok(value.content),
+                    id: Ok(value.id),
+                    kind: Ok(value.kind),
+                    turn_id: Ok(value.turn_id),
                 }
             }
         }
@@ -5187,6 +6621,75 @@ impl Client {
     ```*/
     pub fn connection_logout(&self) -> builder::ConnectionLogout<'_> {
         builder::ConnectionLogout::new(self)
+    }
+    /*Sends a `GET` request to `/v1/providers`
+
+    Arguments:
+    - `refresh`: Re-check every provider instead of using the recent snapshot
+    ```ignore
+    let response = client.providers_state()
+        .refresh(refresh)
+        .send()
+        .await;
+    ```*/
+    pub fn providers_state(&self) -> builder::ProvidersState<'_> {
+        builder::ProvidersState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/providers/{id}/cancel`
+
+    Arguments:
+    - `id`: claude, codex or openrouter
+    ```ignore
+    let response = client.provider_cancel()
+        .id(id)
+        .send()
+        .await;
+    ```*/
+    pub fn provider_cancel(&self) -> builder::ProviderCancel<'_> {
+        builder::ProviderCancel::new(self)
+    }
+    /*Sends a `POST` request to `/v1/providers/{id}/connect`
+
+    Arguments:
+    - `id`: claude, codex or openrouter
+    - `body`
+    ```ignore
+    let response = client.provider_connect()
+        .id(id)
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn provider_connect(&self) -> builder::ProviderConnect<'_> {
+        builder::ProviderConnect::new(self)
+    }
+    /*Sends a `POST` request to `/v1/providers/{id}/disconnect`
+
+    Arguments:
+    - `id`: claude, codex or openrouter
+    ```ignore
+    let response = client.provider_disconnect()
+        .id(id)
+        .send()
+        .await;
+    ```*/
+    pub fn provider_disconnect(&self) -> builder::ProviderDisconnect<'_> {
+        builder::ProviderDisconnect::new(self)
+    }
+    /*Sends a `POST` request to `/v1/providers/{id}/test`
+
+    Arguments:
+    - `id`: claude, codex or openrouter
+    - `body`
+    ```ignore
+    let response = client.provider_test()
+        .id(id)
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn provider_test(&self) -> builder::ProviderTest<'_> {
+        builder::ProviderTest::new(self)
     }
     /*Sends a `GET` request to `/v1/state`
 
@@ -5894,6 +7397,461 @@ pub mod builder {
                     ResponseValue::from_response(response).await?,
                 )),
                 409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::providers_state`]
+
+    [`Client::providers_state`]: super::Client::providers_state*/
+    #[derive(Debug, Clone)]
+    pub struct ProvidersState<'a> {
+        client: &'a super::Client,
+        refresh: Result<Option<bool>, String>,
+    }
+    impl<'a> ProvidersState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                refresh: Ok(None),
+            }
+        }
+        pub fn refresh<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<bool>,
+        {
+            self.refresh = value
+                .try_into()
+                .map(Some)
+                .map_err(|_| "conversion to `bool` for refresh failed".to_string());
+            self
+        }
+        ///Sends a `GET` request to `/v1/providers`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::ProvidersState>, Error<types::ErrorBody>> {
+            let Self { client, refresh } = self;
+            let refresh = refresh.map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/providers", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .query(&progenitor_client::QueryParam::new("refresh", &refresh))
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "providers_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::provider_cancel`]
+
+    [`Client::provider_cancel`]: super::Client::provider_cancel*/
+    #[derive(Debug, Clone)]
+    pub struct ProviderCancel<'a> {
+        client: &'a super::Client,
+        id: Result<::std::string::String, String>,
+    }
+    impl<'a> ProviderCancel<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                id: Err("id was not initialized".to_string()),
+            }
+        }
+        pub fn id<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<::std::string::String>,
+        {
+            self.id = value.try_into().map_err(|_| {
+                "conversion to `:: std :: string :: String` for id failed".to_string()
+            });
+            self
+        }
+        ///Sends a `POST` request to `/v1/providers/{id}/cancel`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::ProvidersState>, Error<types::ErrorBody>> {
+            let Self { client, id } = self;
+            let id = id.map_err(Error::InvalidRequest)?;
+            let url = format!(
+                "{}/v1/providers/{}/cancel",
+                client.baseurl,
+                encode_path(&id.to_string()),
+            );
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "provider_cancel",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::provider_connect`]
+
+    [`Client::provider_connect`]: super::Client::provider_connect*/
+    #[derive(Debug, Clone)]
+    pub struct ProviderConnect<'a> {
+        client: &'a super::Client,
+        id: Result<::std::string::String, String>,
+        body: Result<types::builder::ConnectRequest, String>,
+    }
+    impl<'a> ProviderConnect<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                id: Err("id was not initialized".to_string()),
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn id<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<::std::string::String>,
+        {
+            self.id = value.try_into().map_err(|_| {
+                "conversion to `:: std :: string :: String` for id failed".to_string()
+            });
+            self
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::ConnectRequest>,
+            <V as std::convert::TryInto<types::ConnectRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value
+                .try_into()
+                .map(From::from)
+                .map_err(|s| format!("conversion to `ConnectRequest` for body failed: {}", s));
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(types::builder::ConnectRequest) -> types::builder::ConnectRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/providers/{id}/connect`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::ProvidersState>, Error<types::ErrorBody>> {
+            let Self { client, id, body } = self;
+            let id = id.map_err(Error::InvalidRequest)?;
+            let body = body
+                .and_then(|v| types::ConnectRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!(
+                "{}/v1/providers/{}/connect",
+                client.baseurl,
+                encode_path(&id.to_string()),
+            );
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "provider_connect",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::provider_disconnect`]
+
+    [`Client::provider_disconnect`]: super::Client::provider_disconnect*/
+    #[derive(Debug, Clone)]
+    pub struct ProviderDisconnect<'a> {
+        client: &'a super::Client,
+        id: Result<::std::string::String, String>,
+    }
+    impl<'a> ProviderDisconnect<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                id: Err("id was not initialized".to_string()),
+            }
+        }
+        pub fn id<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<::std::string::String>,
+        {
+            self.id = value.try_into().map_err(|_| {
+                "conversion to `:: std :: string :: String` for id failed".to_string()
+            });
+            self
+        }
+        ///Sends a `POST` request to `/v1/providers/{id}/disconnect`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::ProvidersState>, Error<types::ErrorBody>> {
+            let Self { client, id } = self;
+            let id = id.map_err(Error::InvalidRequest)?;
+            let url = format!(
+                "{}/v1/providers/{}/disconnect",
+                client.baseurl,
+                encode_path(&id.to_string()),
+            );
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "provider_disconnect",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::provider_test`]
+
+    [`Client::provider_test`]: super::Client::provider_test*/
+    #[derive(Debug, Clone)]
+    pub struct ProviderTest<'a> {
+        client: &'a super::Client,
+        id: Result<::std::string::String, String>,
+        body: Result<types::builder::TestRequest, String>,
+    }
+    impl<'a> ProviderTest<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                id: Err("id was not initialized".to_string()),
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn id<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<::std::string::String>,
+        {
+            self.id = value.try_into().map_err(|_| {
+                "conversion to `:: std :: string :: String` for id failed".to_string()
+            });
+            self
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::TestRequest>,
+            <V as std::convert::TryInto<types::TestRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value
+                .try_into()
+                .map(From::from)
+                .map_err(|s| format!("conversion to `TestRequest` for body failed: {}", s));
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(types::builder::TestRequest) -> types::builder::TestRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/providers/{id}/test`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::ProviderTest>, Error<types::ErrorBody>> {
+            let Self { client, id, body } = self;
+            let id = id.map_err(Error::InvalidRequest)?;
+            let body = body
+                .and_then(|v| types::TestRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!(
+                "{}/v1/providers/{}/test",
+                client.baseurl,
+                encode_path(&id.to_string()),
+            );
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "provider_test",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 503u16 => Err(Error::ErrorResponse(
