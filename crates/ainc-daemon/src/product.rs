@@ -202,7 +202,7 @@ pub async fn snapshot_in(pool: &PgPool, workspace: &str) -> Result<Snapshot, sql
         .await?;
     let conversations = sqlx::query_as("SELECT c.id,c.title,COALESCE((SELECT COALESCE(response,prompt) FROM turns WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1),'') AS snippet,to_char(to_timestamp(c.updated_at),'YYYY-MM-DD HH24:MI') AS updated,c.updated_at FROM conversations c WHERE workspace_id=$1 ORDER BY updated_at DESC,id DESC").bind(workspace).fetch_all(&mut *tx).await?;
     let turns = sqlx::query_as("SELECT t.id,conversation_id,prompt,response,error,state FROM turns t JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id=$1 ORDER BY t.id").bind(workspace).fetch_all(&mut *tx).await?;
-    let todos = sqlx::query_as("SELECT id,title,(status='done') AS completed FROM tickets WHERE workspace_id=$1 ORDER BY (status='done'),id DESC").bind(workspace).fetch_all(&mut *tx).await?;
+    let todos = sqlx::query_as("SELECT id,title,(status IN ('done','cancelled')) AS completed FROM tickets WHERE workspace_id=$1 ORDER BY (status IN ('done','cancelled')),id DESC").bind(workspace).fetch_all(&mut *tx).await?;
     let model = sqlx::query_scalar(
         "SELECT value FROM assistant_settings WHERE workspace_id=$1 AND key='model'",
     )

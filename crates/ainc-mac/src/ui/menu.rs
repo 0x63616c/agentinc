@@ -15,6 +15,8 @@ pub struct MenuEntry {
     id: ElementId,
     label: SharedString,
     icon: Option<&'static str>,
+    glyph: Option<(&'static str, u32)>,
+    leading: Option<AnyElement>,
     shortcut: Option<SharedString>,
     trailing: Option<AnyElement>,
     checked: bool,
@@ -29,6 +31,8 @@ impl MenuEntry {
             id: id.into(),
             label: label.into(),
             icon: None,
+            glyph: None,
+            leading: None,
             shortcut: None,
             trailing: None,
             checked: false,
@@ -39,6 +43,16 @@ impl MenuEntry {
     }
     pub fn icon(mut self, icon: &'static str) -> Self {
         self.icon = Some(icon);
+        self
+    }
+    /// A colored leading icon, such as a Ticket status.
+    pub fn glyph(mut self, name: &'static str, color: u32) -> Self {
+        self.glyph = Some((name, color));
+        self
+    }
+    /// A leading element such as an avatar, in place of an icon.
+    pub fn leading(mut self, element: impl IntoElement) -> Self {
+        self.leading = Some(element.into_any_element());
         self
     }
     pub fn shortcut(mut self, shortcut: impl Into<SharedString>) -> Self {
@@ -76,6 +90,8 @@ impl MenuEntry {
             id,
             label,
             icon: icon_name,
+            glyph,
+            leading,
             shortcut,
             trailing,
             checked,
@@ -94,6 +110,11 @@ impl MenuEntry {
         if let Some(name) = icon_name {
             button = button.icon(name);
         }
+        if let Some((name, color)) = glyph {
+            button = button.leading(icon(name, ICON_SIZE_SM).text_color(rgb(color)));
+        } else if let Some(leading) = leading {
+            button = button.leading(leading);
+        }
         let mut trail = row().gap(px(SPACE_2));
         if let Some(shortcut) = shortcut {
             trail = trail.child(kbd(shortcut));
@@ -110,6 +131,83 @@ impl MenuEntry {
             .h(px(MENU_ITEM_HEIGHT))
             .when_some(selector, |s, selector| {
                 s.debug_selector(move || selector.clone())
+            })
+    }
+}
+
+/// A toolbar button that opens a menu below it, left edges aligned, such as a
+/// filter. It reads as chosen while its menu is open or a value is active.
+pub struct MenuButton {
+    id: &'static str,
+    label: SharedString,
+    icon: Option<&'static str>,
+    active: bool,
+    open: bool,
+    width: f32,
+}
+
+impl MenuButton {
+    pub fn new(id: &'static str, label: impl Into<SharedString>) -> Self {
+        Self {
+            id,
+            label: label.into(),
+            icon: None,
+            active: false,
+            open: false,
+            width: MENU_WIDTH,
+        }
+    }
+    pub fn icon(mut self, icon: &'static str) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+    /// A value is chosen, so the button stays highlighted while closed.
+    pub fn active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+    pub fn open(mut self, open: bool) -> Self {
+        self.open = open;
+        self
+    }
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = width;
+        self
+    }
+    /// `items` are the menu's rows; the menu carries the `{id}.menu` selector.
+    pub fn build<V: HoverHost>(
+        self,
+        hover: &HoverFade,
+        items: Vec<AnyElement>,
+        on_toggle: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
+        cx: &mut Context<V>,
+    ) -> Div {
+        let Self {
+            id,
+            label,
+            icon: icon_name,
+            active,
+            open,
+            width,
+        } = self;
+        let mut button = Button::new(id, label)
+            .secondary()
+            .selected(open || active)
+            .trailing(icon("chevronDown", ICON_SIZE_SM));
+        if let Some(name) = icon_name {
+            button = button.icon(name);
+        }
+        super::layout::column()
+            .relative()
+            .child(button.build(hover, on_toggle, cx))
+            .when(open, |s| {
+                s.child(floating(
+                    super::overlay::menu_shell(width)
+                        .debug_selector(move || format!("{id}.menu"))
+                        .children(items),
+                    Anchor::TopLeft,
+                    point(px(0.), px(CONTROL_HEIGHT + SPACE_1)),
+                ))
             })
     }
 }

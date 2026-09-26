@@ -7,6 +7,7 @@ use gpui::{prelude::*, *};
 pub struct Page {
     header: Option<PageHeader>,
     content: Div,
+    fill: bool,
 }
 
 impl Page {
@@ -14,6 +15,22 @@ impl Page {
         Self {
             header: Some(header),
             content: column().w_full().min_w_0().gap(px(SECTION_GAP)),
+            fill: false,
+        }
+    }
+
+    /// A document page whose content fills the height below its header instead
+    /// of scrolling with it, for boards and other surfaces that scroll their parts.
+    pub fn fill(header: PageHeader) -> Self {
+        Self {
+            header: Some(header),
+            content: column()
+                .w_full()
+                .min_w_0()
+                .flex_1()
+                .min_h_0()
+                .gap(px(SECTION_GAP)),
+            fill: true,
         }
     }
 
@@ -21,6 +38,7 @@ impl Page {
         Self {
             header: None,
             content: column().size_full().min_w_0().min_h_0(),
+            fill: false,
         }
     }
 
@@ -37,15 +55,20 @@ impl Page {
             .min_w_0()
             .min_h_0();
         match self.header {
-            Some(header) => frame.overflow_y_scroll().p(px(PAGE_X)).child(
-                column()
+            Some(header) => {
+                let content = column()
                     .debug_selector(|| "main-content".into())
                     .w_full()
                     .min_w_0()
                     .gap(px(SECTION_GAP))
                     .child(header.build())
-                    .child(self.content),
-            ),
+                    .child(self.content);
+                if self.fill {
+                    frame.p(px(PAGE_X)).child(content.flex_1().min_h_0())
+                } else {
+                    frame.overflow_y_scroll().p(px(PAGE_X)).child(content)
+                }
+            }
             None => frame.child(self.content),
         }
     }
@@ -201,6 +224,33 @@ pub fn card() -> Div {
         .rounded(px(RADIUS_LG))
         .p(px(SPACE_4))
         .gap(px(SPACE_3))
+}
+
+/// A labeled value in a record's properties column: a fixed label column and a
+/// value or control that takes the rest of the row.
+pub fn property_row(label: impl Into<SharedString>, value: impl IntoElement) -> Div {
+    // The label keeps the first line's height, so a value that wraps onto more
+    // lines grows downward with its label beside the first.
+    row()
+        .w_full()
+        .items_start()
+        .gap(px(SPACE_3))
+        .child(
+            row()
+                .h(px(PROPERTY_ROW_HEIGHT))
+                .w(px(PROPERTY_LABEL_WIDTH))
+                .flex_shrink_0()
+                .text_size(type_size(LABEL_SIZE))
+                .text_color(rgb(TEXT_SECONDARY))
+                .child(label.into()),
+        )
+        .child(
+            row()
+                .flex_1()
+                .min_w_0()
+                .min_h(px(PROPERTY_ROW_HEIGHT))
+                .child(value),
+        )
 }
 
 /// A hairline between stacked content.

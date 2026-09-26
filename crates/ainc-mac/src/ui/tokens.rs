@@ -23,6 +23,9 @@ pub const SURFACE_INPUT: u32 = 0x0d0d0d;
 pub const SURFACE_CONTROL: u32 = 0x171717;
 /// Error banners and failed rows.
 pub const SURFACE_ERROR: u32 = 0x231414;
+/// Wells recessed into the content card, such as board lanes, so the cards on
+/// them read as raised.
+pub const SURFACE_SUNKEN: u32 = 0x060606;
 
 /// Quiet hover on rows and ghost buttons.
 pub const HOVER: u32 = 0x161616;
@@ -87,6 +90,18 @@ pub const STATUS_RED: u32 = 0xf08c8b;
 pub const STATUS_RED_SURFACE: u32 = 0x2c1717;
 pub const STATUS_PURPLE: u32 = 0xc1a6ec;
 pub const STATUS_PURPLE_SURFACE: u32 = 0x231a33;
+/// Label dots: eight muted hues at the status palette's lightness, so labels
+/// stay apart from each other without shouting. Red is left to status.
+pub const LABEL_COLORS: [u32; 8] = [
+    STATUS_BLUE,
+    STATUS_GREEN,
+    STATUS_AMBER,
+    STATUS_PURPLE,
+    0xeba2c8,
+    0x86d0cf,
+    0xeeaa7c,
+    0xa9b4c6,
+];
 /// The unread dot and other single accents.
 pub const ACCENT: u32 = 0xffffff;
 
@@ -147,6 +162,8 @@ pub const ICON_SIZE: f32 = 16.;
 /// visible edge sit where a shortcut badge ends.
 pub const CHEVRON_GLYPH_INSET: f32 = 6.;
 pub const ICON_SIZE_SM: f32 = 14.;
+/// Glyphs inside pills and card metadata.
+pub const ICON_SIZE_XS: f32 = 12.;
 pub const ICON_SIZE_LG: f32 = 18.;
 pub const CONTROL_HEIGHT: f32 = 32.;
 pub const CONTROL_HEIGHT_SM: f32 = 26.;
@@ -170,6 +187,40 @@ pub const DIALOG_WIDTH: f32 = 440.;
 /// The widest an inline form grows; wider fields read as search bars.
 pub const FORM_WIDTH: f32 = 560.;
 pub const SHEET_WIDTH: f32 = 420.;
+/// The search field at the start of a page toolbar.
+pub const TOOLBAR_SEARCH_WIDTH: f32 = 260.;
+/// The narrowest a board lane gets before the board scrolls sideways.
+pub const BOARD_LANE_MIN_WIDTH: f32 = 168.;
+/// The inset inside a board lane, around its cards.
+pub const BOARD_LANE_INSET: f32 = SPACE_2;
+/// A board lane's header row.
+pub const LANE_HEADER_HEIGHT: f32 = 38.;
+/// An empty lane's drop area.
+pub const EMPTY_LANE_HEIGHT: f32 = 64.;
+/// Badges, status pills and the square priority chip beside them.
+pub const PILL_HEIGHT: f32 = 22.;
+/// The empty side of a small icon-only button around its glyph; a trailing one
+/// bleeds by it so its glyph, not its hit area, ends on the column's edge.
+pub const TRAILING_ICON_BLEED: f32 = (CONTROL_HEIGHT_SM - ICON_SIZE_SM) / 2.;
+/// A card's top inset less the space above its first line's cap height, so the
+/// text sits as far from the top as from the side.
+pub const CARD_OPTICAL_LIFT: f32 = 4.;
+/// The remove control inside a pill.
+pub const PILL_REMOVE_SIZE: f32 = 18.;
+/// Fixed columns in the Tickets list.
+pub const LIST_KEY_WIDTH: f32 = 44.;
+pub const LIST_ASSIGNEE_WIDTH: f32 = 168.;
+pub const LIST_UPDATED_WIDTH: f32 = 72.;
+/// Below this window width a record's properties stack above its content.
+pub const PROPERTIES_BESIDE_MIN_WIDTH: f32 = 1100.;
+/// The drop indicator between board cards.
+pub const DROP_INDICATOR_HEIGHT: f32 = 2.;
+/// The properties column beside a record's main content.
+pub const PROPERTIES_WIDTH: f32 = 296.;
+/// The label column inside a property row.
+pub const PROPERTY_LABEL_WIDTH: f32 = 88.;
+/// The height of one property row.
+pub const PROPERTY_ROW_HEIGHT: f32 = 36.;
 pub const MENU_WIDTH: f32 = 220.;
 pub const MENU_INSET: f32 = SPACE_1;
 pub const MENU_ITEM_HEIGHT: f32 = 32.;
@@ -185,6 +236,8 @@ pub const PALETTE_RESULTS_MAX_HEIGHT: f32 = 420.;
 pub const POPOVER_WIDTH: f32 = 264.;
 pub const TOAST_WIDTH: f32 = 360.;
 pub const AVATAR_SIZE: f32 = 24.;
+/// Avatars inside dense rows and board cards.
+pub const AVATAR_SIZE_SM: f32 = 20.;
 pub const AVATAR_SIZE_LG: f32 = 40.;
 pub const TOGGLE_WIDTH: f32 = 36.;
 pub const TOGGLE_HEIGHT: f32 = 20.;
@@ -295,6 +348,12 @@ pub const GRIP_MS: u64 = 160;
 pub const PANEL_MS: u64 = 180;
 pub const MESSAGE_MS: u64 = 220;
 pub const SKELETON_MS: u64 = 1400;
+/// How long a dropped card's edge takes to settle back to rest.
+pub const SETTLE_MS: u64 = 600;
+/// How far a dragged card's copy floats from where it was picked up.
+pub const DRAG_LIFT: f32 = SPACE_3;
+/// The card left behind while its copy follows the pointer.
+pub const GHOST_OPACITY: f32 = 0.35;
 /// Controls that snap into place: toggles, segment thumbs, palette selection.
 pub const SPRING_SNAPPY: SpringConfig = SpringConfig::new(420., 34., 1.);
 /// Surfaces that settle: popovers, sheets, sidebar reveal.

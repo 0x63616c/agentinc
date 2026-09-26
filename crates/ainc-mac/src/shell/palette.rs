@@ -57,6 +57,11 @@ impl Shell {
             });
             items.push(PaletteCandidate {
                 group: "Actions",
+                entry: PaletteEntry::new("action.new-ticket", "New Ticket").icon("plus"),
+                control: Control::NewTicket,
+            });
+            items.push(PaletteCandidate {
+                group: "Actions",
                 entry: PaletteEntry::new("action.notifications", "Show notifications").icon("bell"),
                 control: Control::Notifications,
             });
@@ -86,6 +91,28 @@ impl Shell {
                         .icon("settings")
                         .detail(*label),
                     control: Control::FontSize(*size),
+                });
+            }
+        }
+        if !self.workspace_only
+            && let Some(store) = &self.store
+        {
+            for ticket in store.tickets().tickets {
+                let status = ticket.status;
+                items.push(PaletteCandidate {
+                    group: "Tickets",
+                    entry: PaletteEntry::new(
+                        format!("goto-ticket.{}", ticket.id),
+                        format!(
+                            "{} {}",
+                            crate::tickets::model::ticket_key(ticket.id),
+                            ticket.title
+                        ),
+                    )
+                    .icon(crate::tickets::model::status_icon(status))
+                    .icon_color(crate::tickets::model::status_color(status))
+                    .detail(crate::tickets::model::status_name(status)),
+                    control: Control::OpenTicket(ticket.id),
                 });
             }
         }
@@ -136,8 +163,13 @@ impl Shell {
         for (key, group_name) in [
             ("pages", "Pages"),
             ("actions", "Actions"),
+            ("tickets", "Tickets"),
             ("workspaces", "Workspaces"),
         ] {
+            // Tickets are found by searching; an empty palette lists places and actions.
+            if key == "tickets" && query.is_empty() {
+                continue;
+            }
             let mut matched: Vec<(i32, &PaletteCandidate, Vec<usize>)> = candidates
                 .iter()
                 .filter(|item| item.group == group_name)
@@ -191,7 +223,7 @@ impl Shell {
         let empty: SharedString = if self.workspace_only {
             "Try another workspace name.".into()
         } else {
-            "Try a page, an action or a workspace.".into()
+            "Try a page, an action, a Ticket or a workspace.".into()
         };
         render_palette(
             PaletteView {
@@ -206,7 +238,7 @@ impl Shell {
                 aria_label: if self.workspace_only {
                     "Switch workspace"
                 } else {
-                    "Go to pages, actions and workspaces"
+                    "Go to pages, actions, Tickets and workspaces"
                 },
             },
             &self.hover,
@@ -305,6 +337,9 @@ fn clone_entry(entry: &PaletteEntry, positions: Vec<usize>) -> PaletteEntry {
     let mut copy = PaletteEntry::new(entry.id.clone(), entry.label.clone()).positions(positions);
     if let Some(icon) = entry.icon {
         copy = copy.icon(icon);
+    }
+    if let Some(color) = entry.icon_color {
+        copy = copy.icon_color(color);
     }
     if let Some(detail) = entry.detail.clone().filter(|detail| !detail.is_empty()) {
         copy = copy.detail(detail);

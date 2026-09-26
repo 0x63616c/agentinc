@@ -477,7 +477,7 @@ impl AssistantPage {
             cx,
         );
     }
-    fn open_conversation(&mut self, id: i64, cx: &mut Context<Self>) {
+    pub(crate) fn open_conversation(&mut self, id: i64, cx: &mut Context<Self>) {
         if self.pending {
             return;
         }

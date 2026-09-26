@@ -12,8 +12,8 @@ use crate::{
 use anyhow::{Result, ensure};
 use gpui::prelude::*;
 use gpui::{
-    AppContext, Bounds, IntoElement, Modifiers, MouseButton, Pixels, Render, VisualTestAppContext,
-    Window, WindowHandle, div, point, px, size,
+    AppContext, Bounds, IntoElement, Modifiers, MouseButton, Pixels, Point, Render,
+    VisualTestAppContext, Window, WindowHandle, div, point, px, size,
 };
 use std::{
     path::PathBuf,
@@ -224,7 +224,7 @@ impl Suite {
             self.check_shell_geometry()?;
         }
         if name.starts_with("ticket-field-") {
-            self.check_field_geometry("Ticket title")?;
+            self.check_field_geometry("Title")?;
         }
         if name.starts_with("automation-fields-") {
             self.check_field_geometry("Name")?;
@@ -545,6 +545,260 @@ impl Suite {
         }
         Ok(())
     }
+}
+
+fn press(suite: &mut Suite, position: Point<Pixels>) {
+    suite.cx.simulate_mouse_down(
+        suite.window.into(),
+        position,
+        MouseButton::Left,
+        Modifiers::default(),
+    );
+}
+fn drag_to(suite: &mut Suite, from: Point<Pixels>, to: Point<Pixels>) {
+    // Several moves, as a pointer does: past the drag threshold, then across.
+    for step in 1..=8 {
+        let t = step as f32 / 8.;
+        let position = point(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
+        suite.cx.simulate_mouse_move(
+            suite.window.into(),
+            position,
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+    }
+}
+fn release(suite: &mut Suite, position: Point<Pixels>) {
+    suite.cx.simulate_mouse_up(
+        suite.window.into(),
+        position,
+        MouseButton::Left,
+        Modifiers::default(),
+    );
+}
+
+/// The board, a real pointer drag between and within lanes, filters, the
+/// list, a rich detail, its menus and dialogs, and ⌘K Tickets.
+fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
+    use crate::storage::TicketStatus;
+    use crate::tickets::Menu;
+    let page = suite
+        .window
+        .read_with(&suite.cx, |shell, _| shell.fixture_tickets_page())?;
+    suite.keys("cmd-1");
+    let budget = page.update(&mut suite.cx, |page, cx| page.fixture_board(cx));
+    let id_of = |suite: &mut Suite, title: &str| {
+        page.read_with(&suite.cx, |page, _| page.fixture_ticket_id(title))
+            .ok_or_else(|| anyhow::anyhow!("missing fixture Ticket {title}"))
+    };
+    suite.capture("tickets-board", Route::Tickets, None, false)?;
+    // Lanes: one per status, headers on one line, the first on the content rail,
+    // cards inset evenly inside their lane, everything above the status bar.
+    let content = suite.bounds("main-content")?;
+    let status_bar = suite.bounds("status-bar")?;
+    let backlog = suite.bounds("tickets.lane.backlog")?;
+    near(
+        "first lane on the content rail",
+        f32::from(backlog.origin.x),
+        f32::from(content.origin.x),
+    )?;
+    ensure!(
+        backlog.origin.y + backlog.size.height
+            <= status_bar.origin.y - px(PAGE_X) + px(GEOMETRY_TOLERANCE),
+        "board lanes must keep the page inset above the status bar"
+    );
+    let header_top = suite.bounds("tickets.lane.backlog.header")?.origin.y;
+    for key in ["to_do", "in_progress", "blocked", "done", "cancelled"] {
+        let header = suite.bounds(&format!("tickets.lane.{key}.header"))?;
+        near(
+            &format!("{key} lane header line"),
+            f32::from(header.origin.y),
+            f32::from(header_top),
+        )?;
+    }
+    let dentist = id_of(suite, "Book a dentist cleaning")?;
+    let card = suite.bounds(&format!("ticket.{budget}"))?;
+    let lane = suite.bounds("tickets.lane.in_progress")?;
+    near(
+        "card inset inside its lane",
+        f32::from(card.origin.x - lane.origin.x),
+        ui::BOARD_LANE_INSET + 1.,
+    )?;
+    near(
+        "card right inset inside its lane",
+        f32::from(lane.origin.x + lane.size.width - card.origin.x - card.size.width),
+        ui::BOARD_LANE_INSET + 1.,
+    )?;
+    // Drag "Book a dentist cleaning" from To do to below the first In progress card.
+    let from = suite.bounds(&format!("ticket.{dentist}"))?.center();
+    let first = page.read_with(&suite.cx, |page, _| {
+        page.fixture_column(TicketStatus::InProgress)
+    })[0];
+    let first_bounds = suite.bounds(&format!("ticket.{first}"))?;
+    let to = point(
+        first_bounds.center().x,
+        first_bounds.origin.y + first_bounds.size.height - px(4.),
+    );
+    press(suite, from);
+    drag_to(suite, from, to);
+    suite.capture("tickets-drag", Route::Tickets, None, false)?;
+    let target = page.read_with(&suite.cx, |page, _| page.fixture_drop_target());
+    ensure!(
+        target == Some((TicketStatus::InProgress, Some(first))),
+        "drop target follows the pointer, got {target:?}"
+    );
+    release(suite, to);
+    suite.capture("tickets-dropped", Route::Tickets, None, false)?;
+    let (status, column) = page.read_with(&suite.cx, |page, _| {
+        (
+            page.fixture_status(dentist),
+            page.fixture_column(TicketStatus::InProgress),
+        )
+    });
+    ensure!(
+        status == Some(TicketStatus::InProgress) && column.get(1) == Some(&dentist),
+        "dropped card must land below its neighbour, got {status:?} {column:?}"
+    );
+    // Reorder inside a lane: the last To do card goes to the top.
+    let todo = page.read_with(&suite.cx, |page, _| page.fixture_column(TicketStatus::ToDo));
+    let (top, last) = (todo[0], *todo.last().unwrap());
+    let from = suite.bounds(&format!("ticket.{last}"))?.center();
+    let top_bounds = suite.bounds(&format!("ticket.{top}"))?;
+    let to = point(top_bounds.center().x, top_bounds.origin.y + px(4.));
+    press(suite, from);
+    drag_to(suite, from, to);
+    release(suite, to);
+    suite.settle()?;
+    let reordered = page.read_with(&suite.cx, |page, _| page.fixture_column(TicketStatus::ToDo));
+    ensure!(
+        reordered.first() == Some(&last) && reordered.len() == todo.len(),
+        "reordering inside a lane moves the card to the top, got {reordered:?}"
+    );
+    // Filters, then the list over the same Tickets.
+    page.update(&mut suite.cx, |page, cx| {
+        page.fixture_menu(Some(Menu::FilterPriority), cx)
+    });
+    suite.capture("tickets-filter-menu", Route::Tickets, None, false)?;
+    suite.bounds("tickets.filter.priority.menu")?;
+    page.update(&mut suite.cx, |page, cx| {
+        page.fixture_menu(None, cx);
+        page.fixture_filter_label("Money", cx);
+    });
+    suite.capture("tickets-board-filtered", Route::Tickets, None, false)?;
+    suite.bounds("tickets.filter.clear")?;
+    suite.click_selector("tickets.filter.clear")?;
+    page.update(&mut suite.cx, |page, cx| page.fixture_view(true, cx));
+    suite.capture("tickets-list-view", Route::Tickets, None, false)?;
+    suite.bounds("tickets.list")?;
+    suite.bounds("tickets.group.in_progress")?;
+    // One Ticket with description, history, Comments, relationships and a run.
+    suite.click_selector(&format!("ticket.{budget}"))?;
+    suite.capture("ticket-detail-rich", Route::Tickets, None, false)?;
+    let properties = suite.bounds("tickets.properties")?;
+    let content = suite.bounds("main-content")?;
+    near(
+        "properties on the content's right edge",
+        f32::from(
+            content.origin.x + content.size.width - properties.origin.x - properties.size.width,
+        ),
+        0.,
+    )?;
+    suite.bounds("tickets.timeline")?;
+    suite.bounds("tickets.description.text")?;
+    page.update(&mut suite.cx, |page, cx| {
+        page.fixture_menu(Some(Menu::Status), cx)
+    });
+    suite.capture("ticket-status-menu", Route::Tickets, None, false)?;
+    suite.bounds("tickets.detail.status.menu")?;
+    page.update(&mut suite.cx, |page, cx| {
+        page.fixture_menu(Some(Menu::Labels), cx)
+    });
+    suite.capture("ticket-labels-menu", Route::Tickets, None, false)?;
+    suite.bounds("tickets.labels.menu")?;
+    page.update(&mut suite.cx, |page, cx| page.fixture_menu(None, cx));
+    // Relate through the dialog itself: search, choose, confirm.
+    suite.click_selector("tickets.link")?;
+    suite.capture(
+        "ticket-link-dialog-empty",
+        Route::Tickets,
+        Some(Overlay::LinkTicket(budget)),
+        false,
+    )?;
+    suite.cx.simulate_input(window.into(), "dentist");
+    suite.click_selector(&format!("tickets.link.target.{dentist}"))?;
+    suite.capture(
+        "ticket-link-dialog",
+        Route::Tickets,
+        Some(Overlay::LinkTicket(budget)),
+        false,
+    )?;
+    suite.bounds("tickets.link.candidates")?;
+    suite.click_selector("tickets.submit")?;
+    suite.settle()?;
+    let related = page.read_with(&suite.cx, |page, _| page.fixture_relations(budget));
+    ensure!(
+        related.contains(&(crate::tickets::model::Relation::BlockedBy, dentist)),
+        "the chosen Ticket becomes a blocker, got {related:?}"
+    );
+    suite.click_selector("tickets.back")?;
+    page.update(&mut suite.cx, |page, cx| page.fixture_view(false, cx));
+    suite.settle()?;
+    // Quick create from a lane starts in that lane's status.
+    suite.click_selector("tickets.lane.blocked.create")?;
+    suite.capture(
+        "ticket-create-dialog",
+        Route::Tickets,
+        Some(Overlay::AddTicket),
+        false,
+    )?;
+    page.update(&mut suite.cx, |page, cx| {
+        page.fixture_menu(Some(Menu::DraftStatus), cx)
+    });
+    suite.capture(
+        "ticket-create-status-menu",
+        Route::Tickets,
+        Some(Overlay::AddTicket),
+        false,
+    )?;
+    suite.bounds("tickets.draft.status.option.3")?;
+    page.update(&mut suite.cx, |page, cx| page.fixture_menu(None, cx));
+    suite
+        .cx
+        .simulate_input(window.into(), "Order a new passport photo");
+    suite.click_selector("tickets.submit")?;
+    suite.settle()?;
+    let created = id_of(suite, "Order a new passport photo")?;
+    ensure!(
+        page.read_with(&suite.cx, |page, _| page.fixture_status(created))
+            == Some(TicketStatus::Blocked),
+        "a lane's quick create starts in that lane"
+    );
+    // ⌘K finds a Ticket by title and opens it; it also creates one.
+    suite.keys("cmd-k");
+    suite.cx.simulate_input(window.into(), "dentist");
+    suite.capture(
+        "palette-ticket-search",
+        Route::Tickets,
+        Some(Overlay::Search),
+        false,
+    )?;
+    suite.bounds(&format!("palette.result.tickets.goto-ticket.{dentist}"))?;
+    suite.keys("enter");
+    suite.capture("ticket-from-palette", Route::Tickets, None, false)?;
+    suite.bounds("tickets.properties")?;
+    suite.keys("cmd-k");
+    suite.cx.simulate_input(window.into(), "new ticket");
+    suite.keys("enter");
+    suite.capture(
+        "palette-new-ticket",
+        Route::Tickets,
+        Some(Overlay::AddTicket),
+        false,
+    )?;
+    suite.keys("escape");
+    suite.click_selector("tickets.back")?;
+    suite.settle()?;
+    Ok(())
 }
 
 pub fn run() -> Result<()> {
@@ -977,10 +1231,19 @@ pub fn run() -> Result<()> {
         shell.fixture_ticket_detail(cx);
     })?;
     suite.capture("ticket-detail", Route::Tickets, None, false)?;
-    suite.bounds("tickets.status.in_progress")?;
+    suite.bounds("tickets.detail.status")?;
     suite.click_selector("tickets.back")?;
     suite.capture("tickets-list", Route::Tickets, None, false)?;
     suite.bounds("ticket.1")?;
+    let previous = suite.window;
+    let board = suite
+        .cx
+        .open_offscreen_window(size(px(1360.), px(828.)), |window, cx| {
+            cx.new(|cx| Shell::fixture(temporary.path().join("tickets-session.json"), window, cx))
+        })?;
+    suite.window = board;
+    tickets_suite(&mut suite, board)?;
+    suite.window = previous;
     suite.keys("cmd-3");
     suite.capture("agents-list", Route::Agents, None, false)?;
     suite
@@ -1079,6 +1342,7 @@ pub fn run() -> Result<()> {
     suite.capture("components-data", Route::Components, None, false)?;
     suite.check_components_geometry(&[
         "badges-and-status",
+        "properties",
         "list-rows",
         "table",
         "empty-and-loading",

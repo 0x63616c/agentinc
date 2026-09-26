@@ -1,7 +1,7 @@
 //! At-least-once dispatch and fenced, idempotent projection of SDK results.
 use crate::{
     coding::{CodingTool, Permission, WorkspacePolicy},
-    tickets::Actor,
+    tickets::{self, Actor, Entry, TicketStatus},
 };
 use futures::future::BoxFuture;
 use sqlx::{FromRow, PgPool, postgres::PgListener};
@@ -50,6 +50,7 @@ impl Definition {
             workspace: self.workspace_id.clone(),
             id: self.agent_id.clone(),
             assignment: Some((self.ticket_id, self.generation)),
+            conversation: None,
         };
         let mut builder=Agent::builder(format!("ticket-{}-v1",self.run_id))
             .model(SharedModel(models.resolve(&self.model)?))
@@ -190,7 +191,27 @@ impl Runner {
                     // Mark running before dispatch so tools can pass their authorization
                     // fence. A crash here leaves the outbox pending for the next process.
                     let mut tx = self.pool.begin().await?;
-                    sqlx::query("UPDATE tickets SET status='in_progress',revision=revision+1 WHERE id=$1 AND generation=$2 AND status='to_do'").bind(definition.ticket_id).bind(definition.generation).execute(&mut *tx).await?;
+                    tickets::lock_board(&mut tx, &definition.workspace_id).await?;
+                    if advance(
+                        &mut tx,
+                        &definition,
+                        TicketStatus::ToDo,
+                        TicketStatus::InProgress,
+                    )
+                    .await?
+                    {
+                        tickets::record(
+                            &mut tx,
+                            &definition.agent_id,
+                            None,
+                            Entry::status(
+                                definition.ticket_id,
+                                TicketStatus::ToDo,
+                                TicketStatus::InProgress,
+                            ),
+                        )
+                        .await?;
+                    }
                     sqlx::query(
                         "UPDATE ticket_runs SET state='running' WHERE run_id=$1 AND state='queued'",
                     )
@@ -213,12 +234,40 @@ impl Runner {
     }
 }
 
+/// Move the run's Ticket from `from` to the top of `to`, if it is still that
+/// generation in that status. The caller holds the board lock. Returns whether
+/// it moved.
+async fn advance(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    definition: &Definition,
+    from: TicketStatus,
+    to: TicketStatus,
+) -> Result<bool, sqlx::Error> {
+    let moved = sqlx::query(
+        "UPDATE tickets SET revision=revision+1 WHERE id=$1 AND generation=$2 AND status=$3 AND status<>$4",
+    )
+    .bind(definition.ticket_id)
+    .bind(definition.generation)
+    .bind(from)
+    .bind(to)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected()
+        > 0;
+    if moved {
+        tickets::enter_column(tx, definition.ticket_id, to).await?;
+    }
+    Ok(moved)
+}
+
 async fn project(
     pool: &PgPool,
     definition: &Definition,
     result: Result<String, String>,
 ) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
+    // The board lock comes before the Ticket's row lock, as in every command.
+    tickets::lock_board(&mut tx, &definition.workspace_id).await?;
     let current:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tickets t JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE r.run_id=$1 AND r.state='running')").bind(&definition.run_id).fetch_one(&mut *tx).await?;
     if !current {
         return Ok(());
@@ -256,14 +305,27 @@ async fn project(
         return Ok(());
     }
     sqlx::query("INSERT INTO comments(ticket_id,author_id,body,effect_key) VALUES ($1,$2,$3,$4) ON CONFLICT(effect_key) DO NOTHING").bind(definition.ticket_id).bind(&definition.agent_id).bind(body.chars().take(32000).collect::<String>()).bind(format!("{}/result",definition.run_id)).execute(&mut *tx).await?;
+    tickets::record(
+        &mut tx,
+        &definition.agent_id,
+        None,
+        Entry::work(definition.ticket_id, &definition.run_id, state),
+    )
+    .await?;
     if state == "completed" {
-        sqlx::query(
-            "UPDATE tickets SET status='done',revision=revision+1 WHERE id=$1 AND generation=$2",
-        )
-        .bind(definition.ticket_id)
-        .bind(definition.generation)
-        .execute(&mut *tx)
-        .await?;
+        let previous: TicketStatus = sqlx::query_scalar("SELECT status FROM tickets WHERE id=$1")
+            .bind(definition.ticket_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if advance(&mut tx, definition, previous, TicketStatus::Done).await? {
+            tickets::record(
+                &mut tx,
+                &definition.agent_id,
+                None,
+                Entry::status(definition.ticket_id, previous, TicketStatus::Done),
+            )
+            .await?;
+        }
     }
     sqlx::query("SELECT pg_notify('agentinc_results',$1)")
         .bind(&definition.run_id)
@@ -380,6 +442,33 @@ mod tests {
                 .comments
                 .len(),
             2
+        );
+        // The agent's own start and finish appear once in the Ticket's history.
+        let history: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT actor_id,kind,from_value,to_value FROM ticket_activity WHERE ticket_id=$1 AND actor_id<>'owner' ORDER BY id",
+        )
+        .bind(definition.ticket_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let agent = &definition.agent_id;
+        assert_eq!(
+            history,
+            [
+                (
+                    agent.clone(),
+                    "status".into(),
+                    Some("to_do".into()),
+                    Some("in_progress".into())
+                ),
+                (agent.clone(), "work".into(), None, Some("completed".into())),
+                (
+                    agent.clone(),
+                    "status".into(),
+                    Some("in_progress".into()),
+                    Some("done".into())
+                ),
+            ]
         );
         worker.abort();
         let _ = worker.await;

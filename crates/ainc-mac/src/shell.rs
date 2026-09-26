@@ -64,6 +64,8 @@ pub(crate) enum Control {
     SupportMenu,
     CheckForUpdates,
     InstallUpdate,
+    NewTicket,
+    OpenTicket(i64),
     HelpCenter,
     SendFeedback,
     About,
@@ -81,7 +83,7 @@ pub struct Shell {
     _components_subscription: Subscription,
     _automation_subscriptions: Vec<Subscription>,
     _temporal_subscription: Subscription,
-    _tickets_subscription: Subscription,
+    _tickets_subscriptions: Vec<Subscription>,
     _update_subscription: Option<Subscription>,
     _assistant_subscriptions: Vec<Subscription>,
     profile: crate::profile::Profile,
@@ -242,6 +244,9 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             let profile = request.await;
             let _ = this.update(cx, |this, cx| {
+                let (name, photo) = (profile.name.clone(), profile.photo.clone());
+                this.tickets
+                    .update(cx, |tickets, cx| tickets.set_owner(&name, photo, cx));
                 this.profile = profile;
                 cx.notify();
             });
@@ -303,6 +308,9 @@ impl Shell {
                 cx,
             )
         });
+        tickets.update(cx, |tickets, cx| {
+            tickets.set_owner(&profile.name, profile.photo.clone(), cx)
+        });
         let automations =
             cx.new(|cx| crate::automations::AutomationsPage::new(store.clone(), storage_error, cx));
         let temporal = cx.new(crate::temporal::TemporalPage::new);
@@ -322,7 +330,27 @@ impl Shell {
                 },
             ),
         ];
-        let tickets_subscription = cx.observe(&tickets, |_, _, cx| cx.notify());
+        let tickets_subscriptions = vec![
+            cx.observe(&tickets, |_, _, cx| cx.notify()),
+            cx.subscribe(
+                &tickets,
+                |this, _, event: &crate::tickets::TicketsEvent, cx| {
+                    match event {
+                        crate::tickets::TicketsEvent::OpenRuns => {
+                            this.session.navigate(Route::Temporal)
+                        }
+                        crate::tickets::TicketsEvent::OpenConversation(id) => {
+                            let id = *id;
+                            this.assistant
+                                .update(cx, |assistant, cx| assistant.open_conversation(id, cx));
+                            this.session.navigate(Route::Assistant);
+                        }
+                    }
+                    this.save(cx);
+                    cx.notify();
+                },
+            ),
+        ];
         let input = cx.new(TextInput::new);
         let workspace_name = cx.new(|cx| {
             TextInput::new(cx)
@@ -363,7 +391,7 @@ impl Shell {
             _components_subscription: components_subscription,
             _automation_subscriptions: automation_subscriptions,
             _temporal_subscription: temporal_subscription,
-            _tickets_subscription: tickets_subscription,
+            _tickets_subscriptions: tickets_subscriptions,
             _update_subscription: update_subscription,
             _assistant_subscriptions: assistant_subscriptions,
             profile,
@@ -525,6 +553,11 @@ impl Shell {
             page.fixture_select_open(select_open, cx);
         });
         cx.notify();
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_tickets_page(&self) -> Entity<crate::tickets::TicketsPage> {
+        self.tickets.clone()
     }
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
@@ -710,9 +743,7 @@ impl Shell {
                 }
                 return;
             }
-            Some(Overlay::AddTicket | Overlay::AddAgent | Overlay::DeleteTicket(_)) => {
-                self.tickets.read(cx).focus_handles(cx)
-            }
+            Some(overlay) if overlay.is_ticket_dialog() => self.tickets.read(cx).focus_handles(cx),
             Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => {
                 self.assistant.read(cx).focus_handles(cx)
             }
@@ -874,6 +905,19 @@ impl Shell {
                         None,
                     );
                 }
+            }
+            Control::NewTicket => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                self.session.navigate(Route::Tickets);
+                self.tickets
+                    .update(cx, |tickets, cx| tickets.open_create(None, window, cx));
+            }
+            Control::OpenTicket(id) => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                self.session.navigate(Route::Tickets);
+                self.tickets
+                    .update(cx, |tickets, cx| tickets.select(id, cx));
+                window.focus(&self.focus, cx);
             }
             Control::CheckForUpdates => {
                 self.overlays.borrow_mut().dismiss(window, cx);
@@ -1179,7 +1223,7 @@ impl Render for Shell {
         }
         let dialog_content = match active_overlay {
             Some(Overlay::Search) => Some(self.command_palette(window, cx)),
-            Some(Overlay::AddTicket | Overlay::AddAgent | Overlay::DeleteTicket(_)) => self
+            Some(overlay) if overlay.is_ticket_dialog() => self
                 .tickets
                 .update(cx, |tickets, cx| tickets.overlay(window, cx)),
             Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => self
@@ -1211,6 +1255,7 @@ impl Render for Shell {
                     .update(cx, |assistant, cx| assistant.dismiss_menus(cx));
                 this.components
                     .update(cx, |page, cx| page.dismiss_menus(cx));
+                this.tickets.update(cx, |page, cx| page.dismiss_menus(cx));
             }))
             .on_key_down(cx.listener(Self::keys))
             .capture_any_mouse_down(|_, _, _| set_focus_visible(false))
@@ -1266,7 +1311,8 @@ impl Render for Shell {
                     .update(cx, |assistant, cx| assistant.dismiss_menus(cx))
                     | this
                         .components
-                        .update(cx, |page, cx| page.dismiss_menus(cx));
+                        .update(cx, |page, cx| page.dismiss_menus(cx))
+                    | this.tickets.update(cx, |page, cx| page.dismiss_menus(cx));
                 if !this.overlays.borrow_mut().dismiss(w, cx) && !closed_menu {
                     w.focus(&this.focus, cx);
                 }

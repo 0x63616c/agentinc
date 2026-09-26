@@ -46,19 +46,48 @@ fn act(client: &mut Client, id: &str, text: Option<&str>) -> Result<Snapshot> {
         }
     }
 }
-fn wait_disabled(client: &mut Client, id: &str) -> Result<()> {
+/// Choose an option in a select by its name, or the last option, and wait
+/// until the trigger shows the acknowledged value.
+fn choose(client: &mut Client, select: &str, name: Option<&str>) -> Result<()> {
+    act(client, select, None)?;
+    let options = wait(
+        client,
+        Condition::Present {
+            author_id: format!("{select}.option.0"),
+        },
+    )?;
+    let prefix = format!("{select}.option.");
+    let candidates: Vec<_> = options
+        .nodes
+        .iter()
+        .filter(|n| {
+            n.author_id
+                .as_deref()
+                .is_some_and(|id| id.starts_with(&prefix))
+        })
+        .collect();
+    let option = match name {
+        Some(name) => candidates
+            .iter()
+            .find(|n| n.name.as_deref() == Some(name))
+            .context("select option missing")?,
+        None => candidates.last().context("select has no options")?,
+    };
+    let (id, label) = (
+        option.author_id.clone().unwrap(),
+        option.name.clone().unwrap_or_default(),
+    );
+    act(client, &id, None)?;
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
+        // Saving disables the page; the back control returns with the refreshed state.
         let snapshot = snap(client)?;
-        // The page disables all controls while saving; the back control becomes
-        // available only when acknowledgement and the refreshed state are loaded.
-        if !snapshot.by_id(id)?.enabled && snapshot.by_id("tickets.back")?.enabled {
+        if snapshot.by_id(select)?.name.as_deref() == Some(label.as_str())
+            && snapshot.by_id("tickets.back")?.enabled
+        {
             return Ok(());
         }
-        ensure!(
-            Instant::now() < deadline,
-            "Ticket acknowledgement timed out: {id}"
-        );
+        ensure!(Instant::now() < deadline, "{select} did not show {label}");
         wait(
             client,
             Condition::FrameAfter {
@@ -248,7 +277,9 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         .nodes
         .iter()
         .find(|node| {
-            node.name.as_deref() == Some("Pilot café 👋")
+            node.name
+                .as_deref()
+                .is_some_and(|name| name.ends_with("Pilot café 👋"))
                 && node
                     .author_id
                     .as_deref()
@@ -260,11 +291,10 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     wait(
         &mut client,
         Condition::Present {
-            author_id: "tickets.status.backlog".into(),
+            author_id: "tickets.detail.status".into(),
         },
     )?;
-    act(&mut client, "tickets.status.backlog", None)?;
-    wait_disabled(&mut client, "tickets.status.backlog")?;
+    choose(&mut client, "tickets.detail.status", Some("Backlog"))?;
     act(&mut client, "tickets.comment", None)?;
     act(
         &mut client,
@@ -323,20 +353,16 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         .to_owned();
     screenshot(&mut client, "agents", &output)?;
     act(&mut client, "nav.tickets", None)?;
-    let assign = format!("tickets.assign.{agent_id}");
-    act(&mut client, &assign, None)?;
-    wait_disabled(&mut client, &assign)?;
+    // The detail stays open while visiting Agents.
+    choose(&mut client, "tickets.detail.assignee", Some("Pilot worker"))?;
     // Backlog assignment does not invoke a provider. Reassign to the human before
     // making the Ticket actionable, so acceptance cannot spend a subscription.
-    act(&mut client, "tickets.assign.owner", None)?;
-    wait_disabled(&mut client, "tickets.assign.owner")?;
-    act(&mut client, "tickets.status.in_progress", None)?;
-    wait_disabled(&mut client, "tickets.status.in_progress")?;
+    // The owner is the one person, listed after the agents.
+    choose(&mut client, "tickets.detail.assignee", None)?;
+    choose(&mut client, "tickets.detail.status", Some("In progress"))?;
     screenshot(&mut client, "ticket-assignee", &output)?;
-    act(&mut client, "tickets.status.done", None)?;
-    wait_disabled(&mut client, "tickets.status.done")?;
-    act(&mut client, "tickets.status.to_do", None)?;
-    wait_disabled(&mut client, "tickets.status.to_do")?;
+    choose(&mut client, "tickets.detail.status", Some("Done"))?;
+    choose(&mut client, "tickets.detail.status", Some("To do"))?;
     screenshot(&mut client, "created", &output)?;
     fs::write(
         output.join("created.json"),
@@ -513,7 +539,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         serde_json::to_vec_pretty(&metrics)?,
     )?;
     println!(
-        "Tickets, Comments, assignee, four states and Assistant new-conversation navigation passed via socket + GPUI dispatch. {metrics}"
+        "Tickets, Comments, assignee, six-status selects and Assistant new-conversation navigation passed via socket + GPUI dispatch. {metrics}"
     );
     client
         .call(Command::Press {

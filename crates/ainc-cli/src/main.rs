@@ -1,4 +1,4 @@
-#[allow(unused_variables, dead_code)]
+#[allow(unused_variables, dead_code, clippy::clone_on_copy)] // Progenitor output.
 mod generated;
 
 use ainc_client::{Client, Error, ResponseValue};
@@ -227,12 +227,13 @@ fn command_tree(spec: &Value) -> Command {
                     let flag = name.replace('_', "-");
                     let name: &'static str = Box::leak(name.into_boxed_str());
                     let flag: &'static str = Box::leak(flag.into_boxed_str());
-                    command = command.arg(
-                        Arg::new(name)
-                            .long(flag)
-                            .required_unless_present(if required { "json-body" } else { name })
-                            .help(format!("{} field", typ)),
-                    );
+                    let arg = Arg::new(name).long(flag).help(format!("{} field", typ));
+                    // Optional fields stay optional; required ones can come from a JSON body.
+                    command = command.arg(if required {
+                        arg.required_unless_present("json-body")
+                    } else {
+                        arg
+                    });
                 }
                 *entry = entry.clone().subcommand(
                     command.arg(
@@ -438,6 +439,28 @@ mod tests {
             )
             .unwrap(),
             ("http://localhost:9999".into(), token)
+        );
+    }
+    #[test]
+    fn optional_command_fields_may_be_omitted() {
+        let tree = command_tree(&schema());
+        let matches = tree
+            .try_get_matches_from(["ainc", "tickets", "create-detailed", "--title", "Pay rent"])
+            .expect("optional fields are not required");
+        let (_, tickets) = matches.subcommand().unwrap();
+        let (_, create) = tickets.subcommand().unwrap();
+        assert!(create.get_one::<String>("status").is_none());
+        assert!(
+            command_tree(&schema())
+                .try_get_matches_from([
+                    "ainc",
+                    "tickets",
+                    "create-detailed",
+                    "--status",
+                    "\"done\""
+                ])
+                .is_err(),
+            "the title is still required"
         );
     }
     #[test]

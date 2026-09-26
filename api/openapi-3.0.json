@@ -17,6 +17,21 @@
         ],
         "type": "object"
       },
+      "ActivityKind": {
+        "enum": [
+          "created",
+          "renamed",
+          "described",
+          "status",
+          "priority",
+          "assigned",
+          "labels",
+          "linked",
+          "unlinked",
+          "work"
+        ],
+        "type": "string"
+      },
       "Assignee": {
         "properties": {
           "id": {
@@ -672,6 +687,15 @@
         ],
         "type": "object"
       },
+      "LinkKind": {
+        "enum": [
+          "blocks",
+          "relates_to",
+          "duplicates",
+          "parent_of"
+        ],
+        "type": "string"
+      },
       "Model": {
         "properties": {
           "id": {
@@ -793,6 +817,19 @@
           "assignee_kind": {
             "$ref": "#/components/schemas/AssigneeKind"
           },
+          "conversation_id": {
+            "description": "The Conversation that created this Ticket, if any.",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
           "generation": {
             "format": "int64",
             "type": "integer"
@@ -800,6 +837,20 @@
           "id": {
             "format": "int64",
             "type": "integer"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "position": {
+            "description": "Order inside its status column, lowest first.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/TicketPriority"
           },
           "revision": {
             "format": "int64",
@@ -810,16 +861,74 @@
           },
           "title": {
             "type": "string"
+          },
+          "updated_at": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "title",
+          "description",
           "status",
+          "priority",
+          "labels",
           "assignee_kind",
           "assignee_id",
+          "position",
           "revision",
-          "generation"
+          "generation",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "TicketActivity": {
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "description": "The Conversation that made the change through Evee, if any.",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "from_value": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ActivityKind"
+          },
+          "run_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "ticket_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "to_value": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ticket_id",
+          "actor_id",
+          "kind",
+          "created_at"
         ],
         "type": "object"
       },
@@ -850,6 +959,43 @@
                   "create"
                 ],
                 "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Create with any of the board's fields. Omitted fields take their defaults:\nTo do, no priority, no labels, assigned to the owner. Assigning an agent\nin To do or In progress starts its work.",
+            "properties": {
+              "assignee_id": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "create_detailed"
+                ],
+                "type": "string"
+              },
+              "labels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "priority": {
+                "$ref": "#/components/schemas/TicketPriority"
+              },
+              "status": {
+                "$ref": "#/components/schemas/TicketStatus"
               },
               "title": {
                 "type": "string"
@@ -915,6 +1061,34 @@
           },
           {
             "properties": {
+              "description": {
+                "type": "string"
+              },
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "describe"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "revision",
+              "description",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
               "id": {
                 "format": "int64",
                 "type": "integer"
@@ -922,6 +1096,100 @@
               "kind": {
                 "enum": [
                   "set_status"
+                ],
+                "type": "string"
+              },
+              "revision": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "status": {
+                "$ref": "#/components/schemas/TicketStatus"
+              }
+            },
+            "required": [
+              "id",
+              "revision",
+              "status",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "set_priority"
+                ],
+                "type": "string"
+              },
+              "priority": {
+                "$ref": "#/components/schemas/TicketPriority"
+              },
+              "revision": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "revision",
+              "priority",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Replace the Ticket's labels: up to ten, 1–32 characters, no commas.",
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "set_labels"
+                ],
+                "type": "string"
+              },
+              "labels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "revision": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "revision",
+              "labels",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Put a Ticket into `status` directly below `after` (a Ticket already in\nthat column), or at the top of the column when `after` is absent.\nChanging status has the same effect on agent work as `set_status`.",
+            "properties": {
+              "after": {
+                "format": "int64",
+                "nullable": true,
+                "type": "integer"
+              },
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "move"
                 ],
                 "type": "string"
               },
@@ -993,6 +1261,63 @@
             "required": [
               "id",
               "revision",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "`from_id` blocks, relates to, duplicates or is the parent of `to_id`.",
+            "properties": {
+              "from_id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "link"
+                ],
+                "type": "string"
+              },
+              "link": {
+                "$ref": "#/components/schemas/LinkKind"
+              },
+              "to_id": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "from_id",
+              "to_id",
+              "link",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "from_id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "unlink"
+                ],
+                "type": "string"
+              },
+              "link": {
+                "$ref": "#/components/schemas/LinkKind"
+              },
+              "to_id": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "from_id",
+              "to_id",
+              "link",
               "kind"
             ],
             "type": "object"
@@ -1074,6 +1399,37 @@
         ],
         "type": "object"
       },
+      "TicketLink": {
+        "properties": {
+          "from_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LinkKind"
+          },
+          "to_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from_id",
+          "to_id",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "TicketPriority": {
+        "enum": [
+          "urgent",
+          "high",
+          "medium",
+          "low",
+          "none"
+        ],
+        "type": "string"
+      },
       "TicketProposal": {
         "description": "A bounded proposal to create one actionable Ticket for a registered agent.\nThe command boundary authorizes and commits it with a durable receipt.",
         "properties": {
@@ -1120,6 +1476,12 @@
             },
             "type": "array"
           },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/TicketLink"
+            },
+            "type": "array"
+          },
           "runs": {
             "items": {
               "$ref": "#/components/schemas/WorkRun"
@@ -1127,6 +1489,7 @@
             "type": "array"
           },
           "tickets": {
+            "description": "Board order: by status column, then position.",
             "items": {
               "$ref": "#/components/schemas/Ticket"
             },
@@ -1137,16 +1500,20 @@
           "tickets",
           "comments",
           "assignees",
-          "runs"
+          "runs",
+          "links"
         ],
         "type": "object"
       },
       "TicketStatus": {
+        "description": "Where a Ticket sits on the board. Only To do and In progress dispatch an\nagent assignee; the other four stop any live work.",
         "enum": [
           "backlog",
           "to_do",
           "in_progress",
-          "done"
+          "blocked",
+          "done",
+          "cancelled"
         ],
         "type": "string"
       },
@@ -2163,6 +2530,62 @@
           }
         },
         "tags": []
+      }
+    },
+    "/v1/tickets/{id}/activity": {
+      "get": {
+        "operationId": "tickets_activity",
+        "parameters": [
+          {
+            "description": "Ticket ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketActivity"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "One Ticket's history, oldest first. Comments stay in the snapshot.",
+        "tags": [
+          "tickets"
+        ]
       }
     },
     "/v1/workspaces": {

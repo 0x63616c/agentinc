@@ -2,8 +2,8 @@
 
 `GET /v1/tickets` and `POST /v1/tickets/commands` are generated-client/CLI operations.
 The domain implementation is `crates/ainc-daemon/src/tickets.rs`; the checked-in
-OpenAPI contract is generated from it. Tickets have Backlog, To do, In progress
-and Done status, one human/agent assignee, a revision, and an assignment generation.
+OpenAPI contract is generated from it. Tickets have one of six statuses (see the board section below), one human/agent
+assignee, a revision, and an assignment generation.
 Comments are their durable work log. Agents are created at runtime with an immutable
 model/instruction snapshot captured for each assignment.
 
@@ -18,8 +18,8 @@ operation IDs are scoped to workspace and actor; a replay returns its original
 receipt and a changed payload conflicts. Updates check revisions under a row lock.
 Assignment and actionable status changes snapshot a new run and queue its stable
 ID; cancellation/reassignment queue cancellation of the previous generation.
-A cancelled Ticket remains in the four-status model, and run state explains why
-work stopped. Assigning again is an explicit new attempt. Backlog/Done never dispatch.
+Cancelling work (the `cancel` command) leaves the Ticket's status alone, and run
+state explains why work stopped. Assigning again is an explicit new attempt. Backlog/Done never dispatch.
 
 The owner token is confined to the local workspace. Agent bearer credentials are
 stored as SHA-256 hashes and restricted to a run's Ticket/generation. Agent reads
@@ -36,3 +36,34 @@ client submits a Comment and reads the migrated Ticket over HTTP.
 
 The outbox consumer, coding policy and durable Conversation integration are documented
 in [phase-3-execution.md](phase-3-execution.md).
+
+## The 1.0 board
+
+The board migration (`20260926000000_ticket_board.sql`) adds Blocked and Cancelled
+statuses, a priority (urgent, high, medium, low, none), a description, up to ten
+labels, a position inside each status column, created and updated times, and the
+Conversation a Ticket came from. Only To do and In progress dispatch an agent; any
+other status stops live work, exactly as Backlog and Done did.
+
+Every Ticket command and executor transaction first takes its workspace's board
+lock, before any row lock, so moves and relationships cannot deadlock or close a
+loop concurrently. `move` puts a Ticket into a column directly below a neighbour
+(or first) and renumbers that column. Reordering is not an edit: it keeps the
+revision. A neighbour that left the column is a stale view and conflicts. New
+Tickets and every status change land at the top of their new column through one
+`enter_column`, including stopped work returning to To do and the executor's
+To do → In progress → Done moves.
+
+Relationships (`ticket_links`, in `src/tickets/links.rs`) are stored once from their
+source: blocks, relates to (stored lower ID first), duplicates and parent of. The
+reverse readings are blocked by, duplicated by and Sub-Ticket. Loops and a second
+parent are refused, and both Tickets must be in the actor's workspace.
+
+History (`ticket_activity`, in `src/tickets/activity.rs`) commits with each change:
+created, renamed, described, status, priority, assigned, labels, linked/unlinked on
+both sides, and run lifecycle (queued, completed, failed, cancelled) with its run ID.
+Changes made through Evee carry the Conversation's ID. History is served per Ticket
+from `GET /v1/tickets/{id}/activity`, behind the same run-and-generation fence as
+the snapshot, so the polled snapshot and Evee's `list_tickets` result stay small;
+relationships are in the snapshot. Deleting a Ticket records the lost relationship
+in the other Ticket's history.

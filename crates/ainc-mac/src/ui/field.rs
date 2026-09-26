@@ -7,6 +7,15 @@ use super::{
 use crate::input::TextInput;
 use gpui::{prelude::*, *};
 
+/// The label above a field or a control that sits in a form, such as a select.
+pub fn field_label(text: impl Into<SharedString>) -> Div {
+    div()
+        .text_color(rgb(TEXT_SECONDARY))
+        .text_size(type_size(LABEL_SIZE))
+        .font_weight(FontWeight::MEDIUM)
+        .child(text.into())
+}
+
 /// A labeled text field or text area with hint, error and focus states.
 pub struct Field {
     input: Entity<TextInput>,
@@ -79,16 +88,9 @@ impl Field {
         };
         column_gap(FIELD_LABEL_GAP)
             .when_some(self.label, |s, label| {
-                s.child(
-                    div()
-                        .when_some(selector, |s, selector| {
-                            s.debug_selector(move || format!("{selector}.label"))
-                        })
-                        .text_color(rgb(TEXT_SECONDARY))
-                        .text_size(type_size(LABEL_SIZE))
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(label),
-                )
+                s.child(field_label(label).when_some(selector, |s, selector| {
+                    s.debug_selector(move || format!("{selector}.label"))
+                }))
             })
             .child(
                 row()
