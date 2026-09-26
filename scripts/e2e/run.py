@@ -77,7 +77,18 @@ def wait_value(path, predicate, process, seconds):
 def native_window(process, output):
     check = ROOT / 'crates/ainc-mac/tests/pilot_os_acceptance.swift'
     native = subprocess.run(['swift', str(check), str(process.app_pid), 'AgentInc End-to-End CI'],
-                            capture_output=True, text=True, timeout=50, check=True)
+                            capture_output=True, text=True, timeout=50)
+    if native.returncode:
+        diagnostic = subprocess.run(
+            ['swift', str(ROOT / 'scripts/e2e/window_diagnostic.swift'),
+             str(process.app_pid), 'AgentInc End-to-End CI'],
+            capture_output=True, text=True, timeout=50)
+        evidence = (f'Window check exit={native.returncode}\n{native.stderr}\n'
+                    f'WindowServer diagnostic exit={diagnostic.returncode}\n'
+                    f'{diagnostic.stdout}\n{diagnostic.stderr}')
+        (output / 'native-window-diagnostic.txt').write_text(evidence)
+        raise RuntimeError('owned app window is not visible; see native-window-diagnostic.txt:\n'
+                           + diagnostic.stdout)
     (output / 'native-window.json').write_text(native.stdout)
     return json.loads(native.stdout)['window_number']
 
