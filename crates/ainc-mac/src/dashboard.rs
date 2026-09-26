@@ -4,7 +4,7 @@ use crate::{
     automations::OpenTicket,
     calendar::{CalendarModel, day_label, local, now, span, today, until},
     calendar_page::event_color,
-    home::{HomeModel, glyph},
+    home::{HomeModel, glyph, tile_state},
     model::{OpenRoute, Route},
     smart_home::{climate_status, degrees},
     storage::{Store, Ticket, TicketStatus},
@@ -15,12 +15,19 @@ use chrono::Timelike;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 
-/// "Good morning" until noon, "Good afternoon" until six, then "Good evening".
+/// How many upcoming events the Dashboard lists before pointing at the Calendar.
+const UPCOMING: usize = 4;
+/// How many open Tickets it lists.
+const WORK: usize = 5;
+
+/// "Good morning" until noon, "Good afternoon" until six, "Good evening"
+/// until midnight, and a plain hello in the small hours.
 pub fn greeting(hour: u32) -> &'static str {
     match hour {
         5..=11 => "Good morning",
         12..=17 => "Good afternoon",
-        _ => "Good evening",
+        18..=23 => "Good evening",
+        _ => "Hello",
     }
 }
 fn status_label(status: TicketStatus) -> (&'static str, Tone) {
@@ -30,6 +37,24 @@ fn status_label(status: TicketStatus) -> (&'static str, Tone) {
         TicketStatus::Backlog => ("Backlog", Tone::Neutral),
         TicketStatus::Done => ("Done", Tone::Success),
     }
+}
+/// A bordered card body that fills its column.
+fn card_body() -> Div {
+    column()
+        .flex_1()
+        .overflow_hidden()
+        .rounded(px(RADIUS_LG))
+        .border_1()
+        .border_color(rgb(BORDER))
+        .bg(rgb(SURFACE_RAISED))
+}
+/// What an empty card says, inset like every card.
+fn empty(title: &'static str, line: &'static str) -> Div {
+    column()
+        .p(px(CARD_INSET))
+        .gap(px(SPACE_1))
+        .child(div().font_weight(FontWeight::MEDIUM).child(title))
+        .child(caption(line))
 }
 
 pub struct DashboardPage {
@@ -72,8 +97,8 @@ impl DashboardPage {
         self.name = name.into();
     }
 
-    /// One third of the glance band: an eyebrow, a large value and a line,
-    /// opening the page it summarizes.
+    /// One third of the glance band: an eyebrow, a value on the shared
+    /// baseline and a line, opening the page it summarizes.
     #[allow(clippy::too_many_arguments)]
     fn glance(
         &self,
@@ -100,32 +125,33 @@ impl DashboardPage {
                     .min_w_0()
                     .flex_col()
                     .items_start()
-                    .justify_between()
                     .gap(px(SPACE_4))
-                    .p(px(SPACE_6))
+                    .p(px(CARD_INSET))
+                    .pt(px(CARD_INSET - EYEBROW_OPTICAL_LIFT))
                     .rounded(px(0.))
                     .when(!first, |s| s.border_l_1().border_color(rgb(BORDER)))
                     .on_hover(on_hover)
                     .bg(rgba((HOVER << 8) | (progress * 255.) as u32))
                     .child(
                         row()
-                            .w_full()
-                            .justify_between()
-                            .child(
-                                row()
-                                    .gap(px(SPACE_2))
-                                    .child(icon(glyph, ICON_SIZE_SM))
-                                    .child(eyebrow(label)),
-                            )
-                            .child(
-                                icon("arrowUpRight", ICON_SIZE_SM).opacity(0.4 + 0.6 * progress),
-                            ),
+                            .gap(px(SPACE_2))
+                            .child(icon(glyph, ICON_SIZE_SM))
+                            .child(eyebrow(label)),
                     )
                     .child(
                         column()
                             .w_full()
                             .gap(px(SPACE_2))
-                            .child(value)
+                            // Every value sits on the same baseline, whatever its size.
+                            .child(
+                                div()
+                                    .w_full()
+                                    .min_w_0()
+                                    .h(type_size(HERO_SIZE))
+                                    .flex()
+                                    .items_end()
+                                    .child(value),
+                            )
                             .child(detail),
                     )
             },
@@ -144,20 +170,20 @@ impl DashboardPage {
         let home = self.home.read(cx).snapshot.clone();
         let climate = home.as_ref().and_then(|h| h.climate.clone());
         let (inside, inside_detail) = match (&home, &climate) {
-            (_, Some(climate)) => (
-                hero(climate.ambient.map_or_else(|| "—".into(), degrees)).into_any_element(),
-                {
-                    let (status, tone) = climate_status(climate);
+            (_, Some(climate)) => {
+                let (status, tone) = climate_status(climate);
+                (
+                    hero(climate.ambient.map_or_else(|| "—".into(), degrees)).into_any_element(),
                     row()
                         .gap(px(SPACE_2))
                         .child(status_dot(tone))
                         .child(caption(status))
-                        .into_any_element()
-                },
-            ),
+                        .into_any_element(),
+                )
+            }
             (Some(h), None) if h.connection.is_none() => (
                 hero("—").text_color(rgb(TEXT_TERTIARY)).into_any_element(),
-                caption("Connect the control center in Settings").into_any_element(),
+                caption("Connect your control center").into_any_element(),
             ),
             _ => (
                 hero("—").text_color(rgb(TEXT_TERTIARY)).into_any_element(),
@@ -165,46 +191,34 @@ impl DashboardPage {
             ),
         };
         let now = now();
+        let headline = |text: String, muted: bool| {
+            div()
+                .w_full()
+                .truncate()
+                .text_size(type_size(DISPLAY_SIZE))
+                .font_weight(FontWeight::SEMIBOLD)
+                .line_height(relative(1.))
+                .when(muted, |s| s.text_color(rgb(TEXT_SECONDARY)))
+                .child(text)
+                .into_any_element()
+        };
         let (next_value, next_detail) = match next {
             Some(event) => (
-                column()
-                    .gap(px(SPACE_1))
-                    .child(
-                        div()
-                            .text_size(type_size(TITLE_SIZE))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .line_height(relative(TITLE_LINE_HEIGHT))
-                            .truncate()
-                            .child(event.title.clone()),
-                    )
-                    .child(caption(format!(
-                        "{} · {}",
-                        day_label(local(event.starts_at).date_naive(), today()),
-                        span(event)
-                    )))
-                    .into_any_element(),
-                row()
-                    .gap(px(SPACE_2))
-                    .child(
-                        div()
-                            .size(px(SPACE_2))
-                            .rounded_full()
-                            .bg(event_color(event)),
-                    )
-                    .child(caption(if event.starts_at <= now {
-                        "Happening now".to_owned()
+                headline(event.title.clone(), false),
+                caption(format!(
+                    "{} · {} · {}",
+                    day_label(local(event.starts_at).date_naive(), today()),
+                    span(event),
+                    if event.starts_at <= now {
+                        "now".to_owned()
                     } else {
                         until(event.starts_at, now)
-                    }))
-                    .into_any_element(),
+                    }
+                ))
+                .into_any_element(),
             ),
             None => (
-                div()
-                    .text_size(type_size(TITLE_SIZE))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(TEXT_SECONDARY))
-                    .child("Nothing scheduled")
-                    .into_any_element(),
+                headline("Nothing scheduled".into(), true),
                 caption("Your calendar is clear").into_any_element(),
             ),
         };
@@ -261,49 +275,7 @@ impl DashboardPage {
             ))
     }
 
-    fn lights(&self, cx: &mut Context<Self>) -> Option<Div> {
-        let home = self.home.read(cx).snapshot.clone()?;
-        home.connection.as_ref()?;
-        let mut tiles = row().w_full().flex_wrap().gap(px(SPACE_3));
-        for key in [
-            SwitchKey::All,
-            SwitchKey::Lamps,
-            SwitchKey::LivingRoomLamps,
-            SwitchKey::BedroomLamps,
-            SwitchKey::KitchenCeiling,
-            SwitchKey::UnderCabinet,
-        ] {
-            let Some(state) = home.switches.iter().find(|s| s.key == key) else {
-                continue;
-            };
-            let on = state.on;
-            tiles = tiles.child(switch_tile(
-                SharedString::from(format!("dashboard.switch.{key}")),
-                state.label.clone(),
-                glyph(key),
-                on,
-                state.pending,
-                home.reachable,
-                &self.hover,
-                move |this: &mut Self, _, cx| this.home.update(cx, |h, cx| h.switch(key, !on, cx)),
-                cx,
-            ));
-        }
-        Some(
-            column()
-                .debug_selector(|| "dashboard.lights".into())
-                .gap(px(SPACE_3))
-                .child(self.section(
-                    "Lights",
-                    "dashboard.lights.open",
-                    "Smart Home",
-                    Route::SmartHome,
-                    cx,
-                ))
-                .child(tiles),
-        )
-    }
-
+    /// An eyebrow with a quiet link to the page behind the section.
     fn section(
         &self,
         label: &'static str,
@@ -321,6 +293,7 @@ impl DashboardPage {
                 Button::new(id, link)
                     .ghost()
                     .small()
+                    .tint(TEXT_SECONDARY)
                     .trailing(icon("arrowRight", ICON_SIZE_SM))
                     .build(
                         &self.hover,
@@ -330,68 +303,158 @@ impl DashboardPage {
             )
     }
 
+    fn lights(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let home = self.home.read(cx).snapshot.clone()?;
+        let body = if home.connection.is_none() {
+            row()
+                .w_full()
+                .justify_between()
+                .gap(px(SPACE_4))
+                .p(px(CARD_INSET))
+                .rounded(px(RADIUS_LG))
+                .border_1()
+                .border_color(rgb(BORDER))
+                .bg(rgb(SURFACE_RAISED))
+                .child(caption(
+                    "Connect your control center to switch lights from here.",
+                ))
+                .child(
+                    Button::new("dashboard.lights.connect", "Open Settings")
+                        .secondary()
+                        .small()
+                        .build(
+                            &self.hover,
+                            |_: &mut Self, _, cx| cx.emit(OpenRoute(Route::Settings)),
+                            cx,
+                        ),
+                )
+        } else {
+            let mut tiles = row().w_full().flex_wrap().gap(px(SPACE_3));
+            for key in [
+                SwitchKey::All,
+                SwitchKey::Lamps,
+                SwitchKey::LivingRoomLamps,
+                SwitchKey::BedroomLamps,
+                SwitchKey::KitchenCeiling,
+                SwitchKey::UnderCabinet,
+            ] {
+                let Some(label) = home
+                    .switches
+                    .iter()
+                    .find(|s| s.key == key)
+                    .map(|s| s.label.clone())
+                else {
+                    continue;
+                };
+                let state = tile_state(&home, key);
+                let on = state.on;
+                let mut tile = SwitchTile::new(
+                    SharedString::from(format!("dashboard.switch.{key}")),
+                    label,
+                    glyph(key),
+                )
+                .on(on)
+                .mixed(state.mixed)
+                .pending(state.pending)
+                .enabled(home.reachable);
+                if let Some(detail) = state.detail {
+                    tile = tile.detail(detail);
+                }
+                tiles = tiles.child(tile.build(
+                    &self.hover,
+                    move |this: &mut Self, _, cx| {
+                        this.home.update(cx, |h, cx| h.switch(key, !on, cx))
+                    },
+                    cx,
+                ));
+            }
+            tiles
+        };
+        Some(
+            column()
+                .debug_selector(|| "dashboard.lights".into())
+                .gap(px(SPACE_3))
+                .child(self.section(
+                    "Lights",
+                    "dashboard.lights.open",
+                    "Smart Home",
+                    Route::SmartHome,
+                    cx,
+                ))
+                .child(body),
+        )
+    }
+
     fn upcoming(&self, cx: &mut Context<Self>) -> Div {
-        let events: Vec<CalendarEvent> = self
+        let all: Vec<CalendarEvent> = self
             .calendar
             .read(cx)
-            .upcoming(6)
+            .upcoming(UPCOMING + 50)
             .into_iter()
             .cloned()
             .collect();
+        let more = all.len().saturating_sub(UPCOMING);
+        let events = &all[..all.len().min(UPCOMING)];
         let today = today();
-        let mut list = column();
-        let mut last_day = None;
-        for event in &events {
-            let date = local(event.starts_at).date_naive().max(today);
-            if last_day != Some(date) {
+        let body = if events.is_empty() {
+            empty(
+                "Nothing coming up",
+                "Add an event, or show your Mac's calendars on the Calendar page.",
+            )
+        } else {
+            let mut list = column().pb(px(CARD_INSET - SPACE_2));
+            let mut last_day = None;
+            for event in events {
+                let date = local(event.starts_at).date_naive().max(today);
+                if last_day != Some(date) {
+                    list = list.child(
+                        div()
+                            .px(px(CARD_INSET))
+                            .pt(px(if last_day.is_some() {
+                                SPACE_3
+                            } else {
+                                CARD_INSET - EYEBROW_OPTICAL_LIFT
+                            }))
+                            .pb(px(SPACE_1))
+                            .child(eyebrow(day_label(date, today))),
+                    );
+                    last_day = Some(date);
+                }
+                list = list.child(
+                    row()
+                        .px(px(CARD_INSET))
+                        .py(px(SPACE_2))
+                        .gap(px(SPACE_3))
+                        .items_stretch()
+                        .child(
+                            div()
+                                .w(px(EVENT_BAR_WIDTH))
+                                .flex_shrink_0()
+                                .rounded_full()
+                                .bg(event_color(event)),
+                        )
+                        .child(
+                            column()
+                                .flex_1()
+                                .min_w_0()
+                                .gap(px(SPACE_HALF))
+                                .child(div().truncate().child(event.title.clone()))
+                                .child(caption(match &event.location {
+                                    Some(location) => format!("{} · {location}", span(event)),
+                                    None => span(event),
+                                })),
+                        ),
+                );
+            }
+            if more > 0 {
                 list = list.child(
                     div()
-                        .px(px(SPACE_4))
-                        .pt(px(SPACE_4))
-                        .pb(px(SPACE_1))
-                        .child(eyebrow(day_label(date, today))),
+                        .px(px(CARD_INSET))
+                        .pt(px(SPACE_2))
+                        .child(hint(format!("{more} more on the Calendar"))),
                 );
-                last_day = Some(date);
             }
-            list = list.child(
-                row()
-                    .min_h(px(LIST_ROW_HEIGHT))
-                    .px(px(SPACE_4))
-                    .gap(px(SPACE_3))
-                    .child(
-                        div()
-                            .w(px(EVENT_BAR_WIDTH))
-                            .h(px(SPACE_5))
-                            .rounded_full()
-                            .bg(event_color(event)),
-                    )
-                    .child(
-                        column()
-                            .flex_1()
-                            .min_w_0()
-                            .gap(px(SPACE_HALF))
-                            .child(div().truncate().child(event.title.clone()))
-                            .child(caption(match &event.location {
-                                Some(location) => format!("{} · {location}", span(event)),
-                                None => span(event),
-                            })),
-                    ),
-            );
-        }
-        let body = if events.is_empty() {
-            column()
-                .p(px(SPACE_6))
-                .gap(px(SPACE_1))
-                .child(
-                    div()
-                        .font_weight(FontWeight::MEDIUM)
-                        .child("Nothing coming up"),
-                )
-                .child(caption(
-                    "Add an event, or show your Mac's calendars on the Calendar page.",
-                ))
-        } else {
-            list.pb(px(SPACE_2))
+            list
         };
         column()
             .flex_1()
@@ -405,12 +468,8 @@ impl DashboardPage {
                 cx,
             ))
             .child(
-                column()
+                card_body()
                     .debug_selector(|| "dashboard.upcoming".into())
-                    .rounded(px(RADIUS_LG))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .bg(rgb(SURFACE_RAISED))
                     .child(body),
             )
     }
@@ -432,44 +491,48 @@ impl DashboardPage {
                 -t.id,
             )
         });
-        let mut list = column();
-        for (index, ticket) in sorted.iter().take(6).enumerate() {
-            let (label, tone) = status_label(ticket.status);
-            let assignee = assignees
-                .iter()
-                .find(|a| a.id == ticket.assignee_id)
-                .map_or("Unassigned".to_owned(), |a| a.name.clone());
-            let running = runs.iter().any(|r| {
-                r.ticket_id == ticket.id && matches!(r.state.as_str(), "queued" | "running")
-            });
-            let id = ticket.id;
-            list = list.when(index > 0, |s| s.child(divider())).child(
-                ListRow::new(
-                    SharedString::from(format!("dashboard.ticket.{id}")),
-                    ticket.title.clone(),
-                )
-                .subtitle(if running {
-                    format!("{assignee} · working now")
-                } else {
-                    assignee
-                })
-                .trailing(status_pill(label, tone))
-                .build(
-                    &self.hover,
-                    move |_: &mut Self, _, cx| cx.emit(OpenTicket(id)),
-                    cx,
-                )
-                .rounded(px(0.))
-                .px(px(SPACE_4)),
-            );
-        }
         let body = if sorted.is_empty() {
-            column()
-                .p(px(SPACE_6))
-                .gap(px(SPACE_1))
-                .child(div().font_weight(FontWeight::MEDIUM).child("All clear"))
-                .child(caption("Open Tickets and agent runs appear here."))
+            empty("All clear", "Open Tickets and agent runs appear here.")
         } else {
+            let mut list = column();
+            for (index, ticket) in sorted.iter().take(WORK).enumerate() {
+                let (label, tone) = status_label(ticket.status);
+                let assignee = assignees
+                    .iter()
+                    .find(|a| a.id == ticket.assignee_id)
+                    .map_or("Unassigned".to_owned(), |a| a.name.clone());
+                let running = runs.iter().any(|r| {
+                    r.ticket_id == ticket.id && matches!(r.state.as_str(), "queued" | "running")
+                });
+                let id = ticket.id;
+                list = list.when(index > 0, |s| s.child(divider())).child(
+                    ListRow::new(
+                        SharedString::from(format!("dashboard.ticket.{id}")),
+                        ticket.title.clone(),
+                    )
+                    .subtitle(if running {
+                        format!("{assignee} · working now")
+                    } else {
+                        assignee
+                    })
+                    .trailing(status_pill(label, tone))
+                    .build(
+                        &self.hover,
+                        move |_: &mut Self, _, cx| cx.emit(OpenTicket(id)),
+                        cx,
+                    )
+                    .rounded(px(0.))
+                    .px(px(CARD_INSET)),
+                );
+            }
+            if sorted.len() > WORK {
+                list = list.child(
+                    div()
+                        .px(px(CARD_INSET))
+                        .py(px(SPACE_3))
+                        .child(hint(format!("{} more on Tickets", sorted.len() - WORK))),
+                );
+            }
             list
         };
         column()
@@ -484,13 +547,8 @@ impl DashboardPage {
                 cx,
             ))
             .child(
-                column()
+                card_body()
                     .debug_selector(|| "dashboard.work-list".into())
-                    .overflow_hidden()
-                    .rounded(px(RADIUS_LG))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .bg(rgb(SURFACE_RAISED))
                     .child(body),
             )
     }
@@ -506,23 +564,21 @@ impl Render for DashboardPage {
         } else {
             format!("{}, {first}", greeting(now.hour()))
         };
-        let tickets = self
-            .store
-            .as_ref()
-            .map(|s| s.tickets())
-            .map(|s| (s.tickets, s.runs));
-        let (open, running): (Vec<Ticket>, usize) =
-            tickets.map_or((vec![], 0), |(tickets, runs)| {
-                (
-                    tickets
-                        .into_iter()
-                        .filter(|t| t.status != TicketStatus::Done)
-                        .collect(),
-                    runs.iter()
-                        .filter(|r| matches!(r.state.as_str(), "queued" | "running"))
-                        .count(),
-                )
-            });
+        let tickets = self.store.as_ref().map(|s| s.tickets());
+        let (open, running): (Vec<Ticket>, usize) = tickets.map_or((vec![], 0), |snapshot| {
+            (
+                snapshot
+                    .tickets
+                    .into_iter()
+                    .filter(|t| t.status != TicketStatus::Done)
+                    .collect(),
+                snapshot
+                    .runs
+                    .iter()
+                    .filter(|r| matches!(r.state.as_str(), "queued" | "running"))
+                    .count(),
+            )
+        });
         let next = self
             .calendar
             .read(cx)
@@ -539,7 +595,7 @@ impl Render for DashboardPage {
         page = page.child(
             row()
                 .w_full()
-                .items_start()
+                .items_stretch()
                 .gap(px(SPACE_6))
                 .child(self.upcoming(cx))
                 .child(self.work(&open, cx)),
@@ -562,6 +618,6 @@ mod tests {
         assert_eq!(greeting(7), "Good morning");
         assert_eq!(greeting(13), "Good afternoon");
         assert_eq!(greeting(21), "Good evening");
-        assert_eq!(greeting(2), "Good evening");
+        assert_eq!(greeting(2), "Hello");
     }
 }

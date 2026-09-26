@@ -10,6 +10,10 @@ use gpui::{prelude::*, *};
 pub const SETPOINT_MIN: i64 = 67;
 pub const SETPOINT_MAX: i64 = 77;
 pub const RANGE_GAP: i64 = 2;
+/// What a thermostat without remembered setpoints starts from.
+pub const DEFAULT_TARGET: i64 = 72;
+pub const DEFAULT_LOW: i64 = 68;
+pub const DEFAULT_HIGH: i64 = 74;
 
 /// A change the daemon refused or could not accept.
 pub struct HomeFailed(pub String);
@@ -34,6 +38,53 @@ pub fn glyph(key: SwitchKey) -> &'static str {
         SwitchKey::LivingRoomLamps => "sofa",
         SwitchKey::KitchenCeiling => "ceiling",
         SwitchKey::UnderCabinet => "strip",
+    }
+}
+
+/// The individual switches a group covers; empty for a single switch.
+fn members(key: SwitchKey) -> &'static [SwitchKey] {
+    match key {
+        SwitchKey::All => &[
+            SwitchKey::BedroomLamps,
+            SwitchKey::LivingRoomLamps,
+            SwitchKey::KitchenCeiling,
+            SwitchKey::UnderCabinet,
+        ],
+        SwitchKey::Lamps => &[SwitchKey::BedroomLamps, SwitchKey::LivingRoomLamps],
+        _ => &[],
+    }
+}
+
+/// How a tile should read: on, partly on, and a line such as "2 of 4 on".
+/// Groups are judged by their members, so a tile never contradicts them.
+pub struct TileState {
+    pub on: bool,
+    pub mixed: bool,
+    pub pending: bool,
+    pub detail: Option<String>,
+}
+pub fn tile_state(snapshot: &HomeSnapshot, key: SwitchKey) -> TileState {
+    let find = |key: SwitchKey| snapshot.switches.iter().find(|s| s.key == key);
+    let pending = find(key).is_some_and(|s| s.pending);
+    let group = members(key);
+    if group.is_empty() {
+        return TileState {
+            on: find(key).is_some_and(|s| s.on),
+            mixed: false,
+            pending,
+            detail: None,
+        };
+    }
+    let lit = group
+        .iter()
+        .filter(|&&m| find(m).is_some_and(|s| s.on))
+        .count();
+    // A group only says it is turning on or off when the group itself was pressed.
+    TileState {
+        on: lit == group.len(),
+        mixed: lit > 0 && lit < group.len(),
+        pending,
+        detail: (lit > 0 && lit < group.len()).then(|| format!("{lit} of {} on", group.len())),
     }
 }
 
@@ -117,6 +168,10 @@ impl HomeModel {
         self.visible = visible;
     }
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        // Tests drive these models through fixtures, never the daemon.
+        if cfg!(test) {
+            return;
+        }
         if self.refreshing {
             return;
         }
@@ -159,6 +214,10 @@ impl HomeModel {
         };
         climate.mode = mode;
         climate.pending = true;
+        if mode == ClimateMode::HeatCool {
+            climate.target_low.get_or_insert(DEFAULT_LOW);
+            climate.target_high.get_or_insert(DEFAULT_HIGH);
+        }
         self.command(HomeCommand::SetClimateMode { mode }, cx);
     }
     /// Move the single target by `delta` degrees within the band.
@@ -166,7 +225,8 @@ impl HomeModel {
         let Some(climate) = self.snapshot.as_mut().and_then(|s| s.climate.as_mut()) else {
             return;
         };
-        let target = (climate.target.unwrap_or(72) + delta).clamp(SETPOINT_MIN, SETPOINT_MAX);
+        let target =
+            (climate.target.unwrap_or(DEFAULT_TARGET) + delta).clamp(SETPOINT_MIN, SETPOINT_MAX);
         climate.target = Some(target);
         climate.pending = true;
         self.command(HomeCommand::SetClimateTarget { target }, cx);
@@ -176,8 +236,8 @@ impl HomeModel {
         let Some(climate) = self.snapshot.as_mut().and_then(|s| s.climate.as_mut()) else {
             return;
         };
-        let mut low = climate.target_low.unwrap_or(68);
-        let mut top = climate.target_high.unwrap_or(74);
+        let mut low = climate.target_low.unwrap_or(DEFAULT_LOW);
+        let mut top = climate.target_high.unwrap_or(DEFAULT_HIGH);
         if high {
             top = (top + delta).clamp(low + RANGE_GAP, SETPOINT_MAX);
         } else {
@@ -401,5 +461,18 @@ mod tests {
                 (SwitchKey::LivingRoomLamps, false)
             ]
         );
+    }
+
+    #[test]
+    fn group_tiles_count_their_members() {
+        let home = fixtures::connected();
+        let all = tile_state(&home, SwitchKey::All);
+        assert!(!all.on && all.mixed);
+        assert_eq!(all.detail.as_deref(), Some("2 of 4 on"));
+        let lamps = tile_state(&home, SwitchKey::Lamps);
+        assert!(!lamps.on && lamps.mixed, "one of two lamp groups is on");
+        assert_eq!(lamps.detail.as_deref(), Some("1 of 2 on"));
+        let bedroom = tile_state(&home, SwitchKey::BedroomLamps);
+        assert!(bedroom.on && !bedroom.mixed && bedroom.detail.is_none());
     }
 }

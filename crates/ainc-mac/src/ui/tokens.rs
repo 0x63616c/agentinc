@@ -186,20 +186,26 @@ pub const PALETTE_FOOTER_HEIGHT: f32 = 40.;
 pub const PALETTE_RESULTS_MAX_HEIGHT: f32 = 420.;
 pub const POPOVER_WIDTH: f32 = 264.;
 pub const TOAST_WIDTH: f32 = 360.;
+/// The one inset inside feature cards, tiles and panels on every side.
+pub const CARD_INSET: f32 = SPACE_5;
 /// Switch tiles: the narrowest a tile shrinks to and its fixed height.
 pub const TILE_MIN_WIDTH: f32 = 148.;
-pub const TILE_HEIGHT: f32 = 104.;
+pub const TILE_HEIGHT: f32 = 112.;
 /// The value column of a stepper, wide enough for "100°".
 pub const STEPPER_VALUE_WIDTH: f32 = 56.;
 /// Calendar: a month cell, one hour of the week grid, the week's time
 /// gutter, the day panel beside the month, the agenda's date column, a
 /// calendar color bar and the circle that marks today.
-pub const MONTH_CELL_HEIGHT: f32 = 112.;
+pub const MONTH_CELL_HEIGHT: f32 = 100.;
 pub const HOUR_HEIGHT: f32 = 48.;
 pub const TIME_GUTTER: f32 = 56.;
 pub const DAY_PANEL_WIDTH: f32 = 300.;
 pub const AGENDA_DATE_WIDTH: f32 = 96.;
 pub const AGENDA_TIME_WIDTH: f32 = 136.;
+/// The thermostat track: its rail, the setpoint handle and the reading mark.
+pub const TRACK_HEIGHT: f32 = 4.;
+pub const TRACK_HANDLE: f32 = 14.;
+pub const TRACK_MARK: f32 = 8.;
 pub const EVENT_BAR_WIDTH: f32 = 3.;
 pub const TODAY_MARK: f32 = 24.;
 pub const AVATAR_SIZE: f32 = 24.;

@@ -112,6 +112,10 @@ impl CalendarModel {
         self.refresh(cx);
     }
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        // Tests drive these models through fixtures, never the daemon.
+        if cfg!(test) {
+            return;
+        }
         if self.refreshing {
             return;
         }
@@ -168,6 +172,9 @@ impl CalendarModel {
     }
     /// Read the Mac's calendars and hand them to the daemon as one import.
     pub fn sync(&mut self, cx: &mut Context<Self>) {
+        if cfg!(test) {
+            return;
+        }
         if self.syncing {
             return;
         }

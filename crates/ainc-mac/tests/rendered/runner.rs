@@ -1031,6 +1031,9 @@ pub fn run() -> Result<()> {
             suite.keys(&go(route));
             suite.capture(&format!("route-{round}-{shortcut}"), route, None, false)?;
         }
+        suite.window.update(&mut suite.cx, |shell, _, cx| {
+            shell.fixture_life(true, cx);
+        })?;
         for route in [Route::Dashboard, Route::Calendar, Route::SmartHome] {
             suite.keys(&go(route));
             suite.capture(&format!("life-{round}-{route:?}"), route, None, false)?;

@@ -29,6 +29,9 @@ const VIEWS: [(View, &str); 3] = [
 /// The week grid's first and last hour.
 const FIRST_HOUR: u32 = 6;
 const LAST_HOUR: u32 = 24;
+/// New events start inside waking hours.
+const DAY_STARTS: u32 = 9;
+const DAY_ENDS: u32 = 20;
 /// How many days the agenda reads ahead.
 const AGENDA_DAYS: i64 = 42;
 
@@ -185,6 +188,7 @@ impl CalendarPage {
                     )
                 }
             }
+            View::Agenda if self.anchor == today() => "Next six weeks".into(),
             View::Agenda => {
                 let last = self.anchor + Duration::days(AGENDA_DAYS);
                 format!(
@@ -200,10 +204,11 @@ impl CalendarPage {
 
     pub fn open_new(&mut self, date: NaiveDate, window: &mut Window, cx: &mut Context<Self>) {
         let start = if date == today() {
-            let next = local(now()).hour() + 1;
-            NaiveTime::from_hms_opt(next.min(23), 0, 0).unwrap_or(NaiveTime::MIN)
+            // The next round hour, kept inside waking hours.
+            let next = (local(now()).hour() + 1).clamp(DAY_STARTS, DAY_ENDS);
+            NaiveTime::from_hms_opt(next, 0, 0).unwrap_or(NaiveTime::MIN)
         } else {
-            NaiveTime::from_hms_opt(9, 0, 0).unwrap_or(NaiveTime::MIN)
+            NaiveTime::from_hms_opt(DAY_STARTS, 0, 0).unwrap_or(NaiveTime::MIN)
         };
         let starts_at = at(date, start).unwrap_or_else(now);
         self.fill("", date, starts_at, starts_at + 3600, false, "", "", cx);
@@ -413,49 +418,49 @@ impl CalendarPage {
                 .clone();
             return Some(self.mirror(&event, cx).into_any_element());
         }
+        let field = |input: &Entity<TextInput>,
+                     label: &'static str,
+                     glyph: Option<&'static str>,
+                     window: &mut Window,
+                     cx: &mut Context<Self>| {
+            let mut field = Field::new(input.clone()).label(label);
+            if let Some(glyph) = glyph {
+                field = field.leading_icon(glyph);
+            }
+            div().flex_1().min_w_0().child(field.build(window, cx))
+        };
         let times = row()
             .gap(px(CONTROL_GAP))
-            .child(
-                div().flex_1().child(
-                    Field::new(self.start.clone())
-                        .label("Starts")
-                        .build(window, cx),
-                ),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .child(Field::new(self.end.clone()).label("Ends").build(window, cx)),
-            );
+            .child(field(&self.start, "Starts", Some("clock"), window, cx))
+            .child(field(&self.end, "Ends", Some("clock"), window, cx));
         let body = column()
             .gap(px(FORM_STACK_GAP))
+            .child(field(&self.title, "Title", None, window, cx))
             .child(
-                Field::new(self.title.clone())
-                    .label("Title")
-                    .build(window, cx),
+                row()
+                    .items_end()
+                    .gap(px(SPACE_4))
+                    .child(field(&self.date, "Date", Some("calendar"), window, cx))
+                    .child(row().h(px(FIELD_HEIGHT)).child(checkbox(
+                        "calendar.all-day",
+                        "All day",
+                        self.all_day,
+                        true,
+                        |this: &mut Self, _, cx| {
+                            this.all_day = !this.all_day;
+                            cx.notify();
+                        },
+                        cx,
+                    ))),
             )
-            .child(
-                Field::new(self.date.clone())
-                    .label("Date")
-                    .build(window, cx),
-            )
-            .child(checkbox(
-                "calendar.all-day",
-                "All day",
-                self.all_day,
-                true,
-                |this: &mut Self, _, cx| {
-                    this.all_day = !this.all_day;
-                    cx.notify();
-                },
+            .when(!self.all_day, |s| s.child(times))
+            .child(field(
+                &self.location,
+                "Location",
+                Some("mapPin"),
+                window,
                 cx,
             ))
-            .when(!self.all_day, |s| s.child(times))
-            .child(
-                Field::new(self.location.clone())
-                    .label("Location")
-                    .build(window, cx),
-            )
             .child(
                 Field::new(self.notes.clone())
                     .label("Notes")
@@ -464,52 +469,54 @@ impl CalendarPage {
             )
             .when_some(self.form_error.clone(), |s, error| {
                 s.child(error_text(error))
-            })
-            .when(matches!(editing, Editing::Own { .. }), |s| {
-                s.child(
-                    row().child(
-                        Button::new("calendar.delete", "Delete event")
-                            .ghost()
-                            .small()
-                            .icon("trash")
-                            .tint(DESTRUCTIVE_TEXT)
-                            .enabled(!self.pending)
-                            .build(
-                                &self.hover,
-                                |this: &mut Self, window, cx| this.delete(window, cx),
-                                cx,
-                            ),
-                    ),
-                )
             });
-        let footer = dialog_footer(
-            Button::new("calendar.cancel", "Cancel")
-                .secondary()
-                .track_focus(&self.cancel_focus)
-                .build(
-                    &self.hover,
-                    |this: &mut Self, window, cx| this.close(window, cx),
-                    cx,
-                ),
-            Button::new(
-                "calendar.save",
-                if self.pending {
-                    "Saving…"
-                } else if editing == Editing::New {
-                    "Create"
-                } else {
-                    "Save"
-                },
-            )
-            .primary()
-            .enabled(!self.pending && !self.title.read(cx).content.trim().is_empty())
-            .track_focus(&self.submit_focus)
+        let save = Button::new(
+            "calendar.save",
+            if self.pending {
+                "Saving…"
+            } else if editing == Editing::New {
+                "Create"
+            } else {
+                "Save"
+            },
+        )
+        .primary()
+        .enabled(!self.pending && !self.title.read(cx).content.trim().is_empty())
+        .track_focus(&self.submit_focus)
+        .build(
+            &self.hover,
+            |this: &mut Self, window, cx| this.save(window, cx),
+            cx,
+        );
+        let cancel = Button::new("calendar.cancel", "Cancel")
+            .secondary()
+            .track_focus(&self.cancel_focus)
             .build(
                 &self.hover,
-                |this: &mut Self, window, cx| this.save(window, cx),
+                |this: &mut Self, window, cx| this.close(window, cx),
                 cx,
-            ),
-        );
+            );
+        // Delete sits at the far end of the footer, away from Save.
+        let footer = row()
+            .w_full()
+            .gap(px(CONTROL_GAP))
+            .when(matches!(editing, Editing::Own { .. }), |s| {
+                s.child(
+                    Button::new("calendar.delete", "Delete")
+                        .secondary()
+                        .icon("trash")
+                        .tint(DESTRUCTIVE_TEXT)
+                        .enabled(!self.pending)
+                        .build(
+                            &self.hover,
+                            |this: &mut Self, window, cx| this.delete(window, cx),
+                            cx,
+                        ),
+                )
+            })
+            .child(div().flex_1())
+            .child(cancel)
+            .child(save);
         Some(
             dialog_shell(
                 if editing == Editing::New {
@@ -529,8 +536,7 @@ impl CalendarPage {
         let line = |glyph: &'static str, text: String| {
             row()
                 .gap(px(SPACE_3))
-                .items_start()
-                .child(div().pt(px(SPACE_HALF)).child(icon(glyph, ICON_SIZE_SM)))
+                .child(icon(glyph, ICON_SIZE_SM))
                 .child(div().flex_1().min_w_0().child(text))
         };
         let body = column()
@@ -565,7 +571,9 @@ impl CalendarPage {
                         .child(notes),
                 )
             })
-            .child(hint("From your Mac's calendars. Edit it in Calendar."));
+            .child(hint(
+                "Mirrored from your Mac. Change it in the Calendar app.",
+            ));
         dialog_shell(
             event.title.clone(),
             body,
@@ -688,8 +696,9 @@ impl CalendarPage {
                     .h_full()
                     .gap(px(SPACE_HALF))
                     .child(Self::numeral(date, date.month() != month));
+                let outside = date.month() != month;
                 for event in day.iter().take(3) {
-                    cell = cell.child(self.chip(event, cx));
+                    cell = cell.child(self.chip(event, cx).when(outside, |s| s.opacity(0.5)));
                 }
                 if day.len() > 3 {
                     cell = cell.child(
@@ -745,7 +754,7 @@ impl CalendarPage {
             .child(weeks);
         row()
             .w_full()
-            .items_start()
+            .items_stretch()
             .gap(px(SPACE_4))
             .child(grid)
             .child(self.day_panel(events, cx))
@@ -785,11 +794,18 @@ impl CalendarPage {
                 ),
             );
         }
+        let relative = match (date - today()).num_days() {
+            0 => Some("Today"),
+            1 => Some("Tomorrow"),
+            -1 => Some("Yesterday"),
+            _ => None,
+        };
         column()
             .debug_selector(|| "calendar.day-panel".into())
             .w(px(DAY_PANEL_WIDTH))
             .flex_shrink_0()
-            .p(px(SPACE_4))
+            .p(px(CARD_INSET))
+            .pt(px(CARD_INSET - EYEBROW_OPTICAL_LIFT))
             .gap(px(SPACE_4))
             .rounded(px(RADIUS_LG))
             .border_1()
@@ -798,27 +814,15 @@ impl CalendarPage {
             .child(
                 column()
                     .gap(px(SPACE_1))
-                    .child(eyebrow(date.format("%A").to_string()))
+                    .child(eyebrow(relative.unwrap_or("Selected day")))
                     .child(
                         div()
                             .text_size(type_size(TITLE_SIZE))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(day_label(date, today())),
+                            .child(date.format("%A, %B %-d").to_string()),
                     ),
             )
             .child(list)
-            .child(
-                Button::new("calendar.panel.new", "Add event")
-                    .secondary()
-                    .small()
-                    .icon("plus")
-                    .full_width()
-                    .build(
-                        &self.hover,
-                        move |this: &mut Self, window, cx| this.open_new(date, window, cx),
-                        cx,
-                    ),
-            )
     }
 
     fn week_view(&self, events: &[CalendarEvent], cx: &mut Context<Self>) -> Div {
@@ -854,9 +858,11 @@ impl CalendarPage {
             gutter = gutter.child(
                 div()
                     .absolute()
-                    .top(px((hour - FIRST_HOUR) as f32 * HOUR_HEIGHT - SPACE_2))
+                    .top(px(
+                        ((hour - FIRST_HOUR) as f32 * HOUR_HEIGHT - SPACE_2).max(0.)
+                    ))
                     .right(px(SPACE_2))
-                    .when(hour > FIRST_HOUR, |s| s.child(hint(label))),
+                    .child(hint(label)),
             );
         }
         columns = columns.child(gutter);
@@ -925,10 +931,10 @@ impl CalendarPage {
                 lane = lane.child(
                     div()
                         .absolute()
-                        .top(px(top + SPACE_HALF))
+                        .top(px(top + 1.))
                         .left(relative(width * index as f32))
                         .w(relative(width))
-                        .h(px(height - SPACE_HALF * 2.))
+                        .h(px(height - 2.))
                         .px(px(SPACE_HALF))
                         .child(action_button(
                             ButtonSpec {
@@ -1010,7 +1016,7 @@ impl CalendarPage {
             .bg(rgb(SURFACE_RAISED))
             .child(header)
             .child(all_day)
-            .child(div().w_full().pt(px(SPACE_2)).child(columns))
+            .child(columns)
     }
 
     fn agenda(&self, events: &[CalendarEvent], cx: &mut Context<Self>) -> Div {
@@ -1030,21 +1036,13 @@ impl CalendarPage {
             let mut rows = column();
             for (index, event) in day.iter().enumerate() {
                 let id = event.id.clone();
-                let detail = [event.location.clone(), Some(event.calendar.clone())]
-                    .into_iter()
-                    .flatten()
-                    .collect::<Vec<_>>()
-                    .join(" · ");
-                let (progress, on_hover) = self.hover.track(
-                    &ElementId::from(SharedString::from(format!("calendar.row.{id}"))),
-                    true,
-                    cx,
-                );
+                let element = ElementId::from(SharedString::from(format!("calendar.row.{id}")));
+                let (progress, on_hover) = self.hover.track(&element, true, cx);
                 rows = rows
                     .when(index > 0, |s| s.child(divider()))
                     .child(action_button(
                         ButtonSpec {
-                            id: SharedString::from(format!("calendar.row.{id}")).into(),
+                            id: element,
                             label: event.title.clone().into(),
                             enabled: true,
                         },
@@ -1052,7 +1050,7 @@ impl CalendarPage {
                             button
                                 .w_full()
                                 .min_h(px(TABLE_ROW_HEIGHT + SPACE_2))
-                                .px(px(SPACE_4))
+                                .px(px(CARD_INSET))
                                 .gap(px(SPACE_4))
                                 .rounded(px(0.))
                                 .on_hover(on_hover)
@@ -1084,13 +1082,22 @@ impl CalendarPage {
                                                 .font_weight(FontWeight::MEDIUM)
                                                 .child(event.title.clone()),
                                         )
-                                        .child(
-                                            div()
-                                                .truncate()
-                                                .text_size(type_size(CAPTION_SIZE))
-                                                .text_color(rgb(TEXT_TERTIARY))
-                                                .child(detail),
-                                        ),
+                                        .when_some(event.location.clone(), |s, location| {
+                                            s.child(
+                                                div()
+                                                    .truncate()
+                                                    .text_size(type_size(CAPTION_SIZE))
+                                                    .text_color(rgb(TEXT_TERTIARY))
+                                                    .child(location),
+                                            )
+                                        }),
+                                )
+                                .child(
+                                    div()
+                                        .flex_shrink_0()
+                                        .text_size(type_size(CAPTION_SIZE))
+                                        .text_color(rgb(TEXT_TERTIARY))
+                                        .child(event.calendar.clone()),
                                 )
                         },
                         move |this: &mut Self, window, cx| this.open_event(&id, window, cx),
@@ -1098,6 +1105,11 @@ impl CalendarPage {
                     ));
             }
             let is_today = date == today;
+            let label = match (date - today).num_days() {
+                0 => format!("{} · Today", date.format("%a")),
+                1 => format!("{} · Tomorrow", date.format("%a")),
+                _ => date.format("%a · %b").to_string(),
+            };
             days = days.child(
                 row()
                     .w_full()
@@ -1107,7 +1119,8 @@ impl CalendarPage {
                         column()
                             .w(px(AGENDA_DATE_WIDTH))
                             .flex_shrink_0()
-                            .pt(px(SPACE_2))
+                            // The numeral's cap height lines up with the first row's title.
+                            .pt(px(SPACE_3))
                             .gap(px(SPACE_1))
                             .child(
                                 div()
@@ -1121,13 +1134,7 @@ impl CalendarPage {
                                     .text_color(rgb(TEXT))
                                     .child(date.day().to_string()),
                             )
-                            .child(eyebrow(if is_today {
-                                "Today".into()
-                            } else if date == today + Duration::days(1) {
-                                "Tomorrow".into()
-                            } else {
-                                date.format("%a · %b").to_string()
-                            })),
+                            .child(eyebrow(label)),
                     )
                     .child(
                         column()
@@ -1183,10 +1190,7 @@ impl CalendarPage {
                     cx,
                 )
                 .into_any_element(),
-            Access::Denied => {
-                hint("Calendar access is off in System Settings → Privacy & Security.")
-                    .into_any_element()
-            }
+            Access::Denied => div().into_any_element(),
         }
     }
     fn status(&self, cx: &App) -> String {
@@ -1311,6 +1315,12 @@ impl Render for CalendarPage {
             )
         };
         let mut page = Page::document(header).child(toolbar);
+        if self.calendar.read(cx).access == Access::Denied {
+            page = page.child(banner(
+                Tone::Neutral,
+                "Calendar access is off. Turn on AgentInc under System Settings → Privacy & Security → Calendars to see your Mac's events here.",
+            ));
+        }
         if let Some(error) = error {
             page = page.child(banner(Tone::Danger, error));
         }

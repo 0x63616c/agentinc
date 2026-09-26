@@ -4,100 +4,150 @@ use super::{button::*, display::icon, layout::*, motion::*, tokens::*};
 use gpui::{prelude::*, *};
 
 /// A large switch for one light or group: white with black ink when on, a
-/// quiet raised surface when off. `pending` shows the change is travelling.
-#[allow(clippy::too_many_arguments)]
-pub fn switch_tile<V: HoverHost>(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
+/// quiet raised surface when off, and outlined when a group is partly on.
+pub struct SwitchTile {
+    id: ElementId,
+    label: SharedString,
     glyph: &'static str,
     on: bool,
+    mixed: bool,
     pending: bool,
     enabled: bool,
-    hover: &HoverFade,
-    action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-    cx: &mut Context<V>,
-) -> Stateful<Div> {
-    let id = id.into();
-    let label = label.into();
-    let (progress, on_hover) = hover.track(&id, enabled, cx);
-    let (surface, surface_hover, ink, secondary) = if on {
-        (
-            PRIMARY,
-            PRIMARY_HOVER,
-            TEXT_ON_PRIMARY,
-            TEXT_ON_PRIMARY_SECONDARY,
-        )
-    } else {
-        (SURFACE_RAISED, HOVER_STRONG, TEXT, TEXT_SECONDARY)
-    };
-    let state = match (on, pending) {
-        (true, true) => "Turning on…",
-        (false, true) => "Turning off…",
-        (true, false) => "On",
-        (false, false) => "Off",
-    };
-    action_button(
-        ButtonSpec {
+    detail: Option<SharedString>,
+}
+impl SwitchTile {
+    pub fn new(
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        glyph: &'static str,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            glyph,
+            on: false,
+            mixed: false,
+            pending: false,
+            enabled: true,
+            detail: None,
+        }
+    }
+    pub fn on(mut self, on: bool) -> Self {
+        self.on = on;
+        self
+    }
+    /// Some, not all, of a group's lights are on.
+    pub fn mixed(mut self, mixed: bool) -> Self {
+        self.mixed = mixed;
+        self
+    }
+    /// A change is travelling to the lights.
+    pub fn pending(mut self, pending: bool) -> Self {
+        self.pending = pending;
+        self
+    }
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+    /// Replaces the On / Off line, such as "2 of 4 on".
+    pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+    pub fn build<V: HoverHost>(
+        self,
+        hover: &HoverFade,
+        action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
+        cx: &mut Context<V>,
+    ) -> Stateful<Div> {
+        let Self {
             id,
-            label: label.clone(),
+            label,
+            glyph,
+            on,
+            mixed,
+            pending,
             enabled,
-        },
-        |button| {
-            button
-                .role(accesskit::Role::Switch)
-                .aria_toggled(toggled(on))
-                .flex_col()
-                .items_start()
-                .justify_between()
-                .flex_1()
-                .min_w(px(TILE_MIN_WIDTH))
-                .h(px(TILE_HEIGHT))
-                .p(px(SPACE_4))
-                .rounded(px(RADIUS_LG))
-                .border_1()
-                .border_color(rgb(if on { PRIMARY } else { BORDER }))
-                .bg(blend(surface, surface_hover, progress))
-                .on_hover(on_hover)
-                .child(
-                    row()
-                        .w_full()
-                        .justify_between()
-                        .child(icon(glyph, ICON_SIZE_LG).text_color(rgb(ink)))
-                        .child(
-                            // The lamp's own indicator: filled when lit, a ring when dark.
-                            div()
-                                .size(px(SPACE_2))
-                                .rounded_full()
-                                .border_1()
-                                .border_color(rgb(if on { TEXT_ON_PRIMARY } else { BORDER_STRONG }))
-                                .when(on, |s| s.bg(rgb(TEXT_ON_PRIMARY)))
-                                .when(pending, |s| s.opacity(0.5)),
-                        ),
-                )
-                .child(
-                    column()
-                        .w_full()
-                        .gap(px(SPACE_HALF))
-                        .child(
-                            div()
-                                .w_full()
-                                .truncate()
-                                .text_size(type_size(BODY_SIZE))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(ink))
-                                .child(label),
-                        )
-                        .child(
-                            div()
-                                .text_size(type_size(CAPTION_SIZE))
-                                .text_color(rgb(secondary))
-                                .child(state),
-                        ),
-                )
-        },
-        action,
-        cx,
-    )
+            detail,
+        } = self;
+        let (progress, on_hover) = hover.track(&id, enabled, cx);
+        let (surface, surface_hover, ink, secondary) = if on {
+            (
+                PRIMARY,
+                PRIMARY_HOVER,
+                TEXT_ON_PRIMARY,
+                TEXT_ON_PRIMARY_SECONDARY,
+            )
+        } else {
+            (SURFACE_RAISED, HOVER_STRONG, TEXT, TEXT_SECONDARY)
+        };
+        let state: SharedString = match (on, pending, detail) {
+            (true, true, _) => "Turning on…".into(),
+            (false, true, _) => "Turning off…".into(),
+            (_, false, Some(detail)) => detail,
+            (true, false, None) => "On".into(),
+            (false, false, None) => "Off".into(),
+        };
+        action_button(
+            ButtonSpec {
+                id,
+                label: label.clone(),
+                enabled,
+            },
+            |button| {
+                button
+                    .role(accesskit::Role::Switch)
+                    .aria_toggled(toggled(on))
+                    .flex_col()
+                    .items_start()
+                    .justify_between()
+                    .flex_1()
+                    .min_w(px(TILE_MIN_WIDTH))
+                    .h(px(TILE_HEIGHT))
+                    .p(px(CARD_INSET))
+                    .rounded(px(RADIUS_LG))
+                    .border_1()
+                    .border_color(rgb(if on {
+                        PRIMARY
+                    } else if mixed {
+                        FOCUS_FIELD
+                    } else {
+                        BORDER
+                    }))
+                    .bg(blend(surface, surface_hover, progress))
+                    .on_hover(on_hover)
+                    .child(icon(glyph, ICON_SIZE_LG).text_color(rgb(if mixed {
+                        TEXT
+                    } else {
+                        ink
+                    })))
+                    .child(
+                        column()
+                            .w_full()
+                            .gap(px(SPACE_HALF))
+                            .child(
+                                div()
+                                    .w_full()
+                                    .truncate()
+                                    .text_size(type_size(BODY_SIZE))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(rgb(ink))
+                                    .child(label),
+                            )
+                            .child(
+                                div()
+                                    .text_size(type_size(CAPTION_SIZE))
+                                    .text_color(rgb(secondary))
+                                    .when(pending, |s| s.opacity(0.7))
+                                    .child(state),
+                            ),
+                    )
+            },
+            action,
+            cx,
+        )
+    }
 }
 
 /// A bounded number with − and + beside it, such as a thermostat target.

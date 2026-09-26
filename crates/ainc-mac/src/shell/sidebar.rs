@@ -209,12 +209,31 @@ impl Shell {
             // every destination stays reachable at the smallest window size.
             .child(
                 div()
-                    .id("sidebar-nav")
-                    .debug_selector(|| "sidebar-nav".into())
+                    .relative()
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .child(nav),
+                    .child(
+                        div()
+                            .id("sidebar-nav")
+                            .debug_selector(|| "sidebar-nav".into())
+                            .size_full()
+                            .overflow_y_scroll()
+                            .child(nav),
+                    )
+                    // Rows fade out rather than cut off above the user row.
+                    .child(
+                        div()
+                            .absolute()
+                            .bottom_0()
+                            .left_0()
+                            .right_0()
+                            .h(px(SPACE_6))
+                            .bg(linear_gradient(
+                                180.,
+                                linear_color_stop(rgba(SHELL << 8), 0.),
+                                linear_color_stop(rgba((SHELL << 8) | 0xff), 1.),
+                            )),
+                    ),
             )
             .child(
                 // A flex column gives the floating menu the row's top-left as its origin.
