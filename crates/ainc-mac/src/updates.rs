@@ -51,6 +51,12 @@ pub struct UpdateView {
     install_after_download: bool,
     visible: bool,
     changelog: bool,
+    hover: HoverFade,
+}
+impl HoverHost for UpdateView {
+    fn hover_fade(&mut self) -> &mut HoverFade {
+        &mut self.hover
+    }
 }
 impl UpdateView {
     fn new(cx: &mut Context<Self>) -> Self {
@@ -63,7 +69,7 @@ impl UpdateView {
             .as_ref()
             .err()
             .map(|e| e.to_string())
-            .unwrap_or_else(|| format!("AgentInc {}", ainc_release::VERSION));
+            .unwrap_or_else(|| format!("AgentInc {}", ainc_release::identity::version()));
         let preferences = loaded.unwrap_or_default();
         cx.spawn(async move |this, cx| {
             loop {
@@ -142,6 +148,7 @@ impl UpdateView {
             install_after_download: false,
             visible: false,
             changelog: false,
+            hover: HoverFade::default(),
         }
     }
     pub fn is_ready(&self) -> bool {
@@ -403,30 +410,38 @@ impl UpdateView {
             }
         }
     }
-    pub fn settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    pub fn settings(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        self.hover.animate(window);
+        let frequency = if self.preferences.interval_hours == 24 {
+            0
+        } else {
+            1
+        };
         settings_section(
             "Software updates",
             column()
                 .child(settings_row(
                     "Updates",
                     self.message.clone(),
-                    settings_button(
-                        "updates.check",
-                        "Check Now",
-                        !self.busy,
-                        |this: &mut Self, _, cx| {
-                            this.visible = true;
-                            this.changelog = false;
-                            this.check(true, cx);
-                        },
-                        cx,
-                    ),
+                    Button::new("updates.check", "Check Now")
+                        .secondary()
+                        .icon("refresh")
+                        .enabled(!self.busy)
+                        .build(
+                            &self.hover,
+                            |this: &mut Self, _, cx| {
+                                this.visible = true;
+                                this.changelog = false;
+                                this.check(true, cx);
+                            },
+                            cx,
+                        ),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Automatic checks",
                     "Check for new versions in the background.",
-                    settings_switch(
+                    toggle(
                         "updates.auto",
                         "Automatic checks",
                         self.preferences.automatic_checks,
@@ -442,39 +457,26 @@ impl UpdateView {
                 .child(settings_divider())
                 .child(settings_row(
                     "Check frequency",
-                    "Choose how often AgentInc checks for updates.",
-                    settings_segments([
-                        settings_segment(
-                            "updates.daily",
-                            "Daily",
-                            self.preferences.interval_hours == 24,
-                            true,
-                            |this: &mut Self, _, cx| {
-                                this.preferences.interval_hours = 24;
-                                this.save();
-                                cx.notify();
-                            },
-                            cx,
-                        ),
-                        settings_segment(
-                            "updates.weekly",
-                            "Weekly",
-                            self.preferences.interval_hours != 24,
-                            true,
-                            |this: &mut Self, _, cx| {
-                                this.preferences.interval_hours = 168;
-                                this.save();
-                                cx.notify();
-                            },
-                            cx,
-                        ),
-                    ]),
+                    "How often AgentInc checks for updates.",
+                    segmented(
+                        "updates.frequency",
+                        ["Daily", "Weekly"],
+                        frequency,
+                        true,
+                        &self.hover,
+                        |this: &mut Self, index, _, cx| {
+                            this.preferences.interval_hours = if index == 0 { 24 } else { 168 };
+                            this.save();
+                            cx.notify();
+                        },
+                        cx,
+                    ),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Automatic download",
                     "Download new versions when they become available.",
-                    settings_switch(
+                    toggle(
                         "updates.download",
                         "Automatic download",
                         self.preferences.automatic_download,
@@ -492,13 +494,9 @@ impl UpdateView {
                 .child(settings_row(
                     "Release notes",
                     "See what changed in the latest version.",
-                    settings_button(
-                        "updates.notes",
-                        "View Changelog",
-                        true,
-                        |_: &mut Self, _, cx| open_changelog(cx),
-                        cx,
-                    ),
+                    Button::new("updates.notes", "View Changelog")
+                        .secondary()
+                        .build(&self.hover, |_: &mut Self, _, cx| open_changelog(cx), cx),
                 )),
         )
         .into_any_element()

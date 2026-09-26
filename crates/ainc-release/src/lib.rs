@@ -79,6 +79,8 @@ pub const BUILD: &str = match option_env!("AINC_BUILD_ID") {
 // Set this one value to the production Ed25519 public key (32 bytes, base64).
 // Production Ed25519 public key; private counterpart lives only in repository secrets.
 pub const UPDATE_PUBLIC_KEY: &str = "mscHoRK2B71KNlJGlNqTCkMSqvuW9YWOHa1owg7S2yc=";
+/// The product repository, for help and feedback links.
+pub const REPOSITORY: &str = "https://github.com/0x63616c/agentinc";
 pub const FEED_URL: &str =
     "https://github.com/0x63616c/agentinc/releases/latest/download/feed.json";
 

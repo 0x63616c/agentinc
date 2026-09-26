@@ -500,8 +500,15 @@ impl Store {
         Ok(turn)
     }
     #[cfg(test)]
-    fn fixture_command(&self, _: Command) -> Result<Option<i64>> {
-        bail!("No rendered fixture for this command")
+    fn fixture_command(&self, command: Command) -> Result<Option<i64>> {
+        match command {
+            Command::SelectModel { model } => {
+                let mut snapshot = self.snapshot.lock().expect("presentation snapshot");
+                snapshot.settings.model = Some(model).filter(|model| !model.is_empty());
+                Ok(None)
+            }
+            _ => bail!("No rendered fixture for this command"),
+        }
     }
     #[cfg(test)]
     fn fixture_ticket(&self, command: TicketCommand) -> Result<Option<i64>> {
@@ -559,7 +566,9 @@ impl Store {
                     ticket_id,
                     body,
                     author_id: "owner".into(),
-                    created_at: 0,
+                    created_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| d.as_secs() as i64),
                 });
                 Ok(Some(id))
             }

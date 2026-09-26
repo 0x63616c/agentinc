@@ -5,9 +5,9 @@ use super::{
     tokens::*,
 };
 use gpui::{prelude::*, *};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-const LAUNCH_OVERLAY_MIN_DURATION: std::time::Duration = std::time::Duration::from_millis(500);
+const LAUNCH_OVERLAY_MIN_DURATION: Duration = Duration::from_millis(500);
 const LAUNCH_OVERLAY_FADE_DURATION: f32 = 0.32;
 
 pub struct LoadingFrame {
@@ -43,7 +43,7 @@ impl LoadingFrame {
             .gap(px(10.))
             .items_center()
             .text_size(type_size(LABEL_SIZE))
-            .text_color(rgb(MUTED))
+            .text_color(rgb(TEXT_SECONDARY))
             .child(dots)
             .child(label.into())
     }
@@ -82,7 +82,7 @@ impl LoadingFrame {
                     .justify_center()
                     .rounded_full()
                     .border_1()
-                    .border_color(rgba((SELECTED_BORDER << 8) | (70. + 100. * breath) as u32))
+                    .border_color(rgba((BORDER_STRONG << 8) | (70. + 100. * breath) as u32))
                     .bg(rgba((PRIMARY << 8) | (8. + 10. * breath) as u32))
                     .child(
                         img(ImageSource::Resource(Resource::Embedded("evee.png".into())))
@@ -111,12 +111,61 @@ impl LoadingFrame {
     }
 }
 
+/// A placeholder bar that breathes while content loads.
+pub fn skeleton(id: impl Into<ElementId>, width: Option<f32>, height: f32) -> impl IntoElement {
+    div()
+        .h(px(height))
+        .when_some(width, |s, width| s.w(px(width)))
+        .when(width.is_none(), |s| s.w_full())
+        .rounded(px(RADIUS_SM))
+        .bg(rgb(SKELETON))
+        .with_animation(
+            id,
+            Animation::new(Duration::from_millis(SKELETON_MS))
+                .repeat()
+                .with_easing(pulsating_between(0.45, 1.)),
+            |bar, t| bar.opacity(t),
+        )
+}
+
+/// A stack of skeleton rows standing in for a list or table.
+pub fn skeleton_rows(id: &'static str, count: usize) -> Div {
+    column()
+        .debug_selector(move || id.into())
+        .w_full()
+        .gap(px(SPACE_3))
+        .children((0..count).map(|index| {
+            row()
+                .w_full()
+                .gap(px(SPACE_3))
+                .child(skeleton(
+                    ElementId::NamedInteger(format!("{id}.mark").into(), index as u64),
+                    Some(24.),
+                    24.,
+                ))
+                .child(
+                    column()
+                        .flex_1()
+                        .gap(px(SPACE_2))
+                        .child(skeleton(
+                            ElementId::NamedInteger(format!("{id}.title").into(), index as u64),
+                            Some(180. + (index % 3) as f32 * 60.),
+                            12.,
+                        ))
+                        .child(skeleton(
+                            ElementId::NamedInteger(format!("{id}.body").into(), index as u64),
+                            Some(120. + (index % 2) as f32 * 80.),
+                            10.,
+                        )),
+                )
+        }))
+}
+
 /// A short handoff after the first shell frame; the main UI remains ready underneath.
 pub fn launch_overlay(start: Instant, window: &mut Window) -> Option<Div> {
     let elapsed = start.elapsed();
     if elapsed
-        >= LAUNCH_OVERLAY_MIN_DURATION
-            + std::time::Duration::from_secs_f32(LAUNCH_OVERLAY_FADE_DURATION)
+        >= LAUNCH_OVERLAY_MIN_DURATION + Duration::from_secs_f32(LAUNCH_OVERLAY_FADE_DURATION)
     {
         return None;
     }
@@ -144,7 +193,7 @@ pub fn launch_overlay(start: Instant, window: &mut Window) -> Option<Div> {
             .child(
                 div()
                     .text_size(type_size(CAPTION_SIZE))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(TEXT_SECONDARY))
                     .child("AGENTINC"),
             ),
     )

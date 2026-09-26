@@ -1,6 +1,7 @@
 mod about;
 mod assistant;
 mod automations;
+mod components;
 mod evee;
 mod input;
 mod model;

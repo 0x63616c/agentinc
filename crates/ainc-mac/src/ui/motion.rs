@@ -1,4 +1,4 @@
-//! Motion behavior shared by controls.
+//! Motion behavior shared by controls: reduced motion, hover fades and blends.
 use super::tokens::*;
 use gpui::*;
 
@@ -15,7 +15,37 @@ pub fn reduced_motion() -> bool {
     })
 }
 
-/// Small, interruptible hover fades shared by the assistant and task controls.
+// Focus rings follow the web's focus-visible rule: they appear after keyboard
+// navigation and disappear at the next pointer press. The window shares one flag.
+static FOCUS_VISIBLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Records whether the last focus change came from the keyboard.
+pub fn set_focus_visible(visible: bool) {
+    FOCUS_VISIBLE.store(visible, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether controls should draw their focus ring right now.
+pub fn focus_visible() -> bool {
+    FOCUS_VISIBLE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Linear blend between two opaque colors, used to fade hover surfaces.
+pub fn blend(from: u32, to: u32, t: f32) -> Rgba {
+    let t = t.clamp(0., 1.);
+    let channel = |shift: u32| {
+        let a = ((from >> shift) & 0xff) as f32;
+        let b = ((to >> shift) & 0xff) as f32;
+        (a + (b - a) * t).round() as u32
+    };
+    rgb((channel(16) << 16) | (channel(8) << 8) | channel(0))
+}
+
+/// A view that owns hover fades for the buttons it renders.
+pub trait HoverHost: 'static {
+    fn hover_fade(&mut self) -> &mut HoverFade;
+}
+
+/// Small, interruptible hover fades shared by every control with a hover look.
 #[derive(Default)]
 pub struct HoverFade(std::collections::HashMap<ElementId, (std::time::Instant, f32, f32)>);
 impl HoverFade {
@@ -38,9 +68,27 @@ impl HoverFade {
             ),
         );
     }
-    pub fn color(&self, id: &ElementId) -> Rgba {
-        let alpha = self.0.get(id).map(Self::value).unwrap_or(0.);
-        rgba((HOVER_ROW << 8) | (alpha * 255.) as u32)
+    /// The current hover amount for a control, from 0 (rest) to 1 (hovered).
+    pub fn progress(&self, id: &ElementId) -> f32 {
+        self.0.get(id).map(Self::value).unwrap_or(0.)
+    }
+    /// The hover amount for `id` plus the listener that drives it. Every
+    /// hover-faded control is built from this one pair.
+    pub fn track<V: HoverHost>(
+        &self,
+        id: &ElementId,
+        enabled: bool,
+        cx: &mut Context<V>,
+    ) -> (f32, impl Fn(&bool, &mut Window, &mut App) + 'static) {
+        let progress = if enabled { self.progress(id) } else { 0. };
+        let hover_id = id.clone();
+        let listener = cx.listener(move |view: &mut V, over: &bool, _, cx| {
+            if enabled {
+                view.hover_fade().set(hover_id.clone(), *over);
+                cx.notify();
+            }
+        });
+        (progress, listener)
     }
     pub fn animate(&mut self, window: &mut Window) {
         self.0.retain(|_, entry| {
@@ -54,5 +102,35 @@ impl HoverFade {
         {
             window.request_animation_frame();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PRIMARY, SHELL, SURFACE, SURFACE_RAISED, blend};
+    use gpui::rgb;
+
+    #[test]
+    fn hover_fade_tracks_each_control_separately() {
+        use super::HoverFade;
+        use gpui::ElementId;
+        let mut fade = HoverFade::default();
+        let a = ElementId::Name("a".into());
+        let b = ElementId::Name("b".into());
+        assert_eq!(fade.progress(&a), 0.);
+        fade.set(a.clone(), true);
+        assert!(fade.progress(&a) >= 0.);
+        assert_eq!(fade.progress(&b), 0.);
+        fade.set(a.clone(), false);
+        assert!(fade.progress(&a) <= 1.);
+    }
+
+    #[test]
+    fn blend_interpolates_each_channel() {
+        assert_eq!(blend(SHELL, PRIMARY, 0.), rgb(SHELL));
+        assert_eq!(blend(SHELL, PRIMARY, 1.), rgb(PRIMARY));
+        let mid = blend(SHELL, PRIMARY, 0.5);
+        assert!((mid.r - 0.5).abs() < 0.01 && (mid.g - 0.5).abs() < 0.01);
+        assert_eq!(blend(SURFACE, SURFACE_RAISED, 2.), rgb(SURFACE_RAISED));
     }
 }

@@ -1,11 +1,20 @@
 use crate::{
     input::{Submit, TextInput},
+    model::Overlay,
     storage::{AssigneeKind, Store, Ticket, TicketCommand, TicketSnapshot, TicketStatus},
     ui::*,
 };
 use gpui::{prelude::*, *};
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 
+fn status_tone(status: TicketStatus) -> Tone {
+    match status {
+        TicketStatus::Backlog => Tone::Neutral,
+        TicketStatus::ToDo => Tone::Info,
+        TicketStatus::InProgress => Tone::Warning,
+        TicketStatus::Done => Tone::Success,
+    }
+}
 fn status_name(status: TicketStatus) -> &'static str {
     match status {
         TicketStatus::Backlog => "Backlog",
@@ -22,7 +31,7 @@ const STATUSES: [TicketStatus; 4] = [
 ];
 pub struct TicketsPage {
     store: Option<Arc<Store>>,
-    overlays: Rc<RefCell<OverlayHost>>,
+    overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     state: TicketSnapshot,
     selected: Option<i64>,
     input: Entity<TextInput>,
@@ -43,6 +52,11 @@ pub struct TicketsPage {
     submit_focus: FocusHandle,
     hover: HoverFade,
     _subscriptions: Vec<Subscription>,
+}
+impl HoverHost for TicketsPage {
+    fn hover_fade(&mut self) -> &mut HoverFade {
+        &mut self.hover
+    }
 }
 impl TicketsPage {
     pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
@@ -86,11 +100,11 @@ impl TicketsPage {
     pub fn new(
         store: Option<Arc<Store>>,
         storage_error: Option<String>,
-        overlays: Rc<RefCell<OverlayHost>>,
+        overlays: Rc<RefCell<OverlayHost<Overlay>>>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input =
-            cx.new(|cx| TextInput::field("Ticket title", false, cx).identified("tickets.title"));
+        let input = cx
+            .new(|cx| TextInput::field("What needs doing?", false, cx).identified("tickets.title"));
         let comment = cx
             .new(|cx| TextInput::field("Add a Comment…", false, cx).identified("tickets.comment"));
         let agent_name = cx.new(|cx| TextInput::field("Name", false, cx).identified("agents.name"));
@@ -330,110 +344,88 @@ impl TicketsPage {
         .detach();
         cx.notify();
     }
-    fn button(
-        &self,
-        id: impl Into<ElementId>,
-        label: impl Into<SharedString>,
-        enabled: bool,
-        kind: ButtonKind,
-        f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + Clone + 'static,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let enabled = enabled && !self.pending;
-        let id = id.into();
-        let hover_id = id.clone();
-        let background = match kind {
-            ButtonKind::Primary => rgb(PRIMARY),
-            ButtonKind::Destructive => rgb(DESTRUCTIVE),
-            _ => self.hover.color(&id),
-        };
-        let on_hover = cx.listener(move |this, over, _, cx| {
-            if enabled {
-                this.hover.set(hover_id.clone(), *over);
-                cx.notify();
-            }
-        });
-        action_button(
-            ButtonSpec {
-                id,
-                label: label.into(),
-                kind,
-                enabled,
-            },
-            |button| {
-                standard_button(button)
-                    .justify_center()
-                    .bg(background)
-                    .on_hover(on_hover)
-            },
-            f,
-            cx,
-        )
-    }
-    pub fn overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub fn overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let active = self.overlays.borrow().active()?;
         let (title, body, enabled) = match active {
             Overlay::AddTicket => (
-                "Add Ticket".into(),
-                column().child(text_field("Ticket title", self.input.clone())),
+                "New Ticket".into(),
+                column().child(
+                    Field::new(self.input.clone())
+                        .label("Ticket title")
+                        .hint("You can assign it to an agent afterwards.")
+                        .error(self.form_error.clone())
+                        .build(window, cx),
+                ),
                 !self.input.read(cx).content.trim().is_empty()
                     && Self::title_error(&self.input.read(cx).content).is_none(),
             ),
             Overlay::AddAgent => (
-                "Add agent".into(),
+                "New Agent".into(),
                 column_gap(FORM_STACK_GAP)
-                    .child(text_field("Name", self.agent_name.clone()))
-                    .child(text_field("Instructions", self.agent_instructions.clone()))
-                    .child(text_field("Model", self.agent_model.clone())),
+                    .child(text_field("Name", self.agent_name.clone(), window, cx))
+                    .child(
+                        Field::new(self.agent_instructions.clone())
+                            .label("Instructions")
+                            .multiline()
+                            .build(window, cx),
+                    )
+                    .child(
+                        Field::new(self.agent_model.clone())
+                            .label("Model")
+                            .hint("Leave empty to use the connection default.")
+                            .build(window, cx),
+                    )
+                    .when_some(self.form_error.clone(), |s, error| {
+                        s.child(error_text(error))
+                    }),
                 !self.agent_name.read(cx).content.trim().is_empty(),
             ),
             Overlay::DeleteTicket(id) => {
                 let ticket = self.state.tickets.iter().find(|t| t.id == id)?;
                 (
                     format!("Delete “{}”?", ticket.title),
-                    column().child("This Ticket and its Comments will be removed."),
+                    column()
+                        .gap(px(SPACE_2))
+                        .child(caption("This Ticket and its Comments will be removed."))
+                        .when_some(self.form_error.clone(), |s, error| {
+                            s.child(error_text(error))
+                        }),
                     true,
                 )
             }
             _ => return None,
         };
-        let body = body.when_some(self.form_error.clone(), |s, error| {
-            s.child(div().mt(px(12.)).text_color(rgb(ERROR)).child(error))
-        });
-        let footer = row_gap(CONTROL_GAP)
-            .justify_end()
-            .child(
-                self.button(
-                    "tickets.cancel",
-                    "Cancel",
-                    true,
-                    ButtonKind::Secondary,
-                    |this, window, cx| {
+        let deleting = matches!(active, Overlay::DeleteTicket(_));
+        let submit_label = if self.pending {
+            "Saving…"
+        } else if deleting {
+            "Delete"
+        } else {
+            "Create"
+        };
+        let footer = dialog_footer(
+            Button::new("tickets.cancel", "Cancel")
+                .secondary()
+                .track_focus(&self.cancel_focus)
+                .build(
+                    &self.hover,
+                    |this: &mut Self, window, cx| {
                         this.overlays.borrow_mut().dismiss(window, cx);
                         cx.notify();
                     },
                     cx,
-                )
-                .track_focus(&self.cancel_focus)
-                .border_1()
-                .border_color(rgb(BORDER))
-                .child("Cancel"),
-            )
-            .child(
-                self.button(
-                    "tickets.submit",
-                    if matches!(active, Overlay::DeleteTicket(_)) {
-                        "Delete Ticket"
-                    } else {
-                        "Create"
-                    },
-                    enabled,
-                    if matches!(active, Overlay::DeleteTicket(_)) {
-                        ButtonKind::Destructive
-                    } else {
-                        ButtonKind::Primary
-                    },
-                    move |this, _, cx| match active {
+                ),
+            Button::new("tickets.submit", submit_label)
+                .kind(if deleting {
+                    ButtonKind::Destructive
+                } else {
+                    ButtonKind::Primary
+                })
+                .enabled(enabled && !self.pending)
+                .track_focus(&self.submit_focus)
+                .build(
+                    &self.hover,
+                    move |this: &mut Self, _, cx| match active {
                         Overlay::AddTicket => this.add(cx),
                         Overlay::AddAgent => {
                             let name = this.agent_name.read(cx).content.trim().to_owned();
@@ -467,68 +459,112 @@ impl TicketsPage {
                         _ => {}
                     },
                     cx,
-                )
-                .track_focus(&self.submit_focus)
-                .child(if self.pending {
-                    "Saving…"
-                } else if matches!(active, Overlay::DeleteTicket(_)) {
-                    "Delete"
-                } else {
-                    "Create"
-                }),
-            );
+                ),
+        );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
-    pub fn agents(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub fn agents(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        self.hover.animate(window);
+        let agents: Vec<_> = self
+            .state
+            .assignees
+            .iter()
+            .filter(|a| a.kind == AssigneeKind::Agent)
+            .collect();
+        let add = |this: &Self, id: &'static str, cx: &mut Context<Self>| {
+            Button::new(id, "New Agent")
+                .primary()
+                .icon("plus")
+                .enabled(this.store.is_some() && !this.pending)
+                .build(&this.hover, Self::open_agent, cx)
+        };
         Page::document(
             PageHeader::new("Agents")
-                .description("Assign a Ticket to an agent to start its work.")
-                .actions(
-                    self.button(
-                        "agents.create",
-                        "Add agent",
-                        true,
-                        ButtonKind::Secondary,
-                        Self::open_agent,
-                        cx,
-                    )
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .child("Add agent"),
-                ),
+                .description("Agents pick up the Tickets you assign to them.")
+                .actions(add(self, "agents.create", cx)),
         )
         .child(
             column()
-                .gap(px(24.))
-                .when_some(self.error.clone(), |s, error| {
-                    s.child(div().text_color(rgb(ERROR)).child(error))
-                })
+                .gap(px(SPACE_4))
+                .when_some(self.error.clone(), |s, error| s.child(banner(Tone::Danger, error)))
                 .when(self.refreshing && self.error.is_some(), |s| {
                     s.child(LoadingFrame::new(self.loading_started, window).inline("Reconnecting…"))
                 })
                 .when(!self.loaded && self.error.is_none(), |s| {
-                    s.child(LoadingFrame::new(self.loading_started, window).page("Loading Agents…"))
+                    s.child(skeleton_rows("agents.loading", 3))
                 })
-                .children(
-                    self.state
-                        .assignees
-                        .iter()
-                        .filter(|a| a.kind == AssigneeKind::Agent)
-                        .map(|agent| {
-                            list_row(
-                                SharedString::from(format!("agent.{}", agent.id)),
-                                agent.name.clone(),
-                                false,
+                .when(self.loaded && agents.is_empty() && self.error.is_none(), |s| {
+                    s.child(
+                        EmptyState::new("agents", "No Agents yet")
+                            .description("Register an agent with instructions and a model, then assign Tickets to it.")
+                            .selector("agents.empty")
+                            .action(
+                                Button::new("agents.create.empty", "New Agent")
+                                    .secondary()
+                                    .icon("plus")
+                                    .enabled(self.store.is_some() && !self.pending)
+                                    .build(&self.hover, Self::open_agent, cx),
                             )
-                            .accessibility_id(format!("agent.{}", agent.id))
-                            .child(agent.name.clone())
-                        }),
-                ),
+                            .build(),
+                    )
+                })
+                .when(!agents.is_empty(), |s| {
+                    let count = agents.len();
+                    s.child(card().p(px(SPACE_1)).gap_0().children(agents.iter().enumerate().map(
+                        |(index, agent)| {
+                            let name = agent.name.clone();
+                            let assigned = self
+                                .state
+                                .tickets
+                                .iter()
+                                .filter(|t| {
+                                    t.assignee_id == agent.id && t.status != TicketStatus::Done
+                                })
+                                .count();
+                            let running = self.state.runs.iter().any(|r| {
+                                matches!(r.state.as_str(), "queued" | "running")
+                                    && self.state.tickets.iter().any(|t| {
+                                        t.id == r.ticket_id && t.assignee_id == agent.id
+                                    })
+                            });
+                            let subtitle = match assigned {
+                                0 => "No open Tickets".to_owned(),
+                                1 => "1 open Ticket".to_owned(),
+                                n => format!("{n} open Tickets"),
+                            };
+                            list_item(SharedString::from(format!("agent.{}", agent.id)), name.clone())
+                                .accessibility_id(format!("agent.{}", agent.id))
+                                .min_h(px(LIST_ROW_HEIGHT))
+                                .px(px(SPACE_3))
+                                .py(px(SPACE_2))
+                                .gap(px(SPACE_3))
+                                .when(index + 1 < count, |s| {
+                                    s.border_b_1().border_color(rgb(BORDER_SUBTLE))
+                                })
+                                .child(avatar(&name, None, AVATAR_SIZE))
+                                .child(
+                                    column()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .gap(px(SPACE_HALF))
+                                        .child(div().text_size(type_size(BODY_SIZE)).child(name.clone()))
+                                        .child(caption(subtitle)),
+                                )
+                                .child(if running {
+                                    status_pill("Running", Tone::Info)
+                                } else {
+                                    status_pill("Idle", Tone::Neutral)
+                                })
+                        },
+                    )))
+                }),
         )
         .build()
         .into_any_element()
     }
-    fn detail(&self, ticket: &Ticket, cx: &mut Context<Self>) -> AnyElement {
+    /// The header for one Ticket: a way back, the title as the page's one
+    /// heading, its meta line, and the actions that apply to it.
+    fn detail_header(&self, ticket: &Ticket, cx: &mut Context<Self>) -> PageHeader {
         let id = ticket.id;
         let revision = ticket.revision;
         let running = self
@@ -536,26 +572,331 @@ impl TicketsPage {
             .runs
             .iter()
             .any(|r| r.ticket_id == id && matches!(r.state.as_str(), "queued" | "running"));
-        column().gap(px(22.))
-            .child(row().gap(px(8.)).child(self.button("tickets.back","All Tickets",true,ButtonKind::Quiet,|this,_,cx|{this.selected=None;cx.notify();},cx).child("← All Tickets")).child(div().flex_1())
-                .when(running,|s|s.child(self.button("tickets.stop","Cancel work",true,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Cancel{id,revision},cx),cx).border_1().border_color(rgb(BORDER)).child("Cancel work")))
-                .when(!self.state.runs.iter().any(|r|r.ticket_id==id),|s|s.child(self.button("tickets.delete","Delete Ticket",true,ButtonKind::Quiet,move|this,window,cx|{this.overlays.borrow_mut().open(Overlay::DeleteTicket(id),window,cx,Some(this.cancel_focus.clone()));cx.notify();},cx).text_color(rgb(DESTRUCTIVE_TEXT)).child("Delete"))))
-            .child(div().text_size(type_size(20.)).font_weight(FontWeight::MEDIUM).child(ticket.title.clone()))
-            .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Status")).child(row().flex_wrap().gap(px(6.)).children(STATUSES.into_iter().map(|status|choice_button(self.button(SharedString::from(format!("tickets.status.{status}")),status_name(status),status!=ticket.status,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::SetStatus{id,revision,status},cx),cx), status==ticket.status).child(status_name(status))))))
-            .child(column().gap(px(8.)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child("Assignee")).child(row().flex_wrap().gap(px(6.)).children(self.state.assignees.iter().map(|assignee|{
-                let assignee_id=assignee.id.clone();let assignee_kind=assignee.kind;
-                choice_button(self.button(SharedString::from(format!("tickets.assign.{}",assignee.id)),assignee.name.clone(),assignee.id!=ticket.assignee_id,ButtonKind::Secondary,move|this,_,cx|this.command(TicketCommand::Assign{id,revision,assignee_id:assignee_id.clone(),assignee_kind},cx),cx), assignee.id==ticket.assignee_id).child(assignee.name.clone())
-            }))))
-            .children(self.state.runs.iter().filter(|r|r.ticket_id==id && r.generation==ticket.generation).map(|run|div().text_size(type_size(LABEL_SIZE)).text_color(rgb(MUTED)).child(run.error.as_ref().map_or_else(||format!("Work {}",run.state),|error|format!("Work stopped: {error}")))))
-            .child(column().gap(px(16.)).child(div().font_weight(FontWeight::MEDIUM).child("Comments"))
-                .when(!self.state.comments.iter().any(|c|c.ticket_id==id),|s|s.child(div().text_color(rgb(MUTED)).child("Comments are the work log. Add context, decisions and evidence here.")))
-                .children(self.state.comments.iter().filter(|c|c.ticket_id==id).map(|comment|{
-                    let author=self.state.assignees.iter().find(|a|a.id==comment.author_id).map_or("Agent",|a|a.name.as_str());
-                    list_item(("comment",comment.id as u64), comment.body.clone()).flex_col().items_start().accessibility_id(format!("comment.{}",comment.id)).gap(px(6.)).py(px(12.)).border_b_1().border_color(rgb(BORDER)).child(div().text_size(type_size(CAPTION_SIZE)).text_color(rgb(MUTED)).child(author.to_owned())).child(div().text_size(type_size(BODY_SIZE)).child(comment.body.clone()))
-                }))
-                .child(text_field("Add a Comment",self.comment.clone()))
-                .child(row().justify_end().child(self.button("tickets.post","Post Comment",!self.comment.read(cx).content.trim().is_empty(),ButtonKind::Primary,|this,_,cx|this.add_comment(cx),cx).child("Post Comment"))))
+        let has_runs = self.state.runs.iter().any(|r| r.ticket_id == id);
+        let enabled = !self.pending;
+        PageHeader::new(ticket.title.clone())
+            .leading(
+                Button::new("tickets.back", "Tickets")
+                    .ghost()
+                    .small()
+                    .icon("chevronLeft")
+                    .tint(TEXT_SECONDARY)
+                    .build(
+                        &self.hover,
+                        |this, _, cx| {
+                            this.selected = None;
+                            cx.notify();
+                        },
+                        cx,
+                    )
+                    .ml(px(-CONTROL_INSET_X_SM)),
+            )
+            .description(format!("T-{id} · {}", status_name(ticket.status)))
+            .actions(
+                row_gap(CONTROL_GAP)
+                    .when(running, |s| {
+                        s.child(
+                            Button::new("tickets.stop", "Cancel work")
+                                .secondary()
+                                .icon("stop")
+                                .enabled(enabled)
+                                .build(
+                                    &self.hover,
+                                    move |this, _, cx| {
+                                        this.command(TicketCommand::Cancel { id, revision }, cx)
+                                    },
+                                    cx,
+                                ),
+                        )
+                    })
+                    .when(!has_runs, |s| {
+                        s.child(
+                            Button::new("tickets.delete", "Delete")
+                                .ghost()
+                                .icon("trash")
+                                .tint(TEXT_SECONDARY)
+                                .enabled(enabled)
+                                .build(
+                                    &self.hover,
+                                    move |this, window, cx| {
+                                        this.overlays.borrow_mut().open(
+                                            Overlay::DeleteTicket(id),
+                                            window,
+                                            cx,
+                                            Some(this.cancel_focus.clone()),
+                                        );
+                                        cx.notify();
+                                    },
+                                    cx,
+                                ),
+                        )
+                    }),
+            )
+    }
+    fn detail(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let id = ticket.id;
+        let revision = ticket.revision;
+        let comments: Vec<_> = self
+            .state
+            .comments
+            .iter()
+            .filter(|c| c.ticket_id == id)
+            .collect();
+        let enabled = !self.pending;
+        let section = |title: &'static str, body: Div| {
+            column().gap(px(SPACE_2)).child(eyebrow(title)).child(body)
+        };
+        column()
+            .gap(px(SECTION_GAP))
+            .child(
+                card()
+                    .gap(px(SPACE_4))
+                    .child(section(
+                        "Status",
+                        row()
+                            .flex_wrap()
+                            .gap(px(CHIP_GAP))
+                            .children(STATUSES.into_iter().map(|status| {
+                                let current = status == ticket.status;
+                                chip(
+                                    SharedString::from(format!("tickets.status.{status}")),
+                                    status_name(status),
+                                    current,
+                                    enabled,
+                                    &self.hover,
+                                    move |this, _, cx| {
+                                        if !current {
+                                            this.command(
+                                                TicketCommand::SetStatus {
+                                                    id,
+                                                    revision,
+                                                    status,
+                                                },
+                                                cx,
+                                            )
+                                        }
+                                    },
+                                    cx,
+                                )
+                            })),
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Assignee",
+                        row().flex_wrap().gap(px(CHIP_GAP)).children(
+                            self.state.assignees.iter().map(|assignee| {
+                                let assignee_id = assignee.id.clone();
+                                let assignee_kind = assignee.kind;
+                                let current = assignee.id == ticket.assignee_id;
+                                chip(
+                                    SharedString::from(format!("tickets.assign.{}", assignee.id)),
+                                    assignee.name.clone(),
+                                    current,
+                                    enabled,
+                                    &self.hover,
+                                    move |this, _, cx| {
+                                        if !current {
+                                            this.command(
+                                                TicketCommand::Assign {
+                                                    id,
+                                                    revision,
+                                                    assignee_id: assignee_id.clone(),
+                                                    assignee_kind,
+                                                },
+                                                cx,
+                                            )
+                                        }
+                                    },
+                                    cx,
+                                )
+                            }),
+                        ),
+                    ))
+                    .children(
+                        self.state
+                            .runs
+                            .iter()
+                            .filter(|r| r.ticket_id == id && r.generation == ticket.generation)
+                            .map(|run| {
+                                let tone = match run.state.as_str() {
+                                    "queued" => Tone::Neutral,
+                                    "running" => Tone::Info,
+                                    "done" | "completed" => Tone::Success,
+                                    _ => Tone::Warning,
+                                };
+                                column().gap(px(SPACE_4)).child(divider()).child(section(
+                                    "Work",
+                                    row()
+                                        .gap(px(SPACE_3))
+                                        .child(status_pill(
+                                            run.state.clone(),
+                                            if run.error.is_some() {
+                                                Tone::Danger
+                                            } else {
+                                                tone
+                                            },
+                                        ))
+                                        .when_some(run.error.clone(), |s, error| {
+                                            s.child(caption(error))
+                                        }),
+                                ))
+                            }),
+                    ),
+            )
+            .child(
+                column()
+                    .gap(px(SPACE_3))
+                    .child(
+                        row()
+                            .gap(px(SPACE_2))
+                            .child(heading("Comments"))
+                            .child(caption(format!("{}", comments.len()))),
+                    )
+                    .when(comments.is_empty(), |s| {
+                        s.child(caption(
+                            "Comments are the work log. Add context, decisions and evidence here.",
+                        ))
+                    })
+                    .children(comments.iter().map(|comment| {
+                        let author = self
+                            .state
+                            .assignees
+                            .iter()
+                            .find(|a| a.id == comment.author_id)
+                            .map_or("Agent", |a| a.name.as_str())
+                            .to_owned();
+                        list_item(("comment", comment.id as u64), comment.body.clone())
+                            .items_start()
+                            .accessibility_id(format!("comment.{}", comment.id))
+                            .gap(px(SPACE_3))
+                            .py(px(SPACE_4))
+                            .border_b_1()
+                            .border_color(rgb(BORDER_SUBTLE))
+                            .child(avatar(&author, None, AVATAR_SIZE))
+                            .child(
+                                column()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .gap(px(SPACE_HALF))
+                                    .child(
+                                        row()
+                                            .gap(px(SPACE_2))
+                                            .child(
+                                                div()
+                                                    .text_size(type_size(LABEL_SIZE))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .child(author),
+                                            )
+                                            .child(hint(timestamp(comment.created_at))),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(type_size(BODY_SIZE))
+                                            .child(comment.body.clone()),
+                                    ),
+                            )
+                    }))
+                    .child(
+                        row()
+                            .mt(px(SPACE_2))
+                            .gap(px(SPACE_3))
+                            .child(avatar("You", None, AVATAR_SIZE))
+                            .child(
+                                div().flex_1().min_w_0().child(
+                                    Field::new(self.comment.clone())
+                                        .selector("Add a Comment")
+                                        .build(window, cx),
+                                ),
+                            )
+                            .child(
+                                Button::new("tickets.post", "Post")
+                                    .primary()
+                                    .enabled(
+                                        enabled && !self.comment.read(cx).content.trim().is_empty(),
+                                    )
+                                    .build(&self.hover, |this, _, cx| this.add_comment(cx), cx),
+                            ),
+                    ),
+            )
             .into_any_element()
+    }
+    fn list(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mut groups = column().gap(px(SPACE_5));
+        for status in STATUSES {
+            let tickets: Vec<_> = self
+                .state
+                .tickets
+                .iter()
+                .filter(|t| t.status == status)
+                .collect();
+            if tickets.is_empty() {
+                continue;
+            }
+            let count = tickets.len();
+            groups = groups.child(
+                column()
+                    .gap(px(SPACE_2))
+                    .child(
+                        row()
+                            .gap(px(SPACE_2))
+                            .child(status_dot(status_tone(status)))
+                            .child(eyebrow(status_name(status)))
+                            .child(caption(count.to_string())),
+                    )
+                    .child(card().p(px(SPACE_1)).gap_0().children(
+                        tickets.into_iter().enumerate().map(|(index, ticket)| {
+                            let id = ticket.id;
+                            let assignee = self
+                                .state
+                                .assignees
+                                .iter()
+                                .find(|a| a.id == ticket.assignee_id)
+                                .map_or("Unassigned", |a| a.name.as_str())
+                                .to_owned();
+                            let running = self.state.runs.iter().any(|r| {
+                                r.ticket_id == id
+                                    && matches!(r.state.as_str(), "queued" | "running")
+                            });
+                            let comments = self
+                                .state
+                                .comments
+                                .iter()
+                                .filter(|c| c.ticket_id == id)
+                                .count();
+                            let mut subtitle = format!("T-{id} · {assignee}");
+                            if comments > 0 {
+                                subtitle.push_str(&format!(
+                                    " · {comments} comment{}",
+                                    if comments == 1 { "" } else { "s" }
+                                ));
+                            }
+                            column()
+                                .when(index + 1 < count, |s| {
+                                    s.border_b_1().border_color(rgb(BORDER_SUBTLE))
+                                })
+                                .child(
+                                    ListRow::new(("ticket", id as u64), ticket.title.clone())
+                                        .leading(status_dot(status_tone(status)))
+                                        .subtitle(subtitle)
+                                        .trailing(
+                                            row()
+                                                .gap(px(SPACE_2))
+                                                .when(running, |s| {
+                                                    s.child(badge("Running", Tone::Info))
+                                                })
+                                                .child(icon("chevronRight", ICON_SIZE)),
+                                        )
+                                        .build(
+                                            &self.hover,
+                                            move |this, _, cx| this.select(id, cx),
+                                            cx,
+                                        ),
+                                )
+                        }),
+                    )),
+            );
+        }
+        groups.into_any_element()
     }
 }
 impl Render for TicketsPage {
@@ -568,136 +909,70 @@ impl Render for TicketsPage {
         let selected = self
             .selected
             .and_then(|id| self.state.tickets.iter().find(|t| t.id == id));
-        let mut header =
-            PageHeader::new("Tickets").description("Tickets, assignees and their work log.");
-        if selected.is_none() {
-            header = header.actions(
-                row_gap(CONTROL_GAP)
-                    .child(
-                        self.button(
-                            "tickets.refresh",
-                            "Refresh Tickets",
-                            true,
-                            ButtonKind::Quiet,
-                            |this, _, cx| this.refresh(cx),
-                            cx,
+        let header = match selected {
+            Some(ticket) => self.detail_header(ticket, cx),
+            None => PageHeader::new("Tickets")
+                .description("Work for you and your agents, with Comments as the log.")
+                .actions(
+                    row_gap(CONTROL_GAP)
+                        .child(
+                            Button::new("tickets.refresh", "Refresh Tickets")
+                                .icon("refresh")
+                                .icon_only()
+                                .secondary()
+                                .enabled(!self.refreshing)
+                                .build(&self.hover, |this, _, cx| this.refresh(cx), cx),
                         )
-                        .child("Refresh"),
-                    )
-                    .child(
-                        self.button(
-                            "tickets.create",
-                            "Add Ticket",
-                            self.store.is_some(),
-                            ButtonKind::Secondary,
-                            Self::open_add,
-                            cx,
-                        )
-                        .track_focus(&self.add_focus)
-                        .debug_selector(|| "tickets.create".into())
-                        .border_1()
-                        .border_color(rgb(SELECTED_BORDER))
-                        .text_size(type_size(LABEL_SIZE))
-                        .child("Add Ticket"),
-                    ),
-            );
-        }
+                        .child(
+                            Button::new("tickets.create", "New Ticket")
+                                .primary()
+                                .icon("plus")
+                                .enabled(self.store.is_some() && !self.pending)
+                                .track_focus(&self.add_focus)
+                                .build(&self.hover, Self::open_add, cx)
+                                .debug_selector(|| "tickets.create".into()),
+                        ),
+                ),
+        };
+        let empty = self.loaded && self.state.tickets.is_empty() && self.error.is_none();
         Page::document(header)
             .child(
                 column()
                     .id("tickets-page")
                     .track_focus(&self.page_focus)
-                    .gap(px(24.))
+                    .gap(px(SECTION_GAP))
                     .when_some(self.error.clone(), |s, error| {
-                        s.child(div().text_color(rgb(ERROR)).child(error))
+                        s.child(banner(Tone::Danger, error))
                     })
-                    .when_some(self.form_error.clone(), |s, error| {
-                        s.child(div().text_color(rgb(ERROR)).child(error))
-                    })
+                    .when_some(
+                        self.form_error
+                            .clone()
+                            .filter(|_| self.overlays.borrow().active().is_none()),
+                        |s, error| s.child(banner(Tone::Danger, error)),
+                    )
                     .when(!self.loaded && self.error.is_none(), |s| {
+                        s.child(skeleton_rows("tickets.loading", 4))
+                    })
+                    .when(empty && selected.is_none(), |s| {
                         s.child(
-                            LoadingFrame::new(self.loading_started, window)
-                                .page("Loading Tickets…"),
+                            EmptyState::new("tasks", "No Tickets yet")
+                                .description(
+                                    "Create a Ticket and assign it to an agent to start work.",
+                                )
+                                .selector("tickets.empty")
+                                .action(
+                                    Button::new("tickets.create.empty", "New Ticket")
+                                        .secondary()
+                                        .icon("plus")
+                                        .enabled(self.store.is_some() && !self.pending)
+                                        .build(&self.hover, Self::open_add, cx),
+                                )
+                                .build(),
                         )
                     })
-                    .child(if let Some(ticket) = selected {
-                        self.detail(ticket, cx)
-                    } else {
-                        column()
-                            .gap(px(24.))
-                            .when(
-                                self.loaded
-                                    && self.state.tickets.is_empty()
-                                    && self.error.is_none(),
-                                |s| {
-                                    s.child(
-                                        div()
-                                            .py(px(24.))
-                                            .text_color(rgb(MUTED))
-                                            .child("No Tickets yet."),
-                                    )
-                                },
-                            )
-                            .children(
-                                STATUSES
-                                    .into_iter()
-                                    .filter(|status| {
-                                        self.state.tickets.iter().any(|t| t.status == *status)
-                                    })
-                                    .map(|status| {
-                                        column()
-                                            .gap(px(8.))
-                                            .child(
-                                                div()
-                                                    .text_size(type_size(CAPTION_SIZE))
-                                                    .text_color(rgb(MUTED))
-                                                    .child(status_name(status)),
-                                            )
-                                            .children(
-                                                self.state
-                                                    .tickets
-                                                    .iter()
-                                                    .filter(move |t| t.status == status)
-                                                    .map(|ticket| {
-                                                        let id = ticket.id;
-                                                        let assignee = self
-                                                            .state
-                                                            .assignees
-                                                            .iter()
-                                                            .find(|a| a.id == ticket.assignee_id)
-                                                            .map_or("Unknown", |a| a.name.as_str());
-                                                        self.button(
-                                                            ("ticket", id as u64),
-                                                            ticket.title.clone(),
-                                                            true,
-                                                            ButtonKind::Quiet,
-                                                            move |this, _, cx| this.select(id, cx),
-                                                            cx,
-                                                        )
-                                                        .w_full()
-                                                        .h_auto()
-                                                        .min_h(px(52.))
-                                                        .py(px(10.))
-                                                        .justify_start()
-                                                        .border_b_1()
-                                                        .border_color(rgb(BORDER_SUBTLE))
-                                                        .child(
-                                                            div()
-                                                                .flex_1()
-                                                                .min_w_0()
-                                                                .child(ticket.title.clone()),
-                                                        )
-                                                        .child(
-                                                            div()
-                                                                .text_size(type_size(CAPTION_SIZE))
-                                                                .text_color(rgb(MUTED))
-                                                                .child(assignee.to_owned()),
-                                                        )
-                                                    }),
-                                            )
-                                    }),
-                            )
-                            .into_any_element()
+                    .child(match selected {
+                        Some(ticket) => self.detail(ticket, window, cx),
+                        None => self.list(cx),
                     }),
             )
             .build()

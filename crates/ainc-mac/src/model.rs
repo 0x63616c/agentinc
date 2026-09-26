@@ -22,6 +22,43 @@ pub enum Route {
     #[serde(rename = "evee", alias = "assistant")]
     Assistant,
     Settings,
+    /// The living component gallery, reachable from the command palette.
+    #[serde(alias = "design_system")]
+    Components,
+}
+
+/// The one surface that can float over the shell at a time.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Overlay {
+    Search,
+    Notifications,
+    UserMenu { support: bool },
+    AddTicket,
+    AddAgent,
+    DeleteTicket(i64),
+    RenameConversation(i64),
+    DeleteConversation(i64),
+    ConversationMenu(i64),
+}
+impl Overlay {
+    /// Modal surfaces on a scrim that block the page beneath.
+    pub fn is_dialog(self) -> bool {
+        matches!(
+            self,
+            Self::AddTicket
+                | Self::AddAgent
+                | Self::DeleteTicket(_)
+                | Self::RenameConversation(_)
+                | Self::DeleteConversation(_)
+        )
+    }
+    /// Light surfaces that close when the pointer lands outside them.
+    pub fn is_popover(self) -> bool {
+        matches!(
+            self,
+            Self::ConversationMenu(_) | Self::Notifications | Self::UserMenu { .. }
+        )
+    }
 }
 
 pub struct PageSpec {
@@ -53,7 +90,7 @@ pub const PAGES: &[PageSpec] = &[
     PageSpec {
         route: Route::Automations,
         title: "Automations",
-        icon: "refresh",
+        icon: "repeat",
         in_sidebar: true,
     },
     PageSpec {
@@ -72,6 +109,12 @@ pub const PAGES: &[PageSpec] = &[
         route: Route::Settings,
         title: "Settings",
         icon: "settings",
+        in_sidebar: false,
+    },
+    PageSpec {
+        route: Route::Components,
+        title: "Components",
+        icon: "command",
         in_sidebar: false,
     },
 ];
@@ -100,14 +143,6 @@ impl Route {
     }
     pub fn icon(self) -> &'static str {
         self.spec().icon
-    }
-    pub fn matching(query: &str) -> Vec<Self> {
-        let query = query.trim().to_lowercase();
-        PAGES
-            .iter()
-            .filter(|page| page.title.to_lowercase().contains(&query))
-            .map(|page| page.route)
-            .collect()
     }
 }
 
@@ -208,6 +243,8 @@ pub struct Session {
     pub panes: [PanePreference; 1],
     pub font: FontChoice,
     pub font_size: FontSize,
+    /// Command palette entries the user chose most recently, newest first.
+    pub recent_commands: Vec<String>,
 }
 impl Default for Session {
     fn default() -> Self {
@@ -220,10 +257,19 @@ impl Default for Session {
             }],
             font: FontChoice::System,
             font_size: FontSize::Default,
+            recent_commands: Vec::new(),
         }
     }
 }
+/// How many palette choices are remembered.
+pub const RECENT_COMMANDS: usize = 5;
 impl Session {
+    /// Moves `id` to the front of the recent palette choices.
+    pub fn remember_command(&mut self, id: &str) {
+        self.recent_commands.retain(|recent| recent != id);
+        self.recent_commands.insert(0, id.to_owned());
+        self.recent_commands.truncate(RECENT_COMMANDS);
+    }
     pub fn current(&self) -> Route {
         self.router.current()
     }
@@ -272,6 +318,13 @@ impl Session {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
         {
             session.font_size = font_size;
+        }
+        if let Some(recent) = value.get("recent_commands").and_then(|v| v.as_array()) {
+            session.recent_commands = recent
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .take(RECENT_COMMANDS)
+                .collect();
         }
         if let Some(router) = value.get("router").and_then(|v| v.as_object()) {
             session.router.current = router
@@ -374,7 +427,7 @@ mod tests {
     use super::*;
     #[test]
     fn catalogue_and_history() {
-        assert_eq!(PAGES.len(), 7);
+        assert_eq!(PAGES.len(), 8);
         for route in [
             Route::Tickets,
             Route::Agents,
@@ -383,6 +436,7 @@ mod tests {
             Route::Temporal,
             Route::Assistant,
             Route::Settings,
+            Route::Components,
         ] {
             assert_eq!(route.spec().route, route);
         }
@@ -496,9 +550,37 @@ mod tests {
         );
     }
     #[test]
+    fn popovers_and_dialogs_are_distinct() {
+        assert!(Overlay::UserMenu { support: true }.is_popover());
+        assert!(!Overlay::UserMenu { support: false }.is_dialog());
+        assert!(Overlay::AddTicket.is_dialog());
+        assert!(!Overlay::AddTicket.is_popover());
+        assert!(!Overlay::Search.is_dialog());
+    }
+    #[test]
+    fn recent_commands_dedupe_and_persist() {
+        let mut session = Session::default();
+        for id in [
+            "page.tickets",
+            "page.agents",
+            "page.tickets",
+            "a",
+            "b",
+            "c",
+            "d",
+        ] {
+            session.remember_command(id);
+        }
+        assert_eq!(session.recent_commands.len(), RECENT_COMMANDS);
+        assert_eq!(session.recent_commands[0], "d");
+        assert_eq!(session.recent_commands.last().unwrap(), "page.tickets");
+        assert!(!session.recent_commands.contains(&"page.agents".to_owned()));
+        let restored = Session::from_json(&serde_json::to_string(&session).unwrap());
+        assert_eq!(restored.recent_commands, session.recent_commands);
+        assert!(Session::from_json("{}").recent_commands.is_empty());
+    }
+    #[test]
     fn search_and_file_round_trip() {
-        assert!(Route::matching(" HOME ").is_empty());
-        assert!(Route::matching("zzz").is_empty());
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("session.json");
         let mut s = Session::default();

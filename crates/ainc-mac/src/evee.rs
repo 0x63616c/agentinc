@@ -1,6 +1,7 @@
 use crate::{
     assistant,
     input::{Submit, TextInput},
+    model::Overlay,
     storage::{Command, Conversation, Store, Turn},
     ui::*,
 };
@@ -12,7 +13,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
@@ -37,7 +38,7 @@ fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
 
 pub struct AssistantPage {
     store: Option<Arc<Store>>,
-    overlays: Rc<RefCell<OverlayHost>>,
+    overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     turns: Vec<Turn>,
     input: Entity<TextInput>,
     conversations: Vec<Conversation>,
@@ -51,8 +52,6 @@ pub struct AssistantPage {
     models: Vec<assistant::Model>,
     model: Option<String>,
     model_menu_open: bool,
-    model_menu_closing: bool,
-    model_menu_generation: u64,
     credentials_busy: bool,
     login_cancel: Option<Arc<AtomicBool>>,
     connection_error: Option<String>,
@@ -65,6 +64,17 @@ pub struct AssistantPage {
     reduced_motion: bool,
     hover: HoverFade,
     _subscriptions: Vec<Subscription>,
+}
+impl HoverHost for AssistantPage {
+    fn hover_fade(&mut self) -> &mut HoverFade {
+        &mut self.hover
+    }
+}
+fn evee_mark(size: f32) -> Img {
+    img(ImageSource::Resource(Resource::Embedded("evee.png".into())))
+        .size(px(size))
+        .rounded_full()
+        .flex_shrink_0()
 }
 pub enum Navigation {
     Settings,
@@ -102,7 +112,7 @@ impl AssistantPage {
     pub fn new(
         store: Option<Arc<Store>>,
         storage_error: Option<String>,
-        overlays: Rc<RefCell<OverlayHost>>,
+        overlays: Rc<RefCell<OverlayHost<Overlay>>>,
         cx: &mut Context<Self>,
     ) -> Self {
         let input = cx.new(|cx| TextInput::composer(cx).identified("evee.composer"));
@@ -178,8 +188,6 @@ impl AssistantPage {
             models: vec![],
             model,
             model_menu_open: false,
-            model_menu_closing: false,
-            model_menu_generation: 0,
             credentials_busy: !cfg!(test),
             login_cancel: None,
             connection_error: None,
@@ -269,7 +277,8 @@ impl AssistantPage {
         .detach();
         cx.notify();
     }
-    pub fn settings_view(&self, cx: &mut Context<Self>) -> Div {
+    pub fn settings_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        self.hover.animate(window);
         let enabled = !self.credentials_busy && self.active.is_none();
         let state = if self.credentials_busy {
             if self.login_cancel.is_some() {
@@ -280,52 +289,61 @@ impl AssistantPage {
         } else if let Some(account) = &self.account {
             format!("Connected as {account}")
         } else {
-            "Not connected · Uses your ChatGPT subscription.".to_owned()
+            "Not connected. Evee uses your ChatGPT subscription.".to_owned()
         };
+        let options: Vec<SelectOption> = std::iter::once(SelectOption::new("Codex default"))
+            .chain(
+                self.models
+                    .iter()
+                    .map(|model| SelectOption::new(model.name.clone())),
+            )
+            .collect();
+        let model_index = self
+            .model
+            .as_ref()
+            .and_then(|id| self.models.iter().position(|model| &model.id == id))
+            .map_or(0, |index| index + 1);
         column()
             .child(settings_row(
                 "ChatGPT",
                 state,
                 if self.account.is_some() {
-                    settings_button(
-                        "codex-sign-in",
-                        "Sign out",
-                        enabled,
-                        |this: &mut Self, _, cx| this.disconnect(cx),
-                        cx,
-                    )
+                    Button::new("codex-sign-in", "Sign out")
+                        .secondary()
+                        .enabled(enabled)
+                        .build(
+                            &self.hover,
+                            |this: &mut Self, _, cx| this.disconnect(cx),
+                            cx,
+                        )
                 } else {
-                    settings_icon_button(
-                        "codex-sign-in",
-                        "Sign in with ChatGPT",
-                        "openai",
-                        enabled,
-                        |this: &mut Self, _, cx| this.connect(cx),
-                        cx,
-                    )
+                    Button::new("codex-sign-in", "Sign in with ChatGPT")
+                        .primary()
+                        .icon("openai")
+                        .enabled(enabled)
+                        .build(&self.hover, |this: &mut Self, _, cx| this.connect(cx), cx)
                 },
             ))
             .when_some(self.connection_error.clone(), |s, error| {
                 s.child(settings_divider()).child(settings_row(
                     "Connection issue",
                     error,
-                    settings_button(
-                        "codex-refresh-error",
-                        "Retry",
-                        enabled,
-                        |this: &mut Self, _, cx| this.refresh_connection(cx),
-                        cx,
-                    ),
+                    Button::new("codex-refresh-error", "Retry")
+                        .secondary()
+                        .enabled(enabled)
+                        .build(
+                            &self.hover,
+                            |this: &mut Self, _, cx| this.refresh_connection(cx),
+                            cx,
+                        ),
                 ))
             })
             .when(self.login_cancel.is_some(), |s| {
                 s.child(settings_divider()).child(settings_row(
                     "Sign-in in progress",
                     "Waiting for your browser to complete sign-in.",
-                    settings_button(
-                        "cancel-sign-in",
-                        "Cancel",
-                        true,
+                    Button::new("cancel-sign-in", "Cancel").secondary().build(
+                        &self.hover,
                         |this: &mut Self, _, cx| {
                             if let Some(cancel) = &this.login_cancel {
                                 cancel.store(true, Ordering::Relaxed);
@@ -339,153 +357,43 @@ impl AssistantPage {
             .when(self.account.is_some(), |s| {
                 s.child(settings_divider()).child(settings_row(
                     "Model",
-                    "Choose the Codex model for conversations.",
-                    column()
-                        .relative()
-                        .w(px(210.))
-                        .h(px(CONTROL_HEIGHT))
-                        .child(
-                            settings_button(
-                                "codex-model-select",
-                                self.model
-                                    .as_ref()
-                                    .and_then(|id| {
-                                        self.models
-                                            .iter()
-                                            .find(|model| &model.id == id)
-                                            .map(|model| model.name.clone())
-                                    })
-                                    .unwrap_or_else(|| "Codex default".into()),
-                                enabled,
-                                |this: &mut Self, _, cx| {
-                                    if this.model_menu_open {
-                                        this.close_model_menu(cx);
-                                    } else {
-                                        this.model_menu_generation += 1;
-                                        this.model_menu_open = true;
-                                        this.model_menu_closing = false;
-                                        cx.notify();
-                                    }
-                                },
-                                cx,
-                            )
-                            .w_full()
-                            .justify_between()
-                            .debug_selector(|| "codex-model-select".into())
-                            .child("⌄"),
-                        )
-                        .when(self.model_menu_open || self.model_menu_closing, |anchor| {
-                            let menu_open = self.model_menu_open;
-                            anchor.child(
-                                deferred(
-                                    column()
-                                        .id("codex-model-menu")
-                                        .debug_selector(|| "codex-model-menu".into())
-                                        .absolute()
-                                        .right(px(0.))
-                                        .top(px(36.))
-                                        .w(px(210.))
-                                        .max_h(px(280.))
-                                        .overflow_y_scroll()
-                                        .p(px(4.))
-                                        .rounded(px(CONTROL_RADIUS))
-                                        .border_1()
-                                        .border_color(rgb(BORDER_OVERLAY))
-                                        .bg(rgb(SURFACE_MENU))
-                                        .shadow(vec![
-                                            BoxShadow::new(px(0.), px(8.), rgba(SCRIM).into())
-                                                .blur_radius(px(24.)),
-                                        ])
-                                        .child(self.model_option(
-                                            "model-default",
-                                            "Codex default".into(),
-                                            None,
-                                            enabled && menu_open,
-                                            cx,
-                                        ))
-                                        .children(self.models.iter().enumerate().map(
-                                            |(index, model)| {
-                                                self.model_option(
-                                                    ("codex-model", index),
-                                                    model.name.clone(),
-                                                    Some(model.id.clone()),
-                                                    enabled && menu_open,
-                                                    cx,
-                                                )
-                                            },
-                                        ))
-                                        .with_animation(
-                                            if menu_open {
-                                                "codex-model-menu-open"
-                                            } else {
-                                                "codex-model-menu-close"
-                                            },
-                                            Animation::new(Duration::from_millis(PANEL_MS)),
-                                            move |menu, progress| {
-                                                menu.opacity(if menu_open {
-                                                    progress
-                                                } else {
-                                                    1. - progress
-                                                })
-                                            },
-                                        ),
-                                )
-                                .with_priority(1),
-                            )
-                        }),
+                    "The Codex model Evee replies with.",
+                    Select::new("codex-model-select", options)
+                        .value(Some(model_index))
+                        .open(self.model_menu_open)
+                        .enabled(enabled)
+                        .width(240.)
+                        .build(
+                            &self.hover,
+                            |this: &mut Self, _, cx| {
+                                this.model_menu_open = !this.model_menu_open;
+                                cx.notify();
+                            },
+                            |this: &mut Self, index, _, cx| {
+                                let model = index
+                                    .checked_sub(1)
+                                    .and_then(|index| this.models.get(index))
+                                    .map(|model| model.id.clone());
+                                this.select_model(model, cx);
+                            },
+                            cx,
+                        ),
                 ))
             })
             .child(settings_divider())
             .child(settings_row(
                 "Connection status",
                 "Refresh your ChatGPT account and available models.",
-                settings_button(
-                    "codex-refresh",
-                    "Refresh",
-                    enabled,
-                    |this: &mut Self, _, cx| this.refresh_connection(cx),
-                    cx,
-                ),
+                Button::new("codex-refresh", "Refresh")
+                    .secondary()
+                    .icon("refresh")
+                    .enabled(enabled)
+                    .build(
+                        &self.hover,
+                        |this: &mut Self, _, cx| this.refresh_connection(cx),
+                        cx,
+                    ),
             ))
-    }
-    fn model_option(
-        &self,
-        id: impl Into<ElementId>,
-        name: String,
-        model: Option<String>,
-        enabled: bool,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let selected = self.model == model;
-        let choice = model.clone();
-        let selector = format!(
-            "settings.model-option.{}",
-            name.to_lowercase().replace(' ', "-")
-        );
-        action_button(
-            ButtonSpec {
-                id: id.into(),
-                label: name.clone().into(),
-                kind: ButtonKind::Quiet,
-                enabled,
-            },
-            |button| {
-                button
-                    .debug_selector(move || selector.clone())
-                    .w_full()
-                    .min_h(px(34.))
-                    .px(px(10.))
-                    .gap(px(10.))
-                    .rounded(px(CONTROL_RADIUS))
-                    .bg(rgb(if selected { SELECTED } else { SURFACE_MENU }))
-                    .hover(|item| item.bg(rgb(HOVER_CONTROL)))
-                    .text_size(type_size(LABEL_SIZE))
-                    .child(div().flex_1().min_w_0().truncate().child(name))
-                    .when(selected, |item| item.child("✓"))
-            },
-            move |this: &mut Self, _, cx| this.select_model(choice.clone(), cx),
-            cx,
-        )
     }
     fn mutate<R: Send + 'static>(
         &mut self,
@@ -558,7 +466,7 @@ impl AssistantPage {
         self.reload_snapshot();
     }
     fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
-        self.close_model_menu(cx);
+        self.model_menu_open = false;
         self.mutate(
             move |db| {
                 db.command(Command::SelectModel {
@@ -568,29 +476,6 @@ impl AssistantPage {
             |_, _, _| {},
             cx,
         );
-    }
-    fn close_model_menu(&mut self, cx: &mut Context<Self>) {
-        if !self.model_menu_open {
-            return;
-        }
-        self.model_menu_open = false;
-        self.model_menu_closing = true;
-        self.model_menu_generation += 1;
-        let generation = self.model_menu_generation;
-        let timer = cx
-            .background_executor()
-            .timer(Duration::from_millis(PANEL_MS));
-        cx.spawn(async move |this, cx| {
-            timer.await;
-            let _ = this.update(cx, |this, cx| {
-                if this.model_menu_generation == generation {
-                    this.model_menu_closing = false;
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-        cx.notify();
     }
     fn open_conversation(&mut self, id: i64, cx: &mut Context<Self>) {
         if self.pending {
@@ -667,6 +552,14 @@ impl AssistantPage {
             );
         }
     }
+    fn new_conversation_button(&self, id: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
+        let enabled = self.active.is_none() && !self.pending && self.store.is_some();
+        Button::new(id, "New Conversation")
+            .primary()
+            .icon("plus")
+            .enabled(enabled)
+            .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx)
+    }
     pub fn conversations_view(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let enabled = self.active.is_none() && !self.pending && self.store.is_some();
         let now = SystemTime::now()
@@ -675,144 +568,97 @@ impl AssistantPage {
         Page::document(
             PageHeader::new("Assistant")
                 .description("Your conversations with Evee.")
-                .actions(
-                    self.action(
-                        "new-chat",
-                        "New conversation",
-                        enabled,
-                        Self::new_conversation,
-                        cx,
-                    )
-                    .border_1()
-                    .border_color(rgb(BORDER)),
-                ),
+                .actions(self.new_conversation_button("new-chat", cx)),
         )
         .child(
             column()
-                .gap(px(16.))
-                .when_some(self.error.clone(), |s, e| {
-                    s.child(
-                        div()
-                            .text_size(type_size(LABEL_SIZE))
-                            .text_color(rgb(ERROR))
-                            .child(e),
-                    )
-                })
+                .gap(px(SPACE_4))
+                .when_some(self.error.clone(), |s, e| s.child(error_text(e)))
                 .when(self.conversations.is_empty(), |s| {
                     s.child(
-                        div()
-                            .py(px(28.))
-                            .text_color(rgb(MUTED))
-                            .child("Your conversations will appear here."),
+                        EmptyState::new("spark", "Start a conversation")
+                            .description(
+                                "Ask Evee to plan your day, dig into a Ticket or kick off work.",
+                            )
+                            .selector("assistant.empty")
+                            .action(
+                                Button::new("new-chat.empty", "New Conversation")
+                                    .secondary()
+                                    .icon("plus")
+                                    .enabled(enabled)
+                                    .build(
+                                        &self.hover,
+                                        |this, _, cx| this.new_conversation(cx),
+                                        cx,
+                                    ),
+                            )
+                            .build(),
                     )
                 })
-                .children(self.conversations.iter().map(|conversation| {
-                    let id = conversation.id;
-                    let selected = self.conversation == Some(id);
-                    let snippet = if conversation.snippet.trim().is_empty() {
-                        "No messages yet".to_owned()
-                    } else {
-                        conversation
-                            .snippet
-                            .split_whitespace()
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    };
+                .child(
                     column()
-                        .relative()
-                        .rounded(px(7.))
-                        .bg(rgb(if selected { SELECTED } else { SURFACE }))
-                        .child(
-                            row()
-                                .gap(px(8.))
-                                .px(px(12.))
-                                .py(px(10.))
+                        .gap(px(SPACE_HALF))
+                        .children(self.conversations.iter().map(|conversation| {
+                            let id = conversation.id;
+                            let menu_open = self.overlays.borrow().active()
+                                == Some(Overlay::ConversationMenu(id));
+                            let snippet = if conversation.snippet.trim().is_empty() {
+                                "No messages yet".to_owned()
+                            } else {
+                                conversation
+                                    .snippet
+                                    .split_whitespace()
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            };
+                            let menu = column()
+                                .relative()
                                 .child(
-                                    self.action(
-                                        ("conversation", id as u64),
-                                        "",
-                                        enabled,
-                                        move |this, cx| this.open_conversation(id, cx),
-                                        cx,
-                                    )
-                                    .flex_1()
-                                    .min_w_0()
-                                    .justify_start()
-                                    .bg(rgb(if selected { SELECTED } else { SURFACE }))
-                                    .child(
-                                        column()
-                                            .gap(px(3.))
-                                            .flex_1()
-                                            .min_w_0()
-                                            .child(
-                                                div()
-                                                    .text_size(type_size(BODY_SIZE))
-                                                    .text_color(rgb(TEXT))
-                                                    .truncate()
-                                                    .child(conversation.title.clone()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(type_size(CAPTION_SIZE))
-                                                    .text_color(rgb(MUTED))
-                                                    .truncate()
-                                                    .child(snippet),
-                                            ),
-                                    ),
+                                    Button::new(("chat-menu", id as u64), "Conversation actions")
+                                        .icon("more")
+                                        .icon_only()
+                                        .ghost()
+                                        .small()
+                                        .enabled(enabled)
+                                        .selected(menu_open)
+                                        .build(
+                                            &self.hover,
+                                            move |this, window, cx| {
+                                                let mut host = this.overlays.borrow_mut();
+                                                if host.active()
+                                                    == Some(Overlay::ConversationMenu(id))
+                                                {
+                                                    host.dismiss(window, cx);
+                                                } else {
+                                                    host.open(
+                                                        Overlay::ConversationMenu(id),
+                                                        window,
+                                                        cx,
+                                                        None,
+                                                    );
+                                                }
+                                                cx.notify();
+                                            },
+                                            cx,
+                                        ),
                                 )
-                                .child(
-                                    div()
-                                        .text_size(type_size(10.))
-                                        .text_color(rgb(MUTED))
-                                        .child(conversation_date(
-                                            &conversation.updated,
-                                            conversation.updated_at,
-                                            now,
-                                        )),
-                                )
-                                .child(self.action_window(
-                                    ("chat-menu", id as u64),
-                                    "…",
-                                    Some("Conversation actions"),
-                                    enabled,
-                                    move |this, window, cx| {
-                                        let mut host = this.overlays.borrow_mut();
-                                        if host.active() == Some(Overlay::ConversationMenu(id)) {
-                                            host.dismiss(window, cx);
-                                        } else {
-                                            host.open(
-                                                Overlay::ConversationMenu(id),
-                                                window,
-                                                cx,
-                                                None,
-                                            );
-                                        }
-                                        cx.notify();
-                                    },
-                                    cx,
-                                )),
-                        )
-                        .when(
-                            self.overlays.borrow().active() == Some(Overlay::ConversationMenu(id)),
-                            |s| {
-                                s.child(
-                                    menu_shell(
-                                        column()
+                                .when(menu_open, |s| {
+                                    s.child(floating(
+                                        menu_shell(MENU_WIDTH)
+                                            .debug_selector(|| "conversation.menu".into())
+                                            .child(menu_label(format!(
+                                                "Updated {}",
+                                                conversation.updated
+                                            )))
                                             .child(
-                                                column()
-                                                    .px(px(10.))
-                                                    .py(px(5.))
-                                                    .text_size(type_size(10.))
-                                                    .text_color(rgb(MUTED))
-                                                    .child("Updated")
-                                                    .child(conversation.updated.clone()),
-                                            )
-                                            .child(
-                                                self.action_window(
+                                                MenuEntry::new(
                                                     ("rename-chat", id as u64),
                                                     "Rename",
-                                                    None,
-                                                    enabled,
+                                                )
+                                                .icon("edit")
+                                                .enabled(enabled)
+                                                .build(
+                                                    &self.hover,
                                                     move |this, window, cx| {
                                                         if let Some(c) = this
                                                             .conversations
@@ -838,16 +684,18 @@ impl AssistantPage {
                                                         cx.notify();
                                                     },
                                                     cx,
-                                                )
-                                                .w_full()
-                                                .justify_start(),
+                                                ),
                                             )
                                             .child(
-                                                self.action_window(
+                                                MenuEntry::new(
                                                     ("delete-chat", id as u64),
                                                     "Delete",
-                                                    None,
-                                                    enabled,
+                                                )
+                                                .icon("trash")
+                                                .destructive()
+                                                .enabled(enabled)
+                                                .build(
+                                                    &self.hover,
                                                     move |this, window, cx| {
                                                         this.form_error = None;
                                                         this.overlays.borrow_mut().open(
@@ -859,21 +707,47 @@ impl AssistantPage {
                                                         cx.notify();
                                                     },
                                                     cx,
-                                                )
-                                                .w_full()
-                                                .justify_start()
-                                                .text_color(rgb(DESTRUCTIVE_TEXT)),
+                                                ),
                                             ),
-                                    )
-                                    .absolute()
-                                    .right(px(0.))
-                                    .top(px(48.)),
+                                        Anchor::TopRight,
+                                        point(
+                                            px(CONTROL_HEIGHT_SM),
+                                            px(CONTROL_HEIGHT_SM + SPACE_1),
+                                        ),
+                                    ))
+                                });
+                            ListRow::new(("conversation", id as u64), conversation.title.clone())
+                                .leading(evee_mark(AVATAR_SIZE))
+                                .subtitle(snippet)
+                                .enabled(enabled)
+                                .trailing(
+                                    row()
+                                        .gap(px(SPACE_2))
+                                        .child(caption(conversation_date(
+                                            &conversation.updated,
+                                            conversation.updated_at,
+                                            now,
+                                        )))
+                                        .child(menu),
                                 )
-                            },
-                        )
-                })),
+                                .build(
+                                    &self.hover,
+                                    move |this, _, cx| this.open_conversation(id, cx),
+                                    cx,
+                                )
+                        })),
+                ),
         )
         .build()
+    }
+    /// Closes the model select; returns whether anything was open.
+    pub fn dismiss_menus(&mut self, cx: &mut Context<Self>) -> bool {
+        let was_open = self.model_menu_open;
+        self.model_menu_open = false;
+        if was_open {
+            cx.notify();
+        }
+        was_open
     }
     pub fn show_list(&mut self, cx: &mut Context<Self>) {
         self.show_chat = false;
@@ -904,7 +778,13 @@ impl AssistantPage {
             vec![]
         };
         self.show_chat = true;
+        self.scroll.scroll_to_bottom();
         cx.notify();
+    }
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub fn fixture_selected_model(&self) -> Option<String> {
+        self.model.clone()
     }
     #[cfg(test)]
     #[allow(dead_code)]
@@ -937,7 +817,7 @@ impl AssistantPage {
             vec![self.cancel_focus.clone(), self.submit_focus.clone()]
         }
     }
-    pub fn overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub fn overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let active = self.overlays.borrow().active()?;
         let (rename, id) = match active {
             Overlay::RenameConversation(id) => (true, id),
@@ -951,52 +831,20 @@ impl AssistantPage {
             format!("Delete “{}”?", conversation.title)
         };
         let body = if rename {
-            column()
-                .gap(px(6.))
-                .child(
-                    div()
-                        .text_size(type_size(LABEL_SIZE))
-                        .text_color(rgb(MUTED))
-                        .child("Title"),
-                )
-                .child(
-                    row()
-                        .min_h(type_size(FIELD_HEIGHT))
-                        .px(px(12.))
-                        .border_1()
-                        .border_color(rgb(if self.form_error.is_some() {
-                            ERROR_BORDER
-                        } else {
-                            BORDER
-                        }))
-                        .rounded(px(FIELD_RADIUS))
-                        .child(self.rename_input.clone()),
-                )
-                .when_some(self.form_error.clone(), |s, error| {
-                    s.child(
-                        div()
-                            .text_size(type_size(LABEL_SIZE))
-                            .text_color(rgb(ERROR))
-                            .child(error),
-                    )
-                })
+            Field::new(self.rename_input.clone())
+                .label("Title")
+                .selector("Conversation title")
+                .error(self.form_error.clone())
+                .build(window, cx)
                 .into_any_element()
         } else {
             column()
-                .gap(px(6.))
-                .child(
-                    div()
-                        .text_size(type_size(LABEL_SIZE))
-                        .text_color(rgb(MUTED))
-                        .child("This permanently removes its messages from this Mac."),
-                )
+                .gap(px(SPACE_2))
+                .child(caption(
+                    "This permanently removes its messages from this Mac.",
+                ))
                 .when_some(self.form_error.clone(), |s, error| {
-                    s.child(
-                        div()
-                            .text_size(type_size(LABEL_SIZE))
-                            .text_color(rgb(ERROR))
-                            .child(error),
-                    )
+                    s.child(error_text(error))
                 })
                 .into_any_element()
         };
@@ -1006,47 +854,45 @@ impl AssistantPage {
             && (!rename
                 || (self.form_error.is_none()
                     && !self.rename_input.read(cx).content.trim().is_empty()));
-        let footer = row()
-            .justify_end()
-            .gap(px(8.))
-            .child(
-                self.action_window(
-                    "conversation-cancel",
-                    "Cancel",
-                    None,
-                    true,
+        let footer = dialog_footer(
+            Button::new("conversation-cancel", "Cancel")
+                .secondary()
+                .track_focus(&self.cancel_focus)
+                .build(
+                    &self.hover,
                     |this, window, cx| {
                         this.overlays.borrow_mut().dismiss(window, cx);
                         cx.notify();
                     },
                     cx,
-                )
-                .track_focus(&self.cancel_focus)
-                .border_1()
-                .border_color(rgb(BORDER)),
+                ),
+            Button::new(
+                "conversation-submit",
+                if rename {
+                    "Save"
+                } else {
+                    "Delete conversation"
+                },
             )
-            .child(
-                self.action(
-                    "conversation-submit",
+            .kind(if rename {
+                ButtonKind::Primary
+            } else {
+                ButtonKind::Destructive
+            })
+            .enabled(enabled)
+            .track_focus(&self.submit_focus)
+            .build(
+                &self.hover,
+                move |this, _, cx| {
                     if rename {
-                        "Save"
+                        this.rename(cx)
                     } else {
-                        "Delete conversation"
-                    },
-                    enabled,
-                    move |this, cx| {
-                        if rename {
-                            this.rename(cx)
-                        } else {
-                            this.delete(cx)
-                        }
-                    },
-                    cx,
-                )
-                .track_focus(&self.submit_focus)
-                .bg(rgb(if rename { PRIMARY } else { DESTRUCTIVE }))
-                .text_color(rgb(if rename { PRIMARY_INK } else { TEXT })),
-            );
+                        this.delete(cx)
+                    }
+                },
+                cx,
+            ),
+        );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
     fn send(&mut self, cx: &mut Context<Self>) {
@@ -1157,57 +1003,108 @@ impl AssistantPage {
             cx,
         );
     }
-    fn action(
+    fn turn_view(
         &self,
-        id: impl Into<ElementId>,
-        label: &str,
-        enabled: bool,
-        f: impl Fn(&mut Self, &mut Context<Self>) + Clone + 'static,
+        turn: &Turn,
+        latest: bool,
+        progress: f32,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        self.action_window(id, label, None, enabled, move |this, _, cx| f(this, cx), cx)
-    }
-    fn action_window(
-        &self,
-        id: impl Into<ElementId>,
-        label: &str,
-        semantic_label: Option<&str>,
-        enabled: bool,
-        f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + Clone + 'static,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let id = id.into();
-        let hover_id = id.clone();
-        let background = self.hover.color(&id);
-        let on_hover = cx.listener(move |this, over, _, cx| {
-            if enabled {
-                this.hover.set(hover_id.clone(), *over);
-                cx.notify();
-            }
-        });
-        action_button(
-            ButtonSpec {
-                id,
-                label: semantic_label
-                    .unwrap_or(if label.is_empty() {
-                        "Open conversation"
-                    } else {
-                        label
-                    })
-                    .to_owned()
-                    .into(),
-                kind: ButtonKind::Quiet,
-                enabled,
-            },
-            |button| {
-                compact_button(button)
-                    .bg(background)
-                    .on_hover(on_hover)
-                    .child(label.to_owned())
-            },
-            f,
-            cx,
-        )
+        let id = turn.id;
+        column()
+            .id(("turn", turn.id as u64))
+            .gap(px(SPACE_4))
+            .flex_shrink_0()
+            .when(latest, |s| s.relative().opacity(0.4 + 0.6 * progress))
+            .child(
+                row().justify_end().child(
+                    div()
+                        .max_w(px(620.))
+                        .px(px(SPACE_4))
+                        .py(px(SPACE_3))
+                        .rounded(px(RADIUS_XL))
+                        .bg(rgb(SURFACE_CONTROL))
+                        .border_1()
+                        .border_color(rgb(BORDER))
+                        .text_size(type_size(BODY_SIZE))
+                        .child(turn.prompt.clone()),
+                ),
+            )
+            .when(
+                turn.response.is_some() || self.active == Some(id) || turn.error.is_some(),
+                |s| {
+                    s.child(
+                        row()
+                            .items_start()
+                            .gap(px(SPACE_3))
+                            .child(div().mt(px(2.)).child(evee_mark(AVATAR_SIZE)))
+                            .child(
+                                column()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .max_w(px(680.))
+                                    .gap(px(SPACE_2))
+                                    .child(
+                                        div()
+                                            .text_size(type_size(CAPTION_SIZE))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(rgb(TEXT_SECONDARY))
+                                            .child("Evee"),
+                                    )
+                                    .when_some(turn.response.clone(), |s, reply| {
+                                        s.child(
+                                            div()
+                                                .text_size(type_size(BODY_SIZE))
+                                                .child(reply.clone()),
+                                        )
+                                        .child(
+                                            row().child(
+                                                Button::new(("copy", id as u64), "Copy")
+                                                    .ghost()
+                                                    .small()
+                                                    .icon("copy")
+                                                    .build(
+                                                        &self.hover,
+                                                        move |_, _, cx| {
+                                                            cx.write_to_clipboard(
+                                                                ClipboardItem::new_string(
+                                                                    reply.to_string(),
+                                                                ),
+                                                            )
+                                                        },
+                                                        cx,
+                                                    )
+                                                    .ml(px(-CONTROL_INSET_X_SM)),
+                                            ),
+                                        )
+                                    })
+                                    .when(self.active == Some(id), |s| {
+                                        s.child(
+                                            LoadingFrame::new(self.loading_started, window)
+                                                .inline("Evee is thinking…"),
+                                        )
+                                    })
+                                    .when_some(turn.error.clone(), |s, error| {
+                                        s.child(error_text(error)).child(
+                                            row().child(
+                                                Button::new(("retry", id as u64), "Retry")
+                                                    .secondary()
+                                                    .small()
+                                                    .icon("refresh")
+                                                    .enabled(self.active.is_none() && !self.pending)
+                                                    .build(
+                                                        &self.hover,
+                                                        move |this, _, cx| this.retry(id, cx),
+                                                        cx,
+                                                    ),
+                                            ),
+                                        )
+                                    }),
+                            ),
+                    )
+                },
+            )
     }
 }
 
@@ -1240,251 +1137,164 @@ impl Render for AssistantPage {
                 .id("conversation-list")
                 .into_any_element();
         }
+        let title = self
+            .conversations
+            .iter()
+            .find(|c| Some(c.id) == self.conversation)
+            .map(|c| c.title.clone())
+            .unwrap_or("New conversation".into());
+        let composer_focused = self.input.read(cx).focus_handle(cx).is_focused(window);
+        let has_draft = !self.input.read(cx).content.trim().is_empty();
+        let turns: Vec<Stateful<Div>> = self
+            .turns
+            .iter()
+            .map(|turn| self.turn_view(turn, latest == Some(turn.id), progress, window, cx))
+            .collect();
         Page::canvas()
             .child(
                 column()
                     .size_full()
                     .min_h_0()
-                    .gap(px(12.))
-                    .p(px(24.))
+                    .gap(px(SPACE_3))
+                    .p(px(PAGE_X))
                     .max_w(px(900.))
                     .mx_auto()
                     .child(
                         row()
-                            .gap(px(8.))
-                            .text_size(type_size(CAPTION_SIZE))
-                            .text_color(rgb(MUTED))
+                            .gap(px(SPACE_2))
                             .child(
-                                self.action(
-                                    "back-to-conversations",
-                                    "‹ Conversations",
-                                    true,
-                                    Self::show_list,
-                                    cx,
-                                )
-                                .debug_selector(|| "back-to-conversations".into()),
-                            )
-                            .child(
-                                div().flex_1().child(
-                                    self.conversations
-                                        .iter()
-                                        .find(|c| Some(c.id) == self.conversation)
-                                        .map(|c| c.title.clone())
-                                        .unwrap_or("New conversation".into()),
+                                row().w(px(160.)).child(
+                                    Button::new("back-to-conversations", "Conversations")
+                                        .ghost()
+                                        .icon("chevronLeft")
+                                        .build(&self.hover, |this, _, cx| this.show_list(cx), cx)
+                                        .ml(px(-CONTROL_INSET_X)),
                                 ),
                             )
-                            .child(self.action(
-                                "panel-new",
-                                "+",
-                                self.active.is_none() && !self.pending,
-                                Self::new_conversation,
-                                cx,
-                            )),
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_align(TextAlign::Center)
+                                    .text_size(type_size(LABEL_SIZE))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(title),
+                            )
+                            .child(
+                                row().w(px(160.)).justify_end().child(
+                                    Button::new("panel-new", "New Conversation")
+                                        .icon("plus")
+                                        .icon_only()
+                                        .ghost()
+                                        .enabled(self.active.is_none() && !self.pending)
+                                        .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx)
+                                        .mr(px(-SPACE_2)),
+                                ),
+                            ),
                     )
                     .when(self.account.is_none(), |s| {
                         s.child(
                             column()
-                                .gap(px(5.))
-                                .items_start()
-                                .text_size(type_size(CAPTION_SIZE))
-                                .text_color(rgb(MUTED))
-                                .child("Connect ChatGPT to chat.")
+                                .flex_1()
+                                .items_center()
+                                .justify_center()
+                                .gap(px(SPACE_4))
+                                .child(evee_mark(56.))
+                                .child(heading("Connect ChatGPT to chat with Evee"))
+                                .child(caption(
+                                    "Evee replies through your ChatGPT subscription. Sign in once in Settings.",
+                                ))
                                 .child(
-                                    self.action(
-                                        "open-settings",
-                                        "Open Settings",
-                                        true,
-                                        |_, cx| cx.emit(Navigation::Settings),
-                                        cx,
-                                    )
-                                    .border_1()
-                                    .border_color(rgb(BORDER)),
+                                    Button::new("open-settings", "Connect ChatGPT")
+                                        .primary()
+                                        .icon("openai")
+                                        .build(&self.hover, |_, _, cx| cx.emit(Navigation::Settings), cx),
                                 ),
                         )
                     })
                     .when(self.store.is_none(), |s| {
-                        s.child(
-                            div()
-                                .text_size(type_size(CAPTION_SIZE))
-                                .text_color(rgb(ERROR))
-                                .child("Conversation data is unavailable. Refresh to reconnect."),
-                        )
+                        s.child(error_text(
+                            "Conversation data is unavailable. Refresh to reconnect.",
+                        ))
                     })
                     .when_some(self.error.clone(), |s, error| {
                         s.child(
-                            div()
-                                .text_size(type_size(CAPTION_SIZE))
-                                .text_color(rgb(ERROR))
-                                .child(error),
+                            row()
+                                .gap(px(SPACE_3))
+                                .child(error_text(error))
+                                .child(
+                                    Button::new("refresh-data", "Refresh")
+                                        .secondary()
+                                        .small()
+                                        .enabled(!self.pending)
+                                        .build(&self.hover, |this, _, cx| this.save_again(cx), cx),
+                                ),
                         )
                     })
-                    .when(self.error.is_some(), |s| {
-                        s.child(self.action(
-                            "refresh-data",
-                            "Refresh",
-                            !self.pending,
-                            Self::save_again,
-                            cx,
-                        ))
-                    })
-                    .when(self.pending, |s| {
+                    .when(self.pending, |s| s.child(caption("Waiting for acknowledgement…")))
+                    .when(self.account.is_some(), |s| {
                         s.child(
-                            div()
-                                .text_color(rgb(MUTED))
-                                .child("Waiting for acknowledgement…"),
-                        )
-                    })
-                    .child(
                         column()
                             .id("chat-history")
                             .flex_1()
                             .min_h_0()
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll)
-                            .gap(px(16.))
+                            .gap(px(SPACE_6))
+                            .py(px(SPACE_2))
                             .when(self.turns.is_empty() && self.account.is_some(), |s| {
                                 s.child(
                                     column()
-                                        .py(px(16.))
-                                        .gap(px(8.))
-                                        .text_size(type_size(LABEL_SIZE))
-                                        .text_color(rgb(MUTED))
-                                        .child(
-                                            LoadingFrame::new(self.loading_started, window)
-                                                .inline("Evee is thinking…"),
-                                        ),
+                                        .flex_1()
+                                        .items_center()
+                                        .justify_center()
+                                        .gap(px(SPACE_3))
+                                        .child(evee_mark(56.))
+                                        .child(heading("What are we working on?"))
+                                        .child(caption(
+                                            "Evee can plan, research and start work on your Tickets.",
+                                        )),
                                 )
                             })
-                            .children(self.turns.iter().map(|turn| {
-                                column()
-                                    .id(("turn", turn.id as u64))
-                                    .gap(px(12.))
-                                    .flex_shrink_0()
-                                    .when(latest == Some(turn.id), |s| {
-                                        s.relative().opacity(0.4 + 0.6 * progress)
-                                    })
-                                    .child(
-                                        column()
-                                            .gap(px(5.))
-                                            .p(px(12.))
-                                            .ml_auto()
-                                            .max_w(px(620.))
-                                            .rounded(px(10.))
-                                            .bg(rgb(HOVER))
-                                            .child(
-                                                div()
-                                                    .text_size(type_size(10.))
-                                                    .text_color(rgb(MUTED))
-                                                    .child("You"),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(type_size(LABEL_SIZE))
-                                                    .child(turn.prompt.clone()),
-                                            ),
-                                    )
-                                    .when_some(turn.response.clone(), |s, reply| {
-                                        s.child(
-                                            column()
-                                                .gap(px(5.))
-                                                .px(px(2.))
-                                                .max_w(px(680.))
-                                                .child(
-                                                    div()
-                                                        .text_size(type_size(10.))
-                                                        .text_color(rgb(TEXT_ACCENT))
-                                                        .child("Evee"),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_size(type_size(LABEL_SIZE))
-                                                        .child(reply),
-                                                )
-                                                .child(
-                                                    row().child(
-                                                        self.action(
-                                                            ("copy", turn.id as u64),
-                                                            "Copy reply",
-                                                            true,
-                                                            {
-                                                                let response = turn
-                                                                    .response
-                                                                    .clone()
-                                                                    .unwrap_or_default();
-                                                                move |_, cx| {
-                                                                    cx.write_to_clipboard(
-                                                                        ClipboardItem::new_string(
-                                                                            response.clone(),
-                                                                        ),
-                                                                    )
-                                                                }
-                                                            },
-                                                            cx,
-                                                        )
-                                                        .text_size(type_size(CAPTION_SIZE))
-                                                        .text_color(rgb(MUTED)),
-                                                    ),
-                                                ),
-                                        )
-                                    })
-                                    .when(self.active == Some(turn.id), |s| {
-                                        s.child(
-                                            div()
-                                                .px(px(2.))
-                                                .text_size(type_size(LABEL_SIZE))
-                                                .text_color(rgb(MUTED))
-                                                .child("Evee is thinking…"),
-                                        )
-                                    })
-                                    .when_some(turn.error.clone(), |s, error| {
-                                        let id = turn.id;
-                                        s.child(
-                                            column()
-                                                .gap(px(6.))
-                                                .child(
-                                                    div()
-                                                        .text_size(type_size(CAPTION_SIZE))
-                                                        .text_color(rgb(ERROR))
-                                                        .child(error),
-                                                )
-                                                .child(self.action(
-                                                    ("retry", id as u64),
-                                                    "Retry reply",
-                                                    self.active.is_none() && !self.pending,
-                                                    move |this, cx| this.retry(id, cx),
-                                                    cx,
-                                                )),
-                                        )
-                                    })
-                            })),
-                    )
-                    .child(
-                        column()
-                            .flex_shrink_0()
-                            .gap(px(8.))
-                            .p(px(12.))
-                            .rounded(px(10.))
-                            .border_1()
-                            .border_color(rgb(BORDER))
-                            .bg(rgb(SURFACE_COMPOSER))
-                            .child(self.input.clone())
-                            .child(
-                                row().justify_end().child(
-                                    self.action_window(
-                                        "send",
-                                        "",
-                                        Some("Send message"),
-                                        send_enabled,
-                                        |this, _, cx| this.send(cx),
-                                        cx,
-                                    )
-                                    .size(px(30.))
-                                    .p(px(0.))
-                                    .bg(rgb(HOVER_SEND))
-                                    .child(icon("send", 16.).text_color(rgb(TEXT))),
+                            .children(turns),
+                        )
+                        .child(
+                            column()
+                                .flex_shrink_0()
+                                .gap(px(SPACE_2))
+                                .p(px(SPACE_3))
+                                .rounded(px(RADIUS_LG))
+                                .border_1()
+                                .border_color(rgb(if composer_focused {
+                                    FOCUS_FIELD
+                                } else {
+                                    BORDER
+                                }))
+                                .bg(rgb(SURFACE_INPUT))
+                                .debug_selector(|| "composer".into())
+                                .child(self.input.clone())
+                                .child(
+                                    row()
+                                        .justify_between()
+                                        .child(if has_draft {
+                                            caption("Return to send · Shift+Return for a new line")
+                                                .into_any_element()
+                                        } else {
+                                            div().into_any_element()
+                                        })
+                                        .child(
+                                            Button::new("send", "Send message")
+                                                .icon("send")
+                                                .icon_only()
+                                                .primary()
+                                                .enabled(send_enabled)
+                                                .build(&self.hover, |this, _, cx| this.send(cx), cx)
+                                                .rounded_full(),
+                                        ),
                                 ),
-                            ),
-                    ),
+                        )
+                    }),
             )
             .build()
             .into_any_element()
