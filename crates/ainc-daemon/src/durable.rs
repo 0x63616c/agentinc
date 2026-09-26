@@ -253,3 +253,62 @@ impl Runner {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::secrets::MemoryStore;
+
+    async fn queued(pool: &PgPool, age: i64) -> String {
+        let mut tx = pool.begin().await.unwrap();
+        let input = json!({"kind":"switch","key":"lamps","on":true});
+        let id = enqueue(&mut tx, &Actor::owner(), ActionKind::Home, &input, None)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE durable_actions SET created_at=created_at-$2 WHERE id=$1")
+            .bind(&id)
+            .bind(age)
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        id
+    }
+    async fn state(pool: &PgPool, id: &str) -> (String, Option<String>, Option<i64>) {
+        sqlx::query_as("SELECT state,error,finished_at FROM durable_actions WHERE id=$1")
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    #[sqlx::test]
+    async fn a_failing_switch_retries_while_wanted_then_expires(pool: PgPool) {
+        // Port 9 (discard) refuses connections, so every attempt fails fast.
+        sqlx::query("INSERT INTO home_connections(workspace_id,base_url) VALUES('local','http://127.0.0.1:9')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let effects = Effects {
+            pool: pool.clone(),
+            home: Home::new(Arc::new(MemoryStore::default())),
+        };
+        let fresh = queued(&pool, 0).await;
+        assert!(
+            attempt(&effects, &fresh).await.is_err(),
+            "Temporal retries it"
+        );
+        let (state_now, error, finished) = state(&pool, &fresh).await;
+        assert_eq!((state_now.as_str(), finished), ("running", None));
+        assert!(error.unwrap().contains("unreachable"));
+
+        let stale = queued(&pool, 31).await;
+        attempt(&effects, &stale).await.unwrap();
+        let (state_now, error, finished) = state(&pool, &stale).await;
+        assert_eq!(state_now, "failed");
+        assert!(error.is_some() && finished.is_some());
+        // A late retry of a finished action changes nothing.
+        attempt(&effects, &stale).await.unwrap();
+        assert_eq!(state(&pool, &stale).await.0, "failed");
+    }
+}

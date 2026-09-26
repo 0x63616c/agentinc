@@ -67,6 +67,69 @@ pub mod types {
             Default::default()
         }
     }
+    ///One durable action as people see it.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "One durable action as people see it.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "created_at",
+    ///    "id",
+    ///    "state",
+    ///    "summary"
+    ///  ],
+    ///  "properties": {
+    ///    "created_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "error": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "finished_at": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    },
+    ///    "id": {
+    ///      "type": "string"
+    ///    },
+    ///    "state": {
+    ///      "description": "queued, running, completed or failed.",
+    ///      "type": "string"
+    ///    },
+    ///    "summary": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ActionView {
+        pub created_at: i64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub error: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub finished_at: ::std::option::Option<i64>,
+        pub id: ::std::string::String,
+        ///queued, running, completed or failed.
+        pub state: ::std::string::String,
+        pub summary: ::std::string::String,
+    }
+    impl ActionView {
+        pub fn builder() -> builder::ActionView {
+            Default::default()
+        }
+    }
     ///`Assignee`
     ///
     /// <details><summary>JSON schema</summary>
@@ -491,6 +554,493 @@ pub mod types {
     impl AutomationSnapshot {
         pub fn builder() -> builder::AutomationSnapshot {
             Default::default()
+        }
+    }
+    ///`CalendarCommand`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "all_day",
+    ///        "ends_at",
+    ///        "kind",
+    ///        "starts_at",
+    ///        "title"
+    ///      ],
+    ///      "properties": {
+    ///        "all_day": {
+    ///          "type": "boolean"
+    ///        },
+    ///        "ends_at": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "create"
+    ///          ]
+    ///        },
+    ///        "location": {
+    ///          "type": [
+    ///            "string",
+    ///            "null"
+    ///          ]
+    ///        },
+    ///        "notes": {
+    ///          "type": [
+    ///            "string",
+    ///            "null"
+    ///          ]
+    ///        },
+    ///        "starts_at": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "title": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "all_day",
+    ///        "ends_at",
+    ///        "id",
+    ///        "kind",
+    ///        "revision",
+    ///        "starts_at",
+    ///        "title"
+    ///      ],
+    ///      "properties": {
+    ///        "all_day": {
+    ///          "type": "boolean"
+    ///        },
+    ///        "ends_at": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "id": {
+    ///          "type": "string"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "update"
+    ///          ]
+    ///        },
+    ///        "location": {
+    ///          "type": [
+    ///            "string",
+    ///            "null"
+    ///          ]
+    ///        },
+    ///        "notes": {
+    ///          "type": [
+    ///            "string",
+    ///            "null"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "starts_at": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "title": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "revision"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "string"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "delete"
+    ///          ]
+    ///        },
+    ///        "revision": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    #[serde(tag = "kind")]
+    pub enum CalendarCommand {
+        #[serde(rename = "create")]
+        Create {
+            all_day: bool,
+            ends_at: i64,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            location: ::std::option::Option<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            notes: ::std::option::Option<::std::string::String>,
+            starts_at: i64,
+            title: ::std::string::String,
+        },
+        #[serde(rename = "update")]
+        Update {
+            all_day: bool,
+            ends_at: i64,
+            id: ::std::string::String,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            location: ::std::option::Option<::std::string::String>,
+            #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+            notes: ::std::option::Option<::std::string::String>,
+            revision: i64,
+            starts_at: i64,
+            title: ::std::string::String,
+        },
+        #[serde(rename = "delete")]
+        Delete {
+            id: ::std::string::String,
+            revision: i64,
+        },
+    }
+    /*Times are Unix seconds; `ends_at` is exclusive, so an all-day event runs from
+    one local midnight to the next.*/
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "Times are Unix seconds; `ends_at` is exclusive, so an all-day event runs from\none local midnight to the next.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "all_day",
+    ///    "calendar",
+    ///    "ends_at",
+    ///    "id",
+    ///    "revision",
+    ///    "source",
+    ///    "starts_at",
+    ///    "title"
+    ///  ],
+    ///  "properties": {
+    ///    "all_day": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "calendar": {
+    ///      "type": "string"
+    ///    },
+    ///    "color": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "ends_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "id": {
+    ///      "type": "string"
+    ///    },
+    ///    "location": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "notes": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "revision": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "source": {
+    ///      "$ref": "#/components/schemas/EventSource"
+    ///    },
+    ///    "starts_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "title": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CalendarEvent {
+        pub all_day: bool,
+        pub calendar: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub color: ::std::option::Option<::std::string::String>,
+        pub ends_at: i64,
+        pub id: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub location: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub notes: ::std::option::Option<::std::string::String>,
+        pub revision: i64,
+        pub source: EventSource,
+        pub starts_at: i64,
+        pub title: ::std::string::String,
+    }
+    impl CalendarEvent {
+        pub fn builder() -> builder::CalendarEvent {
+            Default::default()
+        }
+    }
+    /*Everything the calendar store holds between `window_start` and
+    `window_end`; mirrored events in that window that are absent are removed.*/
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "Everything the calendar store holds between `window_start` and\n`window_end`; mirrored events in that window that are absent are removed.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "events",
+    ///    "window_end",
+    ///    "window_start"
+    ///  ],
+    ///  "properties": {
+    ///    "events": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ImportedEvent"
+    ///      }
+    ///    },
+    ///    "window_end": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "window_start": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CalendarImportRequest {
+        pub events: ::std::vec::Vec<ImportedEvent>,
+        pub window_end: i64,
+        pub window_start: i64,
+    }
+    impl CalendarImportRequest {
+        pub fn builder() -> builder::CalendarImportRequest {
+            Default::default()
+        }
+    }
+    ///`CalendarReceipt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "result_id"
+    ///  ],
+    ///  "properties": {
+    ///    "result_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CalendarReceipt {
+        pub result_id: ::std::string::String,
+    }
+    impl CalendarReceipt {
+        pub fn builder() -> builder::CalendarReceipt {
+            Default::default()
+        }
+    }
+    ///`CalendarRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "command",
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "command": {
+    ///      "$ref": "#/components/schemas/CalendarCommand"
+    ///    },
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CalendarRequest {
+        pub command: CalendarCommand,
+        pub operation_id: ::std::string::String,
+    }
+    impl CalendarRequest {
+        pub fn builder() -> builder::CalendarRequest {
+            Default::default()
+        }
+    }
+    ///`CalendarSnapshot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "events"
+    ///  ],
+    ///  "properties": {
+    ///    "events": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CalendarEvent"
+    ///      }
+    ///    },
+    ///    "last_import": {
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "allOf": [
+    ///            {
+    ///              "$ref": "#/components/schemas/ActionView"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CalendarSnapshot {
+        pub events: ::std::vec::Vec<CalendarEvent>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_import: ::std::option::Option<ActionView>,
+    }
+    impl CalendarSnapshot {
+        pub fn builder() -> builder::CalendarSnapshot {
+            Default::default()
+        }
+    }
+    ///`ClimateMode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "off",
+    ///    "cool",
+    ///    "heat",
+    ///    "heat_cool"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum ClimateMode {
+        #[serde(rename = "off")]
+        Off,
+        #[serde(rename = "cool")]
+        Cool,
+        #[serde(rename = "heat")]
+        Heat,
+        #[serde(rename = "heat_cool")]
+        HeatCool,
+    }
+    impl ::std::fmt::Display for ClimateMode {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Off => f.write_str("off"),
+                Self::Cool => f.write_str("cool"),
+                Self::Heat => f.write_str("heat"),
+                Self::HeatCool => f.write_str("heat_cool"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for ClimateMode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "off" => Ok(Self::Off),
+                "cool" => Ok(Self::Cool),
+                "heat" => Ok(Self::Heat),
+                "heat_cool" => Ok(Self::HeatCool),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for ClimateMode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for ClimateMode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for ClimateMode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
     ///`Command`
@@ -978,6 +1528,79 @@ pub mod types {
             Default::default()
         }
     }
+    ///`EventSource`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "agentinc",
+    ///    "macos"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum EventSource {
+        #[serde(rename = "agentinc")]
+        Agentinc,
+        #[serde(rename = "macos")]
+        Macos,
+    }
+    impl ::std::fmt::Display for EventSource {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Agentinc => f.write_str("agentinc"),
+                Self::Macos => f.write_str("macos"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for EventSource {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "agentinc" => Ok(Self::Agentinc),
+                "macos" => Ok(Self::Macos),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for EventSource {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for EventSource {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for EventSource {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
     ///`ExecutionPage`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1160,6 +1783,546 @@ pub mod types {
     }
     impl HistoryEntry {
         pub fn builder() -> builder::HistoryEntry {
+            Default::default()
+        }
+    }
+    ///`HomeClimate`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "mode",
+    ///    "pending"
+    ///  ],
+    ///  "properties": {
+    ///    "action": {
+    ///      "description": "What the system is doing now, such as Cooling or Idle.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "ambient": {
+    ///      "description": "Indoor temperature in °F.",
+    ///      "type": [
+    ///        "number",
+    ///        "null"
+    ///      ],
+    ///      "format": "double"
+    ///    },
+    ///    "mode": {
+    ///      "$ref": "#/components/schemas/ClimateMode"
+    ///    },
+    ///    "pending": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "target": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    },
+    ///    "target_high": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    },
+    ///    "target_low": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct HomeClimate {
+        ///What the system is doing now, such as Cooling or Idle.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub action: ::std::option::Option<::std::string::String>,
+        ///Indoor temperature in °F.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub ambient: ::std::option::Option<f64>,
+        pub mode: ClimateMode,
+        pub pending: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub target: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub target_high: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub target_low: ::std::option::Option<i64>,
+    }
+    impl HomeClimate {
+        pub fn builder() -> builder::HomeClimate {
+            Default::default()
+        }
+    }
+    ///`HomeCommand`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "key",
+    ///        "kind",
+    ///        "on"
+    ///      ],
+    ///      "properties": {
+    ///        "key": {
+    ///          "$ref": "#/components/schemas/SwitchKey"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "switch"
+    ///          ]
+    ///        },
+    ///        "on": {
+    ///          "type": "boolean"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "mode"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "set_climate_mode"
+    ///          ]
+    ///        },
+    ///        "mode": {
+    ///          "$ref": "#/components/schemas/ClimateMode"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "target"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "set_climate_target"
+    ///          ]
+    ///        },
+    ///        "target": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "high",
+    ///        "kind",
+    ///        "low"
+    ///      ],
+    ///      "properties": {
+    ///        "high": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "set_climate_range"
+    ///          ]
+    ///        },
+    ///        "low": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        }
+    ///      }
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    #[serde(tag = "kind")]
+    pub enum HomeCommand {
+        #[serde(rename = "switch")]
+        Switch { key: SwitchKey, on: bool },
+        #[serde(rename = "set_climate_mode")]
+        SetClimateMode { mode: ClimateMode },
+        #[serde(rename = "set_climate_target")]
+        SetClimateTarget { target: i64 },
+        #[serde(rename = "set_climate_range")]
+        SetClimateRange { high: i64, low: i64 },
+    }
+    ///`HomeConnection`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "access_token",
+    ///    "base_url"
+    ///  ],
+    ///  "properties": {
+    ///    "access_token": {
+    ///      "description": "A Cloudflare Access service token is stored in the Keychain.",
+    ///      "type": "boolean"
+    ///    },
+    ///    "base_url": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct HomeConnection {
+        ///A Cloudflare Access service token is stored in the Keychain.
+        pub access_token: bool,
+        pub base_url: ::std::string::String,
+    }
+    impl HomeConnection {
+        pub fn builder() -> builder::HomeConnection {
+            Default::default()
+        }
+    }
+    ///`HomeConnectionRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "base_url"
+    ///  ],
+    ///  "properties": {
+    ///    "access_client_id": {
+    ///      "description": "Cloudflare Access service token; omit both for an endpoint without Access.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "access_client_secret": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "base_url": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct HomeConnectionRequest {
+        ///Cloudflare Access service token; omit both for an endpoint without Access.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub access_client_id: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub access_client_secret: ::std::option::Option<::std::string::String>,
+        pub base_url: ::std::string::String,
+    }
+    impl HomeConnectionRequest {
+        pub fn builder() -> builder::HomeConnectionRequest {
+            Default::default()
+        }
+    }
+    ///`HomeReceipt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "result_id"
+    ///  ],
+    ///  "properties": {
+    ///    "result_id": {
+    ///      "description": "The durable action that applies the command.",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct HomeReceipt {
+        ///The durable action that applies the command.
+        pub result_id: ::std::string::String,
+    }
+    impl HomeReceipt {
+        pub fn builder() -> builder::HomeReceipt {
+            Default::default()
+        }
+    }
+    ///`HomeRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "command",
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "command": {
+    ///      "$ref": "#/components/schemas/HomeCommand"
+    ///    },
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct HomeRequest {
+        pub command: HomeCommand,
+        pub operation_id: ::std::string::String,
+    }
+    impl HomeRequest {
+        pub fn builder() -> builder::HomeRequest {
+            Default::default()
+        }
+    }
+    ///`HomeSnapshot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "actions",
+    ///    "reachable",
+    ///    "switches"
+    ///  ],
+    ///  "properties": {
+    ///    "actions": {
+    ///      "description": "Recent Smart Home actions, newest first.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ActionView"
+    ///      }
+    ///    },
+    ///    "climate": {
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "allOf": [
+    ///            {
+    ///              "$ref": "#/components/schemas/HomeClimate"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "connection": {
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "allOf": [
+    ///            {
+    ///              "$ref": "#/components/schemas/HomeConnection"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "error": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "reachable": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "switches": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/HomeSwitch"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct HomeSnapshot {
+        ///Recent Smart Home actions, newest first.
+        pub actions: ::std::vec::Vec<ActionView>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub climate: ::std::option::Option<HomeClimate>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub connection: ::std::option::Option<HomeConnection>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub error: ::std::option::Option<::std::string::String>,
+        pub reachable: bool,
+        pub switches: ::std::vec::Vec<HomeSwitch>,
+    }
+    impl HomeSnapshot {
+        pub fn builder() -> builder::HomeSnapshot {
+            Default::default()
+        }
+    }
+    ///`HomeSwitch`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "key",
+    ///    "label",
+    ///    "on",
+    ///    "pending",
+    ///    "room"
+    ///  ],
+    ///  "properties": {
+    ///    "key": {
+    ///      "$ref": "#/components/schemas/SwitchKey"
+    ///    },
+    ///    "label": {
+    ///      "type": "string"
+    ///    },
+    ///    "on": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "pending": {
+    ///      "description": "A change is on its way to the lights.",
+    ///      "type": "boolean"
+    ///    },
+    ///    "room": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct HomeSwitch {
+        pub key: SwitchKey,
+        pub label: ::std::string::String,
+        pub on: bool,
+        ///A change is on its way to the lights.
+        pub pending: bool,
+        pub room: ::std::string::String,
+    }
+    impl HomeSwitch {
+        pub fn builder() -> builder::HomeSwitch {
+            Default::default()
+        }
+    }
+    /*One event read from the macOS calendar store. `external_id` is stable per
+    occurrence, so repeating events import once per date.*/
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "One event read from the macOS calendar store. `external_id` is stable per\noccurrence, so repeating events import once per date.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "all_day",
+    ///    "calendar",
+    ///    "ends_at",
+    ///    "external_id",
+    ///    "starts_at",
+    ///    "title"
+    ///  ],
+    ///  "properties": {
+    ///    "all_day": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "calendar": {
+    ///      "type": "string"
+    ///    },
+    ///    "color": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "ends_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "external_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "location": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "notes": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "starts_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "title": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ImportedEvent {
+        pub all_day: bool,
+        pub calendar: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub color: ::std::option::Option<::std::string::String>,
+        pub ends_at: i64,
+        pub external_id: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub location: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub notes: ::std::option::Option<::std::string::String>,
+        pub starts_at: i64,
+        pub title: ::std::string::String,
+    }
+    impl ImportedEvent {
+        pub fn builder() -> builder::ImportedEvent {
             Default::default()
         }
     }
@@ -1349,6 +2512,100 @@ pub mod types {
     impl Snapshot {
         pub fn builder() -> builder::Snapshot {
             Default::default()
+        }
+    }
+    ///The switches AgentInc exposes, each one control-center group.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "The switches AgentInc exposes, each one control-center group.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "all",
+    ///    "lamps",
+    ///    "bedroom_lamps",
+    ///    "living_room_lamps",
+    ///    "kitchen_ceiling",
+    ///    "under_cabinet"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum SwitchKey {
+        #[serde(rename = "all")]
+        All,
+        #[serde(rename = "lamps")]
+        Lamps,
+        #[serde(rename = "bedroom_lamps")]
+        BedroomLamps,
+        #[serde(rename = "living_room_lamps")]
+        LivingRoomLamps,
+        #[serde(rename = "kitchen_ceiling")]
+        KitchenCeiling,
+        #[serde(rename = "under_cabinet")]
+        UnderCabinet,
+    }
+    impl ::std::fmt::Display for SwitchKey {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::All => f.write_str("all"),
+                Self::Lamps => f.write_str("lamps"),
+                Self::BedroomLamps => f.write_str("bedroom_lamps"),
+                Self::LivingRoomLamps => f.write_str("living_room_lamps"),
+                Self::KitchenCeiling => f.write_str("kitchen_ceiling"),
+                Self::UnderCabinet => f.write_str("under_cabinet"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for SwitchKey {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "all" => Ok(Self::All),
+                "lamps" => Ok(Self::Lamps),
+                "bedroom_lamps" => Ok(Self::BedroomLamps),
+                "living_room_lamps" => Ok(Self::LivingRoomLamps),
+                "kitchen_ceiling" => Ok(Self::KitchenCeiling),
+                "under_cabinet" => Ok(Self::UnderCabinet),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for SwitchKey {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for SwitchKey {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for SwitchKey {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
     ///`TerminalSession`
@@ -2476,6 +3733,119 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct ActionView {
+            created_at: ::std::result::Result<i64, ::std::string::String>,
+            error: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            finished_at: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            state: ::std::result::Result<::std::string::String, ::std::string::String>,
+            summary: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for ActionView {
+            fn default() -> Self {
+                Self {
+                    created_at: Err("no value supplied for created_at".to_string()),
+                    error: Ok(Default::default()),
+                    finished_at: Ok(Default::default()),
+                    id: Err("no value supplied for id".to_string()),
+                    state: Err("no value supplied for state".to_string()),
+                    summary: Err("no value supplied for summary".to_string()),
+                }
+            }
+        }
+        impl ActionView {
+            pub fn created_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.created_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for created_at: {e}"));
+                self
+            }
+            pub fn error<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.error = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for error: {e}"));
+                self
+            }
+            pub fn finished_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.finished_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for finished_at: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn state<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.state = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for state: {e}"));
+                self
+            }
+            pub fn summary<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.summary = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for summary: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ActionView> for super::ActionView {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ActionView,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    created_at: value.created_at?,
+                    error: value.error?,
+                    finished_at: value.finished_at?,
+                    id: value.id?,
+                    state: value.state?,
+                    summary: value.summary?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ActionView> for ActionView {
+            fn from(value: super::ActionView) -> Self {
+                Self {
+                    created_at: Ok(value.created_at),
+                    error: Ok(value.error),
+                    finished_at: Ok(value.finished_at),
+                    id: Ok(value.id),
+                    state: Ok(value.state),
+                    summary: Ok(value.summary),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct Assignee {
             id: ::std::result::Result<::std::string::String, ::std::string::String>,
             kind: ::std::result::Result<super::AssigneeKind, ::std::string::String>,
@@ -2889,6 +4259,416 @@ pub mod types {
                     history: Ok(value.history),
                     occurrences: Ok(value.occurrences),
                     rules: Ok(value.rules),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct CalendarEvent {
+            all_day: ::std::result::Result<bool, ::std::string::String>,
+            calendar: ::std::result::Result<::std::string::String, ::std::string::String>,
+            color: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            ends_at: ::std::result::Result<i64, ::std::string::String>,
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            location: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            notes: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            revision: ::std::result::Result<i64, ::std::string::String>,
+            source: ::std::result::Result<super::EventSource, ::std::string::String>,
+            starts_at: ::std::result::Result<i64, ::std::string::String>,
+            title: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for CalendarEvent {
+            fn default() -> Self {
+                Self {
+                    all_day: Err("no value supplied for all_day".to_string()),
+                    calendar: Err("no value supplied for calendar".to_string()),
+                    color: Ok(Default::default()),
+                    ends_at: Err("no value supplied for ends_at".to_string()),
+                    id: Err("no value supplied for id".to_string()),
+                    location: Ok(Default::default()),
+                    notes: Ok(Default::default()),
+                    revision: Err("no value supplied for revision".to_string()),
+                    source: Err("no value supplied for source".to_string()),
+                    starts_at: Err("no value supplied for starts_at".to_string()),
+                    title: Err("no value supplied for title".to_string()),
+                }
+            }
+        }
+        impl CalendarEvent {
+            pub fn all_day<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.all_day = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for all_day: {e}"));
+                self
+            }
+            pub fn calendar<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.calendar = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for calendar: {e}"));
+                self
+            }
+            pub fn color<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.color = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for color: {e}"));
+                self
+            }
+            pub fn ends_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.ends_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for ends_at: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn location<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.location = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for location: {e}"));
+                self
+            }
+            pub fn notes<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.notes = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for notes: {e}"));
+                self
+            }
+            pub fn revision<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.revision = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for revision: {e}"));
+                self
+            }
+            pub fn source<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::EventSource>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.source = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for source: {e}"));
+                self
+            }
+            pub fn starts_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.starts_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for starts_at: {e}"));
+                self
+            }
+            pub fn title<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.title = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for title: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CalendarEvent> for super::CalendarEvent {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CalendarEvent,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    all_day: value.all_day?,
+                    calendar: value.calendar?,
+                    color: value.color?,
+                    ends_at: value.ends_at?,
+                    id: value.id?,
+                    location: value.location?,
+                    notes: value.notes?,
+                    revision: value.revision?,
+                    source: value.source?,
+                    starts_at: value.starts_at?,
+                    title: value.title?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CalendarEvent> for CalendarEvent {
+            fn from(value: super::CalendarEvent) -> Self {
+                Self {
+                    all_day: Ok(value.all_day),
+                    calendar: Ok(value.calendar),
+                    color: Ok(value.color),
+                    ends_at: Ok(value.ends_at),
+                    id: Ok(value.id),
+                    location: Ok(value.location),
+                    notes: Ok(value.notes),
+                    revision: Ok(value.revision),
+                    source: Ok(value.source),
+                    starts_at: Ok(value.starts_at),
+                    title: Ok(value.title),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct CalendarImportRequest {
+            events:
+                ::std::result::Result<::std::vec::Vec<super::ImportedEvent>, ::std::string::String>,
+            window_end: ::std::result::Result<i64, ::std::string::String>,
+            window_start: ::std::result::Result<i64, ::std::string::String>,
+        }
+        impl ::std::default::Default for CalendarImportRequest {
+            fn default() -> Self {
+                Self {
+                    events: Err("no value supplied for events".to_string()),
+                    window_end: Err("no value supplied for window_end".to_string()),
+                    window_start: Err("no value supplied for window_start".to_string()),
+                }
+            }
+        }
+        impl CalendarImportRequest {
+            pub fn events<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::ImportedEvent>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.events = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for events: {e}"));
+                self
+            }
+            pub fn window_end<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.window_end = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for window_end: {e}"));
+                self
+            }
+            pub fn window_start<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.window_start = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for window_start: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CalendarImportRequest> for super::CalendarImportRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CalendarImportRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    events: value.events?,
+                    window_end: value.window_end?,
+                    window_start: value.window_start?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CalendarImportRequest> for CalendarImportRequest {
+            fn from(value: super::CalendarImportRequest) -> Self {
+                Self {
+                    events: Ok(value.events),
+                    window_end: Ok(value.window_end),
+                    window_start: Ok(value.window_start),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct CalendarReceipt {
+            result_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for CalendarReceipt {
+            fn default() -> Self {
+                Self {
+                    result_id: Err("no value supplied for result_id".to_string()),
+                }
+            }
+        }
+        impl CalendarReceipt {
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CalendarReceipt> for super::CalendarReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CalendarReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CalendarReceipt> for CalendarReceipt {
+            fn from(value: super::CalendarReceipt) -> Self {
+                Self {
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct CalendarRequest {
+            command: ::std::result::Result<super::CalendarCommand, ::std::string::String>,
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for CalendarRequest {
+            fn default() -> Self {
+                Self {
+                    command: Err("no value supplied for command".to_string()),
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                }
+            }
+        }
+        impl CalendarRequest {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::CalendarCommand>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CalendarRequest> for super::CalendarRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CalendarRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    command: value.command?,
+                    operation_id: value.operation_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CalendarRequest> for CalendarRequest {
+            fn from(value: super::CalendarRequest) -> Self {
+                Self {
+                    command: Ok(value.command),
+                    operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct CalendarSnapshot {
+            events:
+                ::std::result::Result<::std::vec::Vec<super::CalendarEvent>, ::std::string::String>,
+            last_import: ::std::result::Result<
+                ::std::option::Option<super::ActionView>,
+                ::std::string::String,
+            >,
+        }
+        impl ::std::default::Default for CalendarSnapshot {
+            fn default() -> Self {
+                Self {
+                    events: Err("no value supplied for events".to_string()),
+                    last_import: Ok(Default::default()),
+                }
+            }
+        }
+        impl CalendarSnapshot {
+            pub fn events<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::CalendarEvent>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.events = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for events: {e}"));
+                self
+            }
+            pub fn last_import<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<super::ActionView>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.last_import = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for last_import: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CalendarSnapshot> for super::CalendarSnapshot {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CalendarSnapshot,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    events: value.events?,
+                    last_import: value.last_import?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CalendarSnapshot> for CalendarSnapshot {
+            fn from(value: super::CalendarSnapshot) -> Self {
+                Self {
+                    events: Ok(value.events),
+                    last_import: Ok(value.last_import),
                 }
             }
         }
@@ -3665,6 +5445,733 @@ pub mod types {
                     id: Ok(value.id),
                     kind: Ok(value.kind),
                     observed_at: Ok(value.observed_at),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct HomeClimate {
+            action: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            ambient: ::std::result::Result<::std::option::Option<f64>, ::std::string::String>,
+            mode: ::std::result::Result<super::ClimateMode, ::std::string::String>,
+            pending: ::std::result::Result<bool, ::std::string::String>,
+            target: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+            target_high: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+            target_low: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        }
+        impl ::std::default::Default for HomeClimate {
+            fn default() -> Self {
+                Self {
+                    action: Ok(Default::default()),
+                    ambient: Ok(Default::default()),
+                    mode: Err("no value supplied for mode".to_string()),
+                    pending: Err("no value supplied for pending".to_string()),
+                    target: Ok(Default::default()),
+                    target_high: Ok(Default::default()),
+                    target_low: Ok(Default::default()),
+                }
+            }
+        }
+        impl HomeClimate {
+            pub fn action<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.action = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for action: {e}"));
+                self
+            }
+            pub fn ambient<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<f64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.ambient = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for ambient: {e}"));
+                self
+            }
+            pub fn mode<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::ClimateMode>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.mode = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for mode: {e}"));
+                self
+            }
+            pub fn pending<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.pending = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for pending: {e}"));
+                self
+            }
+            pub fn target<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.target = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for target: {e}"));
+                self
+            }
+            pub fn target_high<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.target_high = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for target_high: {e}"));
+                self
+            }
+            pub fn target_low<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.target_low = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for target_low: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<HomeClimate> for super::HomeClimate {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: HomeClimate,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    action: value.action?,
+                    ambient: value.ambient?,
+                    mode: value.mode?,
+                    pending: value.pending?,
+                    target: value.target?,
+                    target_high: value.target_high?,
+                    target_low: value.target_low?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::HomeClimate> for HomeClimate {
+            fn from(value: super::HomeClimate) -> Self {
+                Self {
+                    action: Ok(value.action),
+                    ambient: Ok(value.ambient),
+                    mode: Ok(value.mode),
+                    pending: Ok(value.pending),
+                    target: Ok(value.target),
+                    target_high: Ok(value.target_high),
+                    target_low: Ok(value.target_low),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct HomeConnection {
+            access_token: ::std::result::Result<bool, ::std::string::String>,
+            base_url: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for HomeConnection {
+            fn default() -> Self {
+                Self {
+                    access_token: Err("no value supplied for access_token".to_string()),
+                    base_url: Err("no value supplied for base_url".to_string()),
+                }
+            }
+        }
+        impl HomeConnection {
+            pub fn access_token<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.access_token = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for access_token: {e}"));
+                self
+            }
+            pub fn base_url<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.base_url = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for base_url: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<HomeConnection> for super::HomeConnection {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: HomeConnection,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    access_token: value.access_token?,
+                    base_url: value.base_url?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::HomeConnection> for HomeConnection {
+            fn from(value: super::HomeConnection) -> Self {
+                Self {
+                    access_token: Ok(value.access_token),
+                    base_url: Ok(value.base_url),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct HomeConnectionRequest {
+            access_client_id: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            access_client_secret: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            base_url: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for HomeConnectionRequest {
+            fn default() -> Self {
+                Self {
+                    access_client_id: Ok(Default::default()),
+                    access_client_secret: Ok(Default::default()),
+                    base_url: Err("no value supplied for base_url".to_string()),
+                }
+            }
+        }
+        impl HomeConnectionRequest {
+            pub fn access_client_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.access_client_id = value.try_into().map_err(|e| {
+                    format!("error converting supplied value for access_client_id: {e}")
+                });
+                self
+            }
+            pub fn access_client_secret<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.access_client_secret = value.try_into().map_err(|e| {
+                    format!("error converting supplied value for access_client_secret: {e}")
+                });
+                self
+            }
+            pub fn base_url<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.base_url = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for base_url: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<HomeConnectionRequest> for super::HomeConnectionRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: HomeConnectionRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    access_client_id: value.access_client_id?,
+                    access_client_secret: value.access_client_secret?,
+                    base_url: value.base_url?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::HomeConnectionRequest> for HomeConnectionRequest {
+            fn from(value: super::HomeConnectionRequest) -> Self {
+                Self {
+                    access_client_id: Ok(value.access_client_id),
+                    access_client_secret: Ok(value.access_client_secret),
+                    base_url: Ok(value.base_url),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct HomeReceipt {
+            result_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for HomeReceipt {
+            fn default() -> Self {
+                Self {
+                    result_id: Err("no value supplied for result_id".to_string()),
+                }
+            }
+        }
+        impl HomeReceipt {
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<HomeReceipt> for super::HomeReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: HomeReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::HomeReceipt> for HomeReceipt {
+            fn from(value: super::HomeReceipt) -> Self {
+                Self {
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct HomeRequest {
+            command: ::std::result::Result<super::HomeCommand, ::std::string::String>,
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for HomeRequest {
+            fn default() -> Self {
+                Self {
+                    command: Err("no value supplied for command".to_string()),
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                }
+            }
+        }
+        impl HomeRequest {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::HomeCommand>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<HomeRequest> for super::HomeRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: HomeRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    command: value.command?,
+                    operation_id: value.operation_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::HomeRequest> for HomeRequest {
+            fn from(value: super::HomeRequest) -> Self {
+                Self {
+                    command: Ok(value.command),
+                    operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct HomeSnapshot {
+            actions:
+                ::std::result::Result<::std::vec::Vec<super::ActionView>, ::std::string::String>,
+            climate: ::std::result::Result<
+                ::std::option::Option<super::HomeClimate>,
+                ::std::string::String,
+            >,
+            connection: ::std::result::Result<
+                ::std::option::Option<super::HomeConnection>,
+                ::std::string::String,
+            >,
+            error: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            reachable: ::std::result::Result<bool, ::std::string::String>,
+            switches:
+                ::std::result::Result<::std::vec::Vec<super::HomeSwitch>, ::std::string::String>,
+        }
+        impl ::std::default::Default for HomeSnapshot {
+            fn default() -> Self {
+                Self {
+                    actions: Err("no value supplied for actions".to_string()),
+                    climate: Ok(Default::default()),
+                    connection: Ok(Default::default()),
+                    error: Ok(Default::default()),
+                    reachable: Err("no value supplied for reachable".to_string()),
+                    switches: Err("no value supplied for switches".to_string()),
+                }
+            }
+        }
+        impl HomeSnapshot {
+            pub fn actions<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::ActionView>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.actions = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for actions: {e}"));
+                self
+            }
+            pub fn climate<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<super::HomeClimate>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.climate = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for climate: {e}"));
+                self
+            }
+            pub fn connection<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<super::HomeConnection>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.connection = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for connection: {e}"));
+                self
+            }
+            pub fn error<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.error = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for error: {e}"));
+                self
+            }
+            pub fn reachable<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.reachable = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for reachable: {e}"));
+                self
+            }
+            pub fn switches<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::HomeSwitch>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.switches = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for switches: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<HomeSnapshot> for super::HomeSnapshot {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: HomeSnapshot,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    actions: value.actions?,
+                    climate: value.climate?,
+                    connection: value.connection?,
+                    error: value.error?,
+                    reachable: value.reachable?,
+                    switches: value.switches?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::HomeSnapshot> for HomeSnapshot {
+            fn from(value: super::HomeSnapshot) -> Self {
+                Self {
+                    actions: Ok(value.actions),
+                    climate: Ok(value.climate),
+                    connection: Ok(value.connection),
+                    error: Ok(value.error),
+                    reachable: Ok(value.reachable),
+                    switches: Ok(value.switches),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct HomeSwitch {
+            key: ::std::result::Result<super::SwitchKey, ::std::string::String>,
+            label: ::std::result::Result<::std::string::String, ::std::string::String>,
+            on: ::std::result::Result<bool, ::std::string::String>,
+            pending: ::std::result::Result<bool, ::std::string::String>,
+            room: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for HomeSwitch {
+            fn default() -> Self {
+                Self {
+                    key: Err("no value supplied for key".to_string()),
+                    label: Err("no value supplied for label".to_string()),
+                    on: Err("no value supplied for on".to_string()),
+                    pending: Err("no value supplied for pending".to_string()),
+                    room: Err("no value supplied for room".to_string()),
+                }
+            }
+        }
+        impl HomeSwitch {
+            pub fn key<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::SwitchKey>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.key = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for key: {e}"));
+                self
+            }
+            pub fn label<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.label = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for label: {e}"));
+                self
+            }
+            pub fn on<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.on = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for on: {e}"));
+                self
+            }
+            pub fn pending<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.pending = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for pending: {e}"));
+                self
+            }
+            pub fn room<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.room = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for room: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<HomeSwitch> for super::HomeSwitch {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: HomeSwitch,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    key: value.key?,
+                    label: value.label?,
+                    on: value.on?,
+                    pending: value.pending?,
+                    room: value.room?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::HomeSwitch> for HomeSwitch {
+            fn from(value: super::HomeSwitch) -> Self {
+                Self {
+                    key: Ok(value.key),
+                    label: Ok(value.label),
+                    on: Ok(value.on),
+                    pending: Ok(value.pending),
+                    room: Ok(value.room),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ImportedEvent {
+            all_day: ::std::result::Result<bool, ::std::string::String>,
+            calendar: ::std::result::Result<::std::string::String, ::std::string::String>,
+            color: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            ends_at: ::std::result::Result<i64, ::std::string::String>,
+            external_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            location: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            notes: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            starts_at: ::std::result::Result<i64, ::std::string::String>,
+            title: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for ImportedEvent {
+            fn default() -> Self {
+                Self {
+                    all_day: Err("no value supplied for all_day".to_string()),
+                    calendar: Err("no value supplied for calendar".to_string()),
+                    color: Ok(Default::default()),
+                    ends_at: Err("no value supplied for ends_at".to_string()),
+                    external_id: Err("no value supplied for external_id".to_string()),
+                    location: Ok(Default::default()),
+                    notes: Ok(Default::default()),
+                    starts_at: Err("no value supplied for starts_at".to_string()),
+                    title: Err("no value supplied for title".to_string()),
+                }
+            }
+        }
+        impl ImportedEvent {
+            pub fn all_day<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.all_day = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for all_day: {e}"));
+                self
+            }
+            pub fn calendar<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.calendar = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for calendar: {e}"));
+                self
+            }
+            pub fn color<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.color = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for color: {e}"));
+                self
+            }
+            pub fn ends_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.ends_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for ends_at: {e}"));
+                self
+            }
+            pub fn external_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.external_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for external_id: {e}"));
+                self
+            }
+            pub fn location<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.location = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for location: {e}"));
+                self
+            }
+            pub fn notes<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.notes = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for notes: {e}"));
+                self
+            }
+            pub fn starts_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.starts_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for starts_at: {e}"));
+                self
+            }
+            pub fn title<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.title = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for title: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ImportedEvent> for super::ImportedEvent {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ImportedEvent,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    all_day: value.all_day?,
+                    calendar: value.calendar?,
+                    color: value.color?,
+                    ends_at: value.ends_at?,
+                    external_id: value.external_id?,
+                    location: value.location?,
+                    notes: value.notes?,
+                    starts_at: value.starts_at?,
+                    title: value.title?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ImportedEvent> for ImportedEvent {
+            fn from(value: super::ImportedEvent) -> Self {
+                Self {
+                    all_day: Ok(value.all_day),
+                    calendar: Ok(value.calendar),
+                    color: Ok(value.color),
+                    ends_at: Ok(value.ends_at),
+                    external_id: Ok(value.external_id),
+                    location: Ok(value.location),
+                    notes: Ok(value.notes),
+                    starts_at: Ok(value.starts_at),
+                    title: Ok(value.title),
                 }
             }
         }
@@ -5137,6 +7644,43 @@ impl Client {
     pub fn automations_command(&self) -> builder::AutomationsCommand<'_> {
         builder::AutomationsCommand::new(self)
     }
+    /*Sends a `GET` request to `/v1/calendar`
+
+    Arguments:
+    - `from`: Unix seconds; defaults to 31 days ago.
+    - `to`: Unix seconds, exclusive; defaults to 180 days ahead.
+    ```ignore
+    let response = client.calendar_state()
+        .from(from)
+        .to(to)
+        .send()
+        .await;
+    ```*/
+    pub fn calendar_state(&self) -> builder::CalendarState<'_> {
+        builder::CalendarState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/calendar/commands`
+
+    ```ignore
+    let response = client.calendar_command()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn calendar_command(&self) -> builder::CalendarCommand<'_> {
+        builder::CalendarCommand::new(self)
+    }
+    /*Sends a `POST` request to `/v1/calendar/imports`
+
+    ```ignore
+    let response = client.calendar_import()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn calendar_import(&self) -> builder::CalendarImport<'_> {
+        builder::CalendarImport::new(self)
+    }
     /*Sends a `POST` request to `/v1/commands`
 
     ```ignore
@@ -5187,6 +7731,48 @@ impl Client {
     ```*/
     pub fn connection_logout(&self) -> builder::ConnectionLogout<'_> {
         builder::ConnectionLogout::new(self)
+    }
+    /*Sends a `GET` request to `/v1/home`
+
+    ```ignore
+    let response = client.home_state()
+        .send()
+        .await;
+    ```*/
+    pub fn home_state(&self) -> builder::HomeState<'_> {
+        builder::HomeState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/home/commands`
+
+    ```ignore
+    let response = client.home_command()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn home_command(&self) -> builder::HomeCommand<'_> {
+        builder::HomeCommand::new(self)
+    }
+    /*Sends a `PUT` request to `/v1/home/connection`
+
+    ```ignore
+    let response = client.home_connect()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn home_connect(&self) -> builder::HomeConnect<'_> {
+        builder::HomeConnect::new(self)
+    }
+    /*Sends a `DELETE` request to `/v1/home/connection`
+
+    ```ignore
+    let response = client.home_disconnect()
+        .send()
+        .await;
+    ```*/
+    pub fn home_disconnect(&self) -> builder::HomeDisconnect<'_> {
+        builder::HomeDisconnect::new(self)
     }
     /*Sends a `GET` request to `/v1/state`
 
@@ -5573,6 +8159,281 @@ pub mod builder {
             }
         }
     }
+    /*Builder for [`Client::calendar_state`]
+
+    [`Client::calendar_state`]: super::Client::calendar_state*/
+    #[derive(Debug, Clone)]
+    pub struct CalendarState<'a> {
+        client: &'a super::Client,
+        from: Result<Option<i64>, String>,
+        to: Result<Option<i64>, String>,
+    }
+    impl<'a> CalendarState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                from: Ok(None),
+                to: Ok(None),
+            }
+        }
+        pub fn from<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<i64>,
+        {
+            self.from = value
+                .try_into()
+                .map(Some)
+                .map_err(|_| "conversion to `i64` for from failed".to_string());
+            self
+        }
+        pub fn to<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<i64>,
+        {
+            self.to = value
+                .try_into()
+                .map(Some)
+                .map_err(|_| "conversion to `i64` for to failed".to_string());
+            self
+        }
+        ///Sends a `GET` request to `/v1/calendar`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::CalendarSnapshot>, Error<types::ErrorBody>> {
+            let Self { client, from, to } = self;
+            let from = from.map_err(Error::InvalidRequest)?;
+            let to = to.map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/calendar", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .query(&progenitor_client::QueryParam::new("from", &from))
+                .query(&progenitor_client::QueryParam::new("to", &to))
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "calendar_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::calendar_command`]
+
+    [`Client::calendar_command`]: super::Client::calendar_command*/
+    #[derive(Debug, Clone)]
+    pub struct CalendarCommand<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::CalendarRequest, String>,
+    }
+    impl<'a> CalendarCommand<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::CalendarRequest>,
+            <V as std::convert::TryInto<types::CalendarRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value
+                .try_into()
+                .map(From::from)
+                .map_err(|s| format!("conversion to `CalendarRequest` for body failed: {}", s));
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(types::builder::CalendarRequest) -> types::builder::CalendarRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/calendar/commands`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::CalendarReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::CalendarRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/calendar/commands", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "calendar_command",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::calendar_import`]
+
+    [`Client::calendar_import`]: super::Client::calendar_import*/
+    #[derive(Debug, Clone)]
+    pub struct CalendarImport<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::CalendarImportRequest, String>,
+    }
+    impl<'a> CalendarImport<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::CalendarImportRequest>,
+            <V as std::convert::TryInto<types::CalendarImportRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value.try_into().map(From::from).map_err(|s| {
+                format!(
+                    "conversion to `CalendarImportRequest` for body failed: {}",
+                    s
+                )
+            });
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(
+                    types::builder::CalendarImportRequest,
+                ) -> types::builder::CalendarImportRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/calendar/imports`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::CalendarReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::CalendarImportRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/calendar/imports", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "calendar_import",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
     /*Builder for [`Client::product_command`]
 
     [`Client::product_command`]: super::Client::product_command*/
@@ -5894,6 +8755,305 @@ pub mod builder {
                     ResponseValue::from_response(response).await?,
                 )),
                 409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::home_state`]
+
+    [`Client::home_state`]: super::Client::home_state*/
+    #[derive(Debug, Clone)]
+    pub struct HomeState<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> HomeState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `GET` request to `/v1/home`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::HomeSnapshot>, Error<types::ErrorBody>> {
+            let Self { client } = self;
+            let url = format!("{}/v1/home", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "home_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::home_command`]
+
+    [`Client::home_command`]: super::Client::home_command*/
+    #[derive(Debug, Clone)]
+    pub struct HomeCommand<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::HomeRequest, String>,
+    }
+    impl<'a> HomeCommand<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::HomeRequest>,
+            <V as std::convert::TryInto<types::HomeRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value
+                .try_into()
+                .map(From::from)
+                .map_err(|s| format!("conversion to `HomeRequest` for body failed: {}", s));
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(types::builder::HomeRequest) -> types::builder::HomeRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/home/commands`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::HomeReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::HomeRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/home/commands", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "home_command",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::home_connect`]
+
+    [`Client::home_connect`]: super::Client::home_connect*/
+    #[derive(Debug, Clone)]
+    pub struct HomeConnect<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::HomeConnectionRequest, String>,
+    }
+    impl<'a> HomeConnect<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::HomeConnectionRequest>,
+            <V as std::convert::TryInto<types::HomeConnectionRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value.try_into().map(From::from).map_err(|s| {
+                format!(
+                    "conversion to `HomeConnectionRequest` for body failed: {}",
+                    s
+                )
+            });
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(
+                    types::builder::HomeConnectionRequest,
+                ) -> types::builder::HomeConnectionRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `PUT` request to `/v1/home/connection`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::HomeConnection>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::HomeConnectionRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/home/connection", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .put(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "home_connect",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::home_disconnect`]
+
+    [`Client::home_disconnect`]: super::Client::home_disconnect*/
+    #[derive(Debug, Clone)]
+    pub struct HomeDisconnect<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> HomeDisconnect<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `DELETE` request to `/v1/home/connection`
+        pub async fn send(self) -> Result<ResponseValue<()>, Error<types::ErrorBody>> {
+            let Self { client } = self;
+            let url = format!("{}/v1/home/connection", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .delete(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "home_disconnect",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                204u16 => Ok(ResponseValue::empty(response)),
+                401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 503u16 => Err(Error::ErrorResponse(

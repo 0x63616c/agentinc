@@ -527,3 +527,95 @@ pub(crate) async fn apply_import(pool: &PgPool, action_id: &str) -> anyhow::Resu
     tx.commit().await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(id: &str, title: &str, starts_at: i64) -> ImportedEvent {
+        ImportedEvent {
+            external_id: id.into(),
+            calendar: "Home".into(),
+            color: Some("#34C759".into()),
+            title: title.into(),
+            location: None,
+            notes: None,
+            starts_at,
+            ends_at: starts_at + 3600,
+            all_day: false,
+        }
+    }
+    async fn import(pool: &PgPool, events: Vec<ImportedEvent>) -> String {
+        enqueue_import(
+            pool,
+            &Actor::owner(),
+            CalendarImportRequest {
+                window_start: 1000,
+                window_end: 100_000,
+                events,
+            },
+        )
+        .await
+        .unwrap()
+        .result_id
+    }
+    async fn complete(pool: &PgPool, id: &str) {
+        apply_import(pool, id).await.unwrap();
+        sqlx::query("UPDATE durable_actions SET state='completed' WHERE id=$1")
+            .bind(id)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+    async fn titles(pool: &PgPool, actor: &Actor) -> Vec<(String, i64)> {
+        snapshot(pool, actor, 0, 1_000_000)
+            .await
+            .unwrap()
+            .events
+            .into_iter()
+            .map(|e| (e.title, e.revision))
+            .collect()
+    }
+
+    #[sqlx::test]
+    async fn imports_mirror_their_window_and_never_go_backwards(pool: PgPool) {
+        let owner = Actor::owner();
+        // Outside the window: never removed by an import that cannot see it.
+        sqlx::query("INSERT INTO calendar_events(id,workspace_id,user_id,source,external_id,calendar,title,starts_at,ends_at) VALUES('far','local','owner','macos','far@1','Home','Far away',500000,500100)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let first = import(
+            &pool,
+            vec![event("a@2000", "Standup", 2000), event("b@3000", "", 3000)],
+        )
+        .await;
+        complete(&pool, &first).await;
+        complete(&pool, &first).await; // A retry is harmless.
+        assert_eq!(
+            titles(&pool, &owner).await,
+            [
+                ("Standup".into(), 0),
+                ("Untitled".into(), 0),
+                ("Far away".into(), 0)
+            ]
+        );
+
+        let older = import(&pool, vec![event("a@2000", "Standup", 2000)]).await;
+        let newer = import(&pool, vec![event("a@2000", "Standup moved", 2000)]).await;
+        complete(&pool, &newer).await;
+        // The older snapshot arrives late and must not resurrect or rename.
+        complete(&pool, &older).await;
+        assert_eq!(
+            titles(&pool, &owner).await,
+            [("Standup moved".into(), 1), ("Far away".into(), 0)]
+        );
+
+        // Mirrors belong to one user in one workspace.
+        let other = Actor {
+            id: "someone".into(),
+            ..Actor::owner()
+        };
+        assert!(titles(&pool, &other).await.is_empty());
+    }
+}

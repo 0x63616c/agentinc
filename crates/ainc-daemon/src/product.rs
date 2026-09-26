@@ -138,6 +138,10 @@ impl ApiError {
             },
         }
     }
+    /// The human-readable reason, for agents that relay a refusal.
+    pub(crate) fn message(&self) -> &str {
+        &self.body.message
+    }
     pub(crate) fn conflict() -> Self {
         Self::new(
             StatusCode::CONFLICT,

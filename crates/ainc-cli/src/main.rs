@@ -1,4 +1,4 @@
-#[allow(unused_variables, dead_code)]
+#[allow(unused_variables, dead_code, clippy::clone_on_copy)]
 mod generated;
 
 use ainc_client::{Client, Error, ResponseValue};
@@ -144,6 +144,8 @@ fn variants(spec: &Value, group: &str) -> Vec<Variant> {
     let request = match group {
         "tickets" => "TicketCommand",
         "automations" => "AutomationCommand",
+        "home" => "HomeCommand",
+        "calendar" => "CalendarCommand",
         "product" => "Command",
         _ => return vec![],
     };
@@ -217,7 +219,7 @@ fn command_tree(spec: &Value) -> Command {
             .or_insert_with(|| Command::new(group).subcommand_required(true));
         *entry = entry.clone().subcommand(command);
     }
-    for group in ["tickets", "automations", "product"] {
+    for group in ["tickets", "automations", "home", "calendar", "product"] {
         if let Some(entry) = groups.get_mut(group) {
             for (kind, fields) in variants(spec, group) {
                 let mut command =
@@ -379,6 +381,8 @@ async fn main() -> Result<()> {
     let op = operation(match group {
         "tickets" => "tickets_command",
         "automations" => "automations_command",
+        "home" => "home_command",
+        "calendar" => "calendar_command",
         "product" => "product_command",
         _ => bail!("unsupported command"),
     });
