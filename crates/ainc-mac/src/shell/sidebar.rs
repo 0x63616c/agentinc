@@ -189,9 +189,10 @@ impl Shell {
                     .mb(px(SPACE_4))
                     // The magnifier centres on the navigation icon column and the
                     // placeholder lands on the label rail.
-                    .pl(px(SPACE_2 + 2.))
+                    .pl(px(SPACE_2))
                     .pr(px(HEADER_SEARCH_RIGHT_INSET))
-                    .gap(px(SPACE_3))
+                    // One more than the label rail's gap: the field's border sits inside it.
+                    .gap(px(SPACE_3 + 1.))
                     .rounded(px(RADIUS_MD))
                     .bg(rgb(SURFACE_INPUT))
                     .border_1()
