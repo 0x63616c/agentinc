@@ -189,10 +189,8 @@ pub const CHECKBOX_SIZE: f32 = 16.;
 pub const DIALOG_PADDING: f32 = SPACE_6;
 // The shortcut badge needs only 4 px after it to balance the search control.
 pub const HEADER_SEARCH_RIGHT_INSET: f32 = 4.;
-// The workspace mark's left edge uses a half pixel to balance its icon.
-pub const SIDEBAR_IDENTITY_LEFT_INSET: f32 = 6.;
-// The workspace label's right edge retains the measured 6 px optical inset.
-pub const SIDEBAR_IDENTITY_RIGHT_INSET: f32 = 6.;
+/// The workspace mark inside the sidebar card.
+pub const WORKSPACE_MARK_SIZE: f32 = 32.;
 
 // ---------------------------------------------------------------------------
 // Radius.

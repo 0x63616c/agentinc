@@ -10,7 +10,6 @@ pub fn settings_section(title: &'static str, rows: impl IntoElement) -> Div {
         .child(div().px(px(SPACE_HALF)).child(eyebrow(title)))
         .child(
             column()
-                .overflow_hidden()
                 .rounded(px(RADIUS_LG))
                 .border_1()
                 .border_color(rgb(BORDER))
@@ -28,8 +27,7 @@ pub fn settings_row(
     row()
         .debug_selector(move || format!("settings.row.{label}"))
         .min_h(px(SETTINGS_ROW_HEIGHT))
-        .px(px(SETTINGS_INSET))
-        .py(px(SPACE_3))
+        .p(px(SETTINGS_INSET))
         .gap(px(SPACE_4))
         .justify_between()
         .child(

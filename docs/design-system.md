@@ -72,7 +72,7 @@ exercised only on the Components page today.
 ## Shell
 
 The shell (`src/shell.rs` and `src/shell/`) composes the sidebar (workspace card,
-⌘K search, navigation, Settings, user row), the title bar with the current-space
+⌘K search, navigation ending in Settings, user row), the title bar with the current-space
 tab contour, the content card with its status bar, the command palette, the user
 menu popover, the notification panel and toasts. Pages receive the content card and
 render inside `Page::document` (header plus scrolling content) or `Page::canvas`

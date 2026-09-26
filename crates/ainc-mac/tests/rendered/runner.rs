@@ -375,6 +375,11 @@ impl Suite {
             SETTINGS_INSET,
         )?;
         near(
+            &format!("{label} SettingsRow top inset"),
+            f32::from(text.origin.y - row.origin.y),
+            SETTINGS_INSET,
+        )?;
+        near(
             &format!("{label} SettingsRow control inset"),
             f32::from(row.origin.x + row.size.width - control.origin.x - control.size.width),
             SETTINGS_INSET,
@@ -613,6 +618,14 @@ pub fn run() -> Result<()> {
         Modifiers::default(),
     );
     suite.capture("hover-tickets", Route::Assistant, None, false)?;
+    let workspace_card = suite.bounds("workspace-title")?.center();
+    suite.cx.simulate_mouse_move(
+        suite.window.into(),
+        workspace_card,
+        None::<MouseButton>,
+        Modifiers::default(),
+    );
+    suite.capture("hover-workspace", Route::Assistant, None, false)?;
     suite.cx.simulate_mouse_move(
         suite.window.into(),
         point(px(500.), px(500.)),
@@ -1001,6 +1014,18 @@ pub fn run() -> Result<()> {
         suite.bounds("codex-model-select.menu").is_err(),
         "escape must close the model select"
     );
+    suite.click_selector("codex-model-select")?;
+    suite.click_selector("codex-model-select.option.1")?;
+    suite.capture("model-dropdown-selected", Route::Settings, None, false)?;
+    ensure!(
+        suite.bounds("codex-model-select.menu").is_err(),
+        "choosing an option must close the model select"
+    );
+    near(
+        "select keeps its row height after a choice",
+        f32::from(suite.bounds("settings.row.Model")?.size.height),
+        f32::from(closed.size.height),
+    )?;
     // The component gallery, one capture per section, reached through the palette.
     suite.keys("cmd-k");
     suite.cx.simulate_input(window.into(), "components");
