@@ -54,7 +54,7 @@ pub const TEXT: u32 = 0xf2f2f2;
 /// Secondary text: descriptions, timestamps, captions.
 pub const TEXT_SECONDARY: u32 = 0x9c9c9c;
 /// Tertiary text: hints, disabled labels, section eyebrows.
-pub const TEXT_TERTIARY: u32 = 0x6b6b6b;
+pub const TEXT_TERTIARY: u32 = 0x858585; // AA (4.5:1 or better) on every surface up to the overlay.
 /// Placeholder text inside inputs.
 pub const TEXT_PLACEHOLDER: u32 = 0x5a5a5a;
 /// Ink on white primary surfaces.
@@ -143,6 +143,9 @@ pub const HEADER_CONTROL: f32 = 30.;
 pub const HEADER_EDGE_INSET: f32 = 9.;
 pub const HEADER_ICON_SIZE: f32 = 16.;
 pub const ICON_SIZE: f32 = 16.;
+/// The empty side of a chevron glyph inside its icon box; clipping it lets the
+/// visible edge sit where a shortcut badge ends.
+pub const CHEVRON_GLYPH_INSET: f32 = 6.;
 pub const ICON_SIZE_SM: f32 = 14.;
 pub const ICON_SIZE_LG: f32 = 18.;
 pub const CONTROL_HEIGHT: f32 = 32.;

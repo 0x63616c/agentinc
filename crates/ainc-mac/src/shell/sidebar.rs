@@ -187,9 +187,11 @@ impl Shell {
                     .min_w_0()
                     .h(px(CONTROL_HEIGHT))
                     .mb(px(SPACE_4))
-                    .pl(px(SPACE_3))
+                    // The magnifier centres on the navigation icon column and the
+                    // placeholder lands on the label rail.
+                    .pl(px(SPACE_2 + 2.))
                     .pr(px(HEADER_SEARCH_RIGHT_INSET))
-                    .gap(px(SPACE_2 + 2.))
+                    .gap(px(SPACE_3))
                     .rounded(px(RADIUS_MD))
                     .bg(rgb(SURFACE_INPUT))
                     .border_1()

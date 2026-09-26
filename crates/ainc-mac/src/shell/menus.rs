@@ -17,7 +17,12 @@ impl Shell {
             .child(
                 MenuEntry::new("user-menu.support", "Support")
                     .icon("help")
-                    .trailing(icon("chevronRight", ICON_SIZE))
+                    .trailing(
+                        row()
+                            .w(px(ICON_SIZE - CHEVRON_GLYPH_INSET))
+                            .overflow_hidden()
+                            .child(icon("chevronRight", ICON_SIZE)),
+                    )
                     .selector("user-menu.support")
                     .build(&self.hover, Self::menu_action(Control::SupportMenu), cx)
                     .when(support, |s| s.bg(rgb(SELECTED))),
