@@ -236,12 +236,13 @@ fn command_tree(spec: &Value) -> Command {
                     let flag = name.replace('_', "-");
                     let name: &'static str = Box::leak(name.into_boxed_str());
                     let flag: &'static str = Box::leak(flag.into_boxed_str());
-                    command = command.arg(
-                        Arg::new(name)
-                            .long(flag)
-                            .required_unless_present(if required { "json-body" } else { name })
-                            .help(format!("{} field", typ)),
-                    );
+                    let arg = Arg::new(name).long(flag).help(format!("{} field", typ));
+                    // Optional fields stay optional; required ones can come from --json-body.
+                    command = command.arg(if required {
+                        arg.required_unless_present("json-body")
+                    } else {
+                        arg
+                    });
                 }
                 *entry = entry.clone().subcommand(
                     command.arg(
@@ -483,5 +484,26 @@ mod tests {
             .find(|(kind, _)| kind == "create-assigned")
             .unwrap();
         assert_eq!(assigned.1[0].1, "json");
+    }
+    #[test]
+    fn optional_command_fields_can_be_left_out() {
+        let tree = command_tree(&schema());
+        let parsed = tree.try_get_matches_from([
+            "ainc",
+            "calendar",
+            "create",
+            "--title",
+            "Dinner",
+            "--starts-at",
+            "10",
+            "--ends-at",
+            "20",
+            "--all-day",
+            "false",
+        ]);
+        assert!(parsed.is_ok(), "{parsed:?}");
+        let missing = command_tree(&schema())
+            .try_get_matches_from(["ainc", "calendar", "create", "--title", "Dinner"]);
+        assert!(missing.is_err(), "required fields are still required");
     }
 }

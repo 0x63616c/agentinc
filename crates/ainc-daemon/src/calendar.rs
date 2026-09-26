@@ -62,7 +62,9 @@ pub enum CalendarCommand {
         starts_at: i64,
         ends_at: i64,
         all_day: bool,
+        #[serde(default)]
         location: Option<String>,
+        #[serde(default)]
         notes: Option<String>,
     },
     Update {
@@ -72,7 +74,9 @@ pub enum CalendarCommand {
         starts_at: i64,
         ends_at: i64,
         all_day: bool,
+        #[serde(default)]
         location: Option<String>,
+        #[serde(default)]
         notes: Option<String>,
     },
     Delete {
