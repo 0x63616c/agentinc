@@ -267,6 +267,7 @@ async fn stopping_a_queued_reply_records_the_outcome_and_allows_retry(pool: PgPo
         Some("/http https://example.test")
     );
     assert!(stopped.finished_at.is_some());
+    assert_eq!(state.conversations[0].title, "/http https://example.test");
     // Stopping twice is a conflict, and a stopped reply can be retried.
     assert!(
         product::execute(&pool, request(Command::StopTurn { id: turn }))

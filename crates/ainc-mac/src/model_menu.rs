@@ -134,7 +134,7 @@ pub fn render<V: 'static>(
                         .pb(px(4.))
                         .gap(px(6.))
                         .items_center()
-                        .text_size(type_size(CAPTION_SIZE))
+                        .text_size(type_size(CAPTION_SIZE - 1.))
                         .text_color(rgb(MUTED))
                         .child(
                             div()

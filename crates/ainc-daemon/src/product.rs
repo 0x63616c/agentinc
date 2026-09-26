@@ -410,7 +410,8 @@ pub async fn execute_in(
                 return Err(ApiError::conflict());
             }
             let id = sqlx::query_scalar("INSERT INTO turns(conversation_id,prompt,state,model,command) VALUES ($1,$2,'queued',(SELECT value FROM assistant_settings WHERE workspace_id=$3 AND key='model'),$4) RETURNING id").bind(conversation_id).bind(prompt.trim()).bind(workspace).bind(&command).fetch_one(&mut *tx).await?;
-            sqlx::query("UPDATE conversations SET updated_at=extract(epoch FROM now())::bigint,title=CASE WHEN title='New conversation' THEN left($2,60) ELSE title END WHERE id=$1").bind(conversation_id).bind(prompt.trim()).execute(&mut *tx).await?;
+            // A slash command names the Conversation better than its expanded prompt.
+            sqlx::query("UPDATE conversations SET updated_at=extract(epoch FROM now())::bigint,title=CASE WHEN title='New conversation' THEN left(COALESCE($3,$2),60) ELSE title END WHERE id=$1").bind(conversation_id).bind(prompt.trim()).bind(&command).execute(&mut *tx).await?;
             Some(id)
         }
         Command::Retry { id } => {

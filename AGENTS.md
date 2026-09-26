@@ -111,6 +111,10 @@ The production/development channel and isolation rule is also documented there;
 
 Stable runtime deployment and process-recovery checks: [docs/phase-3-runtime.md](docs/phase-3-runtime.md).
 
+Model providers (Claude through Claude Code, ChatGPT through Codex, OpenRouter with a
+Keychain key), canonical `provider:model` IDs, durable Conversation steps and Evee's tools:
+[docs/phase-3-provider.md](docs/phase-3-provider.md), section "Providers (1.0)".
+
 Verify with `cargo test` and `cargo clippy --all-targets`. Both should be clean.
 
 ## Committing

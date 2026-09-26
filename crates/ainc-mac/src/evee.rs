@@ -641,6 +641,8 @@ impl AssistantPage {
     #[allow(dead_code)]
     pub fn fixture_chat(&mut self, populated: bool, cx: &mut Context<Self>) {
         self.fixture_models(cx);
+        self.active = None;
+        self.expanded_steps.clear();
         self.conversation = Some(1);
         self.conversations = vec![Conversation {
             id: 1,
@@ -1142,10 +1144,9 @@ impl AssistantPage {
                 if done {
                     break;
                 }
+                // GPUI's executor has no Tokio reactor; use its own timer.
                 cx.background_executor()
-                    .spawn(async {
-                        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-                    })
+                    .timer(std::time::Duration::from_millis(150))
                     .await;
             }
             let _ = this.update(cx, |this, cx| {
@@ -1332,8 +1333,15 @@ fn pretty(value: &serde_json::Value) -> String {
         serde_json::Value::String(text) => text.clone(),
         other => serde_json::to_string_pretty(other).unwrap_or_default(),
     };
-    if text.chars().count() > 4000 {
-        let cut: String = text.chars().take(4000).collect();
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() > 60 {
+        format!(
+            "{}\n… {} more lines",
+            lines[..60].join("\n"),
+            lines.len() - 60
+        )
+    } else if text.chars().count() > 6000 {
+        let cut: String = text.chars().take(6000).collect();
         format!("{cut}\n…")
     } else {
         text
@@ -1514,9 +1522,6 @@ impl AssistantPage {
             .when(expanded, |card| {
                 card.child(
                     column()
-                        .id(("step-body", id as u64))
-                        .max_h(px(240.))
-                        .overflow_y_scroll()
                         .border_t_1()
                         .border_color(rgb(BORDER_SUBTLE))
                         .px(px(12.))
@@ -1606,8 +1611,8 @@ impl AssistantPage {
                         cx,
                     )
                     .h(px(26.))
-                    .border_1()
-                    .border_color(rgb(BORDER))
+                    .ml(px(-COMPACT_CONTROL_INSET_X))
+                    .opacity(0.75)
                     .text_size(type_size(CAPTION_SIZE))
                     .text_color(rgb(MUTED)),
                 ),
@@ -1776,7 +1781,7 @@ impl Render for AssistantPage {
                                     "panel-new",
                                     "",
                                     Some("New conversation"),
-                                    self.active.is_none() && !self.pending,
+                                    !self.pending,
                                     |this, _, cx| this.new_conversation(cx),
                                     cx,
                                 )
@@ -1890,6 +1895,7 @@ impl Render for AssistantPage {
                                         s.child(
                                             column()
                                                 .gap(px(6.))
+                                                .items_start()
                                                 .child(
                                                     div()
                                                         .text_size(type_size(CAPTION_SIZE))
