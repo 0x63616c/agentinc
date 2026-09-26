@@ -191,6 +191,8 @@ pub const DIALOG_PADDING: f32 = SPACE_6;
 pub const HEADER_SEARCH_RIGHT_INSET: f32 = 4.;
 /// The workspace mark inside the sidebar card.
 pub const WORKSPACE_MARK_SIZE: f32 = 32.;
+/// How far an eyebrow's cap height sits below its tight (1.0) line box.
+pub const EYEBROW_OPTICAL_LIFT: f32 = 2.;
 
 // ---------------------------------------------------------------------------
 // Radius.

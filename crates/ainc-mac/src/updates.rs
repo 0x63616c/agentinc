@@ -69,7 +69,7 @@ impl UpdateView {
             .as_ref()
             .err()
             .map(|e| e.to_string())
-            .unwrap_or_else(|| format!("AgentInc {}", ainc_release::VERSION));
+            .unwrap_or_else(|| format!("AgentInc {}", ainc_release::identity::version()));
         let preferences = loaded.unwrap_or_default();
         cx.spawn(async move |this, cx| {
             loop {

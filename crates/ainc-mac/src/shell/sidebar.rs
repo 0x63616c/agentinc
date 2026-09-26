@@ -129,6 +129,9 @@ impl Shell {
                 .w_full()
                 .min_w_0()
                 .p(px(SPACE_3))
+                // The eyebrow's caps sit `EYEBROW_OPTICAL_LIFT` below its tight line
+                // box, so the gap above them matches the side inset.
+                .pt(px(SPACE_3 - EYEBROW_OPTICAL_LIFT))
                 .mb(px(SPACE_3))
                 .rounded(px(RADIUS_LG))
                 .border_1()
@@ -142,6 +145,7 @@ impl Shell {
                         .child(
                             row()
                                 .justify_between()
+                                .line_height(relative(1.))
                                 .child(eyebrow("Workspace"))
                                 .child(icon("chevronUpDown", ICON_SIZE_SM)),
                         )
@@ -209,7 +213,8 @@ impl Shell {
                             .flex_shrink_0()
                             .w_full()
                             .items_center()
-                            .px(px(SPACE_2 - 2.))
+                            .pl(px(SPACE_2 - 2.))
+                            .pr(px(SPACE_3 + 1.))
                             .gap(px(SPACE_2 - 2.))
                             .rounded(px(RADIUS_MD))
                             .when(user_menu_open, |s| s.bg(rgb(SELECTED)))
