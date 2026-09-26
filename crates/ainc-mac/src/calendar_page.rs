@@ -720,22 +720,28 @@ impl CalendarPage {
                     .gap(px(SPACE_HALF))
                     .child(Self::numeral(date, date.month() != month));
                 let outside = date.month() != month;
-                if dots {
-                    // Narrow columns show one mark per event rather than clipped titles.
-                    cell = cell.child(row().flex_wrap().gap(px(SPACE_1)).px(px(SPACE_1)).children(
-                        day.iter().take(MONTH_DOTS).map(|event| {
-                            div()
-                                .size(px(SPACE_1 + SPACE_HALF))
-                                .rounded_full()
-                                .bg(event_color(event))
-                        }),
-                    ));
+                // Only as many lines as the cell holds; the rest become "N more".
+                // Narrow columns, or a busy day with room for one line, show one
+                // mark per event rather than clipped titles.
+                let fits =
+                    ((cell_height - TODAY_MARK - SPACE_2 * 2.) / MONTH_LINE).floor() as usize;
+                if dots || (day.len() > fits && fits < 2) {
+                    cell = cell.child(
+                        row()
+                            .flex_wrap()
+                            .gap(px(SPACE_1))
+                            .px(px(SPACE_1))
+                            .pt(px(SPACE_1))
+                            .children(day.iter().take(MONTH_DOTS).map(|event| {
+                                div()
+                                    .size(px(SPACE_1 + SPACE_HALF))
+                                    .rounded_full()
+                                    .bg(event_color(event))
+                            })),
+                    );
                 } else {
-                    // Only as many lines as the cell holds; the rest become "N more".
-                    let fits =
-                        ((cell_height - TODAY_MARK - SPACE_2 * 2.) / MONTH_LINE).floor() as usize;
                     let shown = if day.len() > fits {
-                        fits.saturating_sub(1)
+                        fits - 1
                     } else {
                         day.len()
                     };
