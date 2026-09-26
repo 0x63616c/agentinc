@@ -141,7 +141,7 @@ pub struct HomeSwitch {
     pub pending: bool,
     /// The single switches a group covers; empty for a single switch.
     pub members: Vec<SwitchKey>,
-    /// How many of the lights it covers are on, out of `total`.
+    /// How many of the lights it covers are confirmed on, out of `total`.
     pub lit: i64,
     pub total: i64,
 }
@@ -581,7 +581,13 @@ fn switches(
     for command in open {
         if let HomeCommand::Switch { key, on } = command {
             for light in key.covers() {
-                lights.insert(*light, (*on, true));
+                // A light already in the wanted state is not travelling.
+                let confirmed = lights
+                    .get(light)
+                    .is_some_and(|(lit, pending)| *lit == *on && !*pending);
+                if !confirmed {
+                    lights.insert(*light, (*on, true));
+                }
             }
             pressed.push(*key);
         }
@@ -590,9 +596,19 @@ fn switches(
         .into_iter()
         .map(|key| {
             let covered = key.covers();
-            let lit = covered
+            // `on` is the wanted state; `lit` counts only lights confirmed on,
+            // so a count never includes a light still on its way.
+            let wanted = covered
                 .iter()
                 .filter(|light| lights.get(light).is_some_and(|(on, _)| *on))
+                .count() as i64;
+            let lit = covered
+                .iter()
+                .filter(|light| {
+                    lights
+                        .get(light)
+                        .is_some_and(|(on, pending)| *on && !*pending)
+                })
                 .count() as i64;
             let pending = pressed.contains(&key)
                 || (key.members().is_empty()
@@ -601,7 +617,7 @@ fn switches(
                 key,
                 label: key.label().into(),
                 room: key.room().into(),
-                on: lit == covered.len() as i64,
+                on: wanted == covered.len() as i64,
                 pending,
                 members: key.members().to_vec(),
                 lit,
@@ -783,10 +799,15 @@ mod tests {
                 on: true,
             }],
         );
-        assert_eq!(state(&travelling, SwitchKey::All), (true, 4, 4, true));
+        // Wanted on; only the two lights the control center confirmed count.
+        assert_eq!(state(&travelling, SwitchKey::All), (true, 2, 4, true));
         assert_eq!(
             state(&travelling, SwitchKey::UnderCabinet),
-            (true, 1, 1, true)
+            (true, 0, 1, true)
+        );
+        assert_eq!(
+            state(&travelling, SwitchKey::BedroomLamps),
+            (true, 1, 1, false)
         );
     }
 }

@@ -63,8 +63,9 @@ pub fn tile_state(snapshot: &HomeSnapshot, key: SwitchKey) -> TileState {
     }
 }
 
-/// Show a press at once: the lights it covers take the new state, and every
-/// group recounts from the membership the daemon reported.
+/// Show a press at once: lights it changes travel, lights already in that
+/// state stay counted, and every group recounts from the membership the
+/// daemon reported. Counts include only confirmed lights, as the daemon's do.
 pub fn apply_switch(snapshot: &mut HomeSnapshot, key: SwitchKey, on: bool) {
     let covered = |switch: &ainc_client::types::HomeSwitch| -> Vec<SwitchKey> {
         if switch.members.is_empty() {
@@ -78,21 +79,29 @@ pub fn apply_switch(snapshot: &mut HomeSnapshot, key: SwitchKey, on: bool) {
     };
     let lights = covered(pressed);
     for switch in &mut snapshot.switches {
-        if switch.members.is_empty() && lights.contains(&switch.key) {
+        if switch.members.is_empty() && lights.contains(&switch.key) && switch.on != on {
             switch.on = on;
             switch.pending = true;
         }
     }
-    let lit: Vec<SwitchKey> = snapshot
+    let leaves: Vec<(SwitchKey, bool, bool)> = snapshot
         .switches
         .iter()
-        .filter(|s| s.members.is_empty() && s.on)
-        .map(|s| s.key)
+        .filter(|s| s.members.is_empty())
+        .map(|s| (s.key, s.on, s.pending))
         .collect();
     for switch in &mut snapshot.switches {
         let members = covered(switch);
-        switch.lit = members.iter().filter(|m| lit.contains(m)).count() as i64;
-        switch.on = switch.lit == switch.total;
+        let state = |wanted: bool| {
+            leaves
+                .iter()
+                .filter(|(light, on, pending)| {
+                    members.contains(light) && *on && (wanted || !*pending)
+                })
+                .count() as i64
+        };
+        switch.lit = state(false);
+        switch.on = state(true) == switch.total;
         if switch.key == key {
             switch.pending = true;
         }
@@ -439,13 +448,24 @@ mod tests {
             ]
         );
         apply_switch(&mut home, SwitchKey::All, true);
-        assert!(home.switches.iter().all(|s| s.on));
         assert!(
-            home.switches
-                .iter()
-                .filter(|s| s.key != SwitchKey::Lamps)
-                .all(|s| s.pending),
-            "the pressed switch and its lights travel; other groups just recount"
+            home.switches.iter().all(|s| s.on),
+            "every light is wanted on"
+        );
+        let travelling = |key| home.switches.iter().find(|s| s.key == key).unwrap().pending;
+        assert!(travelling(SwitchKey::All) && travelling(SwitchKey::UnderCabinet));
+        assert!(
+            !travelling(SwitchKey::KitchenCeiling),
+            "a light already on is not travelling"
+        );
+        let all = home
+            .switches
+            .iter()
+            .find(|s| s.key == SwitchKey::All)
+            .unwrap();
+        assert_eq!(
+            all.lit, 1,
+            "only confirmed lights count while the rest travel"
         );
         apply_switch(&mut home, SwitchKey::UnderCabinet, false);
         assert_eq!(

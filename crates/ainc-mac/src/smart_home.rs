@@ -10,9 +10,10 @@ use ainc_client::types::{
 };
 use gpui::{prelude::*, *};
 
-/// Rooms in one row, each as wide as its lights, so every tile matches.
+/// Three cards of two lights each: the whole home, the kitchen's fixtures and
+/// the lamps room by room. Equal cards keep every tile the same size.
 type Room = (&'static str, &'static [(SwitchKey, &'static str)]);
-const ROOMS: [Room; 4] = [
+const ROOMS: [Room; 3] = [
     (
         "Everywhere",
         &[
@@ -27,8 +28,13 @@ const ROOMS: [Room; 4] = [
             (SwitchKey::UnderCabinet, "Under cabinet"),
         ],
     ),
-    ("Living room", &[(SwitchKey::LivingRoomLamps, "Lamps")]),
-    ("Bedroom", &[(SwitchKey::BedroomLamps, "Lamps")]),
+    (
+        "Lamps",
+        &[
+            (SwitchKey::LivingRoomLamps, "Living room"),
+            (SwitchKey::BedroomLamps, "Bedroom"),
+        ],
+    ),
 ];
 pub const MODES: [(ClimateMode, &str); 4] = [
     (ClimateMode::Off, "Off"),
@@ -70,6 +76,17 @@ pub fn host(base_url: &str) -> String {
         .trim_end_matches('/')
         .to_owned()
 }
+/// Three room cards side by side when they fit, then two, then one.
+fn room_columns(window: &Window) -> usize {
+    let width = window.viewport_size().width;
+    if width >= px(ROOMS_THREE_ACROSS) {
+        3
+    } else if width >= px(CLIMATE_STACK_BELOW) {
+        2
+    } else {
+        1
+    }
+}
 /// How many of a room's lights are on: a group already counts its lights
 /// (Everywhere counts the whole home); otherwise count the room's switches.
 fn room_lights(snapshot: &HomeSnapshot, switches: &[(SwitchKey, &str)]) -> (i64, i64) {
@@ -80,7 +97,7 @@ fn room_lights(snapshot: &HomeSnapshot, switches: &[(SwitchKey, &str)]) -> (i64,
     match states.iter().max_by_key(|s| s.total) {
         Some(group) if group.total > 1 => (group.lit, group.total),
         _ => (
-            states.iter().filter(|s| s.on).count() as i64,
+            states.iter().filter(|s| s.on && !s.pending).count() as i64,
             states.len() as i64,
         ),
     }
@@ -192,10 +209,35 @@ impl SmartHomePage {
             .gap(px(SPACE_2))
             .child(rail)
             .child(
-                row()
-                    .justify_between()
-                    .child(hint(format!("{}°", low_end as i64)))
-                    .child(hint(format!("{}°", high_end as i64))),
+                // The scale's ends, and a label under the hollow mark for the reading.
+                div()
+                    .relative()
+                    .w_full()
+                    .h(type_size(CAPTION_SIZE))
+                    .child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .child(hint(format!("{}°", low_end as i64))),
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .right_0()
+                            .child(hint(format!("{}°", high_end as i64))),
+                    )
+                    .when_some(climate.ambient, |s, ambient| {
+                        s.child(
+                            div()
+                                .absolute()
+                                .left(relative(along(ambient)))
+                                .ml(px(-TRACK_LABEL_HALF))
+                                .w(px(TRACK_LABEL_HALF * 2.))
+                                .flex()
+                                .justify_center()
+                                .child(hint(format!("Now {}", degrees(ambient)))),
+                        )
+                    }),
             )
     }
 
@@ -343,19 +385,11 @@ impl SmartHomePage {
             )
     }
 
-    fn rooms(&self, snapshot: &HomeSnapshot, cx: &mut Context<Self>) -> Div {
+    fn rooms(&self, snapshot: &HomeSnapshot, columns: usize, cx: &mut Context<Self>) -> Div {
         let enabled = snapshot.reachable;
-        let mut rooms = row()
-            .debug_selector(|| "home.rooms".into())
-            .w_full()
-            .flex_wrap()
-            .items_stretch()
-            .gap(px(SPACE_4));
+        let mut cards: Vec<AnyElement> = vec![];
         for (room, switches) in ROOMS {
             let (lit, total) = room_lights(snapshot, switches);
-            let travelling = switches
-                .iter()
-                .any(|(key, _)| tile_state(snapshot, *key).pending);
             let mut tiles = row().w_full().gap(px(SPACE_3));
             for (key, label) in switches.iter().copied() {
                 let state = tile_state(snapshot, key);
@@ -378,44 +412,51 @@ impl SmartHomePage {
                     cx,
                 ));
             }
-            let slots = switches.len() as f32;
-            let mut card = column()
-                .flex_basis(relative(0.))
-                .min_w(px(slots * TILE_MIN_WIDTH
-                    + (slots - 1.) * SPACE_3
-                    + CARD_INSET * 2.))
-                // A room alone on its line never stretches its tiles into a wall.
-                .max_w(px(slots * TILE_MAX_WIDTH
-                    + (slots - 1.) * SPACE_3
-                    + CARD_INSET * 2.))
-                .gap(px(SPACE_4))
-                .p(px(CARD_INSET))
-                .rounded(px(RADIUS_LG))
-                .border_1()
-                .border_color(rgb(BORDER));
-            // Wider for more lights, so tiles are the same width in every room.
-            card.style().flex_grow = Some(slots);
-            rooms = rooms.child(
-                card.child(
-                    row()
-                        .justify_between()
-                        .gap(px(SPACE_2))
-                        .child(
-                            div()
-                                .text_size(type_size(BODY_SIZE))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(room),
-                        )
-                        .child(hint(if travelling {
-                            "Updating…".to_owned()
-                        } else {
-                            room_summary(lit, total)
-                        })),
-                )
-                .child(tiles),
+            cards.push(
+                column()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(SPACE_4))
+                    .p(px(CARD_INSET))
+                    // The title's cap height, not its line box, sits on the inset.
+                    .pt(px(CARD_INSET - EYEBROW_OPTICAL_LIFT))
+                    .rounded(px(RADIUS_LG))
+                    .border_1()
+                    .border_color(rgb(BORDER))
+                    .child(
+                        row()
+                            .justify_between()
+                            .gap(px(SPACE_2))
+                            .line_height(relative(1.))
+                            .child(
+                                div()
+                                    .text_size(type_size(BODY_SIZE))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(room),
+                            )
+                            .child(hint(room_summary(lit, total))),
+                    )
+                    .child(tiles)
+                    .into_any_element(),
             );
         }
-        rooms
+        // A true column grid: short last rows keep empty cells, so edges align.
+        let mut grid = column()
+            .debug_selector(|| "home.rooms".into())
+            .w_full()
+            .gap(px(SPACE_4));
+        let mut cards = cards.into_iter().peekable();
+        while cards.peek().is_some() {
+            let mut line = row().w_full().items_stretch().gap(px(SPACE_4));
+            for _ in 0..columns {
+                line = line.child(match cards.next() {
+                    Some(card) => card,
+                    None => div().flex_1().min_w_0().into_any_element(),
+                });
+            }
+            grid = grid.child(line);
+        }
+        grid
     }
 
     fn history(&self, actions: &[ActionView]) -> Div {
@@ -534,7 +575,7 @@ impl Render for SmartHomePage {
                     column()
                         .gap(px(SPACE_3))
                         .child(eyebrow("Lights"))
-                        .child(self.rooms(&snapshot, cx)),
+                        .child(self.rooms(&snapshot, room_columns(window), cx)),
                 );
                 if !snapshot.actions.is_empty() {
                     page = page.child(self.history(&snapshot.actions));

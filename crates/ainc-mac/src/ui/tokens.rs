@@ -190,7 +190,6 @@ pub const TOAST_WIDTH: f32 = 360.;
 pub const CARD_INSET: f32 = SPACE_5;
 /// Switch tiles: the narrowest a tile shrinks to and its fixed height.
 pub const TILE_MIN_WIDTH: f32 = 132.;
-pub const TILE_MAX_WIDTH: f32 = 300.;
 /// A tile is a control inside a card, so it takes the tighter control inset.
 pub const TILE_INSET: f32 = SPACE_4;
 pub const TILE_HEIGHT: f32 = 96.;
@@ -207,6 +206,11 @@ pub const DAY_PANEL_WIDTH: f32 = 260.;
 pub const MONTH_WITH_DAY_MIN: f32 = 1500.;
 /// Month rows shrink to fit short windows, but not below this.
 pub const MONTH_CELL_MIN_HEIGHT: f32 = 64.;
+/// One event line in a month cell, and the most marks a narrow cell shows.
+pub const MONTH_LINE: f32 = CONTROL_HEIGHT_SM - SPACE_1 + SPACE_HALF;
+pub const MONTH_DOTS: usize = 6;
+/// Below this window width month cells show marks instead of titles.
+pub const MONTH_TITLES_MIN: f32 = 1000.;
 /// Everything above and below the month grid in the window, for fitting rows.
 pub const MONTH_CHROME: f32 = 330.;
 pub const AGENDA_DATE_WIDTH: f32 = 128.;
@@ -217,6 +221,10 @@ pub const READING_WIDTH: f32 = 260.;
 /// Below this window width the thermostat stacks its reading above its controls.
 pub const CLIMATE_STACK_BELOW: f32 = 1000.;
 pub const TRACK_HEIGHT: f32 = 4.;
+/// Half the width reserved for the reading's label under the track.
+pub const TRACK_LABEL_HALF: f32 = 40.;
+/// The window width that fits the three Smart Home room cards side by side.
+pub const ROOMS_THREE_ACROSS: f32 = 1300.;
 pub const TRACK_HANDLE: f32 = 14.;
 pub const TRACK_MARK: f32 = 8.;
 pub const EVENT_BAR_WIDTH: f32 = 3.;

@@ -683,6 +683,7 @@ impl CalendarPage {
         events: &[CalendarEvent],
         wide: bool,
         cell_height: f32,
+        dots: bool,
         cx: &mut Context<Self>,
     ) -> Div {
         let grid = month_grid(self.anchor);
@@ -715,18 +716,39 @@ impl CalendarPage {
                 let mut cell = column()
                     .w_full()
                     .h_full()
+                    .overflow_hidden()
                     .gap(px(SPACE_HALF))
                     .child(Self::numeral(date, date.month() != month));
                 let outside = date.month() != month;
-                for event in day.iter().take(3) {
-                    cell = cell.child(self.chip(event, cx).when(outside, |s| s.opacity(0.5)));
-                }
-                if day.len() > 3 {
-                    cell = cell.child(
-                        div()
-                            .px(px(SPACE_1))
-                            .child(hint(format!("{} more", day.len() - 3))),
-                    );
+                if dots {
+                    // Narrow columns show one mark per event rather than clipped titles.
+                    cell = cell.child(row().flex_wrap().gap(px(SPACE_1)).px(px(SPACE_1)).children(
+                        day.iter().take(MONTH_DOTS).map(|event| {
+                            div()
+                                .size(px(SPACE_1 + SPACE_HALF))
+                                .rounded_full()
+                                .bg(event_color(event))
+                        }),
+                    ));
+                } else {
+                    // Only as many lines as the cell holds; the rest become "N more".
+                    let fits =
+                        ((cell_height - TODAY_MARK - SPACE_2 * 2.) / MONTH_LINE).floor() as usize;
+                    let shown = if day.len() > fits {
+                        fits.saturating_sub(1)
+                    } else {
+                        day.len()
+                    };
+                    for event in day.iter().take(shown) {
+                        cell = cell.child(self.chip(event, cx).when(outside, |s| s.opacity(0.5)));
+                    }
+                    if day.len() > shown {
+                        cell = cell.child(
+                            div()
+                                .px(px(SPACE_1))
+                                .child(hint(format!("{} more", day.len() - shown))),
+                        );
+                    }
                 }
                 line = line.child(action_button(
                     ButtonSpec {
@@ -966,22 +988,16 @@ impl CalendarPage {
                                 enabled: true,
                             },
                             |button| {
-                                // Short blocks read on one line; taller ones add the time.
+                                // The title always shows. A tall block alone in its
+                                // column adds the time; a shared or short one gives
+                                // its room to the title, which wraps when it can.
+                                let with_time = tall && count == 1;
                                 let title = div()
                                     .w_full()
-                                    .truncate()
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(rgb(TEXT))
-                                    .child(if tall {
-                                        event.title.clone()
-                                    } else {
-                                        // Title first: the time gives way before the name does.
-                                        format!(
-                                            "{} · {}",
-                                            event.title,
-                                            crate::calendar::clock(event.starts_at)
-                                        )
-                                    });
+                                    .when(!tall, |s| s.truncate())
+                                    .child(event.title.clone());
                                 button
                                     .size_full()
                                     .items_stretch()
@@ -1007,7 +1023,7 @@ impl CalendarPage {
                                             .when(tall, |s| s.py(px(SPACE_1)))
                                             .when(!tall, |s| s.justify_center())
                                             .child(title)
-                                            .when(tall, |s| {
+                                            .when(with_time, |s| {
                                                 s.child(
                                                     div()
                                                         .w_full()
@@ -1369,7 +1385,8 @@ impl Render for CalendarPage {
                     let rows = (month_grid(self.anchor).len() / 7) as f32;
                     let cell_height = ((f32::from(viewport.height) - MONTH_CHROME) / rows)
                         .clamp(MONTH_CELL_MIN_HEIGHT, MONTH_CELL_HEIGHT);
-                    self.month(&events, wide, cell_height, cx)
+                    let dots = viewport.width < px(MONTH_TITLES_MIN);
+                    self.month(&events, wide, cell_height, dots, cx)
                         .into_any_element()
                 }
                 View::Week => self.week_view(&events, cx).into_any_element(),
