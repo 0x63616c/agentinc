@@ -783,6 +783,31 @@ pub fn run() -> Result<()> {
     suite.capture("settings-home", Route::Settings, None, false)?;
     suite.bounds("settings.section.Smart Home")?;
     suite.bounds("settings.section.Calendar")?;
+    let content = suite.bounds("main-content")?.center();
+    suite.cx.simulate_event(
+        window.into(),
+        gpui::ScrollWheelEvent {
+            position: content,
+            delta: gpui::ScrollDelta::Pixels(point(px(0.), px(-900.))),
+            modifiers: Modifiers::default(),
+            touch_phase: gpui::TouchPhase::Moved,
+        },
+    );
+    // A scrolled page moves its title, so this frame skips the inset checks.
+    suite.settle()?;
+    suite
+        .cx
+        .capture_screenshot(suite.window.into())?
+        .save(suite.output.join("settings-home-scrolled.png"))?;
+    suite.cx.simulate_event(
+        window.into(),
+        gpui::ScrollWheelEvent {
+            position: content,
+            delta: gpui::ScrollDelta::Pixels(point(px(0.), px(900.))),
+            modifiers: Modifiers::default(),
+            touch_phase: gpui::TouchPhase::Moved,
+        },
+    );
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_life(true, cx);
     })?;

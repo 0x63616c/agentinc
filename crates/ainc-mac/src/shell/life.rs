@@ -236,7 +236,7 @@ impl Shell {
                                 .child("Control center"),
                         )
                         .child(caption(
-                            "AgentInc switches lights and reads the thermostat through World Wide Webb. The public address sits behind Cloudflare Access and needs a service token; an address without Access needs none. The token is kept in your Keychain.",
+                            "Switch lights and set the thermostat through your World Wide Webb control center. The public address needs a Cloudflare Access service token, which stays in your Keychain.",
                         )),
                 )
                 .child(

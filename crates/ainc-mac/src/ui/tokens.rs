@@ -200,7 +200,7 @@ pub const MONTH_CELL_HEIGHT: f32 = 100.;
 pub const HOUR_HEIGHT: f32 = 48.;
 pub const TIME_GUTTER: f32 = 56.;
 pub const DAY_PANEL_WIDTH: f32 = 300.;
-pub const AGENDA_DATE_WIDTH: f32 = 96.;
+pub const AGENDA_DATE_WIDTH: f32 = 128.;
 pub const AGENDA_TIME_WIDTH: f32 = 136.;
 /// The thermostat track: its rail, the setpoint handle and the reading mark.
 pub const TRACK_HEIGHT: f32 = 4.;
