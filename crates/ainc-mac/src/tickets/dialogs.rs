@@ -8,7 +8,7 @@ const LINK_CANDIDATES: usize = 5;
 const LINK_ROW_HEIGHT: f32 = 53.;
 /// Room for every candidate row, inside the list's inset and border. The list
 /// keeps this height so the dialog never jumps while a search narrows it.
-const LINK_LIST_HEIGHT: f32 = LINK_CANDIDATES as f32 * LINK_ROW_HEIGHT + 2. * SPACE_1 + 2.;
+const LINK_LIST_HEIGHT: f32 = LINK_CANDIDATES as f32 * LINK_ROW_HEIGHT + 2.;
 
 /// The width inside a dialog's padding and border, so selects match fields.
 fn dialog_content_width() -> f32 {
@@ -367,7 +367,8 @@ impl TicketsPage {
                     .h(px(LINK_LIST_HEIGHT))
                     .overflow_y_scroll()
                     .justify_start()
-                    .p(px(SPACE_1))
+                    // Rows start on the search field's inset, not a second one.
+                    .p_0()
                     .gap_0()
                     .children(candidates.into_iter().enumerate().map(|(index, ticket)| {
                         let other = ticket.id;

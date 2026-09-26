@@ -384,7 +384,6 @@ impl TicketsPage {
                                 )
                             })
                             .child(div().flex_1())
-                            .children(self.card_counts(ticket))
                             .child(self.assignee_avatar(&ticket.assignee_id, AVATAR_SIZE_SM)),
                     )
                     .child(
@@ -420,9 +419,11 @@ impl TicketsPage {
         let blockers = open_blockers(&self.state.tickets, &self.state.links, ticket.id);
         let shown_labels = ticket.labels.iter().take(CARD_LABELS);
         let hidden_labels = ticket.labels.len().saturating_sub(CARD_LABELS);
+        let counts = self.card_counts(ticket);
         if ticket.priority == TicketPriority::None
             && ticket.labels.is_empty()
             && blockers.is_empty()
+            && counts.is_empty()
         {
             return None;
         }
@@ -434,31 +435,39 @@ impl TicketsPage {
                 .child(icon(name, ICON_SIZE_XS).text_color(rgb(glyph)))
                 .child(text)
         };
+        // Chips wrap on the left; the counts keep the last line's right end.
+        let chips = row()
+            .flex_1()
+            .min_w_0()
+            .flex_wrap()
+            .gap(px(CHIP_GAP))
+            .when(ticket.priority != TicketPriority::None, |s| {
+                s.child(priority_chip(ticket.priority))
+            })
+            .children(shown_labels.map(|label| tag(label.clone(), label_color(label))))
+            .when(hidden_labels > 0, |s| {
+                s.child(hint(format!("+{hidden_labels}")))
+            })
+            .when(!blockers.is_empty(), |s| {
+                let text = blockers
+                    .iter()
+                    .map(|id| ticket_key(*id))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                // Only the glyph is red; the keys stay quiet so text leads.
+                s.child(meta("status-blocked", text, STATUS_RED, TEXT_SECONDARY))
+            });
         Some(
             row()
                 .w_full()
-                .flex_wrap()
-                .gap(px(CHIP_GAP))
-                .when(ticket.priority != TicketPriority::None, |s| {
-                    s.child(priority_chip(ticket.priority))
-                })
-                .children(shown_labels.map(|label| tag(label.clone(), label_color(label))))
-                .when(hidden_labels > 0, |s| {
-                    s.child(hint(format!("+{hidden_labels}")))
-                })
-                .when(!blockers.is_empty(), |s| {
-                    let text = blockers
-                        .iter()
-                        .map(|id| ticket_key(*id))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    // Only the glyph is red; the keys stay quiet so text leads.
-                    s.child(meta("status-blocked", text, STATUS_RED, TEXT_SECONDARY))
-                }),
+                .items_end()
+                .gap(px(SPACE_2))
+                .child(chips)
+                .child(row().flex_shrink_0().gap(px(SPACE_2)).children(counts)),
         )
     }
 
-    /// Sub-Tickets and Comments, quiet, beside the avatar.
+    /// Sub-Tickets and Comments, quiet, at the end of the card's last line.
     fn card_counts(&self, ticket: &Ticket) -> Vec<Div> {
         let children = relations(&self.state.links, ticket.id)
             .into_iter()

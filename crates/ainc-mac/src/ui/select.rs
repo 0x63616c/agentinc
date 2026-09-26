@@ -79,9 +79,9 @@ impl Select {
         self.enabled = enabled;
         self
     }
-    /// A trigger with no surface at rest, for property rows where a column of
-    /// bordered controls would be louder than the values they hold. Its menu
-    /// drops below the trigger, right edges aligned.
+    /// A trigger with no surface or chevron at rest, for property rows where a
+    /// column of bordered controls would be louder than the values they hold.
+    /// Its menu drops below the trigger, right edges aligned.
     pub fn quiet(mut self) -> Self {
         self.quiet = true;
         self
@@ -126,6 +126,10 @@ impl Select {
         } else if let Some((name, agent)) = person {
             trigger = trigger.leading(option_avatar(&name, agent));
         }
+        // A quiet select reads as its value; the row itself is the affordance.
+        if !quiet {
+            trigger = trigger.trailing(icon("chevronDown", ICON_SIZE_SM));
+        }
         let trigger = trigger
             .kind(if quiet {
                 ButtonKind::Ghost
@@ -136,7 +140,6 @@ impl Select {
             .align_start()
             .enabled(enabled)
             .selected(open)
-            .trailing(icon("chevronDown", ICON_SIZE_SM))
             .build(hover, on_toggle, cx)
             .debug_selector(move || trigger_selector.clone())
             .when(!open && !quiet, |s| s.bg(rgb(SURFACE_INPUT)))
