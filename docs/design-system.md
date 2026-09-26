@@ -52,7 +52,7 @@ exercised only on the Components page today.
 | --- | --- | --- |
 | `Button` (primary, secondary, ghost, destructive; small, regular, large; `.icon_only()`, `.tint()`) | `button.rs` | Every labeled action. One white primary per surface (the header's, never also the empty state's); secondary is outlined; ghost is transparent at rest and paints its hover as an overlay, so it sits on any surface; destructive is an outlined red control, never a solid slab; a disabled primary is an outline, not a gray block. |
 | `Field` / `text_field` | `field.rs` | Labeled single-line inputs and `.multiline()` text areas, with hint, error and a quiet `FOCUS_FIELD` border while editing. Fields, selects and buttons share `CONTROL_HEIGHT`; inline forms cap at `FORM_WIDTH` and end with a `dialog_footer`. |
-| `Select` | `select.rs` | Choosing one option from a short list. The menu floats, so the row never resizes. |
+| `Select` | `select.rs` | Choosing one option from a short list. The menu floats over the trigger like a macOS pop-up button, with the current option on the trigger's line, so the row never resizes and the menu never has to choose a side. |
 | `MenuEntry`, `menu_label`, `menu_divider`, `floating` | `menu.rs` | Dropdown and context menu rows and the deferred, anchored placement they share with popovers. `menu_shell` and `popover_shell` in `overlay.rs` are their surfaces. |
 | `banner`, `error_text` | `banner.rs` | A toned full-width notice inside a page; short red copy under a field or inside a dialog. |
 | `toggle`, `checkbox` | `toggle.rs` | Boolean settings. Toggles for immediate effect, checkboxes inside forms. |
@@ -62,7 +62,7 @@ exercised only on the Components page today.
 | `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `Page`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. A detail page makes its record the one H1 and puts the way back in `PageHeader::leading`; rows live in a `card` with hairlines between them. |
 | `table_container`, `table_header`, `table_cells`, `table_row`, `TableColumn` | `table.rs` | Columnar data with an eyebrow header and clickable rows. |
 | `dialog_shell`, `dialog_footer`, `sheet_shell`, `popover_shell`, `menu_shell`, `OverlayHost<O>` | `overlay.rs` | Modal confirmations and forms with a Cancel / confirm footer, side panels, floating surfaces; one active overlay per window with focus return. The overlay vocabulary itself (`model::Overlay`) belongs to the shell. |
-| `Toasts` | `toast.rs` | Transient notices above the status bar. Hosts schedule dismissal for non-sticky ones. |
+| `Toasts` | `toast.rs` | Transient notices; the host anchors the stack on its content rail and schedules dismissal for transient ones (the shell keeps a sticky one while the session cannot be saved). |
 | `EmptyState` | `empty.rs` | A page or section with nothing in it: icon, title, one line, one action. |
 | `skeleton`, `skeleton_rows`, `LoadingFrame` | `loading.rs` | Placeholders while data loads; the Evee mark for longer waits. |
 | `kbd`, `kbd_hint`, `eyebrow`, `heading`, `caption`, `icon` | `display.rs` | Shortcut hints, section labels, secondary copy, icons. |

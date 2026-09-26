@@ -334,6 +334,27 @@ pub fn render_palette<V: HoverHost>(
             ));
         }
     }
+    // Rows that continue below the list fade out rather than being cut in half.
+    let overflows = (groups.iter().filter(|g| !g.entries.is_empty()).count() as f32)
+        * (SPACE_2 + SPACE_1 + f32::from(type_size(CAPTION_SIZE)) * BODY_LINE_HEIGHT)
+        + total as f32 * PALETTE_ROW_HEIGHT
+        + SPACE_2 * 2.
+        > results_height;
+    let results = div().relative().child(results).when(overflows, |s| {
+        s.child(
+            div()
+                .absolute()
+                .bottom_0()
+                .left_0()
+                .right_0()
+                .h(px(PALETTE_ROW_HEIGHT * 0.75))
+                .bg(linear_gradient(
+                    180.,
+                    linear_color_stop(rgba(SURFACE_OVERLAY << 8), 0.),
+                    linear_color_stop(rgb(SURFACE_OVERLAY), 1.),
+                )),
+        )
+    });
     palette_frame(
         aria_label,
         palette_header(leading, input, close_focus, hover, on_close, cx),

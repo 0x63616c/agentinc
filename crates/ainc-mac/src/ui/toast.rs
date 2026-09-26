@@ -46,16 +46,20 @@ impl Toasts {
         self.items.is_empty()
     }
 
+    /// Renders the stack anchored `right` and `bottom` pixels from the host's
+    /// bottom-right corner, so the host can put it on its own content rail.
     pub fn render<V: HoverHost>(
         &self,
         hover: &HoverFade,
+        right: f32,
+        bottom: f32,
         on_dismiss: impl Fn(&mut V, u64, &mut Window, &mut Context<V>) + Clone + 'static,
         cx: &mut Context<V>,
     ) -> Div {
         column()
             .absolute()
-            .right(px(SPACE_6))
-            .bottom(px(SPACE_6 + STATUS_BAR_HEIGHT))
+            .right(px(right))
+            .bottom(px(bottom))
             .gap(px(SPACE_2))
             .items_end()
             .debug_selector(|| "toasts".into())

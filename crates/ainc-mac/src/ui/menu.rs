@@ -6,14 +6,8 @@ use gpui::{prelude::*, *};
 /// Place it inside a `column().relative()` wrapper so its origin is the
 /// wrapper's top-left corner rather than the slot after its siblings.
 pub fn floating(content: impl IntoElement, anchor: Anchor, offset: Point<Pixels>) -> Deferred {
-    deferred(
-        anchored()
-            .anchor(anchor)
-            .offset(offset)
-            .snap_to_window_with_margin(px(SPACE_2))
-            .child(content),
-    )
-    .with_priority(1)
+    // Flip to the other side when there is no room, then snap to the window edge.
+    deferred(anchored().anchor(anchor).offset(offset).child(content)).with_priority(1)
 }
 
 /// One row inside a dropdown or context menu.

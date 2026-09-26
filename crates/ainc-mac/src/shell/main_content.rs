@@ -5,7 +5,7 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("Go to…", "⌘ K"),
     ("Toggle sidebar", "⌘ B"),
     ("Back / Forward", "⌘ ⌥ ← →"),
-    ("Tickets, Assistant, Agents…", "⌘ 1 … 6"),
+    ("Tickets, Assistant, Agents…", "⌘1–6"),
     ("Settings", "⌘ ,"),
     ("Dismiss", "esc"),
 ];

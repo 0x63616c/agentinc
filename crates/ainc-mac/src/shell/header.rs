@@ -131,7 +131,7 @@ impl Shell {
                         .child(
                             row()
                                 .h_full()
-                                .pb(px(CHIP_GAP))
+                                .pb(px(SPACE_3))
                                 .pl(px(14.))
                                 .gap(px(7.))
                                 .text_size(type_size(LABEL_SIZE))

@@ -8,15 +8,6 @@ use crate::{
 use gpui::{prelude::*, *};
 use std::{sync::Arc, time::Instant};
 
-fn display_time(seconds: i64) -> String {
-    chrono::DateTime::from_timestamp(seconds, 0)
-        .map(|t| {
-            t.with_timezone(&chrono::Local)
-                .format("%b %-d, %H:%M")
-                .to_string()
-        })
-        .unwrap_or_else(|| "Time unavailable".into())
-}
 pub struct OpenTicket(pub i64);
 pub struct AutomationsPage {
     store: Option<Arc<Store>>,
@@ -329,7 +320,7 @@ impl AutomationsPage {
                     Field::new(self.minutes.clone())
                         .label("Repeat every")
                         .selector("Every (minutes)")
-                        .hint("Minutes between firings.")
+                        .suffix("min")
                         .build(window, cx),
                 ),
             )
@@ -398,6 +389,7 @@ impl AutomationsPage {
                     .ghost()
                     .small()
                     .icon("chevronLeft")
+                    .tint(TEXT_SECONDARY)
                     .build(
                         &self.hover,
                         |this, _, cx| {
@@ -528,7 +520,7 @@ impl AutomationsPage {
                                             div()
                                                 .flex_1()
                                                 .text_size(type_size(LABEL_SIZE))
-                                                .child(display_time(o.scheduled_at)),
+                                                .child(timestamp(o.scheduled_at)),
                                         )
                                         .when_some(o.ticket_id, |s, id| {
                                             s.child(
@@ -559,7 +551,7 @@ impl AutomationsPage {
                             .map(|h| {
                                 caption(format!(
                                     "{} · {} {}",
-                                    display_time(h.observed_at),
+                                    timestamp(h.observed_at),
                                     h.count,
                                     h.kind.replace('_', " ")
                                 ))

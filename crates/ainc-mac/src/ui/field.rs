@@ -1,6 +1,6 @@
 //! Shared chrome around the native text editing engine.
 use super::{
-    display::{caption, icon},
+    display::{hint, icon},
     layout::{column_gap, row},
     tokens::*,
 };
@@ -14,6 +14,7 @@ pub struct Field {
     hint: Option<SharedString>,
     error: Option<SharedString>,
     leading: Option<&'static str>,
+    suffix: Option<SharedString>,
     selector: Option<&'static str>,
     multiline: bool,
 }
@@ -26,9 +27,15 @@ impl Field {
             hint: None,
             error: None,
             leading: None,
+            suffix: None,
             selector: None,
             multiline: false,
         }
+    }
+    /// A unit shown inside the field's right edge, such as `min`.
+    pub fn suffix(mut self, suffix: impl Into<SharedString>) -> Self {
+        self.suffix = Some(suffix.into());
+        self
     }
     pub fn label(mut self, label: &'static str) -> Self {
         self.label = Some(label);
@@ -100,7 +107,8 @@ impl Field {
                     .border_color(rgb(border))
                     .rounded(px(FIELD_RADIUS))
                     .when_some(self.leading, |s, name| s.child(icon(name, ICON_SIZE_SM)))
-                    .child(div().flex_1().min_w_0().child(self.input)),
+                    .child(div().flex_1().min_w_0().child(self.input))
+                    .when_some(self.suffix, |s, suffix| s.child(hint(suffix))),
             )
             .when_some(self.error, |s, error| {
                 s.child(
@@ -111,7 +119,7 @@ impl Field {
                 )
             })
             .when(!has_error, |s| {
-                s.when_some(self.hint, |s, hint| s.child(caption(hint)))
+                s.when_some(self.hint, |s, text| s.child(hint(text)))
             })
     }
 }

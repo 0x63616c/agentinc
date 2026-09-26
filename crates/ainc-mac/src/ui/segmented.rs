@@ -71,7 +71,6 @@ pub fn tabs<V: HoverHost>(
                 .child(
                     Button::new(ElementId::NamedInteger(name.clone(), index as u64), label)
                         .ghost()
-                        .selected(is_selected)
                         .build(
                             hover,
                             move |view, window, cx| on_select(view, index, window, cx),

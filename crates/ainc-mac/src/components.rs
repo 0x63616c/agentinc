@@ -428,7 +428,7 @@ impl ComponentsPage {
             .child(specimen(
                 "Dialog",
                 "Centered on a scrim with a title, body and right-aligned actions.",
-                row().child(dialog_shell(
+                row().justify_center().child(dialog_shell(
                     "Delete “Plan the week”?",
                     caption("This Ticket and its Comments will be removed."),
                     row_gap(CONTROL_GAP).justify_end()
@@ -481,6 +481,8 @@ impl ComponentsPage {
                     )))
                     .child(div().relative().w_full().h(px(200.)).child(self.toasts.render(
                         &self.hover,
+                        SPACE_4,
+                        SPACE_4,
                         |this, id, _, cx| {
                             this.toasts.dismiss(id);
                             cx.notify();

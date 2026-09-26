@@ -496,7 +496,7 @@ impl TicketsPage {
                 .when(self.loaded && agents.is_empty() && self.error.is_none(), |s| {
                     s.child(
                         EmptyState::new("agents", "No Agents yet")
-                            .description("Register an agent with instructions and a model, then assign it Tickets.")
+                            .description("Register an agent with instructions and a model, then assign Tickets to it.")
                             .selector("agents.empty")
                             .action(
                                 Button::new("agents.create.empty", "New Agent")
@@ -509,25 +509,54 @@ impl TicketsPage {
                     )
                 })
                 .when(!agents.is_empty(), |s| {
-                    s.child(card().p(px(SPACE_1)).gap_0().children(agents.iter().map(|agent| {
-                        let name = agent.name.clone();
-                        let assigned = self
-                            .state
-                            .tickets
-                            .iter()
-                            .filter(|t| t.assignee_id == agent.id && t.status != TicketStatus::Done)
-                            .count();
-                        ListRow::new(SharedString::from(format!("agent.{}", agent.id)), name.clone())
-                            .leading(avatar(&name, None, AVATAR_SIZE))
-                            .subtitle(match assigned {
+                    let count = agents.len();
+                    s.child(card().p(px(SPACE_1)).gap_0().children(agents.iter().enumerate().map(
+                        |(index, agent)| {
+                            let name = agent.name.clone();
+                            let assigned = self
+                                .state
+                                .tickets
+                                .iter()
+                                .filter(|t| {
+                                    t.assignee_id == agent.id && t.status != TicketStatus::Done
+                                })
+                                .count();
+                            let running = self.state.runs.iter().any(|r| {
+                                matches!(r.state.as_str(), "queued" | "running")
+                                    && self.state.tickets.iter().any(|t| {
+                                        t.id == r.ticket_id && t.assignee_id == agent.id
+                                    })
+                            });
+                            let subtitle = match assigned {
                                 0 => "No open Tickets".to_owned(),
                                 1 => "1 open Ticket".to_owned(),
                                 n => format!("{n} open Tickets"),
-                            })
-                            .trailing(badge("Agent", Tone::Neutral))
-                            .build(&self.hover, |_, _, _| {}, cx)
-                            .accessibility_id(format!("agent.{}", agent.id))
-                    })))
+                            };
+                            list_item(SharedString::from(format!("agent.{}", agent.id)), name.clone())
+                                .accessibility_id(format!("agent.{}", agent.id))
+                                .min_h(px(LIST_ROW_HEIGHT))
+                                .px(px(SPACE_3))
+                                .py(px(SPACE_2))
+                                .gap(px(SPACE_3))
+                                .when(index + 1 < count, |s| {
+                                    s.border_b_1().border_color(rgb(BORDER_SUBTLE))
+                                })
+                                .child(avatar(&name, None, AVATAR_SIZE))
+                                .child(
+                                    column()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .gap(px(SPACE_HALF))
+                                        .child(div().text_size(type_size(BODY_SIZE)).child(name.clone()))
+                                        .child(caption(subtitle)),
+                                )
+                                .child(if running {
+                                    status_pill("Running", Tone::Info)
+                                } else {
+                                    status_pill("Idle", Tone::Neutral)
+                                })
+                        },
+                    )))
                 }),
         )
         .build()
@@ -544,12 +573,6 @@ impl TicketsPage {
             .iter()
             .any(|r| r.ticket_id == id && matches!(r.state.as_str(), "queued" | "running"));
         let has_runs = self.state.runs.iter().any(|r| r.ticket_id == id);
-        let assignee = self
-            .state
-            .assignees
-            .iter()
-            .find(|a| a.id == ticket.assignee_id)
-            .map_or("Unassigned", |a| a.name.as_str());
         let enabled = !self.pending;
         PageHeader::new(ticket.title.clone())
             .leading(
@@ -557,6 +580,7 @@ impl TicketsPage {
                     .ghost()
                     .small()
                     .icon("chevronLeft")
+                    .tint(TEXT_SECONDARY)
                     .build(
                         &self.hover,
                         |this, _, cx| {
@@ -567,10 +591,7 @@ impl TicketsPage {
                     )
                     .ml(px(-CONTROL_INSET_X_SM)),
             )
-            .description(format!(
-                "Ticket {id} · {} · {assignee}",
-                status_name(ticket.status)
-            ))
+            .description(format!("T-{id} · {}", status_name(ticket.status)))
             .actions(
                 row_gap(CONTROL_GAP)
                     .when(running, |s| {
@@ -593,6 +614,7 @@ impl TicketsPage {
                             Button::new("tickets.delete", "Delete")
                                 .ghost()
                                 .icon("trash")
+                                .tint(TEXT_SECONDARY)
                                 .enabled(enabled)
                                 .build(
                                     &self.hover,
@@ -757,15 +779,19 @@ impl TicketsPage {
                                     .min_w_0()
                                     .gap(px(SPACE_HALF))
                                     .child(
-                                        div()
-                                            .text_size(type_size(LABEL_SIZE))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .child(author),
+                                        row()
+                                            .gap(px(SPACE_2))
+                                            .child(
+                                                div()
+                                                    .text_size(type_size(LABEL_SIZE))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .child(author),
+                                            )
+                                            .child(hint(timestamp(comment.created_at))),
                                     )
                                     .child(
                                         div()
                                             .text_size(type_size(BODY_SIZE))
-                                            .text_color(rgb(TEXT_SECONDARY))
                                             .child(comment.body.clone()),
                                     ),
                             )
@@ -773,39 +799,22 @@ impl TicketsPage {
                     .child(
                         row()
                             .mt(px(SPACE_2))
-                            .items_start()
                             .gap(px(SPACE_3))
                             .child(avatar("You", None, AVATAR_SIZE))
                             .child(
-                                column()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .gap(px(SPACE_2))
-                                    .child(
-                                        Field::new(self.comment.clone())
-                                            .selector("Add a Comment")
-                                            .build(window, cx),
+                                div().flex_1().min_w_0().child(
+                                    Field::new(self.comment.clone())
+                                        .selector("Add a Comment")
+                                        .build(window, cx),
+                                ),
+                            )
+                            .child(
+                                Button::new("tickets.post", "Post")
+                                    .primary()
+                                    .enabled(
+                                        enabled && !self.comment.read(cx).content.trim().is_empty(),
                                     )
-                                    .child(
-                                        row().justify_end().child(
-                                            Button::new("tickets.post", "Post Comment")
-                                                .primary()
-                                                .enabled(
-                                                    enabled
-                                                        && !self
-                                                            .comment
-                                                            .read(cx)
-                                                            .content
-                                                            .trim()
-                                                            .is_empty(),
-                                                )
-                                                .build(
-                                                    &self.hover,
-                                                    |this, _, cx| this.add_comment(cx),
-                                                    cx,
-                                                ),
-                                        ),
-                                    ),
+                                    .build(&self.hover, |this, _, cx| this.add_comment(cx), cx),
                             ),
                     ),
             )
@@ -830,6 +839,7 @@ impl TicketsPage {
                     .child(
                         row()
                             .gap(px(SPACE_2))
+                            .child(status_dot(status_tone(status)))
                             .child(eyebrow(status_name(status)))
                             .child(caption(count.to_string())),
                     )

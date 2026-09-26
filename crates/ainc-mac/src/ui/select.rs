@@ -122,10 +122,14 @@ impl Select {
                         cx,
                     ));
                 }
+                // Like a macOS pop-up button: the menu opens over the trigger with
+                // the current option on the trigger's own line, so it never has to
+                // choose between opening downward and being clamped over itself.
+                let current = value.unwrap_or(0) as f32;
                 s.child(floating(
                     menu,
                     Anchor::TopLeft,
-                    point(px(0.), px(CONTROL_HEIGHT + SPACE_1)),
+                    point(px(0.), px(-(MENU_INSET + current * MENU_ITEM_HEIGHT))),
                 ))
             })
     }

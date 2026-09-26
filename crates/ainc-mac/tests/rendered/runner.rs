@@ -1056,6 +1056,11 @@ pub fn run() -> Result<()> {
     suite.check_components_geometry(&["dialog", "sheet", "menus-and-popovers", "toasts"])?;
     suite.keys("cmd-5");
     suite.capture("terminal", Route::Terminal, None, false)?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_terminal_unavailable(cx);
+    })?;
+    suite.capture("terminal-unavailable", Route::Terminal, None, false)?;
+    suite.bounds("terminal.unavailable")?;
     println!(
         "{} real Metal frames passed, including region-removal negative controls",
         suite.count

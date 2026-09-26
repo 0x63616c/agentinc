@@ -557,6 +557,15 @@ impl Shell {
         });
         cx.notify();
     }
+    #[cfg(all(test, feature = "rendered-tests", target_os = "macos"))]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_terminal_unavailable(&mut self, cx: &mut Context<Self>) {
+        self.terminal = None;
+        self.terminal_error =
+            Some("Ghostty could not start: the bundled runtime is missing.".into());
+        self.session.navigate(Route::Terminal);
+        cx.notify();
+    }
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
     pub(crate) fn fixture_recent_commands(&mut self, ids: &[&str], cx: &mut Context<Self>) {
@@ -1332,6 +1341,8 @@ impl Render for Shell {
             .when(!self.toasts.is_empty(), |s| {
                 s.child(self.toasts.render(
                     &self.hover,
+                    PANEL_GAP + PAGE_X,
+                    PANEL_GAP + STATUS_BAR_HEIGHT + PAGE_X,
                     |this: &mut Self, id, window, cx| {
                         this.dispatch(Control::DismissToast(id), window, cx)
                     },

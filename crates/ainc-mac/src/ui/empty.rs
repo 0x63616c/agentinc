@@ -69,7 +69,7 @@ impl EmptyState {
                     .when_some(self.description, |s, description| {
                         s.child(
                             div()
-                                .max_w(px(440.))
+                                .max_w(px(480.))
                                 .text_align(TextAlign::Center)
                                 .text_size(type_size(LABEL_SIZE))
                                 .text_color(rgb(TEXT_SECONDARY))

@@ -581,7 +581,17 @@ impl AssistantPage {
                                 "Ask Evee to plan your day, dig into a Ticket or kick off work.",
                             )
                             .selector("assistant.empty")
-                            .action(self.new_conversation_button("new-chat.empty", cx))
+                            .action(
+                                Button::new("new-chat.empty", "New Conversation")
+                                    .secondary()
+                                    .icon("plus")
+                                    .enabled(enabled)
+                                    .build(
+                                        &self.hover,
+                                        |this, _, cx| this.new_conversation(cx),
+                                        cx,
+                                    ),
+                            )
                             .build(),
                     )
                 })
@@ -590,7 +600,6 @@ impl AssistantPage {
                         .gap(px(SPACE_HALF))
                         .children(self.conversations.iter().map(|conversation| {
                             let id = conversation.id;
-                            let selected = self.conversation == Some(id);
                             let menu_open = self.overlays.borrow().active()
                                 == Some(Overlay::ConversationMenu(id));
                             let snippet = if conversation.snippet.trim().is_empty() {
@@ -710,7 +719,6 @@ impl AssistantPage {
                             ListRow::new(("conversation", id as u64), conversation.title.clone())
                                 .leading(evee_mark(AVATAR_SIZE))
                                 .subtitle(snippet)
-                                .selected(selected)
                                 .enabled(enabled)
                                 .trailing(
                                     row()
@@ -770,6 +778,7 @@ impl AssistantPage {
             vec![]
         };
         self.show_chat = true;
+        self.scroll.scroll_to_bottom();
         cx.notify();
     }
     #[cfg(test)]
@@ -1060,7 +1069,8 @@ impl AssistantPage {
                                                             )
                                                         },
                                                         cx,
-                                                    ),
+                                                    )
+                                                    .ml(px(-CONTROL_INSET_X_SM)),
                                             ),
                                         )
                                     })
