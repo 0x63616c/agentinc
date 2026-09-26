@@ -32,3 +32,72 @@ jobs:
       - run: cargo xtask generate --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked --workspace
+  native-e2e:
+    runs-on: [self-hosted, macOS, ARM64, agentinc-release]
+    timeout-minutes: 180
+    concurrency:
+      group: agentinc-native-e2e
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      CARGO_BUILD_JOBS: 4
+      CARGO_INCREMENTAL: "0"
+      DEVELOPER_DIR: /Applications/Xcode-27.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare pinned macOS tools
+        run: |
+          export CARGO_HOME="$RUNNER_WORKSPACE/.cargo"
+          export RUSTUP_HOME="$RUNNER_WORKSPACE/.rustup"
+          export CARGO_TARGET_DIR="$RUNNER_WORKSPACE/.cargo-target"
+          {
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+            echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+          } >> "$GITHUB_ENV"
+          {
+            echo "$HOME/.cargo/bin"
+            echo "$RUNNER_WORKSPACE/release-tools"
+          } >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install 1.98.1 --profile minimal
+          tools="$RUNNER_WORKSPACE/release-tools"
+          mkdir -p "$tools"
+          if [ ! -x "$tools/temporal" ]; then
+            curl --fail --location --output "$tools/temporal.tar.gz" https://github.com/temporalio/cli/releases/download/v1.9.1/temporal_cli_1.9.1_darwin_arm64.tar.gz
+            test "$(shasum -a 256 "$tools/temporal.tar.gz" | cut -d ' ' -f 1)" = 41e0425378fcb4fb5766340b97435e20fe47bbff2d7bf644ec2d51f7662b7c56
+            tar -xzf "$tools/temporal.tar.gz" -C "$tools" temporal
+          fi
+          if [ ! -x "$tools/codex" ]; then
+            curl --fail --location --output "$tools/codex.tar.gz" https://github.com/openai/codex/releases/download/rust-v0.155.1/codex-aarch64-apple-darwin.tar.gz
+            test "$(shasum -a 256 "$tools/codex.tar.gz" | cut -d ' ' -f 1)" = 5e5a51470dce2423f9d96bd191d0bbc4cc0e2848a6833df5178eaf47a07a3768
+            tar -xzf "$tools/codex.tar.gz" -C "$tools"
+            mv "$tools/codex-aarch64-apple-darwin" "$tools/codex"
+          fi
+          if [ ! -x "$tools/protoc/bin/protoc" ]; then
+            curl --fail --location --output "$tools/protoc.zip" https://github.com/protocolbuffers/protobuf/releases/download/v36.2/protoc-36.2-osx-aarch_64.zip
+            test "$(shasum -a 256 "$tools/protoc.zip" | cut -d ' ' -f 1)" = 9cd98a532c5c5e0c4161314de0225de27e4c8a323917b6ea7b1b714d3ae23466
+            mkdir -p "$tools/protoc"
+            unzip -q "$tools/protoc.zip" -d "$tools/protoc"
+          fi
+          echo "PROTOC=$tools/protoc/bin/protoc" >> "$GITHUB_ENV"
+      - name: Build complete native bundle and Pilot app
+        run: |
+          cargo xtask release --profile debug
+          AINC_BUILD_ID="$(git rev-list --count HEAD)" AINC_CHANNEL=production AINC_COMMIT="$GITHUB_SHA" \
+            cargo build --locked -p agentinc-os -p gpui-pilot-cli --features agentinc-os/automation
+          mkdir -p target/app-e2e
+          ditto ".local/release/$GITHUB_SHA/AgentInc.app" target/app-e2e/AgentInc.app
+          cp "$CARGO_TARGET_DIR/debug/agentinc-os" target/app-e2e/AgentInc.app/Contents/MacOS/AgentInc
+          codesign --force --deep --sign - target/app-e2e/AgentInc.app
+      - name: Exercise native app, daemon and UI
+        run: python3 scripts/e2e/run.py --app target/app-e2e/AgentInc.app --pilot-cli "$CARGO_TARGET_DIR/debug/gpui-pilot" --output target/app-e2e-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-e2e-${{ github.sha }}
+          path: target/app-e2e-evidence/
+          if-no-files-found: warn
+          retention-days: 7

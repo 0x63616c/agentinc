@@ -51,6 +51,9 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.ready == 'true' && (github.event_name == 'push' || inputs.build != false)
     runs-on: [self-hosted, macOS, ARM64, agentinc-release]
+    concurrency:
+      group: agentinc-native-e2e
+      cancel-in-progress: false
     timeout-minutes: 180
     permissions:
       contents: read
@@ -233,10 +236,21 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
+      - uses: actions/upload-artifact@v4
+        if: steps.handoff.outputs.ready == 'true'
+        with:
+          name: app-signed-${{ inputs.commit || github.sha }}
+          path: .local/distribution/AgentInc.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
   upgrade:
     needs: [prepare, native, distribute]
     if: needs.distribute.result == 'success'
     runs-on: [self-hosted, macOS, ARM64, agentinc-release]
+    concurrency:
+      group: agentinc-native-e2e
+      cancel-in-progress: false
     timeout-minutes: 60
     permissions:
       contents: read
@@ -257,6 +271,15 @@ jobs:
         with:
           name: upgrade-signed-${{ inputs.commit || github.sha }}
           path: .local/upgrade-signed
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-signed-${{ inputs.commit || github.sha }}
+          path: .local/signed-input
+      - name: Gate signed app, daemon and terminal
+        run: |
+          mkdir -p .local/signed-install
+          tar -xzf .local/signed-input/AgentInc.tar.gz -C .local/signed-install
+          python3 scripts/e2e/run.py --app .local/signed-install/AgentInc.app --output .local/signed-e2e-evidence
       - name: Gate native upgrade paths
         env:
           GH_TOKEN: ${{ github.token }}
@@ -273,9 +296,16 @@ jobs:
             --key .local/upgrade-input/test-key.pem \
             --manifest-tool .local/upgrade-input/ainc-release-manifest \
             "${prior[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signed-e2e-${{ inputs.commit || github.sha }}
+          path: .local/signed-e2e-evidence/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Remove upgrade fixtures
         if: always()
-        run: rm -rf .local/upgrade-input .local/upgrade-signed
+        run: rm -rf .local/upgrade-input .local/upgrade-signed .local/signed-input .local/signed-install
   publish:
     needs: [prepare, distribute, upgrade]
     if: needs.upgrade.result == 'success' && ((github.ref == 'refs/heads/main' && inputs.test != true) || (github.event_name == 'workflow_dispatch' && inputs.test == true))

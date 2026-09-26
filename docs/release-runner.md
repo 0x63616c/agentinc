@@ -23,8 +23,9 @@ change pushed to `main`. Its Ubuntu prepare job checks the version, then the
 Mac runs `cargo xtask release` at that exact commit. The unsigned archive moves
 to the Ubuntu job through a one-day Actions artifact. Only Ubuntu receives the
 Apple and update-signing secrets; it signs, notarizes, and staples. Distribution
-then runs the [native upgrade gate](upgrade-gate.md) on the Mac and publishes
-on main only after that job succeeds.
+then runs the [native end-to-end suite](testing.md) against the signed archive
+and the [native upgrade gate](upgrade-gate.md) on the Mac. Publication on main
+requires both checks to pass.
 The Mac job has read-only repository permission and checkout does not persist
 its token. No pull-request event invokes the Mac job. An owner
 `workflow_dispatch` may run the path in `test=true` mode, which leaves a draft
