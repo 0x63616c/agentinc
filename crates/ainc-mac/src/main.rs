@@ -1,11 +1,13 @@
 mod about;
-mod assistant;
 mod automations;
+mod commands;
 mod evee;
 mod input;
+mod markdown;
 mod model;
 mod native_update;
 mod profile;
+mod providers;
 mod shell;
 mod storage;
 mod temporal;

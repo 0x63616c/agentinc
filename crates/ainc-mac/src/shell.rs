@@ -464,6 +464,22 @@ impl Shell {
     }
     #[cfg(test)]
     #[allow(dead_code)]
+    pub(crate) fn fixture_streaming(&mut self, cx: &mut Context<Self>) {
+        self.session.navigate(Route::Assistant);
+        self.assistant
+            .update(cx, |assistant, cx| assistant.fixture_streaming(cx));
+        cx.notify();
+    }
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_palette(&mut self, cx: &mut Context<Self>) {
+        self.session.navigate(Route::Assistant);
+        self.assistant
+            .update(cx, |assistant, cx| assistant.fixture_palette(cx));
+        cx.notify();
+    }
+    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn fixture_models(&mut self, cx: &mut Context<Self>) {
         self.assistant
             .update(cx, |assistant, cx| assistant.fixture_models(cx));
