@@ -14,6 +14,7 @@ const DAY: i64 = 86_400;
 const IMPORT_BEHIND: i64 = 31 * DAY;
 const IMPORT_AHEAD: i64 = 365 * DAY;
 /// How often an authorized Mac calendar is mirrored again while AgentInc runs.
+#[cfg(not(test))]
 const SYNC_EVERY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 
 pub struct CalendarModel {

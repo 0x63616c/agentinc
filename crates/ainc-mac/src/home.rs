@@ -406,7 +406,8 @@ pub(crate) mod fixtures {
             ],
         }
     }
-    /// Not connected yet.
+    /// Not connected yet. Used by the rendered shell suite.
+    #[allow(dead_code)]
     pub fn disconnected() -> HomeSnapshot {
         HomeSnapshot {
             connection: None,

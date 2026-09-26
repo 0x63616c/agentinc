@@ -35,6 +35,16 @@ const DAY_ENDS: u32 = 20;
 /// How many days the agenda reads ahead.
 const AGENDA_DAYS: i64 = 42;
 
+/// A valid event read from the editor's fields.
+struct Draft {
+    title: String,
+    starts_at: i64,
+    ends_at: i64,
+    all_day: bool,
+    location: Option<String>,
+    notes: Option<String>,
+}
+
 /// What the editor dialog is showing.
 #[derive(Clone, Debug, PartialEq)]
 enum Editing {
@@ -302,10 +312,7 @@ impl CalendarPage {
         handles
     }
     /// The event the form describes, or why it cannot be saved.
-    fn draft(
-        &self,
-        cx: &App,
-    ) -> Result<(String, i64, i64, bool, Option<String>, Option<String>), String> {
+    fn draft(&self, cx: &App) -> Result<Draft, String> {
         let text = |input: &Entity<TextInput>| input.read(cx).content.trim().to_owned();
         let title = text(&self.title);
         if title.is_empty() {
@@ -328,14 +335,14 @@ impl CalendarPage {
             (starts_at, ends_at)
         };
         let optional = |value: String| (!value.is_empty()).then_some(value);
-        Ok((
+        Ok(Draft {
             title,
             starts_at,
             ends_at,
-            self.all_day,
-            optional(text(&self.location)),
-            optional(text(&self.notes)),
-        ))
+            all_day: self.all_day,
+            location: optional(text(&self.location)),
+            notes: optional(text(&self.notes)),
+        })
     }
     fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(editing) = self.editing.clone() else {
@@ -345,7 +352,14 @@ impl CalendarPage {
             self.close(window, cx);
             return;
         }
-        let (title, starts_at, ends_at, all_day, location, notes) = match self.draft(cx) {
+        let Draft {
+            title,
+            starts_at,
+            ends_at,
+            all_day,
+            location,
+            notes,
+        } = match self.draft(cx) {
             Ok(draft) => draft,
             Err(error) => {
                 self.form_error = Some(error);
