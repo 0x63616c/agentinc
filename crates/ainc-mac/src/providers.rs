@@ -35,6 +35,48 @@ pub fn connect(
             .into_inner())
     })
 }
+/// Start a browser sign-in and follow it: open the link once, then return when
+/// the daemon has finished (ChatGPT) or is waiting for the pasted code (Claude).
+pub fn follow_sign_in(
+    id: ProviderId,
+    open: impl FnOnce(String) + Send + 'static,
+) -> Result<ProvidersState> {
+    background(async move {
+        let client = client().await?;
+        let mut state = client
+            .provider_connect()
+            .id(id.to_string())
+            .body(ConnectRequest {
+                api_key: None,
+                code: None,
+            })
+            .send()
+            .await
+            .map_err(describe)?
+            .into_inner();
+        let mut open = Some(open);
+        loop {
+            let Some(status) = state.providers.iter().find(|p| p.id == id).cloned() else {
+                return Ok(state);
+            };
+            if let Some(url) = &status.auth_url
+                && let Some(open) = open.take()
+            {
+                open(url.clone());
+            }
+            if !status.signing_in || status.awaiting_code {
+                return Ok(state);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            state = client
+                .providers_state()
+                .refresh(false)
+                .send()
+                .await?
+                .into_inner();
+        }
+    })
+}
 pub fn cancel(id: ProviderId) -> Result<ProvidersState> {
     background(async {
         Ok(client()

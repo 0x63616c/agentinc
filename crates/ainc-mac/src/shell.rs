@@ -61,6 +61,7 @@ pub struct Shell {
     session: Session,
     overlays: Rc<RefCell<OverlayHost>>,
     assistant: Entity<crate::evee::AssistantPage>,
+    providers_settings: Entity<crate::providers_settings::ProvidersSettings>,
     tickets: Entity<crate::tickets::TicketsPage>,
     automations: Entity<crate::automations::AutomationsPage>,
     temporal: Entity<crate::temporal::TemporalPage>,
@@ -69,6 +70,7 @@ pub struct Shell {
     _tickets_subscription: Subscription,
     _update_subscription: Option<Subscription>,
     _assistant_subscriptions: Vec<Subscription>,
+    _providers_subscription: Subscription,
     profile: crate::profile::Profile,
     path: PathBuf,
     focus: FocusHandle,
@@ -204,6 +206,10 @@ impl Shell {
                             page.workspace_changed(cx);
                             cx.notify();
                         });
+                        this.providers_settings.update(cx, |page, cx| {
+                            page.workspace_changed(cx);
+                            cx.notify();
+                        });
                         this.tickets.update(cx, |page, cx| {
                             page.workspace_changed(cx);
                             cx.notify();
@@ -269,6 +275,9 @@ impl Shell {
                 cx,
             )
         });
+        let providers_settings =
+            cx.new(|cx| crate::providers_settings::ProvidersSettings::new(store.clone(), cx));
+        let providers_subscription = cx.observe(&providers_settings, |_, _, cx| cx.notify());
         let assistant_subscriptions = vec![
             cx.observe(&assistant, |_, _, cx| cx.notify()),
             cx.subscribe(
@@ -346,6 +355,7 @@ impl Shell {
             session,
             overlays,
             assistant,
+            providers_settings,
             tickets,
             automations,
             temporal,
@@ -354,6 +364,7 @@ impl Shell {
             _tickets_subscription: tickets_subscription,
             _update_subscription: update_subscription,
             _assistant_subscriptions: assistant_subscriptions,
+            _providers_subscription: providers_subscription,
             profile,
             pane_visible,
             pane_animation: [None; 1],
@@ -483,6 +494,9 @@ impl Shell {
     pub(crate) fn fixture_models(&mut self, cx: &mut Context<Self>) {
         self.assistant
             .update(cx, |assistant, cx| assistant.fixture_models(cx));
+        self.providers_settings.update(cx, |settings, cx| {
+            settings.fixture(crate::evee::fixture_providers(), cx)
+        });
         cx.notify();
     }
 

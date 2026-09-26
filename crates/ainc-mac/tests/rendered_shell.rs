@@ -16,12 +16,16 @@ mod input;
 mod markdown;
 #[path = "../src/model.rs"]
 mod model;
+#[path = "../src/model_menu.rs"]
+mod model_menu;
 #[path = "../src/native_update.rs"]
 mod native_update;
 #[path = "../src/profile.rs"]
 mod profile;
 #[path = "../src/providers.rs"]
 mod providers;
+#[path = "../src/providers_settings.rs"]
+mod providers_settings;
 #[path = "../src/shell.rs"]
 mod shell;
 #[path = "../src/storage.rs"]

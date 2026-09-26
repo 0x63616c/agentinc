@@ -2,18 +2,19 @@ use crate::{
     commands::{self, Parsed},
     input::{Submit, TextInput},
     markdown,
-    providers::{self, ProviderId, ProviderModel, ProviderStatus, ProviderTest, ProvidersState},
+    model_menu::{self, ModelMenu},
+    providers::{self, ProvidersState},
     storage::{Command, Conversation, Store, Turn},
     ui::*,
 };
-use ainc_client::types::{HttpPolicy, TurnStep};
+use ainc_client::types::TurnStep;
 use gpui::{prelude::*, *};
 use std::{
     cell::RefCell,
     collections::HashSet,
     rc::Rc,
     sync::Arc,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
@@ -51,17 +52,8 @@ pub struct AssistantPage {
     account: Option<String>,
     providers: Option<ProvidersState>,
     model: Option<String>,
-    model_menu_open: bool,
-    model_menu_closing: bool,
-    model_menu_generation: u64,
+    menu: ModelMenu,
     credentials_busy: bool,
-    busy_provider: Option<ProviderId>,
-    connection_error: Option<String>,
-    provider_test: Option<(ProviderId, ProviderTest)>,
-    api_key_input: Entity<TextInput>,
-    code_input: Entity<TextInput>,
-    allow_input: Entity<TextInput>,
-    deny_input: Entity<TextInput>,
     expanded_steps: HashSet<i64>,
     palette_index: usize,
     help_open: bool,
@@ -119,23 +111,9 @@ impl AssistantPage {
         let rename_input = cx.new(|cx| {
             TextInput::field("Conversation title", false, cx).identified("evee.conversation.title")
         });
-        let api_key_input =
-            cx.new(|cx| TextInput::field("sk-or-…", true, cx).identified("evee.openrouter.key"));
-        let code_input = cx
-            .new(|cx| TextInput::field("Paste the code", false, cx).identified("evee.claude.code"));
-        let allow_input =
-            cx.new(|cx| TextInput::field("*", false, cx).identified("evee.policy.allow"));
-        let deny_input =
-            cx.new(|cx| TextInput::field("none", false, cx).identified("evee.policy.deny"));
         let subscriptions = vec![
             cx.subscribe(&input, |this, _, _: &Submit, cx| this.send(cx)),
             cx.observe(&input, |_, _, cx| cx.notify()),
-            cx.subscribe(&api_key_input, |this, _, _: &Submit, cx| {
-                this.connect(ProviderId::Openrouter, cx)
-            }),
-            cx.subscribe(&code_input, |this, _, _: &Submit, cx| this.submit_code(cx)),
-            cx.subscribe(&allow_input, |this, _, _: &Submit, cx| this.save_policy(cx)),
-            cx.subscribe(&deny_input, |this, _, _: &Submit, cx| this.save_policy(cx)),
             cx.subscribe(&rename_input, |this, _, _: &Submit, cx| this.rename(cx)),
             cx.observe(&rename_input, |this, input, cx| {
                 let title = input.read(cx).content.trim().to_owned();
@@ -161,7 +139,6 @@ impl AssistantPage {
                     match result {
                         Ok(()) => {
                             this.reload_snapshot();
-                            this.load_policy(cx);
                             if let Some(id) = this.active {
                                 this.watch_turn(id, cx);
                             }
@@ -202,17 +179,8 @@ impl AssistantPage {
             account: None,
             providers: None,
             model,
-            model_menu_open: false,
-            model_menu_closing: false,
-            model_menu_generation: 0,
+            menu: ModelMenu::default(),
             credentials_busy: !cfg!(test),
-            busy_provider: None,
-            connection_error: None,
-            provider_test: None,
-            api_key_input,
-            code_input,
-            allow_input,
-            deny_input,
             expanded_steps: HashSet::new(),
             palette_index: 0,
             help_open: false,
@@ -230,7 +198,6 @@ impl AssistantPage {
     }
     fn apply_providers(&mut self, result: anyhow::Result<ProvidersState>) {
         self.credentials_busy = false;
-        self.busy_provider = None;
         match result {
             Ok(state) => {
                 self.account = state
@@ -243,59 +210,19 @@ impl AssistantPage {
                             .clone()
                             .unwrap_or_else(|| provider.name.clone())
                     });
-                self.connection_error = None;
                 self.providers = Some(state);
             }
-            Err(error) => self.connection_error = Some(error.to_string()),
+            Err(error) => self.error = Some(error.to_string()),
         }
     }
-    fn provider(&self, id: ProviderId) -> Option<&ProviderStatus> {
-        self.providers
-            .as_ref()
-            .and_then(|state| state.providers.iter().find(|provider| provider.id == id))
-    }
-    fn models(&self) -> Vec<(&ProviderStatus, &ProviderModel)> {
-        self.providers
-            .iter()
-            .flat_map(|state| state.providers.iter())
-            .flat_map(|provider| provider.models.iter().map(move |model| (provider, model)))
-            .collect()
-    }
-    fn model_label(&self) -> String {
-        self.model
-            .as_ref()
-            .and_then(|id| {
-                self.models()
-                    .into_iter()
-                    .find(|(_, model)| &model.id == id)
-                    .map(|(provider, model)| format!("{} · {}", model.name, provider.name))
-            })
-            .unwrap_or_else(|| "Choose a model".into())
-    }
-    fn find_model(&self, needle: &str) -> Option<String> {
-        let needle = needle.trim().to_lowercase();
-        self.models()
-            .into_iter()
-            .filter(|(provider, _)| provider.connected)
-            .find(|(_, model)| {
-                model.name.to_lowercase().contains(&needle)
-                    || model.id.to_lowercase().contains(&needle)
-            })
-            .map(|(_, model)| model.id.clone())
-    }
-    fn run_provider(
-        &mut self,
-        id: Option<ProviderId>,
-        operation: impl FnOnce() -> anyhow::Result<ProvidersState> + Send + 'static,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn refresh_providers(&mut self, cx: &mut Context<Self>) {
         if self.credentials_busy {
             return;
         }
         self.credentials_busy = true;
-        self.busy_provider = id;
-        self.connection_error = None;
-        let request = cx.background_executor().spawn(async move { operation() });
+        let request = cx
+            .background_executor()
+            .spawn(async { providers::state(false) });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
@@ -306,560 +233,31 @@ impl AssistantPage {
         .detach();
         cx.notify();
     }
-    fn refresh_providers(&mut self, refresh: bool, cx: &mut Context<Self>) {
-        self.run_provider(None, move || providers::state(refresh), cx);
-    }
-    fn connect(&mut self, id: ProviderId, cx: &mut Context<Self>) {
-        match id {
-            ProviderId::Openrouter => {
-                let key = self.api_key_input.read(cx).content.trim().to_owned();
-                if key.is_empty() {
-                    self.connection_error = Some("Paste your OpenRouter API key first.".into());
-                    cx.notify();
-                    return;
-                }
-                self.api_key_input.update(cx, |input, cx| {
-                    input.reset();
-                    cx.notify();
-                });
-                self.run_provider(
-                    Some(id),
-                    move || providers::connect(id, Some(key), None),
-                    cx,
-                );
-            }
-            ProviderId::Claude | ProviderId::Codex => {
-                // Follow the daemon's sign-in: open the browser link once, then wait
-                // until it finishes (ChatGPT) or asks for the pasted code (Claude).
-                self.run_provider(
-                    Some(id),
-                    move || {
-                        let mut state = providers::connect(id, None, None)?;
-                        let mut opened = false;
-                        loop {
-                            let Some(status) = state.providers.iter().find(|p| p.id == id).cloned()
-                            else {
-                                return Ok(state);
-                            };
-                            if let Some(url) = &status.auth_url
-                                && !opened
-                            {
-                                let _ =
-                                    std::process::Command::new("/usr/bin/open").arg(url).spawn();
-                                opened = true;
-                            }
-                            if !status.signing_in || status.awaiting_code {
-                                return Ok(state);
-                            }
-                            std::thread::sleep(Duration::from_millis(250));
-                            state = providers::state(false)?;
-                        }
-                    },
-                    cx,
-                );
-            }
-        }
-    }
-    fn submit_code(&mut self, cx: &mut Context<Self>) {
-        let code = self.code_input.read(cx).content.trim().to_owned();
-        if code.is_empty() {
-            self.connection_error = Some("Paste the code shown after signing in.".into());
-            cx.notify();
-            return;
-        }
-        self.code_input.update(cx, |input, cx| {
-            input.reset();
-            cx.notify();
-        });
-        self.run_provider(
-            Some(ProviderId::Claude),
-            move || providers::connect(ProviderId::Claude, None, Some(code)),
-            cx,
-        );
-    }
-    fn cancel_sign_in(&mut self, id: ProviderId, cx: &mut Context<Self>) {
-        // Cancellation must work while the sign-in follower is still busy.
-        let request = cx
-            .background_executor()
-            .spawn(async move { providers::cancel(id) });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                if let Ok(state) = result {
-                    this.providers = Some(state);
-                }
-                this.credentials_busy = false;
-                this.busy_provider = None;
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-    fn disconnect(&mut self, id: ProviderId, cx: &mut Context<Self>) {
-        if self.active.is_some() {
-            return;
-        }
-        self.provider_test = None;
-        self.run_provider(Some(id), move || providers::disconnect(id), cx);
-    }
-    fn test_provider(&mut self, id: ProviderId, cx: &mut Context<Self>) {
-        if self.credentials_busy {
-            return;
-        }
-        self.credentials_busy = true;
-        self.busy_provider = Some(id);
-        self.provider_test = None;
-        let prefix = format!("{id}:");
-        let model = self
-            .model
-            .clone()
-            .filter(|model| model.starts_with(&prefix));
-        let request = cx
-            .background_executor()
-            .spawn(async move { providers::test(id, model) });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.credentials_busy = false;
-                this.busy_provider = None;
-                match result {
-                    Ok(test) => this.provider_test = Some((id, test)),
-                    Err(error) => this.connection_error = Some(error.to_string()),
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-    fn save_policy(&mut self, cx: &mut Context<Self>) {
-        let split = |text: &str| -> Vec<String> {
-            text.split([',', ' ', '\n'])
-                .map(|host| host.trim().to_ascii_lowercase())
-                .filter(|host| !host.is_empty())
-                .collect()
-        };
-        let policy = HttpPolicy {
-            allow: split(&self.allow_input.read(cx).content),
-            deny: split(&self.deny_input.read(cx).content),
-        };
-        self.mutate(
-            move |db| db.command(Command::SetHttpPolicy { policy }),
-            |this, _, _| this.notice = Some("HTTP policy saved.".into()),
-            cx,
-        );
-    }
-    fn load_policy(&mut self, cx: &mut Context<Self>) {
-        let Some(db) = &self.store else { return };
-        let policy = db.snapshot().settings.http_policy;
-        self.allow_input
-            .update(cx, |input, cx| input.set_text(&policy.allow.join(", "), cx));
-        self.deny_input
-            .update(cx, |input, cx| input.set_text(&policy.deny.join(", "), cx));
-    }
-
-    pub fn providers_view(&self, cx: &mut Context<Self>) -> Div {
-        column()
-            .child(self.provider_row(ProviderId::Claude, cx))
-            .child(settings_divider())
-            .child(self.provider_row(ProviderId::Codex, cx))
-            .child(settings_divider())
-            .child(self.provider_row(ProviderId::Openrouter, cx))
-            .child(settings_divider())
-            .child(settings_row(
-                "Model",
-                "Used for new replies. The composer can switch models per conversation.",
-                self.model_menu(true, cx),
-            ))
-            .child(settings_divider())
-            .child(settings_row(
-                "Connection status",
-                match &self.connection_error {
-                    Some(error) => error.clone(),
-                    None if self.credentials_busy => "Checking providers…".to_owned(),
-                    None => "Re-check every sign-in, key and model list.".to_owned(),
-                },
-                settings_button(
-                    "providers-refresh",
-                    "Refresh",
-                    !self.credentials_busy,
-                    |this: &mut Self, _, cx| this.refresh_providers(true, cx),
-                    cx,
-                ),
-            ))
-    }
-    pub fn agent_view(&self, cx: &mut Context<Self>) -> Div {
-        let enabled = !self.pending && self.store.is_some();
-        column()
-            .child(settings_row(
-                "Allowed hosts",
-                "Hosts Evee may call with http_request, separated by commas. `*` allows every public host; private networks are always refused.",
-                self.policy_field("policy-allow", self.allow_input.clone()),
-            ))
-            .child(settings_divider())
-            .child(settings_row(
-                "Denied hosts",
-                "Hosts Evee must never call, even when allowed above. `*.example.com` covers subdomains.",
-                row()
-                    .gap(px(CONTROL_GAP))
-                    .items_center()
-                    .child(self.policy_field("policy-deny", self.deny_input.clone()))
-                    .child(settings_button(
-                        "policy-save",
-                        "Save",
-                        enabled,
-                        |this: &mut Self, _, cx| this.save_policy(cx),
-                        cx,
-                    )),
-            ))
-    }
-    fn policy_field(&self, selector: &'static str, input: Entity<TextInput>) -> Div {
-        row()
-            .debug_selector(move || selector.into())
-            .w(px(300.))
-            .h(px(CONTROL_HEIGHT))
-            .px(px(FIELD_INSET_X))
-            .items_center()
-            .border_1()
-            .border_color(rgb(BORDER))
-            .rounded(px(FIELD_RADIUS))
-            .bg(rgb(SURFACE_SEARCH))
-            .child(input)
-    }
-    fn provider_title(id: ProviderId) -> &'static str {
-        match id {
-            ProviderId::Claude => "Claude",
-            ProviderId::Codex => "ChatGPT",
-            ProviderId::Openrouter => "OpenRouter",
-        }
-    }
-    fn provider_row(&self, id: ProviderId, cx: &mut Context<Self>) -> Div {
-        let status = self.provider(id).cloned();
-        let busy = self.credentials_busy && self.busy_provider == Some(id);
-        let enabled = !self.credentials_busy && self.active.is_none();
-        let state = if busy {
-            "Working…".to_owned()
-        } else if let Some(status) = &status {
-            if let Some(error) = &status.error {
-                error.clone()
-            } else if status.awaiting_code {
-                "Paste the code from your browser to finish signing in.".to_owned()
-            } else if status.signing_in {
-                "Complete the sign-in in your browser.".to_owned()
-            } else if status.connected {
-                format!(
-                    "Connected · {}",
-                    status.account.clone().unwrap_or_else(|| "Ready".into())
-                )
-            } else {
-                status.description.clone()
-            }
-        } else if self.credentials_busy {
-            "Checking…".to_owned()
-        } else {
-            "Not checked yet.".to_owned()
-        };
-        let mut controls = row().gap(px(CONTROL_GAP)).items_center().justify_end();
-        match status.as_ref() {
-            Some(status) if status.connected => {
-                controls = controls.child(settings_button(
-                    ("provider-test", id as usize),
-                    "Test",
-                    enabled,
-                    move |this: &mut Self, _, cx| this.test_provider(id, cx),
-                    cx,
-                ));
-                match id {
-                    ProviderId::Codex => {
-                        controls = controls.child(settings_button(
-                            "codex-sign-in",
-                            "Sign out",
-                            enabled,
-                            move |this: &mut Self, _, cx| this.disconnect(id, cx),
-                            cx,
-                        ))
-                    }
-                    ProviderId::Openrouter => {
-                        controls = controls.child(settings_button(
-                            "openrouter-remove",
-                            "Remove key",
-                            enabled,
-                            move |this: &mut Self, _, cx| this.disconnect(id, cx),
-                            cx,
-                        ))
-                    }
-                    ProviderId::Claude => {}
-                }
-            }
-            Some(status) if status.awaiting_code => {
-                controls = controls
-                    .child(self.policy_field("claude-code", self.code_input.clone()))
-                    .child(settings_button(
-                        "claude-finish",
-                        "Finish",
-                        !self.credentials_busy,
-                        |this: &mut Self, _, cx| this.submit_code(cx),
-                        cx,
-                    ))
-                    .child(settings_button(
-                        "claude-cancel",
-                        "Cancel",
-                        true,
-                        move |this: &mut Self, _, cx| this.cancel_sign_in(id, cx),
-                        cx,
-                    ));
-            }
-            Some(status) if status.signing_in => {
-                controls = controls.child(settings_button(
-                    "cancel-sign-in",
-                    "Cancel",
-                    true,
-                    move |this: &mut Self, _, cx| this.cancel_sign_in(id, cx),
-                    cx,
-                ));
-            }
-            _ => match id {
-                ProviderId::Claude => {
-                    controls = controls.child(settings_button(
-                        "claude-sign-in",
-                        "Sign in with Claude",
-                        enabled,
-                        move |this: &mut Self, _, cx| this.connect(id, cx),
-                        cx,
-                    ))
-                }
-                ProviderId::Codex => {
-                    controls = controls.child(settings_icon_button(
-                        "codex-sign-in",
-                        "Sign in with ChatGPT",
-                        "openai",
-                        enabled,
-                        move |this: &mut Self, _, cx| this.connect(id, cx),
-                        cx,
-                    ))
-                }
-                ProviderId::Openrouter => {
-                    controls = controls
-                        .child(self.policy_field("openrouter-key", self.api_key_input.clone()))
-                        .child(settings_button(
-                            "openrouter-save",
-                            "Save key",
-                            enabled,
-                            move |this: &mut Self, _, cx| this.connect(id, cx),
-                            cx,
-                        ))
-                }
-            },
-        }
-        let test = self
-            .provider_test
-            .as_ref()
-            .filter(|(tested, _)| *tested == id)
-            .map(|(_, test)| {
-                if test.ok {
-                    (
-                        format!(
-                            "Replied “{}” in {:.1} s",
-                            test.reply.clone().unwrap_or_default().trim(),
-                            test.elapsed_ms as f32 / 1000.
-                        ),
-                        STATUS_GREEN,
-                    )
-                } else {
-                    (
-                        format!(
-                            "Test failed: {}",
-                            test.error.clone().unwrap_or_else(|| "no reply".into())
-                        ),
-                        ERROR,
-                    )
-                }
-            });
-        settings_row(
-            Self::provider_title(id),
-            state,
-            column().gap(px(6.)).items_end().child(controls).when_some(
-                test,
-                |control, (text, color)| {
-                    control.child(
-                        div()
-                            .text_size(type_size(CAPTION_SIZE))
-                            .text_color(rgb(color))
-                            .child(text),
-                    )
-                },
-            ),
-        )
-    }
-    fn toggle_model_menu(&mut self, cx: &mut Context<Self>) {
-        if self.model_menu_open {
-            self.close_model_menu(cx);
-        } else {
-            self.model_menu_generation += 1;
-            self.model_menu_open = true;
-            self.model_menu_closing = false;
-            cx.notify();
-        }
-    }
-    /// The model picker: grouped by provider, featured models first, with the
-    /// same element IDs in Settings and in the composer.
-    fn model_menu(&self, settings: bool, cx: &mut Context<Self>) -> Div {
+    /// The composer's model chip and its floating list.
+    fn model_chip(&self, cx: &mut Context<Self>) -> Div {
         let enabled = self.store.is_some() && !self.pending;
-        let label = self.model_label();
-        let trigger = if settings {
-            settings_button(
+        let label = model_menu::label(&self.providers, &self.model);
+        let trigger = self
+            .action(
                 "model-select",
-                label,
+                &label,
                 enabled,
-                |this: &mut Self, _, cx| this.toggle_model_menu(cx),
+                |this, cx| this.menu.toggle(|this: &mut Self| &mut this.menu, cx),
                 cx,
             )
-            .w_full()
-            .justify_between()
-            .child(icon("chevronDown", 12.).text_color(rgb(MUTED)))
-        } else {
-            self.action("model-select", &label, enabled, Self::toggle_model_menu, cx)
-                .h(px(32.))
-                .gap(px(6.))
-                .border_1()
-                .border_color(rgb(BORDER))
-                .child(icon("chevronDown", 12.).text_color(rgb(MUTED)))
-        };
-        let menu_open = self.model_menu_open;
-        column()
-            .relative()
-            .when(settings, |anchor| anchor.w(px(260.)).h(px(CONTROL_HEIGHT)))
-            .child(trigger.debug_selector(|| "model-select".into()))
-            .when(self.model_menu_open || self.model_menu_closing, |anchor| {
-                let mut index = 0usize;
-                let mut menu = column()
-                    .id("model-menu")
-                    .debug_selector(|| "model-menu".into())
-                    .absolute()
-                    .when(settings, |menu| menu.right(px(0.)).bottom(px(36.)))
-                    .when(!settings, |menu| menu.left(px(0.)).bottom(px(34.)))
-                    .w(px(300.))
-                    .max_h(px(340.))
-                    .overflow_y_scroll()
-                    .p(px(4.))
-                    .rounded(px(CONTROL_RADIUS))
-                    .border_1()
-                    .border_color(rgb(BORDER_OVERLAY))
-                    .bg(rgb(SURFACE_MENU))
-                    .shadow(vec![
-                        BoxShadow::new(px(0.), px(8.), rgba(SCRIM).into()).blur_radius(px(24.)),
-                    ]);
-                for provider in self
-                    .providers
-                    .iter()
-                    .flat_map(|state| state.providers.iter())
-                {
-                    menu = menu.child(
-                        row()
-                            .px(px(10.))
-                            .pt(px(8.))
-                            .pb(px(4.))
-                            .gap(px(6.))
-                            .items_center()
-                            .text_size(type_size(CAPTION_SIZE))
-                            .text_color(rgb(MUTED))
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(provider.name.clone()),
-                            )
-                            .when(!provider.connected, |header| {
-                                header.child("· not connected")
-                            }),
-                    );
-                    for model in &provider.models {
-                        menu = menu.child(self.model_option(
-                            ("model", index),
-                            model.name.clone(),
-                            Some(model.id.clone()),
-                            model.featured,
-                            enabled && menu_open && provider.connected,
-                            cx,
-                        ));
-                        index += 1;
-                    }
-                }
-                if index == 0 {
-                    menu = menu.child(
-                        div()
-                            .px(px(10.))
-                            .py(px(8.))
-                            .text_size(type_size(CAPTION_SIZE))
-                            .text_color(rgb(MUTED))
-                            .child("Connect a provider in Settings to choose a model."),
-                    );
-                }
-                anchor.child(
-                    deferred(menu.with_animation(
-                        if menu_open {
-                            "model-menu-open"
-                        } else {
-                            "model-menu-close"
-                        },
-                        Animation::new(Duration::from_millis(PANEL_MS)),
-                        move |menu, progress| {
-                            menu.opacity(if menu_open { progress } else { 1. - progress })
-                        },
-                    ))
-                    .with_priority(1),
-                )
-            })
-    }
-    fn model_option(
-        &self,
-        id: impl Into<ElementId>,
-        name: String,
-        model: Option<String>,
-        featured: bool,
-        enabled: bool,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let selected = self.model == model;
-        let choice = model.clone();
-        let selector = format!(
-            "settings.model-option.{}",
-            name.to_lowercase().replace(' ', "-")
-        );
-        action_button(
-            ButtonSpec {
-                id: id.into(),
-                label: name.clone().into(),
-                kind: ButtonKind::Quiet,
-                enabled,
-            },
-            |button| {
-                button
-                    .debug_selector(move || selector.clone())
-                    .w_full()
-                    .min_h(px(34.))
-                    .px(px(10.))
-                    .gap(px(10.))
-                    .rounded(px(CONTROL_RADIUS))
-                    .bg(rgb(if selected { SELECTED } else { SURFACE_MENU }))
-                    .hover(|item| item.bg(rgb(HOVER_CONTROL)))
-                    .text_size(type_size(LABEL_SIZE))
-                    .child(div().flex_1().min_w_0().truncate().child(name))
-                    .when(featured, |item| {
-                        item.child(
-                            div()
-                                .px(px(6.))
-                                .py(px(1.))
-                                .rounded_full()
-                                .bg(rgb(SURFACE_SEGMENT))
-                                .text_size(type_size(CAPTION_SIZE - 1.))
-                                .text_color(rgb(TEXT_ACCENT))
-                                .child("Featured"),
-                        )
-                    })
-                    .when(selected, |item| item.child("✓"))
-            },
-            move |this: &mut Self, _, cx| this.select_model(choice.clone(), cx),
+            .h(px(32.))
+            .gap(px(6.))
+            .border_1()
+            .border_color(rgb(BORDER))
+            .child(icon("chevronDown", 12.).text_color(rgb(MUTED)));
+        model_menu::render(
+            &self.menu,
+            &self.providers,
+            &self.model,
+            false,
+            enabled,
+            trigger,
+            |this: &mut Self, model, _, cx| this.select_model(model, cx),
             cx,
         )
     }
@@ -934,10 +332,10 @@ impl AssistantPage {
         self.help_open = false;
         self.notice = None;
         self.reload_snapshot();
-        self.load_policy(cx);
+        self.refresh_providers(cx);
     }
     fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
-        self.close_model_menu(cx);
+        self.menu.close(|this: &mut Self| &mut this.menu, cx);
         self.mutate(
             move |db| {
                 db.command(Command::SelectModel {
@@ -947,29 +345,6 @@ impl AssistantPage {
             |_, _, _| {},
             cx,
         );
-    }
-    fn close_model_menu(&mut self, cx: &mut Context<Self>) {
-        if !self.model_menu_open {
-            return;
-        }
-        self.model_menu_open = false;
-        self.model_menu_closing = true;
-        self.model_menu_generation += 1;
-        let generation = self.model_menu_generation;
-        let timer = cx
-            .background_executor()
-            .timer(Duration::from_millis(PANEL_MS));
-        cx.spawn(async move |this, cx| {
-            timer.await;
-            let _ = this.update(cx, |this, cx| {
-                if this.model_menu_generation == generation {
-                    this.model_menu_closing = false;
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-        cx.notify();
     }
     fn open_conversation(&mut self, id: i64, cx: &mut Context<Self>) {
         if self.pending {
@@ -1358,7 +733,18 @@ impl AssistantPage {
     #[cfg(test)]
     #[allow(dead_code)]
     pub fn fixture_models(&mut self, cx: &mut Context<Self>) {
-        use ainc_client::types::ConnectMethod;
+        self.providers = Some(fixture_providers());
+        self.model = Some("codex:model-one".into());
+        self.account = Some("Fixture account".into());
+        self.credentials_busy = false;
+        cx.notify();
+    }
+}
+#[cfg(test)]
+#[allow(dead_code)]
+pub fn fixture_providers() -> ProvidersState {
+    {
+        use ainc_client::types::{ConnectMethod, ProviderId, ProviderModel, ProviderStatus};
         let provider = |id: ProviderId,
                         name: &str,
                         description: &str,
@@ -1385,7 +771,7 @@ impl AssistantPage {
             auth_url: None,
             awaiting_code: false,
         };
-        self.providers = Some(ProvidersState {
+        ProvidersState {
             default_model: Some("codex:model-one".into()),
             providers: vec![
                 provider(
@@ -1422,12 +808,10 @@ impl AssistantPage {
                     vec![("openrouter:typesafe/jev-router", "Jev Router", true)],
                 ),
             ],
-        });
-        self.model = Some("codex:model-one".into());
-        self.account = Some("Fixture account".into());
-        self.credentials_busy = false;
-        cx.notify();
+        }
     }
+}
+impl AssistantPage {
     pub fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
         if matches!(
             self.overlays.borrow().active(),
@@ -1580,11 +964,11 @@ impl AssistantPage {
             }
             Parsed::Model(None) => {
                 self.reset_composer(cx);
-                self.toggle_model_menu(cx);
+                self.menu.toggle(|this: &mut Self| &mut this.menu, cx);
             }
             Parsed::Model(Some(name)) => {
                 self.reset_composer(cx);
-                match self.find_model(&name) {
+                match model_menu::find(&self.providers, &name) {
                     Some(id) => self.select_model(Some(id), cx),
                     None => {
                         self.notice = Some(format!(
@@ -2549,7 +1933,7 @@ impl Render for AssistantPage {
                                 row()
                                     .items_center()
                                     .gap(px(8.))
-                                    .child(self.model_menu(false, cx))
+                                    .child(self.model_chip(cx))
                                     .child(
                                         div()
                                             .flex_1()
