@@ -111,7 +111,7 @@ fn regions(width: u32, height: u32, dimmed: bool) -> Vec<(&'static str, [u32; 4]
     .into_iter()
     .enumerate()
     {
-        let y = 115 + index as u32 * 34 + group_offset;
+        let y = 163 + index as u32 * 34 + group_offset;
         regions.push((name, [20, y, 165, y + 28], text, 35));
     }
     regions
@@ -423,6 +423,12 @@ impl Suite {
             terminal_inset,
         )?;
         if let Ok(content) = self.bounds("main-content") {
+            let title = self.bounds("page-title")?;
+            near(
+                "page title top inset",
+                f32::from(title.origin.y - frame.origin.y),
+                PAGE_X - 5.,
+            )?;
             near(
                 "page content left inset",
                 f32::from(content.origin.x - frame.origin.x),
@@ -728,7 +734,11 @@ pub fn run() -> Result<()> {
                 suite.keys("escape");
             }
         }
-        suite.keys("cmd-k");
+        if round == 0 {
+            suite.click_selector("shell.search")?;
+        } else {
+            suite.keys("cmd-k");
+        }
         if round == 0 {
             suite.capture(
                 "search-empty",

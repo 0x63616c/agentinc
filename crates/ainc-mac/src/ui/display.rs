@@ -34,6 +34,7 @@ impl PageHeader {
 
     pub fn build(self) -> Div {
         column()
+            .mt(px(-5.))
             .gap(px(6.))
             .child(
                 row()
@@ -44,6 +45,7 @@ impl PageHeader {
                         div()
                             .flex_1()
                             .min_w_0()
+                            .debug_selector(|| "page-title".into())
                             .text_size(type_size(22.))
                             .font_weight(FontWeight::MEDIUM)
                             .child(self.title),
