@@ -255,20 +255,8 @@ impl TicketsPage {
             .map(|t| t.id)
             .collect()
     }
-    pub(crate) fn fixture_link(
-        &mut self,
-        id: i64,
-        target: i64,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.link_relation = Relation::BlockedBy;
-        self.link_target = Some(target);
-        let focus = self.link_search.focus_handle(cx);
-        self.overlays
-            .borrow_mut()
-            .open(Overlay::LinkTicket(id), window, cx, Some(focus));
-        cx.notify();
+    pub(crate) fn fixture_relations(&self, id: i64) -> Vec<(Relation, i64)> {
+        relations(&self.state.links, id)
     }
     pub(crate) fn fixture_filter_label(&mut self, label: &str, cx: &mut Context<Self>) {
         self.filters.toggle_label(label);

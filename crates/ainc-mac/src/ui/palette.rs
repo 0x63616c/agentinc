@@ -6,6 +6,9 @@ use gpui::{prelude::*, *};
 pub struct PaletteEntry {
     pub id: SharedString,
     pub icon: Option<&'static str>,
+    /// A color that carries meaning, such as a Ticket's status; plain icons
+    /// stay gray and brighten with the selection.
+    pub icon_color: Option<u32>,
     pub label: SharedString,
     /// Character positions in `label` matched by the query.
     pub positions: Vec<usize>,
@@ -18,6 +21,7 @@ impl PaletteEntry {
         Self {
             id: id.into(),
             icon: None,
+            icon_color: None,
             label: label.into(),
             positions: vec![],
             detail: None,
@@ -26,6 +30,10 @@ impl PaletteEntry {
     }
     pub fn icon(mut self, icon: &'static str) -> Self {
         self.icon = Some(icon);
+        self
+    }
+    pub fn icon_color(mut self, color: u32) -> Self {
+        self.icon_color = Some(color);
         self
     }
     pub fn positions(mut self, positions: Vec<usize>) -> Self {
@@ -295,6 +303,7 @@ pub fn render_palette<V: HoverHost>(
                         .child(match entry.icon {
                             Some(name) => icon(name, ICON_SIZE_LG)
                                 .when(is_selected, |s| s.text_color(rgb(TEXT)))
+                                .when_some(entry.icon_color, |s, color| s.text_color(rgb(color)))
                                 .into_any_element(),
                             None => div().w(px(ICON_SIZE_LG)).into_any_element(),
                         })

@@ -123,12 +123,10 @@ impl TicketsPage {
                     .text_color(rgb(priority_color(ticket.priority))),
             )
             .child(
-                row()
+                div()
                     .w(px(LIST_KEY_WIDTH))
                     .flex_shrink_0()
-                    .gap(px(SPACE_1))
-                    .child(hint(ticket_key(id)))
-                    .when(self.running(ticket), |s| s.child(status_dot(Tone::Info))),
+                    .child(hint(ticket_key(id))),
             )
             .child(
                 div()
@@ -138,6 +136,14 @@ impl TicketsPage {
                     .text_size(type_size(BODY_SIZE))
                     .child(ticket.title.clone()),
             )
+            .when(self.running(ticket), |s| {
+                s.child(
+                    row()
+                        .gap(px(SPACE_1))
+                        .child(status_dot(Tone::Info))
+                        .child(hint("Working")),
+                )
+            })
             .when(!blockers.is_empty(), |s| {
                 s.child(status_pill(
                     format!("Blocked by {}", ticket_key(blockers[0])),

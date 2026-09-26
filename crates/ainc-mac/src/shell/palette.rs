@@ -110,6 +110,7 @@ impl Shell {
                         ),
                     )
                     .icon(crate::tickets::model::status_icon(status))
+                    .icon_color(crate::tickets::model::status_color(status))
                     .detail(crate::tickets::model::status_name(status)),
                     control: Control::OpenTicket(ticket.id),
                 });
@@ -336,6 +337,9 @@ fn clone_entry(entry: &PaletteEntry, positions: Vec<usize>) -> PaletteEntry {
     let mut copy = PaletteEntry::new(entry.id.clone(), entry.label.clone()).positions(positions);
     if let Some(icon) = entry.icon {
         copy = copy.icon(icon);
+    }
+    if let Some(color) = entry.icon_color {
+        copy = copy.icon_color(color);
     }
     if let Some(detail) = entry.detail.clone().filter(|detail| !detail.is_empty()) {
         copy = copy.detail(detail);

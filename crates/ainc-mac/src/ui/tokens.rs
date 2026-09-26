@@ -199,13 +199,10 @@ pub const LANE_HEADER_HEIGHT: f32 = 38.;
 pub const EMPTY_LANE_HEIGHT: f32 = 64.;
 /// Badges, status pills and the square priority chip beside them.
 pub const PILL_HEIGHT: f32 = 22.;
-/// The empty side of a small icon-only ghost button around its glyph; bleeding
-/// by it puts the glyph, not the button, on a column edge.
-pub const GHOST_ICON_INSET: f32 = (CONTROL_HEIGHT_SM - ICON_SIZE_SM) / 2.;
 /// The remove control inside a pill.
 pub const PILL_REMOVE_SIZE: f32 = 18.;
 /// Fixed columns in the Tickets list.
-pub const LIST_KEY_WIDTH: f32 = 52.;
+pub const LIST_KEY_WIDTH: f32 = 44.;
 pub const LIST_ASSIGNEE_WIDTH: f32 = 168.;
 pub const LIST_UPDATED_WIDTH: f32 = 72.;
 /// Below this window width a record's properties stack above its content.

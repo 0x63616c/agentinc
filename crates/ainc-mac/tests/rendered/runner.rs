@@ -716,11 +716,16 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture("ticket-labels-menu", Route::Tickets, None, false)?;
     suite.bounds("tickets.labels.menu")?;
     page.update(&mut suite.cx, |page, cx| page.fixture_menu(None, cx));
-    suite.window.update(&mut suite.cx, |shell, window, cx| {
-        shell.fixture_tickets_page().update(cx, |page, cx| {
-            page.fixture_link(budget, dentist, window, cx)
-        })
-    })?;
+    // Relate through the dialog itself: search, choose, confirm.
+    suite.click_selector("tickets.link")?;
+    suite.capture(
+        "ticket-link-dialog-empty",
+        Route::Tickets,
+        Some(Overlay::LinkTicket(budget)),
+        false,
+    )?;
+    suite.cx.simulate_input(window.into(), "dentist");
+    suite.click_selector(&format!("tickets.link.target.{dentist}"))?;
     suite.capture(
         "ticket-link-dialog",
         Route::Tickets,
@@ -728,7 +733,13 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
         false,
     )?;
     suite.bounds("tickets.link.candidates")?;
-    suite.keys("escape");
+    suite.click_selector("tickets.submit")?;
+    suite.settle()?;
+    let related = page.read_with(&suite.cx, |page, _| page.fixture_relations(budget));
+    ensure!(
+        related.contains(&(crate::tickets::model::Relation::BlockedBy, dentist)),
+        "the chosen Ticket becomes a blocker, got {related:?}"
+    );
     suite.click_selector("tickets.back")?;
     page.update(&mut suite.cx, |page, cx| page.fixture_view(false, cx));
     suite.settle()?;
@@ -1331,6 +1342,7 @@ pub fn run() -> Result<()> {
     suite.capture("components-data", Route::Components, None, false)?;
     suite.check_components_geometry(&[
         "badges-and-status",
+        "properties",
         "list-rows",
         "table",
         "empty-and-loading",

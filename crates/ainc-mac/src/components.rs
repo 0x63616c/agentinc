@@ -371,15 +371,27 @@ impl ComponentsPage {
                     .child(row().flex_wrap().gap(px(SPACE_2)).children([
                         ("Backlog", Tone::Neutral), ("Running", Tone::Info), ("Completed", Tone::Success),
                         ("Paused", Tone::Warning), ("Failed", Tone::Danger),
-                    ].into_iter().map(|(label, tone)| status_pill(label, tone)))),
+                    ].into_iter().map(|(label, tone)| status_pill(label, tone))))
+                    .child(row().flex_wrap().gap(px(SPACE_2)).children(
+                        ["Home", "Money", "Travel", "Health"].into_iter().enumerate()
+                            .map(|(index, label)| tag(label, LABEL_COLORS[index])),
+                    )),
             ))
             .child(specimen(
                 "Avatars and shortcuts",
                 "Initials stand in for a photo. Shortcut hints sit inside buttons, rows and footers.",
                 row().gap(px(SPACE_6)).items_center()
-                    .child(row().gap(px(SPACE_2)).child(avatar("Calum Webb", None, AVATAR_SIZE)).child(avatar("Evee", None, AVATAR_SIZE_LG)))
+                    .child(row().gap(px(SPACE_2)).child(avatar("Calum Webb", None, AVATAR_SIZE)).child(avatar("Evee", None, AVATAR_SIZE_LG)).child(agent_avatar("Scout", AVATAR_SIZE)))
                     .child(row().gap(px(SPACE_2)).child(kbd("⌘K")).child(kbd("↵")).child(kbd("esc")))
                     .child(kbd_hint("↑ ↓", "Navigate")),
+            ))
+            .child(specimen(
+                "Properties",
+                "A fixed label column beside a value or a quiet select, as in a record's side panel.",
+                column()
+                    .w(px(PROPERTIES_WIDTH))
+                    .child(property_row("Status", caption("In progress")))
+                    .child(property_row("Labels", row().flex_wrap().gap(px(CHIP_GAP)).child(tag("Money", LABEL_COLORS[1])).child(tag("Admin", LABEL_COLORS[3])))),
             ))
             .child(specimen(
                 "List rows",
@@ -461,6 +473,7 @@ impl ComponentsPage {
                         .child(MenuEntry::new("components.menu.support", "Support").icon("help").trailing(icon("chevronRight", ICON_SIZE_SM)).build(&self.hover, noop, cx))
                         .child(menu_divider())
                         .child(MenuEntry::new("components.menu.delete", "Delete").icon("trash").destructive().build(&self.hover, noop, cx)))
+                    .child(MenuButton::new("components.menu-button", "Priority").icon("filter").active(true).build(&self.hover, vec![], noop, cx))
                     .child(menu_shell(MENU_WIDTH)
                         .child(menu_label("Model"))
                         .child(MenuEntry::new("components.menu.default", "Codex default").checked(true).build(&self.hover, noop, cx))

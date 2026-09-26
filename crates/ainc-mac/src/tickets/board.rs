@@ -18,15 +18,24 @@ pub(crate) struct DraggedTicket {
     /// The assignee's name, photo and whether it is an agent.
     assignee: (SharedString, Option<Arc<Image>>, bool),
     width: Pixels,
+    /// Where the pointer picked the card up, inside it.
+    grab: Point<Pixels>,
 }
 impl Render for DraggedTicket {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        // Lifted off the board to just below and right of the pointer, so the
+        // drop line under the pointer stays in view. A drag view's root ignores
+        // margins, so the offset is padding on a wrapper.
+        div()
+            .pt(self.grab.y + px(DRAG_LIFT))
+            .pl(self.grab.x + px(DRAG_LIFT))
+            .child(self.card())
+    }
+}
+impl DraggedTicket {
+    fn card(&self) -> Div {
         let (name, photo, agent) = &self.assignee;
-        // Lifted off the board: offset from where it was picked up, so the drop
-        // line under the pointer stays visible.
         column()
-            .mt(px(DRAG_LIFT))
-            .ml(px(DRAG_LIFT))
             .w(self.width)
             .p(px(SPACE_3))
             .gap(px(SPACE_1))
@@ -331,6 +340,7 @@ impl TicketsPage {
                 self.is_agent(&ticket.assignee_id),
             ),
             width: px(BOARD_LANE_MIN_WIDTH),
+            grab: Point::default(),
         };
         let dragging = self.drag.dragging.clone();
         let geometry = self.drag.geometry.clone();
@@ -383,11 +393,12 @@ impl TicketsPage {
             move |this: &mut Self, _, cx| this.select(id, cx),
             cx,
         )
-        .on_drag(preview, move |drag, _, _, cx| {
+        .on_drag(preview, move |drag, grab, _, cx| {
             dragging.set(Some(drag.id));
             let width = card_width(&geometry, drag.id).unwrap_or(drag.width);
             let drag = DraggedTicket {
                 width,
+                grab,
                 ..drag.clone()
             };
             cx.new(|_| drag)

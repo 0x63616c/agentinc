@@ -83,7 +83,7 @@ impl TicketsPage {
         // The properties column holds status and times; the line under the
         // title says only which Ticket this is and who holds it.
         let meta = format!(
-            "{} · {}",
+            "{} · Assigned to {}",
             ticket_key(id),
             self.assignee_name(&ticket.assignee_id)
         );
@@ -105,7 +105,7 @@ impl TicketsPage {
                     .mr(px(-CONTROL_INSET_X))
                     .when(running, |s| {
                         s.child(
-                            Button::new("tickets.stop", "Cancel work")
+                            Button::new("tickets.stop", "Stop work")
                                 .secondary()
                                 .icon("stop")
                                 .enabled(enabled)
@@ -123,7 +123,7 @@ impl TicketsPage {
                             Button::new("tickets.delete", "Delete")
                                 .ghost()
                                 .icon("trash")
-                                .tint(DESTRUCTIVE_TEXT)
+                                .tint(TEXT_SECONDARY)
                                 .enabled(enabled)
                                 .build(
                                     &self.hover,
@@ -274,11 +274,12 @@ impl TicketsPage {
 
     fn timeline(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> Div {
         let now = list::now();
-        let history: &[TicketActivity] = if self.activity_for == Some(ticket.id) {
-            &self.activity
-        } else {
-            &[]
-        };
+        let history: &[TicketActivity] =
+            if self.activity_for.as_ref().map(|s| s.0) == Some(ticket.id) {
+                &self.activity
+            } else {
+                &[]
+            };
         let mut moments: Vec<Moment> = history
             .iter()
             .map(Moment::Change)
@@ -508,10 +509,13 @@ impl TicketsPage {
         let id = ticket.id;
         let revision = ticket.revision;
         let enabled = !self.pending;
-        // Quiet selects bleed by their inset on both sides, so their glyph starts
-        // on the value column's edge and their chevron ends on the card's.
+        // Quiet selects bleed left by their inset, so their glyph starts on the
+        // value column's edge, and end on the content edge with their fill.
         let width =
-            PROPERTIES_WIDTH - 2. * SPACE_4 - PROPERTY_LABEL_WIDTH - SPACE_3 + 2. * CONTROL_INSET_X;
+            PROPERTIES_WIDTH - 2. * SPACE_4 - PROPERTY_LABEL_WIDTH - SPACE_3 + CONTROL_INSET_X;
+        let current_status = ticket.status;
+        let current_priority = ticket.priority;
+        let current_assignee = ticket.assignee_id.clone();
         let status = Select::new(
             "tickets.detail.status",
             STATUSES
@@ -528,7 +532,11 @@ impl TicketsPage {
             |this: &mut Self, _, cx| this.toggle_menu(Menu::Status, cx),
             move |this: &mut Self, index, _, cx| {
                 this.menu = None;
-                if let Some(status) = STATUSES.get(index).copied() {
+                if let Some(status) = STATUSES
+                    .get(index)
+                    .copied()
+                    .filter(|s| *s != current_status)
+                {
                     this.command(
                         TicketCommand::SetStatus {
                             id,
@@ -559,7 +567,11 @@ impl TicketsPage {
             |this: &mut Self, _, cx| this.toggle_menu(Menu::Priority, cx),
             move |this: &mut Self, index, _, cx| {
                 this.menu = None;
-                if let Some(priority) = PRIORITIES.get(index).copied() {
+                if let Some(priority) = PRIORITIES
+                    .get(index)
+                    .copied()
+                    .filter(|p| *p != current_priority)
+                {
                     this.command(
                         TicketCommand::SetPriority {
                             id,
@@ -578,14 +590,8 @@ impl TicketsPage {
             assignees
                 .iter()
                 .map(|a| {
-                    SelectOption::new(self.assignee_name(&a.id)).glyph(
-                        if a.kind == AssigneeKind::Agent {
-                            "agents"
-                        } else {
-                            "user"
-                        },
-                        TEXT_SECONDARY,
-                    )
+                    let name = self.assignee_name(&a.id);
+                    SelectOption::new(name.clone()).avatar(name, a.kind == AssigneeKind::Agent)
                 })
                 .collect(),
         )
@@ -599,7 +605,8 @@ impl TicketsPage {
             |this: &mut Self, _, cx| this.toggle_menu(Menu::Assignee, cx),
             move |this: &mut Self, index, _, cx| {
                 this.menu = None;
-                if let Some(chosen) = assignees.get(index) {
+                // Choosing the current assignee again would restart their work.
+                if let Some(chosen) = assignees.get(index).filter(|a| a.id != current_assignee) {
                     this.command(
                         TicketCommand::Assign {
                             id,
@@ -676,8 +683,7 @@ impl TicketsPage {
                                     cx.notify();
                                 },
                                 cx,
-                            )
-                            .mr(px(-GHOST_ICON_INSET)),
+                            ),
                     ),
             )
             .when(found.is_empty(), |s| {
@@ -737,6 +743,7 @@ impl TicketsPage {
             );
         }
         row()
+            .min_h(px(PROPERTY_ROW_HEIGHT))
             .gap(px(SPACE_1))
             .child(
                 div().flex_1().min_w_0().child(
@@ -773,8 +780,7 @@ impl TicketsPage {
                         )
                     },
                     cx,
-                )
-                .mr(px(-GHOST_ICON_INSET)),
+                ),
             )
     }
 

@@ -121,7 +121,6 @@ impl TicketsPage {
             .w_full()
             .flex_wrap()
             .gap(px(CHIP_GAP))
-            .py(px(SPACE_1))
             .children(applied.iter().map(|label| {
                 let removed = label.clone();
                 tag(label.clone(), label_color(label))
@@ -149,7 +148,7 @@ impl TicketsPage {
             // The trigger's wrapper takes the rest of the line, so the menu can
             // end on the value column's right edge and never leave the window.
             .child(
-                div()
+                row()
                     .relative()
                     .flex_1()
                     .child(

@@ -122,7 +122,7 @@ pub fn ticket_key(id: i64) -> String {
 /// A stable color per label name, so a label looks the same everywhere.
 pub fn label_color(label: &str) -> u32 {
     let hash = label
-        .to_lowercase()
+        .to_ascii_lowercase()
         .bytes()
         .fold(2166136261u32, |hash, byte| {
             (hash ^ u32::from(byte)).wrapping_mul(16777619)
@@ -251,7 +251,7 @@ impl Relation {
             Self::Duplicates => "Duplicates",
             Self::DuplicatedBy => "Duplicated by",
             Self::Parent => "Parent",
-            Self::SubIssue => "Sub-issue",
+            Self::SubIssue => "Sub-Ticket",
         }
     }
     /// The stored link that says `this` has this relation to `other`.
@@ -268,16 +268,42 @@ impl Relation {
     }
     /// How a history entry names this relation (the daemon's side names).
     pub fn from_history(side: &str) -> Option<Self> {
-        Some(match side {
-            "blocks" => Self::Blocks,
-            "blocked_by" => Self::BlockedBy,
-            "relates_to" => Self::RelatesTo,
-            "duplicates" => Self::Duplicates,
-            "duplicated_by" => Self::DuplicatedBy,
-            "child_of" => Self::Parent,
-            "parent_of" => Self::SubIssue,
-            _ => return None,
+        LINK_KINDS.into_iter().find_map(|kind| {
+            let (source, target) = history_sides(kind);
+            (side == source)
+                .then(|| Self::of(kind, true))
+                .or_else(|| (side == target).then(|| Self::of(kind, false)))
         })
+    }
+    /// A stored link read from its source's side (`outgoing`) or its target's.
+    fn of(kind: LinkKind, outgoing: bool) -> Self {
+        match (kind, outgoing) {
+            (LinkKind::Blocks, true) => Self::Blocks,
+            (LinkKind::Blocks, false) => Self::BlockedBy,
+            (LinkKind::RelatesTo, _) => Self::RelatesTo,
+            (LinkKind::Duplicates, true) => Self::Duplicates,
+            (LinkKind::Duplicates, false) => Self::DuplicatedBy,
+            (LinkKind::ParentOf, true) => Self::SubIssue,
+            (LinkKind::ParentOf, false) => Self::Parent,
+        }
+    }
+}
+
+const LINK_KINDS: [LinkKind; 4] = [
+    LinkKind::Blocks,
+    LinkKind::RelatesTo,
+    LinkKind::Duplicates,
+    LinkKind::ParentOf,
+];
+
+/// How the daemon's history names a stored link from its source's and its
+/// target's side; `Relation::from_history` reads these back.
+pub fn history_sides(kind: LinkKind) -> (&'static str, &'static str) {
+    match kind {
+        LinkKind::Blocks => ("blocks", "blocked_by"),
+        LinkKind::RelatesTo => ("relates_to", "relates_to"),
+        LinkKind::Duplicates => ("duplicates", "duplicated_by"),
+        LinkKind::ParentOf => ("parent_of", "child_of"),
     }
 }
 
@@ -292,15 +318,7 @@ pub fn relations(links: &[TicketLink], id: i64) -> Vec<(Relation, i64)> {
                 return None;
             }
             let other = if outgoing { link.to_id } else { link.from_id };
-            let relation = match (link.kind, outgoing) {
-                (LinkKind::Blocks, true) => Relation::Blocks,
-                (LinkKind::Blocks, false) => Relation::BlockedBy,
-                (LinkKind::RelatesTo, _) => Relation::RelatesTo,
-                (LinkKind::Duplicates, true) => Relation::Duplicates,
-                (LinkKind::Duplicates, false) => Relation::DuplicatedBy,
-                (LinkKind::ParentOf, true) => Relation::SubIssue,
-                (LinkKind::ParentOf, false) => Relation::Parent,
-            };
+            let relation = Relation::of(link.kind, outgoing);
             Some((relation, other))
         })
         .collect();
@@ -493,6 +511,10 @@ mod tests {
                 kind,
             }];
             assert_eq!(relations(&stored, 7), [(relation, 8)], "{relation:?}");
+            // History names each side so it reads back as the same relation.
+            let (source, target) = history_sides(kind);
+            let side = if from == 7 { source } else { target };
+            assert_eq!(Relation::from_history(side), Some(relation));
         }
         let mut blocker = ticket(1, TicketStatus::InProgress, 0);
         assert_eq!(

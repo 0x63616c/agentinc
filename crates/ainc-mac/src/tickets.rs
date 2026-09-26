@@ -64,6 +64,10 @@ pub enum TicketsEvent {
     OpenConversation(i64),
 }
 
+/// What a Ticket's history depends on: its edits, Comments and runs. Polling
+/// reads the history again only when this changes.
+type ActivityStamp = (i64, i64, usize, Vec<String>);
+
 /// The fields of the create dialog that are not text inputs.
 #[derive(Clone, Debug)]
 struct Draft {
@@ -108,7 +112,8 @@ pub struct TicketsPage {
     agent_instructions: Entity<TextInput>,
     agent_model: Entity<TextInput>,
     activity: Vec<TicketActivity>,
-    activity_for: Option<i64>,
+    /// The open Ticket's history was read at this stamp.
+    activity_for: Option<ActivityStamp>,
     drag: board::DragState,
     error: Option<String>,
     form_error: Option<String>,
@@ -132,21 +137,36 @@ impl HoverHost for TicketsPage {
 impl EventEmitter<TicketsEvent> for TicketsPage {}
 
 impl TicketsPage {
+    /// Every text the person may be typing on this page, by a stable key.
+    fn inputs(&self) -> [(&'static str, &Entity<TextInput>); 11] {
+        [
+            ("input", &self.input),
+            ("draft_description", &self.draft_description),
+            ("comment", &self.comment),
+            ("description", &self.description),
+            ("rename", &self.rename),
+            ("label", &self.label_input),
+            ("link_search", &self.link_search),
+            ("search", &self.search),
+            ("agent_name", &self.agent_name),
+            ("agent_instructions", &self.agent_instructions),
+            ("agent_model", &self.agent_model),
+        ]
+    }
     pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
         anyhow::ensure!(
             !self.pending,
             "Wait for the current change to finish before installing"
         );
-        Ok(serde_json::json!({
+        let mut drafts = serde_json::json!({
             "selected": self.selected,
             "list": self.view == View::List,
-            "input": self.input.read(cx).content.to_string(),
-            "comment": self.comment.read(cx).content.to_string(),
-            "search": self.search.read(cx).content.to_string(),
-            "agent_name": self.agent_name.read(cx).content.to_string(),
-            "agent_instructions": self.agent_instructions.read(cx).content.to_string(),
-            "agent_model": self.agent_model.read(cx).content.to_string(),
-        }))
+            "editing_description": self.editing_description,
+        });
+        for (key, input) in self.inputs() {
+            drafts[key] = input.read(cx).content.to_string().into();
+        }
+        Ok(drafts)
     }
     pub(crate) fn restore_update_drafts(
         &mut self,
@@ -159,14 +179,8 @@ impl TicketsPage {
         if value["list"].as_bool() == Some(true) {
             self.view = View::List;
         }
-        for (key, input) in [
-            ("input", &self.input),
-            ("comment", &self.comment),
-            ("search", &self.search),
-            ("agent_name", &self.agent_name),
-            ("agent_instructions", &self.agent_instructions),
-            ("agent_model", &self.agent_model),
-        ] {
+        self.editing_description = value["editing_description"].as_bool() == Some(true);
+        for (key, input) in self.inputs() {
             if let Some(text) = value[key].as_str() {
                 input.update(cx, |input, cx| input.set_text(text, cx));
             }
@@ -304,14 +318,12 @@ impl TicketsPage {
         self.selected = None;
         self.filters = Filters::default();
         self.menu = None;
-        for input in [
-            &self.input,
-            &self.comment,
-            &self.search,
-            &self.agent_name,
-            &self.agent_instructions,
-            &self.agent_model,
-        ] {
+        self.draft = Draft::default();
+        self.editing_description = false;
+        self.link_target = None;
+        self.activity.clear();
+        self.activity_for = None;
+        for (_, input) in self.inputs() {
             input.update(cx, |input, _| input.reset());
         }
         self.form_error = None;
@@ -350,11 +362,32 @@ impl TicketsPage {
         })
         .detach();
     }
-    /// Read the open Ticket's history in the background.
+    fn activity_stamp(&self) -> Option<ActivityStamp> {
+        let ticket = self.selected.and_then(|id| self.ticket(id))?;
+        let runs = self
+            .state
+            .runs
+            .iter()
+            .filter(|run| run.ticket_id == ticket.id)
+            .map(|run| format!("{}/{}", run.run_id, run.state))
+            .collect();
+        Some((
+            ticket.id,
+            ticket.updated_at,
+            self.comment_count(ticket.id),
+            runs,
+        ))
+    }
+    /// Read the open Ticket's history in the background, unless nothing it
+    /// depends on has changed since the last read.
     fn load_activity(&mut self, cx: &mut Context<Self>) {
-        let (Some(store), Some(id)) = (self.store.clone(), self.selected) else {
+        let (Some(store), Some(stamp)) = (self.store.clone(), self.activity_stamp()) else {
             return;
         };
+        if self.activity_for.as_ref() == Some(&stamp) {
+            return;
+        }
+        let id = stamp.0;
         let request = cx
             .background_executor()
             .spawn(async move { store.ticket_activity(id) });
@@ -365,7 +398,7 @@ impl TicketsPage {
                     && let Ok(activity) = result
                 {
                     this.activity = activity;
-                    this.activity_for = Some(id);
+                    this.activity_for = Some(stamp);
                     cx.notify();
                 }
             });
@@ -632,7 +665,7 @@ impl TicketsPage {
             .count()
     }
 
-    /// A dropdown trigger with a floating menu below it.
+    /// A filter's menu button; the page decides which menu is open.
     #[allow(clippy::too_many_arguments)]
     fn dropdown(
         &self,
@@ -645,30 +678,17 @@ impl TicketsPage {
         items: Vec<AnyElement>,
         cx: &mut Context<Self>,
     ) -> Div {
-        let open = self.menu == Some(menu);
-        column()
-            .relative()
-            .child(
-                Button::new(id, label)
-                    .secondary()
-                    .icon(icon_name)
-                    .selected(open || active)
-                    .trailing(icon("chevronDown", ICON_SIZE_SM))
-                    .build(
-                        &self.hover,
-                        move |this: &mut Self, _, cx| this.toggle_menu(menu, cx),
-                        cx,
-                    ),
+        MenuButton::new(id, label)
+            .icon(icon_name)
+            .active(active)
+            .open(self.menu == Some(menu))
+            .width(width)
+            .build(
+                &self.hover,
+                items,
+                move |this: &mut Self, _, cx| this.toggle_menu(menu, cx),
+                cx,
             )
-            .when(open, |s| {
-                s.child(floating(
-                    menu_shell(width)
-                        .debug_selector(move || format!("{id}.menu"))
-                        .children(items),
-                    Anchor::TopLeft,
-                    point(px(0.), px(CONTROL_HEIGHT + SPACE_1)),
-                ))
-            })
     }
 
     fn filter_bar(&self, window: &Window, cx: &mut Context<Self>) -> Div {

@@ -56,7 +56,7 @@ Install the official [Codex CLI](https://developers.openai.com/codex/cli), then 
 
 Open **Assistant** in the sidebar to start, reopen, rename or delete conversations. Existing single-chat history migrates into “Previous conversation”. Send with Return or the composer’s arrow; Shift+Return inserts a newline. Failed replies remain retryable and conversations persist on the daemon, including when the app closes.
 
-Tasks supports create, complete/reopen and delete. Conversations, Tasks and product preferences are owned by `aincd` in Postgres. Its repeat-safe one-way import reads the previous SQLite database without migrating it in place. See [daemon ownership and setup](../../docs/phase-2-ownership.md) and [native ownership verification](docs/verification/OWNERSHIP.md).
+**Tickets** opens on a Kanban board with a lane per status (Backlog, To do, In progress, Blocked, Done, Cancelled). Drag cards between and within lanes; the order is saved. Switch to the grouped list, search, and filter by priority, label or assignee. A Ticket's page edits its description, status, priority, assignee and labels, relates it to other Tickets (blocks, relates to, duplicates, parent and sub-issue), and shows its history, Comments, agent runs and the Conversation it came from. Create from any lane's + or from ⌘K, where Tickets are also found by title. Conversations, Tickets and product preferences are owned by `aincd` in Postgres. Its repeat-safe one-way import reads the previous SQLite database without migrating it in place. See [daemon ownership and setup](../../docs/phase-2-ownership.md) and [native ownership verification](docs/verification/OWNERSHIP.md).
 
 ## Using the shell
 

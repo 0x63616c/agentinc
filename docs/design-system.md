@@ -21,12 +21,12 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 
 | Group | Names | Use |
 | --- | --- | --- |
-| Surfaces | `SHELL`, `SURFACE`, `SURFACE_RAISED`, `SURFACE_OVERLAY`, `SURFACE_INPUT`, `SURFACE_CONTROL`, `SURFACE_ERROR` | Window, content card, cards, menus and dialogs, inputs, control tracks, error banners. |
+| Surfaces | `SHELL`, `SURFACE`, `SURFACE_RAISED`, `SURFACE_OVERLAY`, `SURFACE_INPUT`, `SURFACE_CONTROL`, `SURFACE_ERROR`, `SURFACE_SUNKEN` | Window, content card, cards, menus and dialogs, inputs, control tracks, error banners, wells recessed into the card (board lanes). |
 | States | `HOVER`, `HOVER_STRONG`, `ACTIVE`, `SELECTED`, `SELECTED_STRONG`, `FOCUS` | Hover on quiet rows and on controls, pressed, selected rows and segments, the focus ring. |
 | Borders | `BORDER`, `BORDER_SUBTLE`, `BORDER_STRONG`, `ERROR_BORDER` | Around surfaces, inside them, on overlays, on invalid fields. |
 | Text | `TEXT`, `TEXT_SECONDARY`, `TEXT_TERTIARY`, `TEXT_PLACEHOLDER`, `TEXT_ON_PRIMARY` | Body, descriptions, eyebrows and hints, placeholders, ink on white. |
 | Actions | `PRIMARY`, `PRIMARY_HOVER`, `PRIMARY_ACTIVE`, `DESTRUCTIVE`, `DESTRUCTIVE_HOVER`, `DESTRUCTIVE_TEXT`, `ERROR` | The white button, the red button, red text. |
-| Status | `STATUS_{NEUTRAL,GREEN,BLUE,AMBER,RED,PURPLE}` and `_SURFACE` pairs, `ACCENT` | Badge and pill tones; the unread dot. |
+| Status | `STATUS_{NEUTRAL,GREEN,BLUE,AMBER,RED,PURPLE}` and `_SURFACE` pairs, `ACCENT`, `LABEL_COLORS` | Badge and pill tones; the unread dot; eight muted label hues. |
 | Spacing | `SPACE_HALF`, `SPACE_1` … `SPACE_10`, `PAGE_X`, `PANEL_GAP`, `SIDEBAR_INSET`, `SECTION_GAP`, control and row sizes | Every gap, inset and control dimension. |
 | Radius | `RADIUS_XS` … `RADIUS_XL`, `PANEL_RADIUS`, `CONTROL_RADIUS`, `FIELD_RADIUS` | Chips and hints, controls, cards, panels. |
 | Type | `DISPLAY_SIZE`, `TITLE_SIZE`, `HEADING_SIZE`, `BODY_SIZE`, `LABEL_SIZE`, `CAPTION_SIZE`, `MICRO_SIZE`; `type_size()` | Page titles, dialog titles, section headings, body, labels, captions, hints. |
@@ -44,22 +44,21 @@ surface can fade between frames) and a `cx.listener`-style action; hosts impleme
 `HoverHost` and call `hover.animate(window)` once per render. `HoverFade::track`
 is the one place a control gets its hover amount and listener.
 
-Sheets, tabs, checkboxes, leading field icons and select option descriptions are
-built for the 1.0 workstreams that follow (Kanban, onboarding, providers) and are
-exercised only on the Components page today.
+Sheets, tabs and checkboxes are built for the 1.0 workstreams (onboarding,
+providers) and are exercised only on the Components page today.
 
 | Component | File | Use it for |
 | --- | --- | --- |
-| `Button` (primary, secondary, ghost, destructive; small, regular, large; `.icon_only()`, `.tint()`) | `button.rs` | Every labeled action. One white primary per surface (the header's, never also the empty state's); secondary is outlined; ghost is transparent at rest and paints its hover as an overlay, so it sits on any surface; destructive is an outlined red control, never a solid slab; a disabled primary is an outline, not a gray block. |
-| `Field` / `text_field` | `field.rs` | Labeled single-line inputs and `.multiline()` text areas, with hint, error and a quiet `FOCUS_FIELD` border while editing. Fields, selects and buttons share `CONTROL_HEIGHT`; inline forms cap at `FORM_WIDTH` and end with a `dialog_footer`. |
-| `Select` | `select.rs` | Choosing one option from a short list. The menu floats over the trigger like a macOS pop-up button, with the current option on the trigger's line, so the row never resizes and the menu never has to choose a side. |
-| `MenuEntry`, `menu_label`, `menu_divider`, `floating` | `menu.rs` | Dropdown and context menu rows and the deferred, anchored placement they share with popovers. `menu_shell` and `popover_shell` in `overlay.rs` are their surfaces. |
+| `Button` (primary, secondary, ghost, destructive; small, regular, large; `.icon_only()`, `.tint()`, `.leading()`) | `button.rs` | Every labeled action. One white primary per surface (the header's, never also the empty state's); secondary is outlined; ghost is transparent at rest and paints its hover as an overlay, so it sits on any surface; destructive is an outlined red control, never a solid slab; a disabled primary is an outline, not a gray block. |
+| `Field` / `text_field` / `field_label` | `field.rs` | Labeled single-line inputs and `.multiline()` text areas, with hint, error and a quiet `FOCUS_FIELD` border while editing. Fields, selects and buttons share `CONTROL_HEIGHT`; inline forms cap at `FORM_WIDTH` and end with a `dialog_footer`. |
+| `Select` | `select.rs` | Choosing one option from a short list. The menu floats over the trigger like a macOS pop-up button, with the current option on the trigger's line, so the row never resizes and the menu never has to choose a side. `.below()` drops it under the trigger instead (dialogs, where a menu over the trigger would cover the fields above); `.quiet()` is a surfaceless trigger for property rows whose menu drops below, right edges aligned. Options can carry a colored `.glyph()` or an `.avatar()`, shown on the trigger and in the menu. |
+| `MenuEntry` (`.glyph()` for a colored leading icon, `.leading()` for an avatar), `MenuButton`, `menu_label`, `menu_divider`, `floating` | `menu.rs` | Dropdown and context menu rows and the deferred, anchored placement they share with popovers. `menu_shell` and `popover_shell` in `overlay.rs` are their surfaces. A `MenuButton` is a toolbar button, such as a filter, whose menu drops below it, left edges aligned. |
 | `banner`, `error_text` | `banner.rs` | A toned full-width notice inside a page; short red copy under a field or inside a dialog. |
 | `toggle`, `checkbox` | `toggle.rs` | Boolean settings. Toggles for immediate effect, checkboxes inside forms. |
 | `segmented`, `tabs`, `chip` | `segmented.rs` | One of a few options (segments hug their content), switching views inside a page (tabs underline their label), picking a value in a form (chips: the chosen one is filled with full-strength text, the rest are outlined). |
-| `badge`, `status_pill`, `status_dot`, `count_badge`, `Tone` | `badge.rs` | States and counts. Badges in lists and headers, pills in tables. |
-| `avatar` | `avatar.rs` | People and agents, with an initials fallback. |
-| `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `Page`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. A detail page makes its record the one H1 and puts the way back in `PageHeader::leading`; rows live in a `card` with hairlines between them. |
+| `badge`, `status_pill`, `status_dot`, `count_badge`, `tag`, `Tone` | `badge.rs` | States and counts. Badges in lists and headers, pills in tables. A `tag` is a label: a bordered pill with a dot in one of the `LABEL_COLORS`, never red, which stays for status. |
+| `avatar`, `agent_avatar` | `avatar.rs` | People are round, with a photo or initials; agents are rounded squares with initials, so the two read apart wherever they appear together. |
+| `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `property_row`, `Page`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. A detail page makes its record the one H1 and puts the way back in `PageHeader::leading`; rows live in a `card` with hairlines between them. `Page::fill` is a document page whose content fills the height under its header and scrolls its own parts (the Tickets board). `property_row` is a record's labeled value, the label kept beside a wrapping value's first line. |
 | `table_container`, `table_header`, `table_cells`, `table_row`, `TableColumn` | `table.rs` | Columnar data with an eyebrow header and clickable rows. |
 | `dialog_shell`, `dialog_footer`, `sheet_shell`, `popover_shell`, `menu_shell`, `OverlayHost<O>` | `overlay.rs` | Modal confirmations and forms with a Cancel / confirm footer, side panels, floating surfaces; one active overlay per window with focus return. The overlay vocabulary itself (`model::Overlay`) belongs to the shell. |
 | `Toasts` | `toast.rs` | Transient notices; the host anchors the stack on its content rail and schedules dismissal for transient ones (the shell keeps a sticky one while the session cannot be saved). |

@@ -7,6 +7,8 @@ pub struct SelectOption {
     pub label: SharedString,
     pub description: Option<SharedString>,
     pub glyph: Option<(&'static str, u32)>,
+    /// A person or agent shown by their avatar: name and whether an agent.
+    pub avatar: Option<(SharedString, bool)>,
 }
 
 impl SelectOption {
@@ -15,7 +17,13 @@ impl SelectOption {
             label: label.into(),
             description: None,
             glyph: None,
+            avatar: None,
         }
+    }
+    /// Lead with a person's round avatar or an agent's square one.
+    pub fn avatar(mut self, name: impl Into<SharedString>, agent: bool) -> Self {
+        self.avatar = Some((name.into(), agent));
+        self
     }
     /// A colored leading icon shown on the trigger and in the menu.
     pub fn glyph(mut self, name: &'static str, color: u32) -> Self {
@@ -110,10 +118,13 @@ impl Select {
         let current = value.and_then(|index| options.get(index));
         let label = current.map_or(placeholder, |option| option.label.clone());
         let glyph = current.and_then(|option| option.glyph);
+        let person = current.and_then(|option| option.avatar.clone());
         let trigger_selector = id.to_string();
         let mut trigger = Button::new(ElementId::Name(id.clone()), label);
         if let Some((name, color)) = glyph {
             trigger = trigger.leading(icon(name, ICON_SIZE_SM).text_color(rgb(color)));
+        } else if let Some((name, agent)) = person {
+            trigger = trigger.leading(option_avatar(&name, agent));
         }
         let trigger = trigger
             .kind(if quiet {
@@ -150,6 +161,8 @@ impl Select {
                     .enabled(enabled);
                     if let Some((name, color)) = option.glyph {
                         item = item.glyph(name, color);
+                    } else if let Some((name, agent)) = &option.avatar {
+                        item = item.leading(option_avatar(name, *agent));
                     }
                     if let Some(description) = option.description {
                         item = item.trailing(caption(description));
@@ -186,5 +199,13 @@ impl Select {
                     point(px(0.), px(-(MENU_INSET + current * MENU_ITEM_HEIGHT))),
                 ))
             })
+    }
+}
+
+fn option_avatar(name: &str, agent: bool) -> AnyElement {
+    if agent {
+        super::avatar::agent_avatar(name, ICON_SIZE)
+    } else {
+        super::avatar::avatar(name, None, ICON_SIZE)
     }
 }
