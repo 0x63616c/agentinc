@@ -76,13 +76,11 @@ pub fn host(base_url: &str) -> String {
         .trim_end_matches('/')
         .to_owned()
 }
-/// Three room cards side by side when they fit, then two, then one.
+/// Three room cards side by side when they fit; otherwise one full-width
+/// column, so an odd card never sits beside an empty cell.
 fn room_columns(window: &Window) -> usize {
-    let width = window.viewport_size().width;
-    if width >= px(ROOMS_THREE_ACROSS) {
+    if window.viewport_size().width >= px(ROOMS_THREE_ACROSS) {
         3
-    } else if width >= px(CLIMATE_STACK_BELOW) {
-        2
     } else {
         1
     }
