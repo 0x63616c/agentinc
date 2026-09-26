@@ -162,7 +162,14 @@ fn variants(spec: &Value, group: &str) -> Vec<Variant> {
                 .iter()
                 .filter(|(name, _)| name.as_str() != "kind")
                 .map(|(name, field)| {
-                    let typ = if field.get("$ref").is_some()
+                    // A reference to a string enum, such as a Smart Home switch, is a plain value.
+                    let target = field["$ref"]
+                        .as_str()
+                        .and_then(|r| spec.pointer(r.trim_start_matches('#')));
+                    let enum_string = target.is_some_and(|t| t["type"] == "string");
+                    let typ = if enum_string {
+                        "string"
+                    } else if field.get("$ref").is_some()
                         || field["type"]
                             .as_str()
                             .is_some_and(|t| t == "object" || t == "array")
@@ -462,5 +469,19 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn enum_fields_are_plain_flags_and_structs_stay_json() {
+        let spec = schema();
+        let home = variants(&spec, "home");
+        let switch = home.iter().find(|(kind, _)| kind == "switch").unwrap();
+        assert!(switch.1.contains(&("key".into(), "string".into(), true)));
+        assert!(switch.1.contains(&("on".into(), "boolean".into(), true)));
+        let tickets = variants(&spec, "tickets");
+        let assigned = tickets
+            .iter()
+            .find(|(kind, _)| kind == "create-assigned")
+            .unwrap();
+        assert_eq!(assigned.1[0].1, "json");
     }
 }
