@@ -500,8 +500,15 @@ impl Store {
         Ok(turn)
     }
     #[cfg(test)]
-    fn fixture_command(&self, _: Command) -> Result<Option<i64>> {
-        bail!("No rendered fixture for this command")
+    fn fixture_command(&self, command: Command) -> Result<Option<i64>> {
+        match command {
+            Command::SelectModel { model } => {
+                let mut snapshot = self.snapshot.lock().expect("presentation snapshot");
+                snapshot.settings.model = Some(model).filter(|model| !model.is_empty());
+                Ok(None)
+            }
+            _ => bail!("No rendered fixture for this command"),
+        }
     }
     #[cfg(test)]
     fn fixture_ticket(&self, command: TicketCommand) -> Result<Option<i64>> {

@@ -1014,6 +1014,8 @@ pub fn run() -> Result<()> {
         suite.bounds("codex-model-select.menu").is_err(),
         "escape must close the model select"
     );
+    // Choosing an option selects that model, closes the menu and keeps the
+    // row's height.
     suite.click_selector("codex-model-select")?;
     suite.click_selector("codex-model-select.option.1")?;
     suite.capture("model-dropdown-selected", Route::Settings, None, false)?;
@@ -1026,6 +1028,13 @@ pub fn run() -> Result<()> {
         f32::from(suite.bounds("settings.row.Model")?.size.height),
         f32::from(closed.size.height),
     )?;
+    let chosen = suite
+        .window
+        .read_with(&suite.cx, |shell, cx| shell.fixture_selected_model(cx))?;
+    ensure!(
+        chosen.as_deref() == Some("model-one"),
+        "choosing an option must select that model, got {chosen:?}"
+    );
     // The component gallery, one capture per section, reached through the palette.
     suite.keys("cmd-k");
     suite.cx.simulate_input(window.into(), "components");

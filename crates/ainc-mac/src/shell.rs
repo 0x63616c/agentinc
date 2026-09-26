@@ -585,6 +585,11 @@ impl Shell {
     }
     #[cfg(test)]
     #[allow(dead_code)]
+    pub(crate) fn fixture_selected_model(&self, cx: &App) -> Option<String> {
+        self.assistant.read(cx).fixture_selected_model()
+    }
+    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn fixture_models(&mut self, cx: &mut Context<Self>) {
         self.assistant
             .update(cx, |assistant, cx| assistant.fixture_models(cx));

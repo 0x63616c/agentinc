@@ -783,6 +783,11 @@ impl AssistantPage {
     }
     #[cfg(test)]
     #[allow(dead_code)]
+    pub fn fixture_selected_model(&self) -> Option<String> {
+        self.model.clone()
+    }
+    #[cfg(test)]
+    #[allow(dead_code)]
     pub fn fixture_models(&mut self, cx: &mut Context<Self>) {
         self.account = Some("Fixture account".into());
         self.credentials_busy = false;

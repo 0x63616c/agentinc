@@ -128,7 +128,7 @@ impl Shell {
                 )
                 .w_full()
                 .min_w_0()
-                .p(px(SPACE_4))
+                .p(px(SPACE_3))
                 .mb(px(SPACE_3))
                 .rounded(px(RADIUS_LG))
                 .border_1()
@@ -139,7 +139,12 @@ impl Shell {
                         .flex_1()
                         .min_w_0()
                         .gap(px(SPACE_2))
-                        .child(eyebrow("Workspace"))
+                        .child(
+                            row()
+                                .justify_between()
+                                .child(eyebrow("Workspace"))
+                                .child(icon("chevronUpDown", ICON_SIZE_SM)),
+                        )
                         .child(
                             row()
                                 .gap(px(SPACE_2 + 2.))
@@ -163,12 +168,11 @@ impl Shell {
                                         .min_w_0()
                                         .truncate()
                                         .debug_selector(|| "workspace-title".into())
-                                        .text_size(type_size(BODY_SIZE))
+                                        .text_size(type_size(LABEL_SIZE))
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(rgb(TEXT))
                                         .child(workspace_name),
-                                )
-                                .child(icon("chevronUpDown", ICON_SIZE_SM)),
+                                ),
                         ),
                 ),
             )
