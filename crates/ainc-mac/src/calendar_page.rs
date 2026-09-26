@@ -975,7 +975,13 @@ impl CalendarPage {
                 let top = (from - grid_start) as f32 / 3600. * HOUR_HEIGHT;
                 let height =
                     ((to - from) as f32 / 3600. * HOUR_HEIGHT).max(CONTROL_HEIGHT_SM + SPACE_1);
-                let width = 1. / count as f32;
+                // Overlaps cascade: each later lane starts further in and sits on
+                // top, so every event keeps most of the column for its title.
+                let offset = if count > 1 {
+                    CASCADE_SPAN / (count - 1) as f32 * index as f32
+                } else {
+                    0.
+                };
                 let id = event.id.clone();
                 let tall = height >= HOUR_HEIGHT * 0.75;
                 let color = event_color(event);
@@ -983,8 +989,8 @@ impl CalendarPage {
                     div()
                         .absolute()
                         .top(px(top + 1.))
-                        .left(relative(width * index as f32))
-                        .w(relative(width))
+                        .left(relative(offset))
+                        .w(relative(1. - offset))
                         .h(px(height - 2.))
                         .px(px(SPACE_HALF))
                         .child(action_button(
@@ -997,7 +1003,7 @@ impl CalendarPage {
                                 // The title always shows. A tall block alone in its
                                 // column adds the time; a shared or short one gives
                                 // its room to the title, which wraps when it can.
-                                let with_time = tall && count == 1;
+                                let with_time = tall;
                                 let title = div()
                                     .w_full()
                                     .font_weight(FontWeight::MEDIUM)
@@ -1012,6 +1018,9 @@ impl CalendarPage {
                                     .p(px(SPACE_HALF))
                                     .pr(px(SPACE_1))
                                     .rounded(px(RADIUS_SM))
+                                    // A hairline in the grid's color separates cascaded blocks.
+                                    .border_1()
+                                    .border_color(rgb(SURFACE_RAISED))
                                     .bg(rgb(SURFACE_CONTROL))
                                     .hover(|s| s.bg(rgb(HOVER_STRONG)))
                                     .text_size(type_size(CAPTION_SIZE))
@@ -1026,7 +1035,7 @@ impl CalendarPage {
                                         column()
                                             .flex_1()
                                             .min_w_0()
-                                            .when(tall, |s| s.py(px(SPACE_1)))
+                                            .when(tall, |s| s.py(px(SPACE_HALF)))
                                             .when(!tall, |s| s.justify_center())
                                             .child(title)
                                             .when(with_time, |s| {
@@ -1387,10 +1396,10 @@ impl Render for CalendarPage {
                 View::Month => {
                     let viewport = window.viewport_size();
                     let wide = viewport.width >= px(MONTH_WITH_DAY_MIN);
-                    // Every week fits in the window, down to a readable minimum.
+                    // The weeks fill the window, down to a readable minimum.
                     let rows = (month_grid(self.anchor).len() / 7) as f32;
                     let cell_height = ((f32::from(viewport.height) - MONTH_CHROME) / rows)
-                        .clamp(MONTH_CELL_MIN_HEIGHT, MONTH_CELL_HEIGHT);
+                        .max(MONTH_CELL_MIN_HEIGHT);
                     let dots = viewport.width < px(MONTH_TITLES_MIN);
                     self.month(&events, wide, cell_height, dots, cx)
                         .into_any_element()

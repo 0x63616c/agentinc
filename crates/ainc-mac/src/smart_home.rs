@@ -188,7 +188,22 @@ impl SmartHomePage {
                 )))
             }
         }
-        if let Some(ambient) = climate.ambient {
+        // The reading's mark is left out when it would sit on a setpoint handle;
+        // its label under the track still says where it is.
+        let setpoints: Vec<i64> = match climate.mode {
+            ClimateMode::Off => vec![],
+            ClimateMode::HeatCool => vec![
+                climate.target_low.unwrap_or(DEFAULT_LOW),
+                climate.target_high.unwrap_or(DEFAULT_HIGH),
+            ],
+            _ => vec![climate.target.unwrap_or(DEFAULT_TARGET)],
+        };
+        let clear = |ambient: f64| {
+            setpoints
+                .iter()
+                .all(|point| (ambient - *point as f64).abs() >= 1.)
+        };
+        if let Some(ambient) = climate.ambient.filter(|ambient| clear(*ambient)) {
             rail = rail.child(
                 div()
                     .debug_selector(|| "home.climate.now".into())
@@ -451,7 +466,14 @@ impl SmartHomePage {
             for _ in 0..columns {
                 line = line.child(match cards.next() {
                     Some(card) => card,
-                    None => div().flex_1().min_w_0().into_any_element(),
+                    // An empty cell takes a card's insets, so it is exactly as wide.
+                    None => div()
+                        .flex_1()
+                        .min_w_0()
+                        .p(px(CARD_INSET))
+                        .border_1()
+                        .border_color(rgba(SHELL << 8))
+                        .into_any_element(),
                 });
             }
             grid = grid.child(line);

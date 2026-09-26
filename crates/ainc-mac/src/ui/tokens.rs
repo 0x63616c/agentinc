@@ -195,24 +195,26 @@ pub const TILE_INSET: f32 = SPACE_4;
 pub const TILE_HEIGHT: f32 = 96.;
 /// The value column of a stepper, wide enough for "100°".
 pub const STEPPER_VALUE_WIDTH: f32 = 56.;
-/// Calendar: a month cell, one hour of the week grid, the week's time
+/// Calendar: one hour of the week grid, the week's time
 /// gutter, the day panel beside the month, the agenda's date column, a
 /// calendar color bar and the circle that marks today.
-pub const MONTH_CELL_HEIGHT: f32 = 100.;
 pub const HOUR_HEIGHT: f32 = 48.;
 pub const TIME_GUTTER: f32 = 56.;
 pub const DAY_PANEL_WIDTH: f32 = 260.;
 /// The narrowest window that shows the selected day beside the month.
 pub const MONTH_WITH_DAY_MIN: f32 = 1500.;
 /// Month rows shrink to fit short windows, but not below this.
-pub const MONTH_CELL_MIN_HEIGHT: f32 = 64.;
+pub const MONTH_CELL_MIN_HEIGHT: f32 = 56.;
 /// One event line in a month cell, and the most marks a narrow cell shows.
 pub const MONTH_LINE: f32 = CONTROL_HEIGHT_SM - SPACE_1 + SPACE_HALF;
 pub const MONTH_DOTS: usize = 6;
 /// Below this window width month cells show marks instead of titles.
 pub const MONTH_TITLES_MIN: f32 = 1000.;
-/// Everything above and below the month grid in the window, for fitting rows.
-pub const MONTH_CHROME: f32 = 330.;
+/// Everything above and below the month grid in the window, including a
+/// bottom gap equal to the page inset, so the rows fill the rest.
+pub const MONTH_CHROME: f32 = 294.;
+/// How far across a week column the last of several overlapping events starts.
+pub const CASCADE_SPAN: f32 = 0.18;
 pub const AGENDA_DATE_WIDTH: f32 = 128.;
 pub const AGENDA_TIME_WIDTH: f32 = 136.;
 /// The thermostat card's reading column, and its track: the rail, the
