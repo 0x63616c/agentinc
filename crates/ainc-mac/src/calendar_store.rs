@@ -4,7 +4,8 @@ use ainc_client::types::ImportedEvent;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Access {
-    /// The system has not asked yet.
+    /// The system has not asked yet. Only the macOS store reports it.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     NotAsked,
     /// Refused, restricted, or write-only: AgentInc cannot read events.
     Denied,
