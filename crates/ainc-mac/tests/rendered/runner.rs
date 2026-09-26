@@ -5,10 +5,9 @@ use crate::ui::{
 };
 use crate::{
     input,
-    model::{FontSize, PANE_WIDTHS, Route, Session},
+    model::{FontSize, Overlay, PANE_WIDTHS, Route, Session},
     shell::{self, Shell},
     ui::Assets,
-    ui::Overlay,
 };
 use anyhow::{Result, ensure};
 use gpui::prelude::*;
@@ -141,7 +140,6 @@ impl Suite {
         for (name, selector, minimum) in [
             ("workspace", "workspace-title", 60),
             ("profile name", "sidebar-profile-name", 30),
-            ("status route", "status-bar.route", 30),
         ] {
             probes.push((name.into(), rect(self.bounds(selector)?), text, minimum));
         }
@@ -149,6 +147,7 @@ impl Suite {
         let tertiary = if dimmed { 18 } else { 60 };
         for (name, selector, minimum) in [
             ("profile handle", "sidebar-profile-handle", 20),
+            ("status route", "status-bar.route", 30),
             ("status version", "sidebar-version", 12),
         ] {
             probes.push((name.into(), rect(self.bounds(selector)?), tertiary, minimum));
@@ -518,10 +517,10 @@ impl Suite {
     }
 
     /// Every component specimen renders inside the page's content width.
-    fn check_gallery_geometry(&mut self, specimens: &[&str]) -> Result<()> {
+    fn check_components_geometry(&mut self, specimens: &[&str]) -> Result<()> {
         let content = self.bounds("main-content")?;
         for specimen in specimens {
-            let bounds = self.bounds(&format!("gallery.{specimen}"))?;
+            let bounds = self.bounds(&format!("components.{specimen}"))?;
             ensure!(
                 bounds.origin.x >= content.origin.x - px(GEOMETRY_TOLERANCE)
                     && bounds.origin.x + bounds.size.width
@@ -615,7 +614,7 @@ pub fn run() -> Result<()> {
     suite.capture(
         "user-menu",
         Route::Assistant,
-        Some(Overlay::UserMenu),
+        Some(Overlay::UserMenu { support: false }),
         false,
     )?;
     let menu = suite.bounds("user-menu")?;
@@ -633,7 +632,7 @@ pub fn run() -> Result<()> {
     suite.capture(
         "user-menu-support",
         Route::Assistant,
-        Some(Overlay::UserMenu),
+        Some(Overlay::UserMenu { support: true }),
         false,
     )?;
     suite.bounds("user-menu.support.menu")?;
@@ -660,6 +659,13 @@ pub fn run() -> Result<()> {
     ensure!(
         toasts.origin.y + toasts.size.height <= status.origin.y,
         "toasts must stack above the status bar"
+    );
+    suite.click_selector("toast.close.1")?;
+    suite.click_selector("toast.close.2")?;
+    suite.capture("toasts-dismissed", Route::Assistant, None, false)?;
+    ensure!(
+        suite.bounds("toasts").is_err(),
+        "dismissed toasts must leave the shell"
     );
     let now = chrono::Utc::now().timestamp_millis();
     let execution = |workflow_type: &str,
@@ -866,7 +872,8 @@ pub fn run() -> Result<()> {
                 Some(Overlay::Search),
                 false,
             )?;
-            suite.bounds("palette.result.page.tickets")?;
+            suite.bounds("palette.result.recent.page.tickets")?;
+            suite.bounds("palette.result.pages.page.tickets")?;
             suite.keys("down");
             suite.keys("down");
             suite.capture(
@@ -921,6 +928,12 @@ pub fn run() -> Result<()> {
     suite.capture("dialog-dismissed", Route::Tickets, None, false)?;
     suite.keys("cmd-k");
     suite.capture("search-open", Route::Tickets, Some(Overlay::Search), false)?;
+    let palette = suite.bounds("search.dialog")?;
+    let status = suite.bounds("status-bar")?;
+    ensure!(
+        palette.origin.y + palette.size.height <= status.origin.y,
+        "the palette must clear the status bar at the minimum window size"
+    );
     suite.cx.simulate_input(window.into(), "zzzz");
     suite.capture(
         "search-no-matches",
@@ -932,6 +945,21 @@ pub fn run() -> Result<()> {
     suite.keys("escape");
     suite.keys("cmd-,");
     suite.capture("settings-shortcut", Route::Settings, None, false)?;
+    // Keyboard navigation reveals focus rings; a pointer press hides them again.
+    suite.keys("tab");
+    suite.capture("focus-ring", Route::Settings, None, false)?;
+    suite.click_selector("titlebar-center-space")?;
+    // A Ticket with an agent, a status, an assignee and a Comment.
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_ticket_detail(cx);
+    })?;
+    suite.capture("ticket-detail", Route::Tickets, None, false)?;
+    suite.bounds("tickets.status.in_progress")?;
+    suite.click_selector("tickets.back")?;
+    suite.capture("tickets-list", Route::Tickets, None, false)?;
+    suite.bounds("ticket.1")?;
+    suite.keys("cmd-3");
+    suite.capture("agents-list", Route::Agents, None, false)?;
     suite
         .window
         .update(&mut suite.cx, |shell, _, cx| shell.fixture_chat(false, cx))?;
@@ -967,10 +995,10 @@ pub fn run() -> Result<()> {
     suite.keys("cmd-k");
     suite.cx.simulate_input(window.into(), "components");
     suite.keys("enter");
-    suite.capture("gallery-buttons", Route::DesignSystem, None, false)?;
-    suite.check_gallery_geometry(&["variants", "sizes-and-icons", "states"])?;
-    let primary = suite.bounds("gallery.regular")?;
-    let large = suite.bounds("gallery.large")?;
+    suite.capture("components-buttons", Route::Components, None, false)?;
+    suite.check_components_geometry(&["variants", "sizes-and-icons", "states"])?;
+    let primary = suite.bounds("components.regular")?;
+    let large = suite.bounds("components.large")?;
     near(
         "regular button height",
         f32::from(primary.size.height),
@@ -981,30 +1009,41 @@ pub fn run() -> Result<()> {
         "large buttons must be taller than regular ones"
     );
     suite.window.update(&mut suite.cx, |shell, _, cx| {
-        shell.fixture_gallery(1, false, cx);
+        shell.fixture_components(1, false, cx);
     })?;
-    suite.capture("gallery-inputs", Route::DesignSystem, None, false)?;
-    suite.check_gallery_geometry(&["fields", "text-area", "select", "toggles-and-checkboxes"])?;
+    suite.capture("components-inputs", Route::Components, None, false)?;
+    suite.check_components_geometry(&[
+        "fields",
+        "text-area",
+        "select",
+        "toggles-and-checkboxes",
+    ])?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
-        shell.fixture_gallery(1, true, cx);
+        shell.fixture_components(1, true, cx);
     })?;
-    suite.capture("gallery-select-open", Route::DesignSystem, None, false)?;
-    suite.bounds("gallery.select.menu")?;
+    suite.capture("components-select-open", Route::Components, None, false)?;
+    suite.bounds("components.select.menu")?;
+    suite.keys("escape");
+    suite.settle()?;
+    ensure!(
+        suite.bounds("components.select.menu").is_err(),
+        "escape must close the components select"
+    );
     suite.window.update(&mut suite.cx, |shell, _, cx| {
-        shell.fixture_gallery(2, false, cx);
+        shell.fixture_components(2, false, cx);
     })?;
-    suite.capture("gallery-data", Route::DesignSystem, None, false)?;
-    suite.check_gallery_geometry(&[
+    suite.capture("components-data", Route::Components, None, false)?;
+    suite.check_components_geometry(&[
         "badges-and-status",
         "list-rows",
         "table",
         "empty-and-loading",
     ])?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
-        shell.fixture_gallery(3, false, cx);
+        shell.fixture_components(3, false, cx);
     })?;
-    suite.capture("gallery-overlays", Route::DesignSystem, None, false)?;
-    suite.check_gallery_geometry(&["dialog", "sheet", "menus-and-popovers", "toasts"])?;
+    suite.capture("components-overlays", Route::Components, None, false)?;
+    suite.check_components_geometry(&["dialog", "sheet", "menus-and-popovers", "toasts"])?;
     suite.keys("cmd-5");
     suite.capture("terminal", Route::Terminal, None, false)?;
     println!(

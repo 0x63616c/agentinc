@@ -2,14 +2,6 @@
 use super::{button::*, layout::*, motion::*, tokens::*};
 use gpui::{prelude::*, *};
 
-fn toggled(on: bool) -> accesskit::Toggled {
-    if on {
-        accesskit::Toggled::True
-    } else {
-        accesskit::Toggled::False
-    }
-}
-
 /// A compact track of options where exactly one is selected.
 pub fn segmented<V: HoverHost>(
     id: &'static str,
@@ -114,6 +106,11 @@ pub fn chip<V: HoverHost>(
     action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
     cx: &mut Context<V>,
 ) -> Stateful<Div> {
+    let id = id.into();
+    let selector = match &id {
+        ElementId::Name(name) => Some(name.to_string()),
+        _ => None,
+    };
     Button::new(id, label)
         .secondary()
         .small()
@@ -123,5 +120,8 @@ pub fn chip<V: HoverHost>(
         .role(accesskit::Role::RadioButton)
         .aria_toggled(toggled(selected))
         .rounded_full()
+        .when_some(selector, |s, selector| {
+            s.debug_selector(move || selector.clone())
+        })
         .when(selected, |s| s.border_color(rgb(FOCUS)))
 }

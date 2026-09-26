@@ -3,52 +3,29 @@
 use super::{layout::*, tokens::*};
 use gpui::{prelude::*, *};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Overlay {
-    Search,
-    Notifications,
-    UserMenu,
-    AddTicket,
-    AddAgent,
-    DeleteTicket(i64),
-    RenameConversation(i64),
-    DeleteConversation(i64),
-    ConversationMenu(i64),
-}
-impl Overlay {
-    /// Modal surfaces on a scrim that block the page beneath.
-    pub fn is_dialog(self) -> bool {
-        matches!(
-            self,
-            Self::AddTicket
-                | Self::AddAgent
-                | Self::DeleteTicket(_)
-                | Self::RenameConversation(_)
-                | Self::DeleteConversation(_)
-        )
-    }
-    /// Light surfaces that close when the pointer lands outside them.
-    pub fn is_popover(self) -> bool {
-        matches!(
-            self,
-            Self::ConversationMenu(_) | Self::Notifications | Self::UserMenu
-        )
-    }
-}
-
-#[derive(Default)]
-pub struct OverlayHost {
-    active: Option<Overlay>,
+/// Tracks which overlay is open and where focus returns when it closes. The
+/// overlay vocabulary belongs to the host; the shell uses `model::Overlay`.
+pub struct OverlayHost<O> {
+    active: Option<O>,
     return_focus: Option<FocusHandle>,
     pending_focus: Option<FocusHandle>,
 }
-impl OverlayHost {
-    pub fn active(&self) -> Option<Overlay> {
+impl<O> Default for OverlayHost<O> {
+    fn default() -> Self {
+        Self {
+            active: None,
+            return_focus: None,
+            pending_focus: None,
+        }
+    }
+}
+impl<O: Copy + PartialEq> OverlayHost<O> {
+    pub fn active(&self) -> Option<O> {
         self.active
     }
     pub fn open(
         &mut self,
-        overlay: Overlay,
+        overlay: O,
         window: &mut Window,
         cx: &mut App,
         initial: Option<FocusHandle>,
@@ -137,6 +114,15 @@ pub fn dialog_shell(
         .child(footer)
 }
 
+/// The right-aligned Cancel / confirm row every dialog ends with.
+pub fn dialog_footer(cancel: impl IntoElement, submit: impl IntoElement) -> Div {
+    row()
+        .gap(px(CONTROL_GAP))
+        .justify_end()
+        .child(cancel)
+        .child(submit)
+}
+
 /// A full-height panel that slides in from the right edge of the window.
 pub fn sheet_shell(
     title: impl Into<SharedString>,
@@ -186,22 +172,14 @@ pub fn menu_shell(width: f32) -> Stateful<Div> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Overlay, OverlayHost};
+    use super::OverlayHost;
     #[test]
-    fn closing_rename_clears_the_topmost_overlay() {
+    fn closing_clears_the_topmost_overlay() {
         let mut host = OverlayHost {
-            active: Some(Overlay::RenameConversation(42)),
+            active: Some(42u8),
             ..Default::default()
         };
         host.close(); // Escape and Cancel both use this state transition.
         assert_eq!(host.active(), None);
-    }
-    #[test]
-    fn popovers_and_dialogs_are_distinct() {
-        assert!(Overlay::UserMenu.is_popover());
-        assert!(!Overlay::UserMenu.is_dialog());
-        assert!(Overlay::AddTicket.is_dialog());
-        assert!(!Overlay::AddTicket.is_popover());
-        assert!(!Overlay::Search.is_dialog());
     }
 }

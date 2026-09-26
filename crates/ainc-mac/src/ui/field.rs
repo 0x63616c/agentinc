@@ -89,7 +89,7 @@ impl Field {
                         s.debug_selector(move || format!("{selector}.input"))
                     })
                     .w_full()
-                    .min_h(type_size(FIELD_HEIGHT))
+                    .min_h(px(FIELD_HEIGHT))
                     .when(self.multiline, |s| {
                         s.items_start().min_h(px(96.)).py(px(SPACE_2))
                     })

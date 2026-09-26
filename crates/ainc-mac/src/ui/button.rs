@@ -57,15 +57,13 @@ pub struct ButtonSpec {
     pub enabled: bool,
 }
 
-/// The white focus ring drawn outside a control without shifting its layout.
-pub fn focus_ring() -> Vec<BoxShadow> {
-    vec![BoxShadow {
-        color: rgb(FOCUS).into(),
-        offset: Point::default(),
-        blur_radius: px(0.),
-        spread_radius: px(2.),
-        inset: false,
-    }]
+/// The accessibility toggled state for switches, checkboxes, radios and tabs.
+pub fn toggled(on: bool) -> accesskit::Toggled {
+    if on {
+        accesskit::Toggled::True
+    } else {
+        accesskit::Toggled::False
+    }
 }
 
 /// Common focus, activation and disabled contract; callers own layout and looks.
@@ -76,11 +74,14 @@ pub fn button_base(spec: ButtonSpec) -> Stateful<Div> {
         ElementId::NamedInteger(name, key) => Some(format!("{name}.{key}").into()),
         _ => None,
     };
+    // The same authored id names the control for accessibility and for tests.
+    let selector = author_id.clone();
     row()
         .id(spec.id)
         .role(accesskit::Role::Button)
         .aria_label(spec.label)
         .when_some(author_id, |s, id| s.accessibility_id(id))
+        .when_some(selector, |s, id| s.debug_selector(move || id.to_string()))
         .a11y_synthetic_children(move |builder| {
             if !spec.enabled {
                 builder.parent_node().set_disabled();
@@ -185,6 +186,7 @@ pub struct Button {
     trailing: Option<AnyElement>,
     surface: u32,
     align_start: bool,
+    tint: Option<u32>,
 }
 
 impl Button {
@@ -203,18 +205,18 @@ impl Button {
             trailing: None,
             surface: SURFACE,
             align_start: false,
+            tint: None,
         }
     }
-    /// A square control that shows only its icon; the label is spoken.
-    pub fn icon_only(
-        id: impl Into<ElementId>,
-        name: &'static str,
-        label: impl Into<SharedString>,
-    ) -> Self {
-        Self::new(id, label).icon(name).ghost().with_icon_only()
-    }
-    fn with_icon_only(mut self) -> Self {
+    /// A square control that shows only its icon; the label is still spoken.
+    pub fn icon_only(mut self) -> Self {
         self.icon_only = true;
+        self
+    }
+    /// Colors the label and icon of a ghost or secondary button, for
+    /// destructive actions that are not the primary one.
+    pub fn tint(mut self, color: u32) -> Self {
+        self.tint = Some(color);
         self
     }
     pub fn kind(mut self, kind: ButtonKind) -> Self {
@@ -302,17 +304,14 @@ impl Button {
             trailing,
             surface,
             align_start,
+            tint,
         } = self;
         let look = kind.look(selected, surface);
-        let progress = if enabled { hover.progress(&id) } else { 0. };
-        let hover_id = id.clone();
-        let on_hover = cx.listener(move |view: &mut V, over: &bool, _, cx| {
-            if enabled {
-                view.hover_fade().set(hover_id.clone(), *over);
-                cx.notify();
-            }
-        });
-        let text_color = blend(look.text, look.text_hover, progress);
+        let (progress, on_hover) = hover.track(&id, enabled, cx);
+        let text_color = match tint {
+            Some(color) => rgb(color),
+            None => blend(look.text, look.text_hover, progress),
+        };
         let filled = matches!(kind, ButtonKind::Primary | ButtonKind::Destructive);
         action_button(
             ButtonSpec {

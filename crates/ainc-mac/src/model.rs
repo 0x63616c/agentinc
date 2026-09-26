@@ -23,7 +23,42 @@ pub enum Route {
     Assistant,
     Settings,
     /// The living component gallery, reachable from the command palette.
-    DesignSystem,
+    #[serde(alias = "design_system")]
+    Components,
+}
+
+/// The one surface that can float over the shell at a time.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Overlay {
+    Search,
+    Notifications,
+    UserMenu { support: bool },
+    AddTicket,
+    AddAgent,
+    DeleteTicket(i64),
+    RenameConversation(i64),
+    DeleteConversation(i64),
+    ConversationMenu(i64),
+}
+impl Overlay {
+    /// Modal surfaces on a scrim that block the page beneath.
+    pub fn is_dialog(self) -> bool {
+        matches!(
+            self,
+            Self::AddTicket
+                | Self::AddAgent
+                | Self::DeleteTicket(_)
+                | Self::RenameConversation(_)
+                | Self::DeleteConversation(_)
+        )
+    }
+    /// Light surfaces that close when the pointer lands outside them.
+    pub fn is_popover(self) -> bool {
+        matches!(
+            self,
+            Self::ConversationMenu(_) | Self::Notifications | Self::UserMenu { .. }
+        )
+    }
 }
 
 pub struct PageSpec {
@@ -77,7 +112,7 @@ pub const PAGES: &[PageSpec] = &[
         in_sidebar: false,
     },
     PageSpec {
-        route: Route::DesignSystem,
+        route: Route::Components,
         title: "Components",
         icon: "command",
         in_sidebar: false,
@@ -108,15 +143,6 @@ impl Route {
     }
     pub fn icon(self) -> &'static str {
         self.spec().icon
-    }
-    #[cfg(test)]
-    pub fn matching(query: &str) -> Vec<Self> {
-        let query = query.trim().to_lowercase();
-        PAGES
-            .iter()
-            .filter(|page| page.title.to_lowercase().contains(&query))
-            .map(|page| page.route)
-            .collect()
     }
 }
 
@@ -410,7 +436,7 @@ mod tests {
             Route::Temporal,
             Route::Assistant,
             Route::Settings,
-            Route::DesignSystem,
+            Route::Components,
         ] {
             assert_eq!(route.spec().route, route);
         }
@@ -524,6 +550,14 @@ mod tests {
         );
     }
     #[test]
+    fn popovers_and_dialogs_are_distinct() {
+        assert!(Overlay::UserMenu { support: true }.is_popover());
+        assert!(!Overlay::UserMenu { support: false }.is_dialog());
+        assert!(Overlay::AddTicket.is_dialog());
+        assert!(!Overlay::AddTicket.is_popover());
+        assert!(!Overlay::Search.is_dialog());
+    }
+    #[test]
     fn recent_commands_dedupe_and_persist() {
         let mut session = Session::default();
         for id in [
@@ -547,8 +581,6 @@ mod tests {
     }
     #[test]
     fn search_and_file_round_trip() {
-        assert!(Route::matching(" HOME ").is_empty());
-        assert!(Route::matching("zzz").is_empty());
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("session.json");
         let mut s = Session::default();

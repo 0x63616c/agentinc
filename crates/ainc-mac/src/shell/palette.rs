@@ -26,19 +26,17 @@ impl Shell {
         let mut items = Vec::new();
         if !self.workspace_only {
             for (index, page) in PAGES.iter().enumerate() {
-                let shortcut = if page.in_sidebar {
-                    format!("⌘{}", index + 1)
-                } else {
-                    "⌘,".to_owned()
-                };
+                let mut entry =
+                    PaletteEntry::new(format!("page.{}", page.title.to_lowercase()), page.title)
+                        .icon(page.icon);
+                if page.in_sidebar {
+                    entry = entry.shortcut(format!("⌘{}", index + 1));
+                } else if page.route == Route::Settings {
+                    entry = entry.shortcut("⌘,");
+                }
                 items.push(PaletteCandidate {
                     group: "Pages",
-                    entry: PaletteEntry::new(
-                        format!("page.{}", page.title.to_lowercase()),
-                        page.title,
-                    )
-                    .icon(page.icon)
-                    .shortcut(shortcut),
+                    entry,
                     control: Control::Open(page.route),
                 });
             }
@@ -126,10 +124,14 @@ impl Shell {
                     entries.push(clone_entry(&item.entry, vec![]));
                     choices.push((item.entry.id.clone(), item.control.clone()));
                 }
-                groups.push(PaletteGroup::new("Recent", entries));
+                groups.push(PaletteGroup::new("recent", "Recent", entries));
             }
         }
-        for group_name in ["Pages", "Actions", "Workspaces"] {
+        for (key, group_name) in [
+            ("pages", "Pages"),
+            ("actions", "Actions"),
+            ("workspaces", "Workspaces"),
+        ] {
             let mut matched: Vec<(i32, &PaletteCandidate, Vec<usize>)> = candidates
                 .iter()
                 .filter(|item| item.group == group_name)
@@ -149,7 +151,7 @@ impl Shell {
                 entries.push(clone_entry(&item.entry, positions));
                 choices.push((item.entry.id.clone(), item.control.clone()));
             }
-            groups.push(PaletteGroup::new(group_name, entries));
+            groups.push(PaletteGroup::new(key, group_name, entries));
         }
         PaletteResults { groups, choices }
     }
@@ -212,127 +214,84 @@ impl Shell {
     }
 
     fn create_workspace_form(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        column()
-            .id("search.dialog")
-            .accessibility_id("search.dialog")
-            .role(accesskit::Role::Dialog)
-            .aria_label("Create workspace")
-            .w(px(PALETTE_WIDTH))
-            .bg(rgb(SURFACE_OVERLAY))
-            .border_1()
-            .border_color(rgb(BORDER_STRONG))
-            .rounded(px(DIALOG_RADIUS))
-            .shadow(shadow_dialog())
-            .overflow_hidden()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(|_, _, cx| cx.stop_propagation())
-            .child(
-                row()
-                    .h(px(56.))
-                    .px(px(SPACE_4))
-                    .gap(px(SPACE_3))
-                    .border_b_1()
-                    .border_color(rgb(BORDER))
-                    .child(icon("plus", ICON_SIZE_LG))
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_size(type_size(HEADING_SIZE))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("New workspace"),
-                    )
-                    .child(
-                        Button::new("palette-close", "Close")
-                            .ghost()
-                            .small()
-                            .on_surface(SURFACE_OVERLAY)
-                            .track_focus(&self.picker_close_focus)
-                            .trailing(kbd("esc"))
-                            .build(
-                                &self.hover,
-                                |this: &mut Self, window, cx| {
-                                    this.dispatch(Control::Dismiss, window, cx)
-                                },
-                                cx,
-                            )
-                            .px(px(SPACE_1)),
-                    ),
-            )
-            .child(
-                column()
-                    .p(px(SPACE_4))
-                    .gap(px(FORM_STACK_GAP))
-                    .child(
-                        Field::new(self.workspace_name.clone())
-                            .label("Name")
-                            .selector("workspace.name")
-                            .build(window, cx),
-                    )
-                    .child(
-                        row()
-                            .gap(px(SPACE_3))
-                            .items_start()
-                            .child(
-                                div().w(px(140.)).child(
-                                    Field::new(self.workspace_icon.clone())
-                                        .label("Icon")
-                                        .hint("Up to four characters.")
-                                        .selector("workspace.icon")
-                                        .build(window, cx),
-                                ),
-                            )
-                            .child(
-                                div().flex_1().child(
-                                    Field::new(self.workspace_color.clone())
-                                        .label("Color")
-                                        .hint("Optional, as #RRGGBB.")
-                                        .selector("workspace.color")
-                                        .build(window, cx),
-                                ),
+        let close = |this: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
+            this.dispatch(Control::Dismiss, window, cx)
+        };
+        palette_frame(
+            "Create workspace",
+            palette_header(
+                "plus",
+                div()
+                    .text_size(type_size(HEADING_SIZE))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child("New workspace"),
+                &self.picker_close_focus,
+                &self.hover,
+                close,
+                cx,
+            ),
+            column()
+                .p(px(SPACE_4))
+                .gap(px(FORM_STACK_GAP))
+                .child(
+                    Field::new(self.workspace_name.clone())
+                        .label("Name")
+                        .selector("workspace.name")
+                        .build(window, cx),
+                )
+                .child(
+                    row()
+                        .gap(px(SPACE_3))
+                        .items_start()
+                        .child(
+                            div().w(px(140.)).child(
+                                Field::new(self.workspace_icon.clone())
+                                    .label("Icon")
+                                    .hint("Up to four characters.")
+                                    .selector("workspace.icon")
+                                    .build(window, cx),
                             ),
-                    )
-                    .when_some(self.workspace_error.as_ref(), |form, error| {
-                        form.child(
-                            div()
-                                .text_size(type_size(CAPTION_SIZE))
-                                .text_color(rgb(ERROR))
-                                .child(error.clone()),
                         )
-                    }),
-            )
-            .child(
-                row()
-                    .h(px(56.))
-                    .px(px(SPACE_4))
-                    .gap(px(CONTROL_GAP))
-                    .justify_end()
-                    .border_t_1()
-                    .border_color(rgb(BORDER))
-                    .child(
-                        Button::new("create-workspace-cancel", "Cancel")
-                            .secondary()
-                            .build(
-                                &self.hover,
-                                |this: &mut Self, window, cx| {
-                                    this.dispatch(Control::Dismiss, window, cx)
-                                },
-                                cx,
+                        .child(
+                            div().flex_1().child(
+                                Field::new(self.workspace_color.clone())
+                                    .label("Color")
+                                    .hint("Optional, as #RRGGBB.")
+                                    .selector("workspace.color")
+                                    .build(window, cx),
                             ),
-                    )
-                    .child(
-                        Button::new("create-workspace", "Create workspace")
-                            .primary()
-                            .enabled(!self.workspace_pending)
-                            .build(
-                                &self.hover,
-                                |this: &mut Self, window, cx| {
-                                    this.dispatch(Control::CreateWorkspace, window, cx)
-                                },
-                                cx,
-                            ),
-                    ),
-            )
-            .into_any_element()
+                        ),
+                )
+                .when_some(self.workspace_error.as_ref(), |form, error| {
+                    form.child(error_text(error.clone()))
+                }),
+            row()
+                .flex_1()
+                .gap(px(CONTROL_GAP))
+                .justify_end()
+                .child(
+                    Button::new("create-workspace-cancel", "Cancel")
+                        .secondary()
+                        .small()
+                        .track_focus(&self.workspace_cancel_focus)
+                        .build(&self.hover, close, cx),
+                )
+                .child(
+                    Button::new("create-workspace", "Create workspace")
+                        .primary()
+                        .small()
+                        .enabled(!self.workspace_pending)
+                        .track_focus(&self.workspace_create_focus)
+                        .build(
+                            &self.hover,
+                            |this: &mut Self, window, cx| {
+                                this.dispatch(Control::CreateWorkspace, window, cx)
+                            },
+                            cx,
+                        ),
+                ),
+        )
+        .into_any_element()
     }
 }
 

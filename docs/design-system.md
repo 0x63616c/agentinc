@@ -30,7 +30,7 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 | Spacing | `SPACE_HALF`, `SPACE_1` … `SPACE_10`, `PAGE_X`, `PANEL_GAP`, `SIDEBAR_INSET`, `SECTION_GAP`, control and row sizes | Every gap, inset and control dimension. |
 | Radius | `RADIUS_XS` … `RADIUS_XL`, `PANEL_RADIUS`, `CONTROL_RADIUS`, `FIELD_RADIUS` | Chips and hints, controls, cards, panels. |
 | Type | `DISPLAY_SIZE`, `TITLE_SIZE`, `HEADING_SIZE`, `BODY_SIZE`, `LABEL_SIZE`, `CAPTION_SIZE`, `MICRO_SIZE`; `type_size()` | Page titles, dialog titles, section headings, body, labels, captions, hints. |
-| Shadow | `shadow_overlay()`, `shadow_dialog()`, `shadow_toast()`, `focus_ring()` | Menus, dialogs and the palette, toasts, keyboard focus. |
+| Shadow | `shadow_overlay()`, `shadow_dialog()`, `shadow_toast()`, `focus_ring()` | Menus, dialogs and the palette, toasts, keyboard focus. Focus rings appear after keyboard navigation and hide on the next pointer press. |
 | Motion | `HOVER_MS`, `PANEL_MS`, `MESSAGE_MS`, `SKELETON_MS`, `SPRING_SNAPPY`, `SPRING_GENTLE` | Fades, panel reveal, message arrival, skeleton pulse, springs. |
 
 `scripts/check-colors.py` fails the build when a color literal appears anywhere
@@ -41,27 +41,33 @@ files.
 
 Every interactive component takes the host view's `HoverFade` (so its hover
 surface can fade between frames) and a `cx.listener`-style action; hosts implement
-`HoverHost` and call `hover.animate(window)` once per render.
+`HoverHost` and call `hover.animate(window)` once per render. `HoverFade::track`
+is the one place a control gets its hover amount and listener.
+
+Sheets, tabs, checkboxes, leading field icons and select option descriptions are
+built for the 1.0 workstreams that follow (Kanban, onboarding, providers) and are
+exercised only on the Components page today.
 
 | Component | File | Use it for |
 | --- | --- | --- |
 | `Button` (primary, secondary, ghost, destructive; small, regular, large; `icon_only`) | `button.rs` | Every labeled action. One primary per surface; ghost for actions inside rows; destructive only when something is removed. |
 | `Field` / `text_field` | `field.rs` | Labeled single-line inputs and `.multiline()` text areas, with hint, error and focus states. |
 | `Select` | `select.rs` | Choosing one option from a short list. The menu floats, so the row never resizes. |
-| `MenuEntry`, `menu_shell`, `menu_label`, `menu_divider`, `floating` | `select.rs`, `overlay.rs` | Dropdowns, context menus and submenus. |
+| `MenuEntry`, `menu_label`, `menu_divider`, `floating` | `menu.rs` | Dropdown and context menu rows and the deferred, anchored placement they share with popovers. `menu_shell` and `popover_shell` in `overlay.rs` are their surfaces. |
+| `banner`, `error_text` | `banner.rs` | A toned full-width notice inside a page; short red copy under a field or inside a dialog. |
 | `toggle`, `checkbox` | `toggle.rs` | Boolean settings. Toggles for immediate effect, checkboxes inside forms. |
 | `segmented`, `tabs`, `chip` | `segmented.rs` | One of a few options (segments), switching views inside a page (tabs), picking a value in a form (chips). |
 | `badge`, `status_pill`, `status_dot`, `count_badge`, `Tone` | `badge.rs` | States and counts. Badges in lists and headers, pills in tables. |
 | `avatar` | `avatar.rs` | People and agents, with an initials fallback. |
 | `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `Page`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. |
 | `table_container`, `table_header`, `table_cells`, `table_row`, `TableColumn` | `table.rs` | Columnar data with an eyebrow header and clickable rows. |
-| `dialog_shell`, `sheet_shell`, `popover_shell`, `OverlayHost` | `overlay.rs` | Modal confirmations and forms, side panels, floating menus; one active overlay per window with focus return. |
+| `dialog_shell`, `dialog_footer`, `sheet_shell`, `popover_shell`, `menu_shell`, `OverlayHost<O>` | `overlay.rs` | Modal confirmations and forms with a Cancel / confirm footer, side panels, floating surfaces; one active overlay per window with focus return. The overlay vocabulary itself (`model::Overlay`) belongs to the shell. |
 | `Toasts` | `toast.rs` | Transient notices above the status bar. Hosts schedule dismissal for non-sticky ones. |
 | `EmptyState` | `empty.rs` | A page or section with nothing in it: icon, title, one line, one action. |
 | `skeleton`, `skeleton_rows`, `LoadingFrame` | `loading.rs` | Placeholders while data loads; the Evee mark for longer waits. |
 | `kbd`, `kbd_hint`, `eyebrow`, `heading`, `caption`, `icon` | `display.rs` | Shortcut hints, section labels, secondary copy, icons. |
 | `settings_section`, `settings_row`, `settings_divider` | `settings.rs` | Grouped preference rows with a label, description and right-aligned control. |
-| `render_palette`, `PaletteGroup`, `PaletteEntry`, `fuzzy_match` | `palette.rs`, `fuzzy.rs` | The ⌘K palette: grouped, fuzzy-matched results with highlighted matches, keyboard navigation and shortcut hints. |
+| `render_palette`, `palette_frame`, `palette_header`, `PaletteGroup`, `PaletteEntry`, `fuzzy_match` | `palette.rs`, `fuzzy.rs` | The ⌘K palette: grouped, fuzzy-matched results with highlighted matches, keyboard navigation and shortcut hints; the frame is reused by any form that replaces the results. |
 
 ## Shell
 

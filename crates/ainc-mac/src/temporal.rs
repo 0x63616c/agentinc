@@ -331,46 +331,19 @@ impl Render for TemporalPage {
         ));
         if !self.ui_available && self.loaded && self.error.is_none() {
             content = content.child(
-                row()
-                    .debug_selector(|| "temporal.no-ui".into())
-                    .gap(px(SPACE_3))
-                    .px(px(SPACE_4))
-                    .py(px(SPACE_3))
-                    .rounded(px(RADIUS_MD))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .bg(rgb(SURFACE_RAISED))
-                    .child(icon("info", ICON_SIZE))
-                    .child(
-                        column()
-                            .gap(px(SPACE_HALF))
-                            .child(
-                                div()
-                                    .text_size(type_size(LABEL_SIZE))
-                                    .child("Workflow links unavailable"),
-                            )
-                            .child(caption(
-                                "Temporal Web UI is not configured for this deployment.",
-                            )),
-                    ),
+                banner(
+                    Tone::Info,
+                    "Workflow links unavailable: Temporal Web UI is not configured for this deployment.",
+                )
+                .debug_selector(|| "temporal.no-ui".into()),
             );
         }
         if let Some(error) = &self.error {
             content = content.child(
-                row()
+                banner(Tone::Danger, error.clone())
                     .id("temporal.error")
                     .accessibility_id("temporal.error")
-                    .debug_selector(|| "temporal.error".into())
-                    .gap(px(SPACE_3))
-                    .px(px(SPACE_4))
-                    .py(px(SPACE_3))
-                    .rounded(px(RADIUS_MD))
-                    .border_1()
-                    .border_color(rgb(ERROR_BORDER))
-                    .bg(rgb(SURFACE_ERROR))
-                    .text_color(rgb(DESTRUCTIVE_TEXT))
-                    .child(icon("warning", ICON_SIZE).text_color(rgb(DESTRUCTIVE_TEXT)))
-                    .child(error.clone()),
+                    .debug_selector(|| "temporal.error".into()),
             );
         }
         if !self.loaded && self.loading {

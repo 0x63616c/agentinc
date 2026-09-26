@@ -43,7 +43,8 @@ pub const BORDER_SUBTLE: u32 = 0x171717;
 pub const BORDER_STRONG: u32 = 0x2e2e2e;
 /// The keyboard focus ring.
 pub const FOCUS: u32 = 0xbdbdbd;
-/// Selected text inside inputs (with alpha).
+/// Selected text inside inputs. Values that carry an alpha byte say so in a
+/// comment; every other color token is opaque RGB.
 pub const TEXT_SELECTION: u32 = 0x454545ff;
 
 /// Primary text.
@@ -101,9 +102,6 @@ pub const TERMINAL_ANSI: [u32; 16] = [
     0x171717, 0xb67171, 0x8eae9b, 0xcbb38a, 0x7aa7d8, 0xb69aca, 0x82b4bc, 0xc6c6c6, 0x555555,
     0xe6acac, 0xb1d4ba, 0xe2cea0, 0xa4c9f1, 0xd0b2e2, 0xa6d5dd, 0xededed,
 ];
-
-/// Short name used throughout the component vocabulary.
-pub const MUTED: u32 = TEXT_SECONDARY;
 
 // ---------------------------------------------------------------------------
 // Spacing. One 4-point scale; page and control insets are named so the same
@@ -165,6 +163,13 @@ pub const MENU_INSET: f32 = SPACE_1;
 pub const MENU_ITEM_HEIGHT: f32 = 32.;
 pub const PALETTE_WIDTH: f32 = 560.;
 pub const PALETTE_ROW_HEIGHT: f32 = 40.;
+/// The palette's distance from the top of the window.
+pub const PALETTE_TOP: f32 = 96.;
+/// The palette's search row and footer heights.
+pub const PALETTE_HEADER_HEIGHT: f32 = 56.;
+pub const PALETTE_FOOTER_HEIGHT: f32 = 40.;
+/// The tallest result list; smaller windows shrink it to clear the status bar.
+pub const PALETTE_RESULTS_MAX_HEIGHT: f32 = 420.;
 pub const POPOVER_WIDTH: f32 = 264.;
 pub const TOAST_WIDTH: f32 = 360.;
 pub const AVATAR_SIZE: f32 = 24.;
@@ -257,6 +262,17 @@ pub fn shadow_dialog() -> Vec<BoxShadow> {
 /// Toasts.
 pub fn shadow_toast() -> Vec<BoxShadow> {
     vec![shadow(0x99, 6., 20., -6.)]
+}
+
+/// The keyboard focus ring, drawn outside a control without shifting its layout.
+pub fn focus_ring() -> Vec<BoxShadow> {
+    vec![BoxShadow {
+        color: rgba((FOCUS << 8) | 0xff).into(),
+        offset: Point::default(),
+        blur_radius: px(0.),
+        spread_radius: px(2.),
+        inset: false,
+    }]
 }
 
 // ---------------------------------------------------------------------------

@@ -43,7 +43,7 @@ impl LoadingFrame {
             .gap(px(10.))
             .items_center()
             .text_size(type_size(LABEL_SIZE))
-            .text_color(rgb(MUTED))
+            .text_color(rgb(TEXT_SECONDARY))
             .child(dots)
             .child(label.into())
     }
@@ -193,7 +193,7 @@ pub fn launch_overlay(start: Instant, window: &mut Window) -> Option<Div> {
             .child(
                 div()
                     .text_size(type_size(CAPTION_SIZE))
-                    .text_color(rgb(MUTED))
+                    .text_color(rgb(TEXT_SECONDARY))
                     .child("AGENTINC"),
             ),
     )

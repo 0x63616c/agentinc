@@ -101,7 +101,11 @@ impl Shell {
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             nav = nav.child(self.sidebar_item(page.route, Some(index + 1), cx));
         }
-        let user_menu_open = self.overlays.borrow().active() == Some(Overlay::UserMenu);
+        let user_menu = match self.overlays.borrow().active() {
+            Some(Overlay::UserMenu { support }) => Some(support),
+            _ => None,
+        };
+        let user_menu_open = user_menu.is_some();
         column()
             .w_full()
             .h_full()
@@ -219,7 +223,7 @@ impl Shell {
                             )
                             .child(icon("chevronUpDown", ICON_SIZE_SM)),
                     )
-                    .when(user_menu_open, |s| s.child(self.user_menu(cx))),
+                    .when_some(user_menu, |s, support| s.child(self.user_menu(support, cx))),
             )
     }
 }

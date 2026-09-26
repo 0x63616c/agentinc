@@ -16,7 +16,7 @@ mod sidebar;
 use crate::storage::{Store, WorkspaceCommand};
 use crate::{
     input::TextInput,
-    model::{FontChoice, FontSize, PAGES, Route, Session},
+    model::{FontChoice, FontSize, Overlay, PAGES, Route, Session},
     ui::*,
 };
 use gpui::{prelude::*, *};
@@ -72,13 +72,13 @@ pub(crate) enum Control {
 pub struct Shell {
     store: Option<std::sync::Arc<Store>>,
     session: Session,
-    overlays: Rc<RefCell<OverlayHost>>,
+    overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     assistant: Entity<crate::evee::AssistantPage>,
     tickets: Entity<crate::tickets::TicketsPage>,
     automations: Entity<crate::automations::AutomationsPage>,
     temporal: Entity<crate::temporal::TemporalPage>,
-    gallery: Entity<crate::gallery::GalleryPage>,
-    _gallery_subscription: Subscription,
+    components: Entity<crate::components::ComponentsPage>,
+    _components_subscription: Subscription,
     _automation_subscriptions: Vec<Subscription>,
     _temporal_subscription: Subscription,
     _tickets_subscription: Subscription,
@@ -98,6 +98,8 @@ pub struct Shell {
     workspace_error: Option<String>,
     picker_result_focus: Vec<FocusHandle>,
     picker_close_focus: FocusHandle,
+    workspace_cancel_focus: FocusHandle,
+    workspace_create_focus: FocusHandle,
     palette_scroll: ScrollHandle,
     _input_subscription: Subscription,
     command_held: bool,
@@ -115,7 +117,6 @@ pub struct Shell {
     pane_animation: [Option<(Instant, f32, f32)>; 1],
     assistant_focus_pending: bool,
     shell_focus_pending: bool,
-    support_open: bool,
     hover: HoverFade,
     toasts: Toasts,
     #[cfg(target_os = "macos")]
@@ -306,8 +307,8 @@ impl Shell {
             cx.new(|cx| crate::automations::AutomationsPage::new(store.clone(), storage_error, cx));
         let temporal = cx.new(crate::temporal::TemporalPage::new);
         let temporal_subscription = cx.observe(&temporal, |_, _, cx| cx.notify());
-        let gallery = cx.new(crate::gallery::GalleryPage::new);
-        let gallery_subscription = cx.observe(&gallery, |_, _, cx| cx.notify());
+        let components = cx.new(crate::components::ComponentsPage::new);
+        let components_subscription = cx.observe(&components, |_, _, cx| cx.notify());
         let automation_subscriptions = vec![
             cx.observe(&automations, |_, _, cx| cx.notify()),
             cx.subscribe(
@@ -358,8 +359,8 @@ impl Shell {
             tickets,
             automations,
             temporal,
-            gallery,
-            _gallery_subscription: gallery_subscription,
+            components,
+            _components_subscription: components_subscription,
             _automation_subscriptions: automation_subscriptions,
             _temporal_subscription: temporal_subscription,
             _tickets_subscription: tickets_subscription,
@@ -370,7 +371,6 @@ impl Shell {
             pane_animation: [None; 1],
             assistant_focus_pending: false,
             shell_focus_pending: false,
-            support_open: false,
             hover: HoverFade::default(),
             toasts: Toasts::default(),
             #[cfg(target_os = "macos")]
@@ -394,6 +394,8 @@ impl Shell {
             workspace_error: None,
             picker_result_focus: (0..64).map(|_| cx.focus_handle()).collect(),
             picker_close_focus: cx.focus_handle(),
+            workspace_cancel_focus: cx.focus_handle(),
+            workspace_create_focus: cx.focus_handle(),
             palette_scroll: ScrollHandle::new(),
             _input_subscription: subscription,
             command_held: false,
@@ -511,16 +513,47 @@ impl Shell {
     }
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
-    pub(crate) fn fixture_gallery(
+    pub(crate) fn fixture_components(
         &mut self,
         section: usize,
         select_open: bool,
         cx: &mut Context<Self>,
     ) {
-        self.session.navigate(Route::DesignSystem);
-        self.gallery.update(cx, |gallery, cx| {
-            gallery.fixture_section(section, cx);
-            gallery.fixture_select_open(select_open, cx);
+        self.session.navigate(Route::Components);
+        self.components.update(cx, |page, cx| {
+            page.fixture_section(section, cx);
+            page.fixture_select_open(select_open, cx);
+        });
+        cx.notify();
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_ticket_detail(&mut self, cx: &mut Context<Self>) {
+        use crate::storage::TicketCommand;
+        let store = self.store.clone().expect("fixture store");
+        store
+            .ticket_command(TicketCommand::RegisterAgent {
+                name: "Evee".into(),
+                instructions: "Plan and execute".into(),
+                model: "connection-default".into(),
+            })
+            .expect("fixture agent");
+        let id = store
+            .ticket_command(TicketCommand::Create {
+                title: "Reconcile weekly budget and receipts".into(),
+            })
+            .expect("fixture ticket")
+            .expect("ticket id");
+        store
+            .ticket_command(TicketCommand::AddComment {
+                ticket_id: id,
+                body: "Pulled the last four statements; two receipts are still missing.".into(),
+            })
+            .expect("fixture comment");
+        self.session.navigate(Route::Tickets);
+        self.tickets.update(cx, |tickets, cx| {
+            tickets.reload();
+            tickets.select(id, cx);
         });
         cx.notify();
     }
@@ -625,28 +658,43 @@ impl Shell {
             .borrow_mut()
             .open(Overlay::Search, window, cx, Some(initial_focus));
     }
-    fn cycle_focus(&self, backwards: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn cycle_focus(&mut self, backwards: bool, window: &mut Window, cx: &mut Context<Self>) {
         set_focus_visible(true);
         let handles = match self.overlays.borrow().active() {
             Some(Overlay::Search) => {
                 let mut handles =
                     vec![self.input.focus_handle(cx), self.picker_close_focus.clone()];
                 if self.creating_workspace {
-                    handles[0] = self.workspace_name.read(cx).focus_handle(cx);
-                    handles.push(self.workspace_icon.read(cx).focus_handle(cx));
-                    handles.push(self.workspace_color.read(cx).focus_handle(cx));
+                    // Name → Icon → Color → Cancel → Create → Close, then round again.
+                    let handles = [
+                        self.workspace_name.read(cx).focus_handle(cx),
+                        self.workspace_icon.read(cx).focus_handle(cx),
+                        self.workspace_color.read(cx).focus_handle(cx),
+                        self.workspace_cancel_focus.clone(),
+                        self.workspace_create_focus.clone(),
+                        self.picker_close_focus.clone(),
+                    ];
                     return self
                         .overlays
                         .borrow()
                         .cycle_focus(&handles, backwards, window, cx);
                 }
-                handles.extend(
-                    self.picker_result_focus
-                        .iter()
-                        .take(self.palette_results(&self.input.read(cx).content).len())
-                        .cloned(),
-                );
-                handles
+                let count = self.palette_results(&self.input.read(cx).content).len();
+                handles.extend(self.picker_result_focus.iter().take(count).cloned());
+                self.overlays
+                    .borrow()
+                    .cycle_focus(&handles, backwards, window, cx);
+                // The highlighted row follows keyboard focus so Enter and ↵ agree.
+                if let Some(index) = self
+                    .picker_result_focus
+                    .iter()
+                    .take(count)
+                    .position(|handle| handle.is_focused(window))
+                {
+                    self.selected = index;
+                    cx.notify();
+                }
+                return;
             }
             Some(Overlay::AddTicket | Overlay::AddAgent | Overlay::DeleteTicket(_)) => {
                 self.tickets.read(cx).focus_handles(cx)
@@ -778,17 +826,41 @@ impl Shell {
                 self.automations.update(cx, |_, cx| cx.notify());
                 self.temporal.update(cx, |_, cx| cx.notify());
                 self.input.update(cx, |_, cx| cx.notify());
-                self.gallery.update(cx, |_, cx| cx.notify());
+                self.components.update(cx, |_, cx| cx.notify());
                 if let Some(updates) = cx.try_global::<crate::updates::Updates>().cloned() {
                     updates.0.update(cx, |_, cx| cx.notify());
                 }
             }
-            Control::Notifications => self.toggle_overlay(Overlay::Notifications, window, cx),
-            Control::UserMenu => {
-                self.support_open = false;
-                self.toggle_overlay(Overlay::UserMenu, window, cx)
+            Control::Notifications => {
+                if self.overlays.borrow().active() == Some(Overlay::Search) {
+                    self.overlays.borrow_mut().dismiss(window, cx);
+                }
+                self.toggle_overlay(Overlay::Notifications, window, cx)
             }
-            Control::SupportMenu => self.support_open = !self.support_open,
+            Control::UserMenu => {
+                let active = self.overlays.borrow().active();
+                if matches!(active, Some(Overlay::UserMenu { .. })) {
+                    self.overlays.borrow_mut().dismiss(window, cx);
+                } else {
+                    self.overlays.borrow_mut().open(
+                        Overlay::UserMenu { support: false },
+                        window,
+                        cx,
+                        None,
+                    );
+                }
+            }
+            Control::SupportMenu => {
+                let active = self.overlays.borrow().active();
+                if let Some(Overlay::UserMenu { support }) = active {
+                    self.overlays.borrow_mut().open(
+                        Overlay::UserMenu { support: !support },
+                        window,
+                        cx,
+                        None,
+                    );
+                }
+            }
             Control::CheckForUpdates => {
                 self.overlays.borrow_mut().dismiss(window, cx);
                 if cx.has_global::<crate::updates::Updates>() {
@@ -826,7 +898,6 @@ impl Shell {
                 }
             }
             Control::Dismiss => {
-                self.support_open = false;
                 self.overlays.borrow_mut().dismiss(window, cx);
             }
         }
@@ -864,12 +935,7 @@ impl Shell {
             .to_owned()
             .into();
         let click_control = control.clone();
-        let hover_id = id.clone();
-        let progress = self.hover.progress(&id);
-        let on_hover = cx.listener(move |this: &mut Self, over: &bool, _, cx| {
-            this.hover.set(hover_id.clone(), *over);
-            cx.notify();
-        });
+        let (progress, on_hover) = self.hover.track(&id, true, cx);
         let button = action_button(
             ButtonSpec {
                 id,
@@ -879,7 +945,7 @@ impl Shell {
             |button| {
                 button
                     .gap(px(CONTROL_GAP))
-                    .bg(rgba((HOVER << 8) | (progress * 255.) as u32))
+                    .bg(blend(SHELL, HOVER, progress))
                     .on_hover(on_hover)
                     .hover(|s| s.text_color(rgb(TEXT)))
             },
@@ -1026,6 +1092,12 @@ impl Render for Shell {
         let palette_progress = progress(&mut self.palette_transition);
         if let Some(focus) = self.overlays.borrow_mut().take_pending_focus() {
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
+        } else if window.focused(cx).is_none() {
+            // A clicked control that has since disappeared (a toast's close
+            // button, a detail view's back button) must not take the keyboard
+            // shortcuts with it: the shell is always a focus target of last resort.
+            let focus = self.focus.clone();
+            window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
         let active_overlay = self.overlays.borrow().active();
         if self.assistant_focus_pending {
@@ -1085,7 +1157,7 @@ impl Render for Shell {
             Route::Settings => self
                 .static_page(self.session.current(), window, cx)
                 .into_any_element(),
-            Route::DesignSystem => self.gallery.clone().into_any_element(),
+            Route::Components => self.components.clone().into_any_element(),
         };
         #[cfg(target_os = "macos")]
         {
@@ -1118,12 +1190,13 @@ impl Render for Shell {
             .on_click(cx.listener(|this, _, window, cx| {
                 let active = this.overlays.borrow().active();
                 if active.is_some_and(Overlay::is_popover) {
-                    this.support_open = false;
                     this.overlays.borrow_mut().dismiss(window, cx);
                     cx.notify();
                 }
                 this.assistant
                     .update(cx, |assistant, cx| assistant.dismiss_menus(cx));
+                this.components
+                    .update(cx, |page, cx| page.dismiss_menus(cx));
             }))
             .on_key_down(cx.listener(Self::keys))
             .capture_any_mouse_down(|_, _, _| set_focus_visible(false))
@@ -1174,10 +1247,12 @@ impl Render for Shell {
                 }),
             )
             .on_action(cx.listener(|this, _: &Escape, w, cx| {
-                this.support_open = false;
                 let closed_menu = this
                     .assistant
-                    .update(cx, |assistant, cx| assistant.dismiss_menus(cx));
+                    .update(cx, |assistant, cx| assistant.dismiss_menus(cx))
+                    | this
+                        .components
+                        .update(cx, |page, cx| page.dismiss_menus(cx));
                 if !this.overlays.borrow_mut().dismiss(w, cx) && !closed_menu {
                     w.focus(&this.focus, cx);
                 }
@@ -1234,7 +1309,7 @@ impl Render for Shell {
                         .items_center()
                         .justify_center()
                         .when(active_overlay == Some(Overlay::Search), |s| {
-                            s.items_start().pt(px(96.))
+                            s.items_start().pt(px(PALETTE_TOP))
                         })
                         .on_mouse_move(|_, _, cx| cx.stop_propagation())
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -1310,8 +1385,7 @@ mod interaction_tests {
     use super::{Shell, WorkspaceCommand, bind_keys};
     use crate::{
         input,
-        model::{PANE_WIDTHS, Route, Session},
-        ui::Overlay,
+        model::{Overlay, PANE_WIDTHS, Route, Session},
     };
     use gpui::{
         Focusable, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Point,
@@ -1532,10 +1606,9 @@ mod interaction_tests {
         cx.simulate_input("settings");
         shell.read_with(cx, |shell, cx| {
             assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
-            assert_eq!(
-                Route::matching(&shell.input.read(cx).content),
-                vec![Route::Settings]
-            );
+            let results = shell.palette_results(&shell.input.read(cx).content);
+            assert_eq!(results.len(), 1);
+            assert_eq!(results.choices[0].0.as_ref(), "page.settings");
         });
         cx.simulate_keystrokes("enter");
         shell.read_with(cx, |shell, _| {
@@ -1611,6 +1684,78 @@ mod interaction_tests {
                 .name,
             "New Project"
         );
+    }
+
+    #[gpui::test]
+    fn shortcuts_survive_clicking_a_control_that_disappears(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        cx.update(bind_keys);
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        shell.update(cx, |shell, cx| {
+            shell.toasts.push("Saved", None, crate::ui::Tone::Info);
+            cx.notify();
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let close = cx.debug_bounds("toast.close.1").unwrap().center();
+        cx.simulate_click(close, Modifiers::default());
+        shell.read_with(cx, |shell, _| assert!(shell.toasts.is_empty()));
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.simulate_keystrokes("cmd-3");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Agents)
+        });
+    }
+
+    #[gpui::test]
+    fn palette_groups_rank_prefixes_and_remember_recents(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        shell.update(cx, |shell, _| {
+            let all = shell.palette_results("");
+            assert_eq!(all.groups[0].title.as_ref(), "Pages");
+            assert!(all.groups.iter().any(|g| g.title.as_ref() == "Actions"));
+            assert!(all.groups.iter().any(|g| g.title.as_ref() == "Workspaces"));
+            let ranked = shell.palette_results("te");
+            let pages = &ranked.groups[0];
+            assert_eq!(pages.title.as_ref(), "Pages");
+            // Prefix matches (Terminal, Temporal) outrank the later subsequence in Tickets.
+            assert!(
+                pages.entries[0].label.starts_with("Te"),
+                "{}",
+                pages.entries[0].label
+            );
+            assert!(
+                pages.entries[1].label.starts_with("Te"),
+                "{}",
+                pages.entries[1].label
+            );
+            assert!(pages.entries.iter().any(|e| e.label.as_ref() == "Tickets"));
+            assert!(!pages.entries[0].positions.is_empty());
+            shell.session.remember_command("page.agents");
+            let recent = shell.palette_results("");
+            assert_eq!(recent.groups[0].title.as_ref(), "Recent");
+            assert_eq!(recent.choices[0].0.as_ref(), "page.agents");
+            shell.workspace_only = true;
+            let workspaces = shell.palette_results("");
+            assert!(
+                workspaces
+                    .groups
+                    .iter()
+                    .all(|g| g.title.as_ref() == "Workspaces")
+            );
+            assert!(
+                workspaces
+                    .choices
+                    .iter()
+                    .any(|(id, _)| id.as_ref() == "action.create-workspace")
+            );
+            shell.workspace_only = false;
+            assert_eq!(shell.palette_results("zzzz").len(), 0);
+        });
     }
 
     #[gpui::test]

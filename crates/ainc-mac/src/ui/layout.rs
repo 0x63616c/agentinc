@@ -138,14 +138,7 @@ impl ListRow {
             enabled,
             surface,
         } = self;
-        let progress = if enabled { hover.progress(&id) } else { 0. };
-        let hover_id = id.clone();
-        let on_hover = cx.listener(move |view: &mut V, over: &bool, _, cx| {
-            if enabled {
-                view.hover_fade().set(hover_id.clone(), *over);
-                cx.notify();
-            }
-        });
+        let (progress, on_hover) = hover.track(&id, enabled, cx);
         let base = if selected { SELECTED } else { surface };
         action_button(
             ButtonSpec {
@@ -231,5 +224,5 @@ pub fn status_bar() -> Div {
         .border_t_1()
         .border_color(rgb(BORDER_SUBTLE))
         .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(TEXT_TERTIARY))
+        .text_color(rgb(TEXT_SECONDARY))
 }

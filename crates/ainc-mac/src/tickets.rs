@@ -1,5 +1,6 @@
 use crate::{
     input::{Submit, TextInput},
+    model::Overlay,
     storage::{AssigneeKind, Store, Ticket, TicketCommand, TicketSnapshot, TicketStatus},
     ui::*,
 };
@@ -30,7 +31,7 @@ const STATUSES: [TicketStatus; 4] = [
 ];
 pub struct TicketsPage {
     store: Option<Arc<Store>>,
-    overlays: Rc<RefCell<OverlayHost>>,
+    overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     state: TicketSnapshot,
     selected: Option<i64>,
     input: Entity<TextInput>,
@@ -99,11 +100,11 @@ impl TicketsPage {
     pub fn new(
         store: Option<Arc<Store>>,
         storage_error: Option<String>,
-        overlays: Rc<RefCell<OverlayHost>>,
+        overlays: Rc<RefCell<OverlayHost<Overlay>>>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input =
-            cx.new(|cx| TextInput::field("Ticket title", false, cx).identified("tickets.title"));
+        let input = cx
+            .new(|cx| TextInput::field("What needs doing?", false, cx).identified("tickets.title"));
         let comment = cx
             .new(|cx| TextInput::field("Add a Comment…", false, cx).identified("tickets.comment"));
         let agent_name = cx.new(|cx| TextInput::field("Name", false, cx).identified("agents.name"));
@@ -375,12 +376,7 @@ impl TicketsPage {
                             .build(window, cx),
                     )
                     .when_some(self.form_error.clone(), |s, error| {
-                        s.child(
-                            div()
-                                .text_size(type_size(CAPTION_SIZE))
-                                .text_color(rgb(ERROR))
-                                .child(error),
-                        )
+                        s.child(error_text(error))
                     }),
                 !self.agent_name.read(cx).content.trim().is_empty(),
             ),
@@ -392,12 +388,7 @@ impl TicketsPage {
                         .gap(px(SPACE_2))
                         .child(caption("This Ticket and its Comments will be removed."))
                         .when_some(self.form_error.clone(), |s, error| {
-                            s.child(
-                                div()
-                                    .text_size(type_size(CAPTION_SIZE))
-                                    .text_color(rgb(ERROR))
-                                    .child(error),
-                            )
+                            s.child(error_text(error))
                         }),
                     true,
                 )
@@ -412,69 +403,64 @@ impl TicketsPage {
         } else {
             "Create"
         };
-        let footer = row_gap(CONTROL_GAP)
-            .justify_end()
-            .child(
-                Button::new("tickets.cancel", "Cancel")
-                    .secondary()
-                    .track_focus(&self.cancel_focus)
-                    .build(
-                        &self.hover,
-                        |this: &mut Self, window, cx| {
-                            this.overlays.borrow_mut().dismiss(window, cx);
-                            cx.notify();
-                        },
-                        cx,
-                    ),
-            )
-            .child(
-                Button::new("tickets.submit", submit_label)
-                    .kind(if deleting {
-                        ButtonKind::Destructive
-                    } else {
-                        ButtonKind::Primary
-                    })
-                    .enabled(enabled && !self.pending)
-                    .track_focus(&self.submit_focus)
-                    .build(
-                        &self.hover,
-                        move |this: &mut Self, _, cx| match active {
-                            Overlay::AddTicket => this.add(cx),
-                            Overlay::AddAgent => {
-                                let name = this.agent_name.read(cx).content.trim().to_owned();
-                                let instructions =
-                                    this.agent_instructions.read(cx).content.trim().to_owned();
-                                let model = this.agent_model.read(cx).content.trim().to_owned();
+        let footer = dialog_footer(
+            Button::new("tickets.cancel", "Cancel")
+                .secondary()
+                .track_focus(&self.cancel_focus)
+                .build(
+                    &self.hover,
+                    |this: &mut Self, window, cx| {
+                        this.overlays.borrow_mut().dismiss(window, cx);
+                        cx.notify();
+                    },
+                    cx,
+                ),
+            Button::new("tickets.submit", submit_label)
+                .kind(if deleting {
+                    ButtonKind::Destructive
+                } else {
+                    ButtonKind::Primary
+                })
+                .enabled(enabled && !self.pending)
+                .track_focus(&self.submit_focus)
+                .build(
+                    &self.hover,
+                    move |this: &mut Self, _, cx| match active {
+                        Overlay::AddTicket => this.add(cx),
+                        Overlay::AddAgent => {
+                            let name = this.agent_name.read(cx).content.trim().to_owned();
+                            let instructions =
+                                this.agent_instructions.read(cx).content.trim().to_owned();
+                            let model = this.agent_model.read(cx).content.trim().to_owned();
+                            this.command(
+                                TicketCommand::RegisterAgent {
+                                    name,
+                                    instructions,
+                                    model: if model.is_empty() {
+                                        "connection-default".into()
+                                    } else {
+                                        model
+                                    },
+                                },
+                                cx,
+                            );
+                        }
+                        Overlay::DeleteTicket(id) => {
+                            if let Some(ticket) = this.state.tickets.iter().find(|t| t.id == id) {
                                 this.command(
-                                    TicketCommand::RegisterAgent {
-                                        name,
-                                        instructions,
-                                        model: if model.is_empty() {
-                                            "connection-default".into()
-                                        } else {
-                                            model
-                                        },
+                                    TicketCommand::Delete {
+                                        id,
+                                        revision: ticket.revision,
                                     },
                                     cx,
                                 );
                             }
-                            Overlay::DeleteTicket(id) => {
-                                if let Some(ticket) = this.state.tickets.iter().find(|t| t.id == id)
-                                {
-                                    this.command(
-                                        TicketCommand::Delete {
-                                            id,
-                                            revision: ticket.revision,
-                                        },
-                                        cx,
-                                    );
-                                }
-                            }
-                            _ => {}
-                        },
-                        cx,
-                    ),
-            );
+                        }
+                        _ => {}
+                    },
+                    cx,
+                ),
+        );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
     pub fn agents(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -500,7 +486,7 @@ impl TicketsPage {
         .child(
             column()
                 .gap(px(SPACE_4))
-                .when_some(self.error.clone(), |s, error| s.child(error_banner(error)))
+                .when_some(self.error.clone(), |s, error| s.child(banner(Tone::Danger, error)))
                 .when(self.refreshing && self.error.is_some(), |s| {
                     s.child(LoadingFrame::new(self.loading_started, window).inline("Reconnecting…"))
                 })
@@ -598,6 +584,7 @@ impl TicketsPage {
                                 .ghost()
                                 .icon("trash")
                                 .enabled(enabled)
+                                .tint(DESTRUCTIVE_TEXT)
                                 .build(
                                     &self.hover,
                                     move |this, window, cx| {
@@ -610,8 +597,7 @@ impl TicketsPage {
                                         cx.notify();
                                     },
                                     cx,
-                                )
-                                .text_color(rgb(DESTRUCTIVE_TEXT)),
+                                ),
                         )
                     }),
             )
@@ -857,20 +843,6 @@ impl TicketsPage {
         groups.into_any_element()
     }
 }
-fn error_banner(error: String) -> Div {
-    row()
-        .gap(px(SPACE_3))
-        .px(px(SPACE_4))
-        .py(px(SPACE_3))
-        .rounded(px(RADIUS_MD))
-        .border_1()
-        .border_color(rgb(ERROR_BORDER))
-        .bg(rgb(SURFACE_ERROR))
-        .text_size(type_size(LABEL_SIZE))
-        .text_color(rgb(DESTRUCTIVE_TEXT))
-        .child(icon("warning", ICON_SIZE).text_color(rgb(DESTRUCTIVE_TEXT)))
-        .child(error)
-}
 impl Render for TicketsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
@@ -887,7 +859,9 @@ impl Render for TicketsPage {
             header = header.actions(
                 row_gap(CONTROL_GAP)
                     .child(
-                        Button::icon_only("tickets.refresh", "refresh", "Refresh Tickets")
+                        Button::new("tickets.refresh", "Refresh Tickets")
+                            .icon("refresh")
+                            .icon_only()
                             .secondary()
                             .enabled(!self.refreshing)
                             .build(&self.hover, |this, _, cx| this.refresh(cx), cx),
@@ -910,12 +884,14 @@ impl Render for TicketsPage {
                     .id("tickets-page")
                     .track_focus(&self.page_focus)
                     .gap(px(SECTION_GAP))
-                    .when_some(self.error.clone(), |s, error| s.child(error_banner(error)))
+                    .when_some(self.error.clone(), |s, error| {
+                        s.child(banner(Tone::Danger, error))
+                    })
                     .when_some(
                         self.form_error
                             .clone()
                             .filter(|_| self.overlays.borrow().active().is_none()),
-                        |s, error| s.child(error_banner(error)),
+                        |s, error| s.child(banner(Tone::Danger, error)),
                     )
                     .when(!self.loaded && self.error.is_none(), |s| {
                         s.child(skeleton_rows("tickets.loading", 4))

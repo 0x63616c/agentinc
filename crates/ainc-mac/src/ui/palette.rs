@@ -43,13 +43,21 @@ impl PaletteEntry {
 }
 
 pub struct PaletteGroup {
+    /// A short stable key that qualifies each row's element id and selector,
+    /// so the same command can appear under Recent and under its own group.
+    pub key: &'static str,
     pub title: SharedString,
     pub entries: Vec<PaletteEntry>,
 }
 
 impl PaletteGroup {
-    pub fn new(title: impl Into<SharedString>, entries: Vec<PaletteEntry>) -> Self {
+    pub fn new(
+        key: &'static str,
+        title: impl Into<SharedString>,
+        entries: Vec<PaletteEntry>,
+    ) -> Self {
         Self {
+            key,
             title: title.into(),
             entries,
         }
@@ -115,6 +123,78 @@ pub struct PaletteView<'a> {
     pub aria_label: &'static str,
 }
 
+/// The palette's frame: a search row, a body and a footer of hints, on the
+/// overlay surface. Hosts reuse it for any full form that replaces the results.
+pub fn palette_frame(
+    aria_label: &'static str,
+    header: impl IntoElement,
+    body: impl IntoElement,
+    footer: impl IntoElement,
+) -> Stateful<Div> {
+    column()
+        .id("search.dialog")
+        .accessibility_id("search.dialog")
+        .debug_selector(|| "search.dialog".into())
+        .role(accesskit::Role::Dialog)
+        .aria_label(aria_label)
+        .w(px(PALETTE_WIDTH))
+        .bg(rgb(SURFACE_OVERLAY))
+        .border_1()
+        .border_color(rgb(BORDER_STRONG))
+        .rounded(px(DIALOG_RADIUS))
+        .shadow(shadow_dialog())
+        .overflow_hidden()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(|_, _, cx| cx.stop_propagation())
+        .child(
+            row()
+                .h(px(PALETTE_HEADER_HEIGHT))
+                .px(px(SPACE_4))
+                .gap(px(SPACE_3))
+                .border_b_1()
+                .border_color(rgb(BORDER))
+                .text_size(type_size(HEADING_SIZE))
+                .child(header),
+        )
+        .child(body)
+        .child(
+            row()
+                .h(px(PALETTE_FOOTER_HEIGHT))
+                .px(px(SPACE_4))
+                .gap(px(SPACE_4))
+                .border_t_1()
+                .border_color(rgb(BORDER))
+                .child(footer),
+        )
+}
+
+/// The palette's search-row contents: a leading icon, the input and a close hint.
+pub fn palette_header<V: HoverHost>(
+    icon_name: &'static str,
+    content: impl IntoElement,
+    close_focus: &FocusHandle,
+    hover: &HoverFade,
+    on_close: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
+    cx: &mut Context<V>,
+) -> Div {
+    row()
+        .flex_1()
+        .min_w_0()
+        .gap(px(SPACE_3))
+        .child(icon(icon_name, ICON_SIZE_LG))
+        .child(div().flex_1().min_w_0().child(content))
+        .child(
+            Button::new("palette-close", "Close")
+                .ghost()
+                .small()
+                .on_surface(SURFACE_OVERLAY)
+                .track_focus(close_focus)
+                .trailing(kbd("esc"))
+                .build(hover, on_close, cx)
+                .px(px(SPACE_1)),
+        )
+}
+
 /// Renders the palette; the host supplies the items and answers choices.
 pub fn render_palette<V: HoverHost>(
     view: PaletteView<'_>,
@@ -137,11 +217,20 @@ pub fn render_palette<V: HoverHost>(
         aria_label,
     } = view;
     let total = palette_len(groups);
+    // Keep the whole palette above the content card's status bar.
+    let reserved = PALETTE_TOP
+        + PALETTE_HEADER_HEIGHT
+        + PALETTE_FOOTER_HEIGHT
+        + STATUS_BAR_HEIGHT
+        + PANEL_GAP
+        + SPACE_4;
+    let results_height = (f32::from(window.viewport_size().height) - reserved)
+        .clamp(PALETTE_ROW_HEIGHT * 3., PALETTE_RESULTS_MAX_HEIGHT);
     let mut results = column()
         .id("palette-results")
         .track_scroll(scroll)
         .p(px(SPACE_2))
-        .max_h(px(420.))
+        .max_h(px(results_height))
         .overflow_y_scroll();
     if total == 0 {
         results = results.child(
@@ -172,7 +261,8 @@ pub fn render_palette<V: HoverHost>(
             let is_selected = index == selected;
             let on_choose = on_choose.clone();
             let on_hover = on_hover.clone();
-            let selector = format!("palette.result.{}", entry.id);
+            let row_id: SharedString = format!("{}.{}", group.key, entry.id).into();
+            let selector = format!("palette.result.{row_id}");
             let label = highlighted(&entry.label, &entry.positions, window);
             let on_hover = cx.listener(move |view: &mut V, over: &bool, _, cx| {
                 if *over {
@@ -247,58 +337,18 @@ pub fn render_palette<V: HoverHost>(
             ));
         }
     }
-    overlay_surface_for_palette()
-        .accessibility_id("search.dialog")
-        .role(accesskit::Role::Dialog)
-        .aria_label(aria_label)
-        .w(px(PALETTE_WIDTH))
-        .overflow_hidden()
-        .child(
-            row()
-                .h(px(56.))
-                .px(px(SPACE_4))
-                .gap(px(SPACE_3))
-                .border_b_1()
-                .border_color(rgb(BORDER))
-                .text_size(type_size(HEADING_SIZE))
-                .child(icon(leading, ICON_SIZE_LG))
-                .child(div().flex_1().min_w_0().child(input))
-                .child(
-                    Button::new("palette-close", "Close")
-                        .ghost()
-                        .small()
-                        .on_surface(SURFACE_OVERLAY)
-                        .track_focus(close_focus)
-                        .trailing(kbd("esc"))
-                        .build(hover, on_close, cx)
-                        .px(px(SPACE_1)),
-                ),
-        )
-        .child(results)
-        .child(
-            row()
-                .h(px(40.))
-                .px(px(SPACE_4))
-                .gap(px(SPACE_4))
-                .border_t_1()
-                .border_color(rgb(BORDER))
-                .child(kbd_hint("↑ ↓", "Navigate"))
-                .child(kbd_hint("↵", "Open"))
-                .child(div().flex_1())
-                .child(kbd_hint("esc", "Close")),
-        )
-}
-
-fn overlay_surface_for_palette() -> Stateful<Div> {
-    column()
-        .id("search.dialog")
-        .bg(rgb(SURFACE_OVERLAY))
-        .border_1()
-        .border_color(rgb(BORDER_STRONG))
-        .rounded(px(DIALOG_RADIUS))
-        .shadow(shadow_dialog())
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_click(|_, _, cx| cx.stop_propagation())
+    palette_frame(
+        aria_label,
+        palette_header(leading, input, close_focus, hover, on_close, cx),
+        results,
+        row()
+            .flex_1()
+            .gap(px(SPACE_4))
+            .child(kbd_hint("↑ ↓", "Navigate"))
+            .child(kbd_hint("↵", "Open"))
+            .child(div().flex_1())
+            .child(kbd_hint("esc", "Close")),
+    )
 }
 
 #[cfg(test)]
@@ -308,11 +358,12 @@ mod tests {
     fn groups() -> Vec<PaletteGroup> {
         vec![
             PaletteGroup::new(
+                "pages",
                 "Pages",
                 vec![PaletteEntry::new("a", "A"), PaletteEntry::new("b", "B")],
             ),
-            PaletteGroup::new("Empty", vec![]),
-            PaletteGroup::new("Actions", vec![PaletteEntry::new("c", "C")]),
+            PaletteGroup::new("empty", "Empty", vec![]),
+            PaletteGroup::new("actions", "Actions", vec![PaletteEntry::new("c", "C")]),
         ]
     }
 

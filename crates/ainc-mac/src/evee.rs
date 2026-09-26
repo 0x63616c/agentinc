@@ -1,6 +1,7 @@
 use crate::{
     assistant,
     input::{Submit, TextInput},
+    model::Overlay,
     storage::{Command, Conversation, Store, Turn},
     ui::*,
 };
@@ -37,7 +38,7 @@ fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
 
 pub struct AssistantPage {
     store: Option<Arc<Store>>,
-    overlays: Rc<RefCell<OverlayHost>>,
+    overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     turns: Vec<Turn>,
     input: Entity<TextInput>,
     conversations: Vec<Conversation>,
@@ -75,14 +76,6 @@ fn evee_mark(size: f32) -> Img {
         .rounded_full()
         .flex_shrink_0()
 }
-fn inline_error(error: impl Into<SharedString>) -> Div {
-    row()
-        .gap(px(SPACE_2))
-        .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(ERROR))
-        .child(icon("warning", ICON_SIZE_SM).text_color(rgb(ERROR)))
-        .child(error.into())
-}
 pub enum Navigation {
     Settings,
     Chat,
@@ -119,7 +112,7 @@ impl AssistantPage {
     pub fn new(
         store: Option<Arc<Store>>,
         storage_error: Option<String>,
-        overlays: Rc<RefCell<OverlayHost>>,
+        overlays: Rc<RefCell<OverlayHost<Overlay>>>,
         cx: &mut Context<Self>,
     ) -> Self {
         let input = cx.new(|cx| TextInput::composer(cx).identified("evee.composer"));
@@ -580,7 +573,7 @@ impl AssistantPage {
         .child(
             column()
                 .gap(px(SPACE_4))
-                .when_some(self.error.clone(), |s, e| s.child(inline_error(e)))
+                .when_some(self.error.clone(), |s, e| s.child(error_text(e)))
                 .when(self.conversations.is_empty(), |s| {
                     s.child(
                         EmptyState::new("spark", "Start a conversation")
@@ -609,36 +602,36 @@ impl AssistantPage {
                                     .collect::<Vec<_>>()
                                     .join(" ")
                             };
-                            let menu = div()
+                            let menu = column()
                                 .relative()
                                 .child(
-                                    Button::icon_only(
-                                        ("chat-menu", id as u64),
-                                        "more",
-                                        "Conversation actions",
-                                    )
-                                    .small()
-                                    .enabled(enabled)
-                                    .selected(menu_open)
-                                    .build(
-                                        &self.hover,
-                                        move |this, window, cx| {
-                                            let mut host = this.overlays.borrow_mut();
-                                            if host.active() == Some(Overlay::ConversationMenu(id))
-                                            {
-                                                host.dismiss(window, cx);
-                                            } else {
-                                                host.open(
-                                                    Overlay::ConversationMenu(id),
-                                                    window,
-                                                    cx,
-                                                    None,
-                                                );
-                                            }
-                                            cx.notify();
-                                        },
-                                        cx,
-                                    ),
+                                    Button::new(("chat-menu", id as u64), "Conversation actions")
+                                        .icon("more")
+                                        .icon_only()
+                                        .ghost()
+                                        .small()
+                                        .enabled(enabled)
+                                        .selected(menu_open)
+                                        .build(
+                                            &self.hover,
+                                            move |this, window, cx| {
+                                                let mut host = this.overlays.borrow_mut();
+                                                if host.active()
+                                                    == Some(Overlay::ConversationMenu(id))
+                                                {
+                                                    host.dismiss(window, cx);
+                                                } else {
+                                                    host.open(
+                                                        Overlay::ConversationMenu(id),
+                                                        window,
+                                                        cx,
+                                                        None,
+                                                    );
+                                                }
+                                                cx.notify();
+                                            },
+                                            cx,
+                                        ),
                                 )
                                 .when(menu_open, |s| {
                                     s.child(floating(
@@ -837,7 +830,7 @@ impl AssistantPage {
                     "This permanently removes its messages from this Mac.",
                 ))
                 .when_some(self.form_error.clone(), |s, error| {
-                    s.child(inline_error(error))
+                    s.child(error_text(error))
                 })
                 .into_any_element()
         };
@@ -847,49 +840,45 @@ impl AssistantPage {
             && (!rename
                 || (self.form_error.is_none()
                     && !self.rename_input.read(cx).content.trim().is_empty()));
-        let footer = row_gap(CONTROL_GAP)
-            .justify_end()
-            .child(
-                Button::new("conversation-cancel", "Cancel")
-                    .secondary()
-                    .track_focus(&self.cancel_focus)
-                    .build(
-                        &self.hover,
-                        |this, window, cx| {
-                            this.overlays.borrow_mut().dismiss(window, cx);
-                            cx.notify();
-                        },
-                        cx,
-                    ),
-            )
-            .child(
-                Button::new(
-                    "conversation-submit",
-                    if rename {
-                        "Save"
-                    } else {
-                        "Delete conversation"
-                    },
-                )
-                .kind(if rename {
-                    ButtonKind::Primary
-                } else {
-                    ButtonKind::Destructive
-                })
-                .enabled(enabled)
-                .track_focus(&self.submit_focus)
+        let footer = dialog_footer(
+            Button::new("conversation-cancel", "Cancel")
+                .secondary()
+                .track_focus(&self.cancel_focus)
                 .build(
                     &self.hover,
-                    move |this, _, cx| {
-                        if rename {
-                            this.rename(cx)
-                        } else {
-                            this.delete(cx)
-                        }
+                    |this, window, cx| {
+                        this.overlays.borrow_mut().dismiss(window, cx);
+                        cx.notify();
                     },
                     cx,
                 ),
-            );
+            Button::new(
+                "conversation-submit",
+                if rename {
+                    "Save"
+                } else {
+                    "Delete conversation"
+                },
+            )
+            .kind(if rename {
+                ButtonKind::Primary
+            } else {
+                ButtonKind::Destructive
+            })
+            .enabled(enabled)
+            .track_focus(&self.submit_focus)
+            .build(
+                &self.hover,
+                move |this, _, cx| {
+                    if rename {
+                        this.rename(cx)
+                    } else {
+                        this.delete(cx)
+                    }
+                },
+                cx,
+            ),
+        );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
     fn send(&mut self, cx: &mut Context<Self>) {
@@ -1082,7 +1071,7 @@ impl AssistantPage {
                                         )
                                     })
                                     .when_some(turn.error.clone(), |s, error| {
-                                        s.child(inline_error(error)).child(
+                                        s.child(error_text(error)).child(
                                             row().child(
                                                 Button::new(("retry", id as u64), "Retry")
                                                     .secondary()
@@ -1175,7 +1164,7 @@ impl Render for AssistantPage {
                                     .child(title),
                             )
                             .child(
-                                Button::icon_only("panel-new", "plus", "New conversation")
+                                Button::new("panel-new", "New conversation").icon("plus").icon_only().ghost()
                                     .enabled(self.active.is_none() && !self.pending)
                                     .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx),
                             ),
@@ -1206,7 +1195,7 @@ impl Render for AssistantPage {
                         )
                     })
                     .when(self.store.is_none(), |s| {
-                        s.child(inline_error(
+                        s.child(error_text(
                             "Conversation data is unavailable. Refresh to reconnect.",
                         ))
                     })
@@ -1214,7 +1203,7 @@ impl Render for AssistantPage {
                         s.child(
                             row()
                                 .gap(px(SPACE_3))
-                                .child(inline_error(error))
+                                .child(error_text(error))
                                 .child(
                                     Button::new("refresh-data", "Refresh")
                                         .secondary()
@@ -1266,7 +1255,7 @@ impl Render for AssistantPage {
                                     .justify_between()
                                     .child(caption("Return to send · Shift+Return for a new line"))
                                     .child(
-                                        Button::icon_only("send", "send", "Send message")
+                                        Button::new("send", "Send message").icon("send").icon_only().ghost()
                                             .primary()
                                             .enabled(send_enabled)
                                             .build(&self.hover, |this, _, cx| this.send(cx), cx)

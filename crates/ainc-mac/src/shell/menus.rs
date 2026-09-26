@@ -8,7 +8,7 @@ impl Shell {
         move |this, window, cx| this.dispatch(control.clone(), window, cx)
     }
 
-    pub(super) fn user_menu(&self, cx: &mut Context<Self>) -> Deferred {
+    pub(super) fn user_menu(&self, support: bool, cx: &mut Context<Self>) -> Deferred {
         let update_ready = cx
             .try_global::<crate::updates::Updates>()
             .is_some_and(|updates| updates.0.read(cx).is_ready());
@@ -20,9 +20,9 @@ impl Shell {
                     .trailing(icon("chevronRight", ICON_SIZE_SM))
                     .selector("user-menu.support")
                     .build(&self.hover, Self::menu_action(Control::SupportMenu), cx)
-                    .when(self.support_open, |s| s.bg(rgb(SELECTED))),
+                    .when(support, |s| s.bg(rgb(SELECTED))),
             )
-            .when(self.support_open, |s| {
+            .when(support, |s| {
                 s.child(floating(
                     menu_shell(MENU_WIDTH)
                         .debug_selector(|| "user-menu.support.menu".into())
@@ -178,7 +178,10 @@ impl Shell {
                         )
                     })
                     .child(
-                        Button::icon_only("dismiss-notifications", "close", "Close notifications")
+                        Button::new("dismiss-notifications", "Close notifications")
+                            .icon("close")
+                            .icon_only()
+                            .ghost()
                             .small()
                             .on_surface(SURFACE_OVERLAY)
                             .build(&self.hover, Self::menu_action(Control::Dismiss), cx),

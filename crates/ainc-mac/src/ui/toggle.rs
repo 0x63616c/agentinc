@@ -1,29 +1,24 @@
 //! Switches and checkboxes with a white on-state.
-use super::{button::*, display::icon, layout::*, motion::*, tokens::*};
+use super::{button::*, display::icon, layout::*, tokens::*};
 use gpui::{prelude::*, *};
 
-fn toggled(on: bool) -> accesskit::Toggled {
-    if on {
-        accesskit::Toggled::True
-    } else {
-        accesskit::Toggled::False
-    }
-}
-
 /// Accessible switch with a GPUI spring that keeps its velocity when retargeted.
-pub fn toggle<V: HoverHost>(
-    id: &'static str,
-    label: &'static str,
+pub fn toggle<V: 'static>(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
     on: bool,
     enabled: bool,
     action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
     cx: &mut Context<V>,
 ) -> Stateful<Div> {
+    let id = id.into();
+    let knob_id = ElementId::NamedChild(std::sync::Arc::new(id.clone()), "knob".into());
+    let selector = format!("{id:?}");
     let knob = TOGGLE_HEIGHT - 4.;
     let travel = TOGGLE_WIDTH - TOGGLE_HEIGHT;
     action_button(
         ButtonSpec {
-            id: id.into(),
+            id,
             label: label.into(),
             enabled,
         },
@@ -31,7 +26,7 @@ pub fn toggle<V: HoverHost>(
             button
                 .role(accesskit::Role::Switch)
                 .aria_toggled(toggled(on))
-                .debug_selector(move || id.into())
+                .debug_selector(move || selector.clone())
                 .rounded_full()
                 .w(px(TOGGLE_WIDTH))
                 .h(px(TOGGLE_HEIGHT))
@@ -43,7 +38,7 @@ pub fn toggle<V: HoverHost>(
                         .rounded_full()
                         .bg(rgb(if on { TEXT_ON_PRIMARY } else { PRIMARY }))
                         .with_spring(
-                            format!("{id}.knob"),
+                            knob_id,
                             SpringAnimation::new(SPRING_SNAPPY).to(px(if on {
                                 travel
                             } else {
@@ -59,8 +54,8 @@ pub fn toggle<V: HoverHost>(
 }
 
 /// A checkbox with its label; the whole row toggles.
-pub fn checkbox<V: HoverHost>(
-    id: &'static str,
+pub fn checkbox<V: 'static>(
+    id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     checked: bool,
     enabled: bool,
@@ -68,9 +63,11 @@ pub fn checkbox<V: HoverHost>(
     cx: &mut Context<V>,
 ) -> Stateful<Div> {
     let label = label.into();
+    let id = id.into();
+    let selector = format!("{id:?}");
     action_button(
         ButtonSpec {
-            id: id.into(),
+            id,
             label: label.clone(),
             enabled,
         },
@@ -78,7 +75,7 @@ pub fn checkbox<V: HoverHost>(
             button
                 .role(accesskit::Role::CheckBox)
                 .aria_toggled(toggled(checked))
-                .debug_selector(move || id.into())
+                .debug_selector(move || selector.clone())
                 .gap(px(SPACE_2))
                 .rounded(px(RADIUS_XS))
                 .child(

@@ -106,14 +106,18 @@ impl Toasts {
                             }),
                     )
                     .child(
-                        Button::icon_only(("toast.close", id), "close", "Dismiss")
+                        Button::new(("toast.close", id), "Dismiss")
+                            .icon("close")
+                            .icon_only()
+                            .ghost()
                             .small()
                             .on_surface(SURFACE_OVERLAY)
                             .build(
                                 hover,
                                 move |view, window, cx| on_dismiss(view, id, window, cx),
                                 cx,
-                            ),
+                            )
+                            .debug_selector(move || format!("toast.close.{id}")),
                     )
                     .with_spring(
                         ("toast.enter", id),
@@ -124,5 +128,23 @@ impl Toasts {
                         },
                     )
             }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Toasts, Tone};
+
+    #[test]
+    fn ids_are_unique_and_dismissal_is_exact() {
+        let mut toasts = Toasts::default();
+        let first = toasts.push("Saved", None, Tone::Info);
+        let second = toasts.push("Failed", Some("Retry later".into()), Tone::Danger);
+        assert_ne!(first, second);
+        assert!(!toasts.is_empty());
+        assert!(toasts.dismiss(first));
+        assert!(!toasts.dismiss(first));
+        assert!(toasts.dismiss(second));
+        assert!(toasts.is_empty());
     }
 }

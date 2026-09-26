@@ -54,6 +54,7 @@ impl Shell {
                             .accessibility_id("sidebar.version")
                             .role(accesskit::Role::Label)
                             .aria_label(ainc_release::identity::version())
+                            .text_color(rgb(TEXT_TERTIARY))
                             .child(ainc_release::identity::version()),
                     ),
             )

@@ -6,7 +6,7 @@ use std::time::Instant;
 
 pub const SECTIONS: [&str; 4] = ["Buttons", "Inputs", "Data", "Overlays"];
 
-pub struct GalleryPage {
+pub struct ComponentsPage {
     section: usize,
     toggle_on: bool,
     checked: bool,
@@ -24,7 +24,7 @@ pub struct GalleryPage {
     _subscriptions: Vec<Subscription>,
 }
 
-impl HoverHost for GalleryPage {
+impl HoverHost for ComponentsPage {
     fn hover_fade(&mut self) -> &mut HoverFade {
         &mut self.hover
     }
@@ -32,7 +32,7 @@ impl HoverHost for GalleryPage {
 
 fn specimen(title: &'static str, note: &'static str, content: impl IntoElement) -> Div {
     column()
-        .debug_selector(move || format!("gallery.{}", title.to_lowercase().replace(' ', "-")))
+        .debug_selector(move || format!("components.{}", title.to_lowercase().replace(' ', "-")))
         .gap(px(SPACE_2))
         .child(
             column()
@@ -52,19 +52,19 @@ fn columns() -> [TableColumn; 3] {
     ]
 }
 
-impl GalleryPage {
+impl ComponentsPage {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let text =
-            cx.new(|cx| TextInput::field("Ticket title", false, cx).identified("gallery.text"));
+            cx.new(|cx| TextInput::field("Ticket title", false, cx).identified("components.text"));
         let error_text = cx.new(|cx| {
-            let mut input = TextInput::field("Rule name", false, cx).identified("gallery.error");
+            let mut input = TextInput::field("Rule name", false, cx).identified("components.error");
             input.content = "Every 0 minutes".into();
             input
         });
         let search =
-            cx.new(|cx| TextInput::field("Search…", false, cx).identified("gallery.search"));
+            cx.new(|cx| TextInput::field("Search…", false, cx).identified("components.search"));
         let area = cx.new(|cx| {
-            let mut input = TextInput::composer(cx).identified("gallery.area");
+            let mut input = TextInput::composer(cx).identified("components.area");
             input.content = "Review the open Tickets, then plan the next agent run.".into();
             input
         });
@@ -105,6 +105,16 @@ impl GalleryPage {
         cx.notify();
     }
 
+    /// Closes the open select; returns whether anything was open.
+    pub fn dismiss_menus(&mut self, cx: &mut Context<Self>) -> bool {
+        let was_open = self.select_open;
+        self.select_open = false;
+        if was_open {
+            cx.notify();
+        }
+        was_open
+    }
+
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
     pub(crate) fn fixture_select_open(&mut self, open: bool, cx: &mut Context<Self>) {
@@ -120,31 +130,31 @@ impl GalleryPage {
                 "Variants",
                 "One white primary per surface. Secondary beside it, ghost for quiet rows, destructive only when something is removed.",
                 row().flex_wrap().gap(px(CONTROL_GAP))
-                    .child(Button::new("gallery.primary", "Primary").primary().build(&self.hover, noop, cx))
-                    .child(Button::new("gallery.secondary", "Secondary").secondary().build(&self.hover, noop, cx))
-                    .child(Button::new("gallery.ghost", "Ghost").ghost().on_surface(SURFACE_RAISED).build(&self.hover, noop, cx))
-                    .child(Button::new("gallery.destructive", "Delete").destructive().build(&self.hover, noop, cx)),
+                    .child(Button::new("components.primary", "Primary").primary().build(&self.hover, noop, cx))
+                    .child(Button::new("components.secondary", "Secondary").secondary().build(&self.hover, noop, cx))
+                    .child(Button::new("components.ghost", "Ghost").ghost().on_surface(SURFACE_RAISED).build(&self.hover, noop, cx))
+                    .child(Button::new("components.destructive", "Delete").destructive().build(&self.hover, noop, cx)),
             ))
             .child(specimen(
                 "Sizes and icons",
                 "Small for dense rows, regular everywhere else, large for the one action on an empty page.",
                 row().flex_wrap().items_center().gap(px(CONTROL_GAP))
-                    .child(Button::new("gallery.small", "Small").secondary().small().icon("plus").build(&self.hover, noop, cx))
-                    .child(Button::new("gallery.regular", "New Ticket").primary().icon("plus").build(&self.hover, noop, cx))
-                    .child(Button::new("gallery.large", "Get started").primary().large().build(&self.hover, noop, cx))
-                    .child(Button::icon_only("gallery.icon-ghost", "more", "More").build(&self.hover, noop, cx))
-                    .child(Button::icon_only("gallery.icon-secondary", "refresh", "Refresh").secondary().build(&self.hover, noop, cx))
-                    .child(Button::icon_only("gallery.icon-primary", "send", "Send").primary().build(&self.hover, noop, cx).rounded_full()),
+                    .child(Button::new("components.small", "Small").secondary().small().icon("plus").build(&self.hover, noop, cx))
+                    .child(Button::new("components.regular", "New Ticket").primary().icon("plus").build(&self.hover, noop, cx))
+                    .child(Button::new("components.large", "Get started").primary().large().build(&self.hover, noop, cx))
+                    .child(Button::new("components.icon-ghost", "More").icon("more").icon_only().ghost().build(&self.hover, noop, cx))
+                    .child(Button::new("components.icon-secondary", "Refresh").icon("refresh").icon_only().secondary().build(&self.hover, noop, cx))
+                    .child(Button::new("components.icon-primary", "Send").icon("send").icon_only().primary().build(&self.hover, noop, cx).rounded_full()),
             ))
             .child(specimen(
                 "States",
                 "Disabled controls keep their layout at reduced opacity. Selected ghosts and secondaries pick up the selected surface.",
                 row().flex_wrap().gap(px(CONTROL_GAP))
-                    .child(Button::new("gallery.disabled-primary", "Primary").primary().enabled(false).build(&self.hover, noop, cx))
-                    .child(Button::new("gallery.disabled-secondary", "Secondary").secondary().enabled(false).build(&self.hover, noop, cx))
-                    .child(Button::new("gallery.selected-secondary", "Selected").secondary().selected(true).build(&self.hover, noop, cx))
-                    .child(Button::new("gallery.selected-ghost", "Selected ghost").ghost().selected(true).build(&self.hover, noop, cx))
-                    .child(Button::new("gallery.trailing", "Go to…").secondary().icon("search").trailing(kbd("⌘K")).build(&self.hover, noop, cx)),
+                    .child(Button::new("components.disabled-primary", "Primary").primary().enabled(false).build(&self.hover, noop, cx))
+                    .child(Button::new("components.disabled-secondary", "Secondary").secondary().enabled(false).build(&self.hover, noop, cx))
+                    .child(Button::new("components.selected-secondary", "Selected").secondary().selected(true).build(&self.hover, noop, cx))
+                    .child(Button::new("components.selected-ghost", "Selected ghost").ghost().selected(true).build(&self.hover, noop, cx))
+                    .child(Button::new("components.trailing", "Go to…").secondary().icon("search").trailing(kbd("⌘K")).build(&self.hover, noop, cx)),
             ))
     }
 
@@ -198,7 +208,7 @@ impl GalleryPage {
                     .items_center()
                     .child(
                         Select::new(
-                            "gallery.select",
+                            "components.select",
                             vec![
                                 SelectOption::new("Codex default"),
                                 SelectOption::new("Codex One").description("Fast"),
@@ -224,7 +234,7 @@ impl GalleryPage {
                     )
                     .child(
                         Select::new(
-                            "gallery.select-empty",
+                            "components.select-empty",
                             vec![SelectOption::new("Evee"), SelectOption::new("Scout")],
                         )
                         .placeholder("Choose an agent")
@@ -248,7 +258,7 @@ impl GalleryPage {
                         row()
                             .gap(px(SPACE_3))
                             .child(toggle(
-                                "gallery.toggle",
+                                "components.toggle",
                                 "Automatic checks",
                                 self.toggle_on,
                                 true,
@@ -268,7 +278,7 @@ impl GalleryPage {
                         row()
                             .gap(px(SPACE_3))
                             .child(toggle(
-                                "gallery.toggle-off",
+                                "components.toggle-off",
                                 "Off",
                                 false,
                                 true,
@@ -278,7 +288,7 @@ impl GalleryPage {
                             .child(div().text_size(type_size(LABEL_SIZE)).child("Off")),
                     )
                     .child(checkbox(
-                        "gallery.checkbox",
+                        "components.checkbox",
                         "Include done Tickets",
                         self.checked,
                         true,
@@ -289,7 +299,7 @@ impl GalleryPage {
                         cx,
                     ))
                     .child(checkbox(
-                        "gallery.checkbox-disabled",
+                        "components.checkbox-disabled",
                         "Disabled",
                         false,
                         false,
@@ -303,7 +313,7 @@ impl GalleryPage {
                 column()
                     .gap(px(SPACE_3))
                     .child(segmented(
-                        "gallery.segmented",
+                        "components.segmented",
                         ["Small", "Default", "Large", "Larger"],
                         self.segment,
                         true,
@@ -322,7 +332,7 @@ impl GalleryPage {
                                 .map(|(index, label)| {
                                     chip(
                                         ElementId::NamedInteger(
-                                            "gallery.chip".into(),
+                                            "components.chip".into(),
                                             index as u64,
                                         ),
                                         label,
@@ -375,8 +385,8 @@ impl GalleryPage {
                 "List rows",
                 "Title, subtitle and a trailing element. Rows fade to their hover surface.",
                 column().gap(px(SPACE_HALF))
-                    .child(ListRow::new("gallery.row.1", "Reconcile weekly budget and receipts").leading(status_dot(Tone::Info)).subtitle("Evee").trailing(badge("Running", Tone::Info)).on_surface(SURFACE_RAISED).build(&self.hover, |_, _, _| {}, cx))
-                    .child(ListRow::new("gallery.row.2", "Plan the week").leading(status_dot(Tone::Neutral)).subtitle("Unassigned").trailing(icon("chevronRight", ICON_SIZE_SM)).selected(true).build(&self.hover, |_, _, _| {}, cx)),
+                    .child(ListRow::new("components.row.1", "Reconcile weekly budget and receipts").leading(status_dot(Tone::Info)).subtitle("Evee").trailing(badge("Running", Tone::Info)).on_surface(SURFACE_RAISED).build(&self.hover, |_, _, _| {}, cx))
+                    .child(ListRow::new("components.row.2", "Plan the week").leading(status_dot(Tone::Neutral)).subtitle("Unassigned").trailing(icon("chevronRight", ICON_SIZE_SM)).selected(true).build(&self.hover, |_, _, _| {}, cx)),
             ))
             .child(specimen(
                 "Table",
@@ -385,7 +395,7 @@ impl GalleryPage {
                     .child(table_header(&columns))
                     .children(rows.into_iter().enumerate().map(|(index, (name, status, tone, when))| {
                         table_row(
-                            ElementId::NamedInteger("gallery.table".into(), index as u64),
+                            ElementId::NamedInteger("components.table".into(), index as u64),
                             name,
                             &columns,
                             vec![
@@ -404,8 +414,8 @@ impl GalleryPage {
                 "Empty and loading",
                 "Empty states offer the one next action. Skeletons hold the layout while data loads.",
                 column().gap(px(SPACE_4))
-                    .child(EmptyState::new("tasks", "No Tickets yet").description("Create a Ticket and assign it to an agent to start work.").action(Button::new("gallery.empty-action", "New Ticket").primary().icon("plus").build(&self.hover, |_, _, _| {}, cx)).build())
-                    .child(skeleton_rows("gallery.skeleton", 3))
+                    .child(EmptyState::new("tasks", "No Tickets yet").description("Create a Ticket and assign it to an agent to start work.").action(Button::new("components.empty-action", "New Ticket").primary().icon("plus").build(&self.hover, |_, _, _| {}, cx)).build())
+                    .child(skeleton_rows("components.skeleton", 3))
                     .child(row().gap(px(SPACE_6)).child(LoadingFrame::new(self.started, window).inline("Evee is thinking…")))
                     .child(LoadingFrame::new(self.started, window).page("Loading Tickets…")),
             ))
@@ -422,8 +432,8 @@ impl GalleryPage {
                     "Delete “Plan the week”?",
                     caption("This Ticket and its Comments will be removed."),
                     row_gap(CONTROL_GAP).justify_end()
-                        .child(Button::new("gallery.dialog-cancel", "Cancel").secondary().build(&self.hover, noop, cx))
-                        .child(Button::new("gallery.dialog-confirm", "Delete").destructive().build(&self.hover, noop, cx)),
+                        .child(Button::new("components.dialog-cancel", "Cancel").secondary().build(&self.hover, noop, cx))
+                        .child(Button::new("components.dialog-confirm", "Delete").destructive().build(&self.hover, noop, cx)),
                 )),
             ))
             .child(specimen(
@@ -434,8 +444,8 @@ impl GalleryPage {
                         "Edit rule",
                         column().gap(px(SPACE_3)).child(caption("Sheets keep the page visible beside them.")),
                         row_gap(CONTROL_GAP).justify_end()
-                            .child(Button::new("gallery.sheet-cancel", "Cancel").secondary().build(&self.hover, noop, cx))
-                            .child(Button::new("gallery.sheet-save", "Save").primary().build(&self.hover, noop, cx)),
+                            .child(Button::new("components.sheet-cancel", "Cancel").secondary().build(&self.hover, noop, cx))
+                            .child(Button::new("components.sheet-save", "Save").primary().build(&self.hover, noop, cx)),
                     )),
                 ),
             ))
@@ -446,22 +456,22 @@ impl GalleryPage {
                     .child(popover_shell(POPOVER_WIDTH)
                         .child(row().px(px(SPACE_2)).py(px(SPACE_2)).gap(px(SPACE_3)).child(avatar("Calum", None, AVATAR_SIZE_LG)).child(column().child(div().text_size(type_size(HEADING_SIZE)).font_weight(FontWeight::MEDIUM).child("Calum")).child(caption("@calum"))))
                         .child(menu_divider())
-                        .child(MenuEntry::new("gallery.menu.updates", "Check for Updates").icon("refresh").build(&self.hover, noop, cx))
-                        .child(MenuEntry::new("gallery.menu.settings", "Settings").icon("settings").shortcut("⌘,").build(&self.hover, noop, cx))
-                        .child(MenuEntry::new("gallery.menu.support", "Support").icon("help").trailing(icon("chevronRight", ICON_SIZE_SM)).build(&self.hover, noop, cx))
+                        .child(MenuEntry::new("components.menu.updates", "Check for Updates").icon("refresh").build(&self.hover, noop, cx))
+                        .child(MenuEntry::new("components.menu.settings", "Settings").icon("settings").shortcut("⌘,").build(&self.hover, noop, cx))
+                        .child(MenuEntry::new("components.menu.support", "Support").icon("help").trailing(icon("chevronRight", ICON_SIZE_SM)).build(&self.hover, noop, cx))
                         .child(menu_divider())
-                        .child(MenuEntry::new("gallery.menu.delete", "Delete").icon("trash").destructive().build(&self.hover, noop, cx)))
+                        .child(MenuEntry::new("components.menu.delete", "Delete").icon("trash").destructive().build(&self.hover, noop, cx)))
                     .child(menu_shell(MENU_WIDTH)
                         .child(menu_label("Model"))
-                        .child(MenuEntry::new("gallery.menu.default", "Codex default").checked(true).build(&self.hover, noop, cx))
-                        .child(MenuEntry::new("gallery.menu.one", "Codex One").build(&self.hover, noop, cx))
-                        .child(MenuEntry::new("gallery.menu.two", "Codex Two").enabled(false).build(&self.hover, noop, cx))),
+                        .child(MenuEntry::new("components.menu.default", "Codex default").checked(true).build(&self.hover, noop, cx))
+                        .child(MenuEntry::new("components.menu.one", "Codex One").build(&self.hover, noop, cx))
+                        .child(MenuEntry::new("components.menu.two", "Codex Two").enabled(false).build(&self.hover, noop, cx))),
             ))
             .child(specimen(
                 "Toasts",
                 "Transient notices stack above the status bar and slide in; sticky ones wait to be dismissed.",
                 column().gap(px(SPACE_3))
-                    .child(row().child(Button::new("gallery.toast", "Show a toast").secondary().build(
+                    .child(row().child(Button::new("components.toast", "Show a toast").secondary().build(
                         &self.hover,
                         |this, _, cx| {
                             this.toasts.push("Saved", Some("Your changes are on the daemon.".into()), Tone::Info);
@@ -481,7 +491,7 @@ impl GalleryPage {
     }
 }
 
-impl Render for GalleryPage {
+impl Render for ComponentsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
         let body = match self.section {
@@ -495,10 +505,10 @@ impl Render for GalleryPage {
         ))
         .child(
             column()
-                .id("gallery.page")
+                .id("components.page")
                 .gap(px(SECTION_GAP))
                 .child(tabs(
-                    "gallery.tabs",
+                    "components.tabs",
                     SECTIONS,
                     self.section,
                     &self.hover,

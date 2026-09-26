@@ -8,10 +8,10 @@ mod about;
 mod assistant;
 #[path = "../src/automations.rs"]
 mod automations;
+#[path = "../src/components.rs"]
+mod components;
 #[path = "../src/evee.rs"]
 mod evee;
-#[path = "../src/gallery.rs"]
-mod gallery;
 #[path = "../src/input.rs"]
 mod input;
 #[path = "../src/model.rs"]

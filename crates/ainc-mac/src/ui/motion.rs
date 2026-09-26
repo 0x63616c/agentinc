@@ -72,6 +72,24 @@ impl HoverFade {
     pub fn progress(&self, id: &ElementId) -> f32 {
         self.0.get(id).map(Self::value).unwrap_or(0.)
     }
+    /// The hover amount for `id` plus the listener that drives it. Every
+    /// hover-faded control is built from this one pair.
+    pub fn track<V: HoverHost>(
+        &self,
+        id: &ElementId,
+        enabled: bool,
+        cx: &mut Context<V>,
+    ) -> (f32, impl Fn(&bool, &mut Window, &mut App) + 'static) {
+        let progress = if enabled { self.progress(id) } else { 0. };
+        let hover_id = id.clone();
+        let listener = cx.listener(move |view: &mut V, over: &bool, _, cx| {
+            if enabled {
+                view.hover_fade().set(hover_id.clone(), *over);
+                cx.notify();
+            }
+        });
+        (progress, listener)
+    }
     pub fn animate(&mut self, window: &mut Window) {
         self.0.retain(|_, entry| {
             entry.2 > 0. || entry.0.elapsed().as_secs_f32() < HOVER_MS as f32 / 1000.
@@ -91,6 +109,21 @@ impl HoverFade {
 mod tests {
     use super::{PRIMARY, SHELL, SURFACE, SURFACE_RAISED, blend};
     use gpui::rgb;
+
+    #[test]
+    fn hover_fade_tracks_each_control_separately() {
+        use super::HoverFade;
+        use gpui::ElementId;
+        let mut fade = HoverFade::default();
+        let a = ElementId::Name("a".into());
+        let b = ElementId::Name("b".into());
+        assert_eq!(fade.progress(&a), 0.);
+        fade.set(a.clone(), true);
+        assert!(fade.progress(&a) >= 0.);
+        assert_eq!(fade.progress(&b), 0.);
+        fade.set(a.clone(), false);
+        assert!(fade.progress(&a) <= 1.);
+    }
 
     #[test]
     fn blend_interpolates_each_channel() {

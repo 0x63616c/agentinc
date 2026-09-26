@@ -616,7 +616,9 @@ impl Render for AutomationsPage {
             .actions(
                 row_gap(CONTROL_GAP)
                     .child(
-                        Button::icon_only("automations.refresh", "refresh", "Refresh")
+                        Button::new("automations.refresh", "Refresh")
+                            .icon("refresh")
+                            .icon_only()
                             .secondary()
                             .enabled(!self.refreshing)
                             .build(&self.hover, |this, _, cx| this.refresh(cx), cx),
@@ -629,20 +631,9 @@ impl Render for AutomationsPage {
         let mut content = column().gap(px(SECTION_GAP)).w_full();
         if let Some(error) = &self.error {
             content = content.child(
-                row()
+                banner(Tone::Danger, error.clone())
                     .id("automations.error")
-                    .accessibility_id("automations.error")
-                    .gap(px(SPACE_3))
-                    .px(px(SPACE_4))
-                    .py(px(SPACE_3))
-                    .rounded(px(RADIUS_MD))
-                    .border_1()
-                    .border_color(rgb(ERROR_BORDER))
-                    .bg(rgb(SURFACE_ERROR))
-                    .text_size(type_size(LABEL_SIZE))
-                    .text_color(rgb(DESTRUCTIVE_TEXT))
-                    .child(icon("warning", ICON_SIZE).text_color(rgb(DESTRUCTIVE_TEXT)))
-                    .child(error.clone()),
+                    .accessibility_id("automations.error"),
             );
         }
         if self.refreshing && self.error.is_some() {

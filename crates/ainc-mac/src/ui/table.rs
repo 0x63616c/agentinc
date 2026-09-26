@@ -92,14 +92,7 @@ pub fn table_row<V: super::motion::HoverHost>(
 ) -> Stateful<Div> {
     use super::{button::*, motion::blend};
     let id = id.into();
-    let progress = if enabled { hover.progress(&id) } else { 0. };
-    let hover_id = id.clone();
-    let on_hover = cx.listener(move |view: &mut V, over: &bool, _, cx| {
-        if enabled {
-            view.hover_fade().set(hover_id.clone(), *over);
-            cx.notify();
-        }
-    });
+    let (progress, on_hover) = hover.track(&id, enabled, cx);
     action_button(
         ButtonSpec {
             id,
