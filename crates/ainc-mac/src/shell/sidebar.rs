@@ -88,6 +88,62 @@ impl Shell {
                 ((color >> 16) & 0xff) * 3 + ((color >> 8) & 0xff) * 6 + (color & 0xff);
             if brightness > 1400 { SHELL } else { TEXT }
         });
+        let switcher = self
+            .button(
+                "workspace-picker",
+                "Switch workspace",
+                Control::WorkspacePicker,
+                cx,
+            )
+            .min_w_0()
+            .h(px(96.))
+            .px(px(14.))
+            .mb(px(14.))
+            .rounded(px(12.))
+            .border_1()
+            .border_color(rgb(BORDER))
+            .bg(rgb(SURFACE_RAISED))
+            .active(|s| s.bg(rgb(SELECTED)))
+            .child(
+                column()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(9.))
+                    .child(
+                        div()
+                            .text_size(type_size(CAPTION_SIZE))
+                            .text_color(rgb(TEXT_MUTED))
+                            .child("WORKSPACE"),
+                    )
+                    .child(
+                        row()
+                            .gap(px(10.))
+                            .child(
+                                row()
+                                    .size(px(32.))
+                                    .flex_shrink_0()
+                                    .justify_center()
+                                    .rounded(px(9.))
+                                    .border_1()
+                                    .border_color(rgb(BORDER_OVERLAY))
+                                    .bg(rgb(workspace_color.unwrap_or(HOVER)))
+                                    .text_color(rgb(workspace_ink))
+                                    .text_size(type_size(18.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(workspace_icon),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .debug_selector(|| "workspace-title".into())
+                                    .text_size(type_size(LABEL_SIZE))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(workspace_name),
+                            ),
+                    ),
+            );
         let mut nav = column().gap(px(2.));
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             nav = nav.child(self.sidebar_item(page.route, Some(index + 1), cx));
@@ -99,40 +155,7 @@ impl Shell {
             .debug_selector(|| "sidebar-content".into())
             .px(px(12.))
             .pt(px(20.))
-            .child(
-                self.button(
-                    "workspace-picker",
-                    "Switch workspace",
-                    Control::WorkspacePicker,
-                    cx,
-                )
-                .min_w_0()
-                .pl(px(SIDEBAR_IDENTITY_LEFT_INSET))
-                .pr(px(SIDEBAR_IDENTITY_RIGHT_INSET))
-                .gap(px(8.5))
-                .mb(px(16.))
-                .child(
-                    row()
-                        .size(px(24.))
-                        .flex_shrink_0()
-                        .justify_center()
-                        .rounded(px(7.))
-                        .border_1()
-                        .border_color(rgb(BORDER_OVERLAY))
-                        .bg(rgb(workspace_color.unwrap_or(HOVER)))
-                        .text_color(rgb(workspace_ink))
-                        .child(workspace_icon),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .debug_selector(|| "workspace-title".into())
-                        .text_size(type_size(LABEL_SIZE))
-                        .child(workspace_name),
-                ),
-            )
+            .child(switcher)
             .child(
                 self.button("shell.search", "Search · ⌘ K", Control::Search, cx)
                     .debug_selector(|| "shell.search".into())
