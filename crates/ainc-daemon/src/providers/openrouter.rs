@@ -148,11 +148,13 @@ impl OpenRouter {
                 );
             }
         }
-        models.sort_by(|a, b| {
-            b.featured
-                .cmp(&a.featured)
-                .then_with(|| a.name.cmp(&b.name))
-        });
+        let rank = |model: &ProviderModel| {
+            FEATURED
+                .iter()
+                .position(|(id, _)| *id == model.id)
+                .unwrap_or(FEATURED.len())
+        };
+        models.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| a.name.cmp(&b.name)));
         Ok(models)
     }
     pub fn model(
