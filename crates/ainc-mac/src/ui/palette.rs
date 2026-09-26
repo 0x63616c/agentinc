@@ -287,24 +287,17 @@ pub fn render_palette<V: HoverHost>(
                         .on_hover(on_hover)
                         .w_full()
                         .h(px(PALETTE_ROW_HEIGHT))
+                        .flex_shrink_0()
                         .px(px(SPACE_2))
                         .gap(px(SPACE_3))
                         .rounded(px(RADIUS_MD))
-                        .when(is_selected, |s| s.bg(rgb(SELECTED)))
-                        .child(
-                            row()
-                                .size(px(24.))
-                                .justify_center()
-                                .flex_shrink_0()
-                                .rounded(px(RADIUS_SM))
-                                .when(is_selected, |s| s.bg(rgb(SELECTED_STRONG)))
-                                .child(match entry.icon {
-                                    Some(name) => icon(name, ICON_SIZE)
-                                        .when(is_selected, |s| s.text_color(rgb(TEXT)))
-                                        .into_any_element(),
-                                    None => div().into_any_element(),
-                                }),
-                        )
+                        .when(is_selected, |s| s.bg(rgb(SELECTED_STRONG)))
+                        .child(match entry.icon {
+                            Some(name) => icon(name, ICON_SIZE_LG)
+                                .when(is_selected, |s| s.text_color(rgb(TEXT)))
+                                .into_any_element(),
+                            None => div().w(px(ICON_SIZE_LG)).into_any_element(),
+                        })
                         .child(
                             div()
                                 .flex_1()
