@@ -12,7 +12,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
@@ -51,6 +51,8 @@ pub struct AssistantPage {
     models: Vec<assistant::Model>,
     model: Option<String>,
     model_menu_open: bool,
+    model_menu_closing: bool,
+    model_menu_generation: u64,
     credentials_busy: bool,
     login_cancel: Option<Arc<AtomicBool>>,
     connection_error: Option<String>,
@@ -176,6 +178,8 @@ impl AssistantPage {
             models: vec![],
             model,
             model_menu_open: false,
+            model_menu_closing: false,
+            model_menu_generation: 0,
             credentials_busy: !cfg!(test),
             login_cancel: None,
             connection_error: None,
@@ -337,7 +341,9 @@ impl AssistantPage {
                     "Model",
                     "Choose the Codex model for conversations.",
                     column()
+                        .relative()
                         .w(px(210.))
+                        .h(px(CONTROL_HEIGHT))
                         .child(
                             settings_button(
                                 "codex-model-select",
@@ -352,8 +358,14 @@ impl AssistantPage {
                                     .unwrap_or_else(|| "Codex default".into()),
                                 enabled,
                                 |this: &mut Self, _, cx| {
-                                    this.model_menu_open = !this.model_menu_open;
-                                    cx.notify();
+                                    if this.model_menu_open {
+                                        this.close_model_menu(cx);
+                                    } else {
+                                        this.model_menu_generation += 1;
+                                        this.model_menu_open = true;
+                                        this.model_menu_closing = false;
+                                        cx.notify();
+                                    }
                                 },
                                 cx,
                             )
@@ -362,41 +374,63 @@ impl AssistantPage {
                             .debug_selector(|| "codex-model-select".into())
                             .child("⌄"),
                         )
-                        .when(self.model_menu_open, |menu| {
-                            menu.child(
-                                column()
-                                    .mt(px(4.))
-                                    .rounded(px(7.))
-                                    .border_1()
-                                    .border_color(rgb(BORDER))
-                                    .bg(rgb(SURFACE_MENU))
-                                    .child(
-                                        settings_button(
+                        .when(self.model_menu_open || self.model_menu_closing, |anchor| {
+                            let menu_open = self.model_menu_open;
+                            anchor.child(
+                                deferred(
+                                    column()
+                                        .id("codex-model-menu")
+                                        .debug_selector(|| "codex-model-menu".into())
+                                        .absolute()
+                                        .right(px(0.))
+                                        .top(px(36.))
+                                        .w(px(210.))
+                                        .max_h(px(280.))
+                                        .overflow_y_scroll()
+                                        .p(px(4.))
+                                        .rounded(px(CONTROL_RADIUS))
+                                        .border_1()
+                                        .border_color(rgb(BORDER_OVERLAY))
+                                        .bg(rgb(SURFACE_MENU))
+                                        .shadow(vec![
+                                            BoxShadow::new(px(0.), px(8.), rgba(SCRIM).into())
+                                                .blur_radius(px(24.)),
+                                        ])
+                                        .child(self.model_option(
                                             "model-default",
-                                            "Codex default",
-                                            enabled,
-                                            |this: &mut Self, _, cx| this.select_model(None, cx),
+                                            "Codex default".into(),
+                                            None,
+                                            enabled && menu_open,
                                             cx,
-                                        )
-                                        .w_full()
-                                        .justify_start(),
-                                    )
-                                    .children(self.models.iter().enumerate().map(
-                                        |(index, model)| {
-                                            let id = model.id.clone();
-                                            settings_button(
-                                                ("codex-model", index),
-                                                model.name.clone(),
-                                                enabled,
-                                                move |this: &mut Self, _, cx| {
-                                                    this.select_model(Some(id.clone()), cx)
-                                                },
-                                                cx,
-                                            )
-                                            .w_full()
-                                            .justify_start()
-                                        },
-                                    )),
+                                        ))
+                                        .children(self.models.iter().enumerate().map(
+                                            |(index, model)| {
+                                                self.model_option(
+                                                    ("codex-model", index),
+                                                    model.name.clone(),
+                                                    Some(model.id.clone()),
+                                                    enabled && menu_open,
+                                                    cx,
+                                                )
+                                            },
+                                        ))
+                                        .with_animation(
+                                            if menu_open {
+                                                "codex-model-menu-open"
+                                            } else {
+                                                "codex-model-menu-close"
+                                            },
+                                            Animation::new(Duration::from_millis(PANEL_MS)),
+                                            move |menu, progress| {
+                                                menu.opacity(if menu_open {
+                                                    progress
+                                                } else {
+                                                    1. - progress
+                                                })
+                                            },
+                                        ),
+                                )
+                                .with_priority(1),
                             )
                         }),
                 ))
@@ -413,6 +447,45 @@ impl AssistantPage {
                     cx,
                 ),
             ))
+    }
+    fn model_option(
+        &self,
+        id: impl Into<ElementId>,
+        name: String,
+        model: Option<String>,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let selected = self.model == model;
+        let choice = model.clone();
+        let selector = format!(
+            "settings.model-option.{}",
+            name.to_lowercase().replace(' ', "-")
+        );
+        action_button(
+            ButtonSpec {
+                id: id.into(),
+                label: name.clone().into(),
+                kind: ButtonKind::Quiet,
+                enabled,
+            },
+            |button| {
+                button
+                    .debug_selector(move || selector.clone())
+                    .w_full()
+                    .min_h(px(34.))
+                    .px(px(10.))
+                    .gap(px(10.))
+                    .rounded(px(CONTROL_RADIUS))
+                    .bg(rgb(if selected { SELECTED } else { SURFACE_MENU }))
+                    .hover(|item| item.bg(rgb(HOVER_CONTROL)))
+                    .text_size(type_size(LABEL_SIZE))
+                    .child(div().flex_1().min_w_0().truncate().child(name))
+                    .when(selected, |item| item.child("✓"))
+            },
+            move |this: &mut Self, _, cx| this.select_model(choice.clone(), cx),
+            cx,
+        )
     }
     fn mutate<R: Send + 'static>(
         &mut self,
@@ -485,7 +558,7 @@ impl AssistantPage {
         self.reload_snapshot();
     }
     fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
-        self.model_menu_open = false;
+        self.close_model_menu(cx);
         self.mutate(
             move |db| {
                 db.command(Command::SelectModel {
@@ -495,6 +568,29 @@ impl AssistantPage {
             |_, _, _| {},
             cx,
         );
+    }
+    fn close_model_menu(&mut self, cx: &mut Context<Self>) {
+        if !self.model_menu_open {
+            return;
+        }
+        self.model_menu_open = false;
+        self.model_menu_closing = true;
+        self.model_menu_generation += 1;
+        let generation = self.model_menu_generation;
+        let timer = cx
+            .background_executor()
+            .timer(Duration::from_millis(PANEL_MS));
+        cx.spawn(async move |this, cx| {
+            timer.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.model_menu_generation == generation {
+                    this.model_menu_closing = false;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+        cx.notify();
     }
     fn open_conversation(&mut self, id: i64, cx: &mut Context<Self>) {
         if self.pending {

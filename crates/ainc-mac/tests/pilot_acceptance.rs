@@ -470,7 +470,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     ensure!(
         matches!(timeout.result, Reply::Error { error, snapshot: Some(_) } if error.code == "deadline_exceeded")
     );
-    act(&mut client, "profile", None)?;
+    act(&mut client, "nav.settings", None)?;
     wait(
         &mut client,
         Condition::Present {

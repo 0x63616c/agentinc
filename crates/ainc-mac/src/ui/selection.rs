@@ -16,11 +16,10 @@ pub fn settings_section(title: &'static str, rows: impl IntoElement) -> Div {
         )
         .child(
             column()
-                .overflow_hidden()
                 .rounded(px(PANEL_RADIUS))
                 .border_1()
                 .border_color(rgb(BORDER))
-                .bg(rgb(SURFACE_RAISED))
+                .bg(rgb(SURFACE_SETTINGS_ROW))
                 .child(rows),
         )
 }
@@ -35,7 +34,7 @@ pub fn settings_row(
         .debug_selector(move || format!("settings.row.{label}"))
         .min_h(px(SETTINGS_ROW_HEIGHT))
         .px(px(SETTINGS_INSET))
-        .py(px(8.))
+        .py(px(SETTINGS_INSET))
         .gap(px(16.))
         .justify_between()
         .child(
@@ -234,12 +233,13 @@ pub fn settings_switch<V: 'static>(
                 .size(px(40.))
                 .h(px(24.))
                 .p(px(3.))
-                .bg(rgb(if on { ACCENT } else { SELECTED_BORDER }))
+                .bg(rgb(switch_track(on)))
+                .focus(|s| s.border_1().border_color(rgb(FOCUS)))
                 .child(
                     div()
                         .size(px(18.))
                         .rounded_full()
-                        .bg(rgb(PRIMARY))
+                        .bg(rgb(switch_knob(on)))
                         .with_spring(
                             format!("{id}.knob"),
                             SpringAnimation::new(SpringConfig::new(260., 27., 1.)).to(px(if on {
@@ -254,4 +254,26 @@ pub fn settings_switch<V: 'static>(
         action,
         cx,
     )
+}
+
+fn switch_track(on: bool) -> u32 {
+    if on { PRIMARY } else { SELECTED_BORDER }
+}
+
+fn switch_knob(on: bool) -> u32 {
+    if on { TEXT_ON_PRIMARY } else { PRIMARY }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{switch_knob, switch_track};
+    use crate::ui::{PRIMARY, SELECTED_BORDER, TEXT_ON_PRIMARY};
+
+    #[test]
+    fn switch_colors_follow_both_states() {
+        for on in [false, true, false, true] {
+            assert_eq!(switch_track(on), if on { PRIMARY } else { SELECTED_BORDER });
+            assert_eq!(switch_knob(on), if on { TEXT_ON_PRIMARY } else { PRIMARY });
+        }
+    }
 }

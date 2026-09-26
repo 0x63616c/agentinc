@@ -92,6 +92,7 @@ impl Shell {
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             nav = nav.child(self.sidebar_item(page.route, Some(index + 1), cx));
         }
+        nav = nav.child(self.sidebar_item(Route::Settings, None, cx).mt(px(12.)));
         column()
             .w_full()
             .h_full()
@@ -155,7 +156,6 @@ impl Shell {
             )
             .child(nav)
             .child(div().flex_1())
-            .child(self.sidebar_item(Route::Settings, None, cx).mb(px(8.)))
             .child(
                 self.button(
                     "profile",
