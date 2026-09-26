@@ -10,6 +10,8 @@ mod assistant;
 mod automations;
 #[path = "../src/evee.rs"]
 mod evee;
+#[path = "../src/gallery.rs"]
+mod gallery;
 #[path = "../src/input.rs"]
 mod input;
 #[path = "../src/model.rs"]

@@ -17,11 +17,11 @@ impl Shell {
             .relative()
             .flex_1()
             .min_h_0()
-            .pt(px(48.))
-            .pb(px(6.))
-            .pr(px(8.))
+            .pt(px(TITLEBAR_HEIGHT))
+            .pb(px(PANEL_GAP))
+            .pr(px(PANEL_GAP))
             .child(self.pane(left_side, left, left_width))
-            .pl(px(8. * (1. - left_width / left_saved)))
+            .pl(px(PANEL_GAP * (1. - left_width / left_saved)))
             .child(
                 row()
                     .flex_1()
@@ -38,8 +38,8 @@ impl Shell {
                         self.resize_handle(left_side, cx)
                             .absolute()
                             .left(px(left_width - 5.))
-                            .top(px(48.))
-                            .bottom(px(8.)),
+                            .top(px(TITLEBAR_HEIGHT))
+                            .bottom(px(PANEL_GAP)),
                     )
                 },
             )

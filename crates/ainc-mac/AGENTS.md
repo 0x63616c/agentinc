@@ -9,7 +9,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - The opt-in driver setup, protocol, upstream seam and acceptance commands are in `docs/GPUI_PILOT.md`; normal bundles must keep `automation` off.
 - Keep GPUI `font-kit` enabled on macOS. Current upstream pin, native acceptance and the main-thread Metal regression command are documented in `docs/verification/GPUI_UPGRADE.md`; inspect saved full PNGs at logical resolution before diagnosing missing regions from inline previews.
 - Workspace Linux CI runs fmt, clippy and default tests; use the macOS rendered and pilot commands in `docs/GPUI_PILOT.md` for native acceptance.
-- Native color roles live in `src/ui/tokens.rs`; `scripts/check-colors.py` guards source and SVG assets against inline color values.
+- The design system (tokens in `src/ui/tokens.rs`, components in `src/ui/`, the live gallery in `src/gallery.rs`) is documented in `../../docs/design-system.md`; build new UI from those components. `scripts/check-colors.py` guards source and SVG assets against inline color values.
 - Visual rule: keep control edge insets even, especially top/bottom/right around header icon buttons. No hover tooltips unless explicitly requested. Keep small interactions fluid with brief, restrained transitions. Approved live refinements are recorded in `docs/verification/STATUS.md`.
 - Attach proof and verification screenshots to the PR description (for example through a secret gist); do not commit them. Keep the README hero in the repository's `docs/assets/readme` committed, and retain existing images.
 

@@ -22,6 +22,8 @@ pub enum Route {
     #[serde(rename = "evee", alias = "assistant")]
     Assistant,
     Settings,
+    /// The living component gallery, reachable from the command palette.
+    DesignSystem,
 }
 
 pub struct PageSpec {
@@ -74,6 +76,12 @@ pub const PAGES: &[PageSpec] = &[
         icon: "settings",
         in_sidebar: false,
     },
+    PageSpec {
+        route: Route::DesignSystem,
+        title: "Components",
+        icon: "command",
+        in_sidebar: false,
+    },
 ];
 
 impl Route {
@@ -101,6 +109,7 @@ impl Route {
     pub fn icon(self) -> &'static str {
         self.spec().icon
     }
+    #[cfg(test)]
     pub fn matching(query: &str) -> Vec<Self> {
         let query = query.trim().to_lowercase();
         PAGES
@@ -208,6 +217,8 @@ pub struct Session {
     pub panes: [PanePreference; 1],
     pub font: FontChoice,
     pub font_size: FontSize,
+    /// Command palette entries the user chose most recently, newest first.
+    pub recent_commands: Vec<String>,
 }
 impl Default for Session {
     fn default() -> Self {
@@ -220,10 +231,19 @@ impl Default for Session {
             }],
             font: FontChoice::System,
             font_size: FontSize::Default,
+            recent_commands: Vec::new(),
         }
     }
 }
+/// How many palette choices are remembered.
+pub const RECENT_COMMANDS: usize = 5;
 impl Session {
+    /// Moves `id` to the front of the recent palette choices.
+    pub fn remember_command(&mut self, id: &str) {
+        self.recent_commands.retain(|recent| recent != id);
+        self.recent_commands.insert(0, id.to_owned());
+        self.recent_commands.truncate(RECENT_COMMANDS);
+    }
     pub fn current(&self) -> Route {
         self.router.current()
     }
@@ -272,6 +292,13 @@ impl Session {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
         {
             session.font_size = font_size;
+        }
+        if let Some(recent) = value.get("recent_commands").and_then(|v| v.as_array()) {
+            session.recent_commands = recent
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .take(RECENT_COMMANDS)
+                .collect();
         }
         if let Some(router) = value.get("router").and_then(|v| v.as_object()) {
             session.router.current = router
@@ -374,7 +401,7 @@ mod tests {
     use super::*;
     #[test]
     fn catalogue_and_history() {
-        assert_eq!(PAGES.len(), 7);
+        assert_eq!(PAGES.len(), 8);
         for route in [
             Route::Tickets,
             Route::Agents,
@@ -383,6 +410,7 @@ mod tests {
             Route::Temporal,
             Route::Assistant,
             Route::Settings,
+            Route::DesignSystem,
         ] {
             assert_eq!(route.spec().route, route);
         }
@@ -494,6 +522,28 @@ mod tests {
             Session::from_json(r#"{"font_size":"future_size"}"#).font_size,
             FontSize::Default
         );
+    }
+    #[test]
+    fn recent_commands_dedupe_and_persist() {
+        let mut session = Session::default();
+        for id in [
+            "page.tickets",
+            "page.agents",
+            "page.tickets",
+            "a",
+            "b",
+            "c",
+            "d",
+        ] {
+            session.remember_command(id);
+        }
+        assert_eq!(session.recent_commands.len(), RECENT_COMMANDS);
+        assert_eq!(session.recent_commands[0], "d");
+        assert_eq!(session.recent_commands.last().unwrap(), "page.tickets");
+        assert!(!session.recent_commands.contains(&"page.agents".to_owned()));
+        let restored = Session::from_json(&serde_json::to_string(&session).unwrap());
+        assert_eq!(restored.recent_commands, session.recent_commands);
+        assert!(Session::from_json("{}").recent_commands.is_empty());
     }
     #[test]
     fn search_and_file_round_trip() {

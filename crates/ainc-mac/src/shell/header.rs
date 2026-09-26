@@ -64,8 +64,13 @@ impl Shell {
 
     pub(super) fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let route = self.session.current();
+        let unread = self
+            .notification_items
+            .iter()
+            .filter(|item| item.unread)
+            .count();
         row()
-            .h(px(48.))
+            .h(px(TITLEBAR_HEIGHT))
             .flex_shrink_0()
             .items_end()
             .pr(px(9.))
@@ -105,10 +110,10 @@ impl Shell {
                             .into_any_element()
                         } else {
                             row()
-                                .size(px(30.))
+                                .size(px(HEADER_CONTROL))
                                 .justify_center()
                                 .opacity(0.3)
-                                .child(icon(name, 16.))
+                                .child(icon(name, HEADER_ICON_SIZE))
                                 .into_any_element()
                         }
                     })),
@@ -129,6 +134,7 @@ impl Shell {
                                 .pl(px(14.))
                                 .gap(px(7.))
                                 .text_size(type_size(LABEL_SIZE))
+                                .font_weight(FontWeight::MEDIUM)
                                 .child(div().mt(px(1.)).child(icon(route.icon(), 14.)))
                                 .child(route.label()),
                         ),
@@ -137,6 +143,7 @@ impl Shell {
             .child(self.titlebar_space("titlebar-center-space", cx).flex_1())
             .child(
                 div()
+                    .relative()
                     .flex_shrink_0()
                     .ml(px(CONTROL_GAP))
                     .mb(px(9.))
@@ -146,7 +153,20 @@ impl Shell {
                         "bell",
                         Control::Notifications,
                         cx,
-                    )),
+                    ))
+                    .when(unread > 0, |s| {
+                        s.child(
+                            div()
+                                .absolute()
+                                .top(px(4.))
+                                .right(px(4.))
+                                .size(px(7.))
+                                .rounded_full()
+                                .border_1()
+                                .border_color(rgb(SHELL))
+                                .bg(rgb(ACCENT)),
+                        )
+                    }),
             )
     }
 }

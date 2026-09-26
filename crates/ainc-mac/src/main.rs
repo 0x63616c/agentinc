@@ -2,6 +2,7 @@ mod about;
 mod assistant;
 mod automations;
 mod evee;
+mod gallery;
 mod input;
 mod model;
 mod native_update;

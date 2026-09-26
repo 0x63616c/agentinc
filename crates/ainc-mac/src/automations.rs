@@ -40,6 +40,28 @@ pub struct AutomationsPage {
     _subscriptions: Vec<Subscription>,
 }
 impl EventEmitter<OpenTicket> for AutomationsPage {}
+impl HoverHost for AutomationsPage {
+    fn hover_fade(&mut self) -> &mut HoverFade {
+        &mut self.hover
+    }
+}
+fn rule_state(rule: &Automation) -> (&'static str, Tone) {
+    if rule.error.is_some() {
+        ("Needs attention", Tone::Danger)
+    } else if rule.revision != rule.applied_revision {
+        ("Pending", Tone::Warning)
+    } else if rule.paused {
+        ("Paused", Tone::Neutral)
+    } else {
+        ("Active", Tone::Success)
+    }
+}
+fn every(minutes: i64) -> String {
+    format!(
+        "Every {minutes} {}",
+        if minutes == 1 { "minute" } else { "minutes" }
+    )
+}
 impl AutomationsPage {
     pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
         anyhow::ensure!(
@@ -261,41 +283,308 @@ impl AutomationsPage {
             cx,
         );
     }
-    fn button(
-        &self,
-        id: impl Into<ElementId>,
-        label: impl Into<SharedString>,
-        enabled: bool,
-        f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + Clone + 'static,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let id = id.into();
-        let hover_id = id.clone();
-        let enabled = enabled && !self.pending;
-        let background = self.hover.color(&id);
-        let on_hover = cx.listener(move |this, over, _, cx| {
-            if enabled {
-                this.hover.set(hover_id.clone(), *over);
-                cx.notify();
-            }
-        });
-        action_button(
-            ButtonSpec {
-                id,
-                label: label.into(),
-                kind: ButtonKind::Secondary,
-                enabled,
-            },
-            |button| {
-                standard_button(button)
-                    .bg(background)
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .on_hover(on_hover)
-            },
-            f,
-            cx,
-        )
+    fn editor(&self, window: &Window, cx: &mut Context<Self>) -> Div {
+        let agents = self
+            .store
+            .as_ref()
+            .map(|s| s.tickets().assignees)
+            .unwrap_or_default();
+        let agents: Vec<_> = agents
+            .into_iter()
+            .filter(|a| a.kind == AssigneeKind::Agent)
+            .collect();
+        let enabled = !self.pending;
+        card()
+            .p(px(SPACE_5))
+            .gap(px(FORM_STACK_GAP))
+            .child(heading(if self.selected.is_some() {
+                "Edit rule"
+            } else {
+                "New rule"
+            }))
+            .child(text_field("Name", self.name.clone(), window, cx))
+            .child(
+                Field::new(self.prompt.clone())
+                    .label("Ticket prompt")
+                    .multiline()
+                    .hint("Each firing creates a Ticket with this prompt.")
+                    .build(window, cx),
+            )
+            .child(
+                div().w(px(180.)).child(
+                    Field::new(self.minutes.clone())
+                        .label("Every (minutes)")
+                        .build(window, cx),
+                ),
+            )
+            .child(
+                column()
+                    .gap(px(SPACE_2))
+                    .child(
+                        div()
+                            .text_size(type_size(LABEL_SIZE))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(TEXT_SECONDARY))
+                            .child("Assign to"),
+                    )
+                    .when(agents.is_empty(), |s| {
+                        s.child(caption("Register an agent on the Agents page first."))
+                    })
+                    .child(
+                        row()
+                            .gap(px(CHIP_GAP))
+                            .flex_wrap()
+                            .children(agents.into_iter().map(|a| {
+                                let id = a.id.clone();
+                                let selected = self.agent.as_ref() == Some(&a.id);
+                                chip(
+                                    SharedString::from(format!("automations.agent.{}", a.id)),
+                                    a.name,
+                                    selected,
+                                    enabled,
+                                    &self.hover,
+                                    move |this, _, cx| {
+                                        this.agent = Some(id.clone());
+                                        cx.notify();
+                                    },
+                                    cx,
+                                )
+                            })),
+                    ),
+            )
+            .child(caption(
+                "Saving authorizes this rule to create and assign a new Ticket on each firing.",
+            ))
+            .child(
+                row_gap(CONTROL_GAP)
+                    .child(
+                        Button::new("automations.save", "Save rule")
+                            .primary()
+                            .enabled(enabled)
+                            .build(&self.hover, |this, _, cx| this.save(cx), cx),
+                    )
+                    .child(
+                        Button::new("automations.cancel", "Cancel")
+                            .secondary()
+                            .build(
+                                &self.hover,
+                                |this, _, cx| {
+                                    this.editing = false;
+                                    cx.notify();
+                                },
+                                cx,
+                            ),
+                    ),
+            )
+    }
+
+    fn detail(&self, rule: Automation, cx: &mut Context<Self>) -> Div {
+        let edit = rule.clone();
+        let pause = rule.clone();
+        let run = rule.clone();
+        let (state, tone) = rule_state(&rule);
+        let enabled = !self.pending;
+        column()
+            .gap(px(SECTION_GAP))
+            .child(
+                row().child(
+                    Button::new("automations.back", "All rules")
+                        .ghost()
+                        .icon("chevronLeft")
+                        .build(
+                            &self.hover,
+                            |this, _, cx| {
+                                this.selected = None;
+                                cx.notify();
+                            },
+                            cx,
+                        ),
+                ),
+            )
+            .child(
+                column()
+                    .gap(px(SPACE_3))
+                    .child(
+                        row()
+                            .gap(px(SPACE_3))
+                            .child(badge(state, tone))
+                            .child(caption(every(rule.every_minutes))),
+                    )
+                    .child(
+                        div()
+                            .text_size(type_size(TITLE_SIZE))
+                            .line_height(relative(TITLE_LINE_HEIGHT))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(rule.name.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_size(type_size(BODY_SIZE))
+                            .text_color(rgb(TEXT_SECONDARY))
+                            .child(rule.prompt.clone()),
+                    )
+                    .when_some(rule.error.clone(), |s, error| {
+                        s.child(caption(error).text_color(rgb(DESTRUCTIVE_TEXT)))
+                    }),
+            )
+            .child(
+                row_gap(CONTROL_GAP)
+                    .child(
+                        Button::new("automations.run", "Run now")
+                            .primary()
+                            .icon("play")
+                            .enabled(enabled)
+                            .build(
+                                &self.hover,
+                                move |this, _, cx| {
+                                    this.command(
+                                        AutomationCommand::RunNow {
+                                            id: run.id.clone(),
+                                            revision: run.revision,
+                                        },
+                                        cx,
+                                    )
+                                },
+                                cx,
+                            ),
+                    )
+                    .child(
+                        Button::new(
+                            "automations.pause",
+                            if rule.paused { "Resume" } else { "Pause" },
+                        )
+                        .secondary()
+                        .icon(if rule.paused { "play" } else { "pause" })
+                        .enabled(enabled)
+                        .build(
+                            &self.hover,
+                            move |this, _, cx| {
+                                this.command(
+                                    AutomationCommand::Pause {
+                                        id: pause.id.clone(),
+                                        revision: pause.revision,
+                                        paused: !pause.paused,
+                                    },
+                                    cx,
+                                )
+                            },
+                            cx,
+                        ),
+                    )
+                    .child(
+                        Button::new("automations.edit", "Edit rule")
+                            .secondary()
+                            .icon("edit")
+                            .enabled(enabled)
+                            .build(
+                                &self.hover,
+                                move |this, _, cx| this.edit(Some(edit.clone()), cx),
+                                cx,
+                            ),
+                    ),
+            )
+            .child(
+                column()
+                    .gap(px(SPACE_3))
+                    .child(heading("History"))
+                    .child(caption(
+                        "Run now deliberately replaces a missed firing; it does not replay all missed work.",
+                    ))
+                    .child(
+                        card().p(px(SPACE_1)).gap_0().children(
+                            self.state
+                                .occurrences
+                                .iter()
+                                .filter(|o| o.automation_id == rule.id)
+                                .map(|o| {
+                                    let state = o.state.replace('_', " ");
+                                    let tone = match o.state.as_str() {
+                                        "completed" | "done" => Tone::Success,
+                                        "running" | "dispatched" => Tone::Info,
+                                        "skipped" | "missed" => Tone::Warning,
+                                        "failed" => Tone::Danger,
+                                        _ => Tone::Neutral,
+                                    };
+                                    row()
+                                        .w_full()
+                                        .min_h(px(LIST_ROW_HEIGHT))
+                                        .px(px(SPACE_3))
+                                        .gap(px(SPACE_3))
+                                        .border_b_1()
+                                        .border_color(rgb(BORDER_SUBTLE))
+                                        .child(status_pill(state, tone))
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .text_size(type_size(LABEL_SIZE))
+                                                .child(display_time(o.scheduled_at)),
+                                        )
+                                        .when_some(o.ticket_id, |s, id| {
+                                            s.child(
+                                                Button::new(
+                                                    SharedString::from(format!(
+                                                        "automations.ticket.{id}"
+                                                    )),
+                                                    format!("Ticket {id}"),
+                                                )
+                                                .ghost()
+                                                .small()
+                                                .on_surface(SURFACE_RAISED)
+                                                .trailing(icon("arrowRight", ICON_SIZE_SM))
+                                                .build(
+                                                    &self.hover,
+                                                    move |_, _, cx| cx.emit(OpenTicket(id)),
+                                                    cx,
+                                                ),
+                                            )
+                                        })
+                                }),
+                        ),
+                    )
+                    .children(
+                        self.state
+                            .history
+                            .iter()
+                            .filter(|h| h.automation_id == rule.id)
+                            .map(|h| {
+                                caption(format!(
+                                    "{} · {} {}",
+                                    display_time(h.observed_at),
+                                    h.count,
+                                    h.kind.replace('_', " ")
+                                ))
+                            }),
+                    ),
+            )
+    }
+
+    fn list(&self, cx: &mut Context<Self>) -> Div {
+        column()
+            .gap(px(SPACE_HALF))
+            .children(self.state.rules.iter().map(|r| {
+                let id = r.id.clone();
+                let (state, tone) = rule_state(r);
+                ListRow::new(
+                    SharedString::from(format!("automations.rule.{}", r.id)),
+                    r.name.clone(),
+                )
+                .leading(icon("refresh", ICON_SIZE))
+                .subtitle(every(r.every_minutes))
+                .trailing(
+                    row()
+                        .gap(px(SPACE_2))
+                        .child(badge(state, tone))
+                        .child(icon("chevronRight", ICON_SIZE_SM)),
+                )
+                .build(
+                    &self.hover,
+                    move |this, _, cx| {
+                        this.selected = Some(id.clone());
+                        cx.notify();
+                    },
+                    cx,
+                )
+            }))
     }
 }
 impl Render for AutomationsPage {
@@ -315,44 +604,44 @@ impl Render for AutomationsPage {
             .iter()
             .find(|r| Some(&r.id) == self.selected.as_ref())
             .cloned();
+        let create = |this: &Self, id: &'static str, cx: &mut Context<Self>| {
+            Button::new(id, "New rule")
+                .primary()
+                .icon("plus")
+                .enabled(!this.pending)
+                .build(&this.hover, |this, _, cx| this.edit(None, cx), cx)
+        };
         let header = PageHeader::new("Automations")
-            .description("Recurring Tickets for your agents.")
+            .description("Recurring rules that create and assign Tickets on a schedule.")
             .actions(
                 row_gap(CONTROL_GAP)
                     .child(
-                        self.button(
-                            "automations.refresh",
-                            "Refresh",
-                            true,
-                            |this, _, cx| this.refresh(cx),
-                            cx,
-                        )
-                        .child("Refresh"),
+                        Button::icon_only("automations.refresh", "refresh", "Refresh")
+                            .secondary()
+                            .enabled(!self.refreshing)
+                            .build(&self.hover, |this, _, cx| this.refresh(cx), cx),
                     )
                     .child(
-                        self.button(
-                            "automations.create",
-                            "Create Automation",
-                            true,
-                            |this, _, cx| this.edit(None, cx),
-                            cx,
-                        )
-                        .debug_selector(|| "automations.create".into())
-                        .child("Create Automation"),
+                        create(self, "automations.create", cx)
+                            .debug_selector(|| "automations.create".into()),
                     ),
             );
-        let mut content = column().gap(px(24.)).w_full().child(
-            div()
-                .text_color(rgb(MUTED))
-                .text_size(type_size(LABEL_SIZE))
-                .child("Overlapping work is skipped; missed firings stay in history."),
-        );
+        let mut content = column().gap(px(SECTION_GAP)).w_full();
         if let Some(error) = &self.error {
             content = content.child(
-                div()
+                row()
                     .id("automations.error")
                     .accessibility_id("automations.error")
+                    .gap(px(SPACE_3))
+                    .px(px(SPACE_4))
+                    .py(px(SPACE_3))
+                    .rounded(px(RADIUS_MD))
+                    .border_1()
+                    .border_color(rgb(ERROR_BORDER))
+                    .bg(rgb(SURFACE_ERROR))
+                    .text_size(type_size(LABEL_SIZE))
                     .text_color(rgb(DESTRUCTIVE_TEXT))
+                    .child(icon("warning", ICON_SIZE).text_color(rgb(DESTRUCTIVE_TEXT)))
                     .child(error.clone()),
             );
         }
@@ -361,76 +650,23 @@ impl Render for AutomationsPage {
                 .child(LoadingFrame::new(self.loading_started, window).inline("Reconnecting…"));
         }
         if !self.loaded && self.error.is_none() {
-            content = content.child(
-                LoadingFrame::new(self.loading_started, window).page("Loading Automations…"),
-            );
+            content = content.child(skeleton_rows("automations.loading", 3));
         }
         if self.editing {
-            let agents = self
-                .store
-                .as_ref()
-                .map(|s| s.tickets().assignees)
-                .unwrap_or_default();
-            content=content.child(column_gap(FORM_STACK_GAP).child(text_field("Name",self.name.clone())).child(text_field("Ticket prompt",self.prompt.clone())).child(text_field("Every (minutes)",self.minutes.clone()))
-                .child(column().gap(px(8.)).child(div().text_color(rgb(MUTED)).child("Assign to"))
-                    .when(!agents.iter().any(|a|a.kind==AssigneeKind::Agent),|s|s.child("Register an agent on the Agents page first."))
-                    .child(row().gap(px(8.)).flex_wrap().children(agents.into_iter().filter(|a|a.kind==AssigneeKind::Agent).map(|a|{let id=a.id.clone();choice_button(self.button(SharedString::from(format!("automations.agent.{}",a.id)),a.name.clone(),true,move|this,_,cx|{this.agent=Some(id.clone());cx.notify();},cx), self.agent.as_ref()==Some(&a.id)).child(a.name)}))))
-                .child(div().text_color(rgb(MUTED)).text_size(type_size(CAPTION_SIZE)).child("Saving authorizes this rule to create and assign a new Ticket on each firing."))
-                .child(row_gap(CONTROL_GAP).child(self.button("automations.save","Save rule",true,|this,_,cx|this.save(cx),cx).child("Save rule")).child(self.button("automations.cancel","Cancel",true,|this,_,cx|{this.editing=false;cx.notify();},cx).child("Cancel"))));
+            content = content.child(self.editor(window, cx));
         } else if let Some(rule) = selected {
-            let edit = rule.clone();
-            let pause = rule.clone();
-            let run = rule.clone();
-            content=content.child(column().gap(px(16.)).child(row().gap(px(8.)).child(self.button("automations.back","All rules",true,|this,_,cx|{this.selected=None;cx.notify();},cx).child("← All rules")))
-                .child(div().text_size(type_size(20.)).child(rule.name.clone())).child(rule.prompt.clone())
-                .child(div().text_color(rgb(MUTED)).child(format!("Every {} {} · {}",rule.every_minutes,if rule.every_minutes == 1 {"minute"} else {"minutes"},if rule.revision!=rule.applied_revision {"Pending application"}else if rule.paused{"Paused"}else{"Active"})))
-                .when_some(rule.error.clone(),|s,e|s.child(div().text_color(rgb(DESTRUCTIVE_TEXT)).child(e)))
-                .child(row().gap(px(8.)).child(self.button("automations.edit","Edit rule",true,move|this,_,cx|this.edit(Some(edit.clone()),cx),cx).child("Edit rule"))
-                    .child(self.button("automations.pause",if rule.paused{"Resume"}else{"Pause"},true,move|this,_,cx|this.command(AutomationCommand::Pause{id:pause.id.clone(),revision:pause.revision,paused:!pause.paused},cx),cx).child(if rule.paused{"Resume"}else{"Pause"}))
-                    .child(self.button("automations.run","Run now",true,move|this,_,cx|this.command(AutomationCommand::RunNow{id:run.id.clone(),revision:run.revision},cx),cx).child("Run now")))
-                .child(div().text_color(rgb(MUTED)).child("History · Run now deliberately replaces a missed firing; it does not replay all missed work."))
-                .children(self.state.occurrences.iter().filter(|o|o.automation_id==rule.id).map(|o|{
-                    let label=format!("{} · {}",display_time(o.scheduled_at),o.state.replace('_'," "));
-                    row().w_full().justify_between().py(px(8.)).border_b_1().border_color(rgb(BORDER)).child(label)
-                        .when_some(o.ticket_id,|s,id|s.child(self.button(SharedString::from(format!("automations.ticket.{id}")),format!("Open Ticket {id}"),true,move|_,_,cx|cx.emit(OpenTicket(id)),cx).child(format!("Ticket {id} →"))))
-                }))
-                .children(self.state.history.iter().filter(|h|h.automation_id==rule.id).map(|h|div().text_color(rgb(MUTED)).child(format!("{} · {} {}",display_time(h.observed_at),h.count,h.kind.replace('_'," "))))));
+            content = content.child(self.detail(rule, cx));
         } else {
             if self.loaded && self.state.rules.is_empty() && self.error.is_none() {
-                content =
-                    content.child("No Automations yet. Create your first recurring Ticket rule.");
+                content = content.child(
+                    EmptyState::new("refresh", "No Automations yet")
+                        .description("Create a rule to have an agent pick up a fresh Ticket on a schedule. Overlapping work is skipped; missed firings stay in history.")
+                        .selector("automations.empty")
+                        .action(create(self, "automations.create.empty", cx))
+                        .build(),
+                );
             }
-            content = content.children(self.state.rules.iter().map(|r| {
-                let id = r.id.clone();
-                self.button(
-                    SharedString::from(format!("automations.rule.{}", r.id)),
-                    r.name.clone(),
-                    true,
-                    move |this, _, cx| {
-                        this.selected = Some(id.clone());
-                        cx.notify();
-                    },
-                    cx,
-                )
-                .h_auto()
-                .min_h(px(64.))
-                .w_full()
-                .justify_between()
-                .child(r.name.clone())
-                .child(div().text_color(rgb(MUTED)).child(format!(
-                    "Every {} min · {}",
-                    r.every_minutes,
-                    if r.error.is_some() {
-                        "Needs attention"
-                    } else if r.revision != r.applied_revision {
-                        "Pending"
-                    } else if r.paused {
-                        "Paused"
-                    } else {
-                        "Active"
-                    }
-                )))
-            }));
+            content = content.child(self.list(cx));
         }
         Page::document(header)
             .child(

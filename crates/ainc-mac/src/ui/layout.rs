@@ -1,5 +1,5 @@
 //! Small layout contracts; callers own screen composition.
-use super::{display::PageHeader, tokens::*};
+use super::{button::*, display::PageHeader, motion::*, tokens::*};
 use gpui::{prelude::*, *};
 
 /// The common page frame. Document pages share the same header, full-width
@@ -13,7 +13,7 @@ impl Page {
     pub fn document(header: PageHeader) -> Self {
         Self {
             header: Some(header),
-            content: column().w_full().min_w_0().gap(px(24.)),
+            content: column().w_full().min_w_0().gap(px(SECTION_GAP)),
         }
     }
 
@@ -42,7 +42,7 @@ impl Page {
                     .debug_selector(|| "main-content".into())
                     .w_full()
                     .min_w_0()
-                    .gap(px(24.))
+                    .gap(px(SECTION_GAP))
                     .child(header.build())
                     .child(self.content),
             ),
@@ -64,7 +64,7 @@ pub fn column_gap(gap: f32) -> Div {
     column().gap(px(gap))
 }
 
-/// A non-action list entry. Interactive rows use the shared Button contract.
+/// A non-action list entry. Interactive rows use `ListRow`.
 pub fn list_item(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Stateful<Div> {
     row()
         .id(id)
@@ -72,19 +72,129 @@ pub fn list_item(id: impl Into<ElementId>, label: impl Into<SharedString>) -> St
         .aria_label(label)
 }
 
-/// The regular list rhythm, including selection and a subtle separator.
-pub fn list_row(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
+/// An interactive list row: optional leading mark, title, subtitle and trailing
+/// element, with the shared hover fade and button contract.
+pub struct ListRow {
+    id: ElementId,
+    title: SharedString,
+    subtitle: Option<SharedString>,
+    leading: Option<AnyElement>,
+    trailing: Option<AnyElement>,
     selected: bool,
-) -> Stateful<Div> {
-    list_item(id, label)
-        .min_h(px(LIST_ROW_HEIGHT))
-        .border_b_1()
-        .border_color(rgb(BORDER))
-        .when(selected, |row| row.bg(rgb(SELECTED)))
+    enabled: bool,
+    surface: u32,
 }
 
+impl ListRow {
+    pub fn new(id: impl Into<ElementId>, title: impl Into<SharedString>) -> Self {
+        Self {
+            id: id.into(),
+            title: title.into(),
+            subtitle: None,
+            leading: None,
+            trailing: None,
+            selected: false,
+            enabled: true,
+            surface: SURFACE,
+        }
+    }
+    pub fn subtitle(mut self, subtitle: impl Into<SharedString>) -> Self {
+        self.subtitle = Some(subtitle.into());
+        self
+    }
+    pub fn leading(mut self, leading: impl IntoElement) -> Self {
+        self.leading = Some(leading.into_any_element());
+        self
+    }
+    pub fn trailing(mut self, trailing: impl IntoElement) -> Self {
+        self.trailing = Some(trailing.into_any_element());
+        self
+    }
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+    pub fn on_surface(mut self, surface: u32) -> Self {
+        self.surface = surface;
+        self
+    }
+    pub fn build<V: HoverHost>(
+        self,
+        hover: &HoverFade,
+        action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
+        cx: &mut Context<V>,
+    ) -> Stateful<Div> {
+        let Self {
+            id,
+            title,
+            subtitle,
+            leading,
+            trailing,
+            selected,
+            enabled,
+            surface,
+        } = self;
+        let progress = if enabled { hover.progress(&id) } else { 0. };
+        let hover_id = id.clone();
+        let on_hover = cx.listener(move |view: &mut V, over: &bool, _, cx| {
+            if enabled {
+                view.hover_fade().set(hover_id.clone(), *over);
+                cx.notify();
+            }
+        });
+        let base = if selected { SELECTED } else { surface };
+        action_button(
+            ButtonSpec {
+                id,
+                label: title.clone(),
+                enabled,
+            },
+            |button| {
+                button
+                    .w_full()
+                    .min_h(px(LIST_ROW_HEIGHT))
+                    .px(px(SPACE_3))
+                    .py(px(SPACE_2))
+                    .gap(px(SPACE_3))
+                    .rounded(px(RADIUS_MD))
+                    .bg(blend(base, HOVER, progress))
+                    .on_hover(on_hover)
+                    .when_some(leading, |s, leading| s.child(leading))
+                    .child(
+                        column()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(SPACE_HALF))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(type_size(BODY_SIZE))
+                                    .text_color(rgb(TEXT))
+                                    .child(title),
+                            )
+                            .when_some(subtitle, |s, subtitle| {
+                                s.child(
+                                    div()
+                                        .truncate()
+                                        .text_size(type_size(CAPTION_SIZE))
+                                        .text_color(rgb(TEXT_SECONDARY))
+                                        .child(subtitle),
+                                )
+                            }),
+                    )
+                    .when_some(trailing, |s, trailing| s.child(trailing))
+            },
+            action,
+            cx,
+        )
+    }
+}
+
+/// The content card and other bordered panels on the shell canvas.
 pub fn panel() -> Div {
     column()
         .bg(rgb(SURFACE))
@@ -93,12 +203,33 @@ pub fn panel() -> Div {
         .rounded(px(PANEL_RADIUS))
 }
 
+/// A raised card that groups related content on a page.
+pub fn card() -> Div {
+    column()
+        .bg(rgb(SURFACE_RAISED))
+        .border_1()
+        .border_color(rgb(BORDER))
+        .rounded(px(RADIUS_LG))
+        .p(px(SPACE_4))
+        .gap(px(SPACE_3))
+}
+
+/// A hairline between stacked content.
+pub fn divider() -> Div {
+    div().w_full().h(px(1.)).bg(rgb(BORDER_SUBTLE))
+}
+
+/// The bar inside the bottom of the content card.
 pub fn status_bar() -> Div {
     row()
         .debug_selector(|| "status-bar".into())
         .justify_between()
-        .h(px(28.))
+        .h(px(STATUS_BAR_HEIGHT))
         .flex_shrink_0()
+        .px(px(SPACE_3))
+        .gap(px(SPACE_3))
         .border_t_1()
         .border_color(rgb(BORDER_SUBTLE))
+        .text_size(type_size(CAPTION_SIZE))
+        .text_color(rgb(TEXT_TERTIARY))
 }

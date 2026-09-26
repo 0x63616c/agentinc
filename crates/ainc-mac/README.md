@@ -1,6 +1,6 @@
 # AgentInc
 
-A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents, Automations and Terminal, with Settings in the footer. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane.
+A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents, Automations, Terminal and Temporal, with Settings and the user row in the footer. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane. The design system behind every screen is documented in [docs/design-system.md](../../docs/design-system.md) and rendered live on the **Components** page (⌘K, "Components").
 
 ## Build and run
 
@@ -64,14 +64,14 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 
 | Shortcut | Action |
 | --- | --- |
-| Cmd+K | Search spaces |
+| Cmd+K | Go to… pages, actions and workspaces |
 | Cmd+Option+Left / Right | Back / forward |
 | Cmd+1…6 | Tickets, Assistant, Agents, Automations, Terminal, Temporal |
 | Cmd+, | Settings |
 | Cmd+B | Toggle sidebar |
 | Escape | Dismiss Search, task dialogs or notifications |
 
-Search supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. The profile opens Settings, including persisted font family and size controls that update the whole app immediately. Default type is two points larger than the original Control scale. The notification bell opens an empty notification panel until notifications are connected.
+Go to… (⌘K) fuzzy-matches pages, actions and workspaces, groups the results, remembers your recent choices, and supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. The user row opens the account menu: check for or install an update, open Settings, reach Support (Help Center, Send Feedback, About) and, once local accounts land, switch users. Settings holds persisted font family and size controls that update the whole app immediately; default type is two points larger than the original Control scale. The notification bell opens the notification panel; transient notices appear as toasts above the status bar.
 
 Terminal hosts a live Ghostty session in your home directory. It loads your Ghostty configuration, including font, keybinds and included files, then applies AgentInc's colors. The session and split panes stay alive when you visit another page; drag their dividers to resize them. With a Terminal pane focused, Cmd+D splits right, Cmd+Shift+D splits below, Cmd+W closes the focused pane when another exists, and Cmd+Shift+Enter or Cmd+Shift+= toggles a pane to fill the Terminal page. Cmd+K opens AgentInc Search without clearing the terminal; Cmd+, and Cmd+number retain their app navigation actions. Other Ghostty bindings, including Ctrl+L, remain available.
 

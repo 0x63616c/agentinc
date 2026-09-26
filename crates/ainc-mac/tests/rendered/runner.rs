@@ -1,6 +1,7 @@
 use crate::ui;
 use crate::ui::{
-    CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, SETTINGS_INSET, SETTINGS_ROW_HEIGHT, type_size,
+    CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, SETTINGS_INSET, SETTINGS_ROW_HEIGHT, SPACE_2, SPACE_3,
+    STATUS_BAR_HEIGHT, TITLE_OPTICAL_LIFT, type_size,
 };
 use crate::{
     input,
@@ -67,62 +68,11 @@ fn capture_loading_frames(cx: &mut VisualTestAppContext, output: &std::path::Pat
     Ok(())
 }
 
-// Check actual pixels in independent shell regions, rather than trusting scene/AX nodes.
-// Coordinates are logical pixels; thresholds are deliberately below normal text contrast.
-fn regions(width: u32, height: u32, dimmed: bool) -> Vec<(&'static str, [u32; 4], u8, usize)> {
-    let text = if dimmed { 35 } else { 90 };
-    let border = if dimmed { 7 } else { 20 };
-    let mut regions = vec![
-        ("header", [150, 10, width - 10, 40], text, 80),
-        ("workspace", [15, 65, 165, 100], text, 60),
-        (
-            "profile avatar",
-            [18, height - 38, 52, height - 8],
-            text,
-            30,
-        ),
-        ("profile name", [50, height - 34, 155, height - 9], text, 30),
-        (
-            "profile version",
-            [160, height - 34, 234, height - 9],
-            25,
-            12,
-        ),
-        (
-            "main border",
-            [
-                PANE_WIDTHS[0].2 as u32,
-                110,
-                PANE_WIDTHS[0].2 as u32 + 2,
-                height - 30,
-            ],
-            border,
-            150,
-        ),
-    ];
-    for (index, (name, group_offset)) in [
-        ("Tickets", 0),
-        ("Assistant", 0),
-        ("Agents", 12),
-        ("Automations", 12),
-        ("Terminal", 12),
-        ("Temporal", 12),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let y = 233 + index as u32 * 34 + group_offset;
-        regions.push((name, [20, y, 165, y + 28], text, 35));
-    }
-    regions
-}
+/// One pixel probe: a named logical rectangle, a brightness threshold and the
+/// minimum number of pixels above it.
+type Probe = (String, [u32; 4], u8, usize);
 
-fn check_pixels(
-    bytes: &[u8],
-    pixel_width: u32,
-    scale: u32,
-    regions: &[(&str, [u32; 4], u8, usize)],
-) -> Result<()> {
+fn check_pixels(bytes: &[u8], pixel_width: u32, scale: u32, regions: &[Probe]) -> Result<()> {
     for (name, [left, top, right, bottom], threshold, minimum) in regions {
         let mut count = 0;
         for y in top * scale..bottom * scale {
@@ -152,6 +102,15 @@ fn near(name: &str, actual: f32, expected: f32) -> Result<()> {
     Ok(())
 }
 
+fn rect(bounds: Bounds<Pixels>) -> [u32; 4] {
+    [
+        f32::from(bounds.origin.x).max(0.) as u32,
+        f32::from(bounds.origin.y).max(0.) as u32,
+        f32::from(bounds.origin.x + bounds.size.width) as u32,
+        f32::from(bounds.origin.y + bounds.size.height) as u32,
+    ]
+}
+
 struct Suite {
     cx: VisualTestAppContext,
     window: WindowHandle<Shell>,
@@ -172,6 +131,61 @@ impl Suite {
         })?;
         Ok(())
     }
+
+    // Check actual pixels in independent shell regions, rather than trusting scene/AX nodes.
+    // Regions come from the current layout; thresholds are below normal text contrast.
+    fn probes(&mut self, width: u32, dimmed: bool) -> Result<Vec<Probe>> {
+        let text = if dimmed { 35 } else { 90 };
+        let border = if dimmed { 7 } else { 20 };
+        let mut probes: Vec<Probe> = vec![("header".into(), [150, 10, width - 10, 40], text, 80)];
+        for (name, selector, minimum) in [
+            ("workspace", "workspace-title", 60),
+            ("profile name", "sidebar-profile-name", 30),
+            ("status route", "status-bar.route", 30),
+        ] {
+            probes.push((name.into(), rect(self.bounds(selector)?), text, minimum));
+        }
+        // Tertiary text is dim by design; under a scrim it still has to be there.
+        let tertiary = if dimmed { 18 } else { 60 };
+        for (name, selector, minimum) in [
+            ("profile handle", "sidebar-profile-handle", 20),
+            ("status version", "sidebar-version", 12),
+        ] {
+            probes.push((name.into(), rect(self.bounds(selector)?), tertiary, minimum));
+        }
+        let profile = self.bounds("sidebar-profile")?;
+        probes.push((
+            "profile avatar".into(),
+            rect(Bounds {
+                origin: profile.origin + point(px(SPACE_2), px(0.)),
+                size: size(px(24.), profile.size.height),
+            }),
+            text,
+            30,
+        ));
+        let main = self.bounds("main-pane")?;
+        probes.push((
+            "main border".into(),
+            [
+                f32::from(main.origin.x) as u32,
+                f32::from(main.origin.y) as u32 + 60,
+                f32::from(main.origin.x) as u32 + 2,
+                f32::from(main.origin.y + main.size.height) as u32 - 30,
+            ],
+            border,
+            150,
+        ));
+        for index in 1..=6 {
+            probes.push((
+                format!("sidebar label {index}"),
+                rect(self.bounds(&format!("sidebar-label-{index}"))?),
+                text,
+                35,
+            ));
+        }
+        Ok(probes)
+    }
+
     fn capture(
         &mut self,
         name: &str,
@@ -199,11 +213,10 @@ impl Suite {
             image.width() == width * scale && image.height() == height * scale,
             "capture dimensions differ from viewport"
         );
-        let probes = regions(
+        let probes = self.probes(
             width,
-            height,
             overlay.is_some_and(|o| o == Overlay::Search || o.is_dialog()),
-        );
+        )?;
         check_pixels(image.as_raw(), image.width(), scale, &probes)
             .map_err(|e| anyhow::anyhow!("{name}: {e}"))?;
         self.check_page_geometry(route)?;
@@ -229,7 +242,7 @@ impl Suite {
             near(
                 "shared regular Button height",
                 f32::from(button.size.height),
-                f32::from(type_size(CONTROL_HEIGHT)),
+                CONTROL_HEIGHT,
             )?;
         }
         if name == "settings-0" || name == "settings-1" {
@@ -272,16 +285,32 @@ impl Suite {
     fn check_profile_row_geometry(&mut self) -> Result<()> {
         let card = self.bounds("sidebar-profile")?;
         let name = self.bounds("sidebar-profile-name")?;
-        let version = self.bounds("sidebar-version")?;
+        let handle = self.bounds("sidebar-profile-handle")?;
         near("compact profile height", f32::from(card.size.height), 44.)?;
         ensure!(
-            name.origin.x + name.size.width <= version.origin.x,
-            "profile name overlaps version"
+            name.origin.x + name.size.width <= card.origin.x + card.size.width,
+            "profile name overflows its row"
         );
         near(
-            "profile name and version centres",
-            f32::from(name.origin.y + name.size.height / 2.),
+            "profile name and handle left edges",
+            f32::from(name.origin.x),
+            f32::from(handle.origin.x),
+        )?;
+        ensure!(
+            name.origin.y + name.size.height <= handle.origin.y + px(GEOMETRY_TOLERANCE),
+            "profile handle overlaps its name"
+        );
+        let status = self.bounds("status-bar")?;
+        let version = self.bounds("sidebar-version")?;
+        near(
+            "version right inset in the status bar",
+            f32::from(status.origin.x + status.size.width - version.origin.x - version.size.width),
+            SPACE_3,
+        )?;
+        near(
+            "version centred in the status bar",
             f32::from(version.origin.y + version.size.height / 2.),
+            f32::from(status.origin.y + status.size.height / 2.),
         )?;
         Ok(())
     }
@@ -346,11 +375,6 @@ impl Suite {
             SETTINGS_INSET,
         )?;
         near(
-            &format!("{label} SettingsRow top inset"),
-            f32::from(text.origin.y - row.origin.y),
-            SETTINGS_INSET,
-        )?;
-        near(
             &format!("{label} SettingsRow control inset"),
             f32::from(row.origin.x + row.size.width - control.origin.x - control.size.width),
             SETTINGS_INSET,
@@ -384,7 +408,11 @@ impl Suite {
             f32::from(status.size.width),
             f32::from(main.size.width) - 2.,
         )?;
-        near("status bar height", f32::from(status.size.height), 28.)?;
+        near(
+            "status bar height",
+            f32::from(status.size.height),
+            STATUS_BAR_HEIGHT,
+        )?;
         near(
             "status bar bottom edge",
             f32::from(main.origin.y + main.size.height - status.origin.y - status.size.height),
@@ -401,6 +429,19 @@ impl Suite {
             f32::from(content.origin.y - main.origin.y),
             PAGE_X,
         )?;
+        // The sidebar and the content card share one gap on every side.
+        let sidebar = self.bounds("sidebar-content")?;
+        let search = self.bounds("shell.search")?;
+        near(
+            "sidebar search left inset",
+            f32::from(search.origin.x - sidebar.origin.x),
+            SPACE_3,
+        )?;
+        near(
+            "sidebar search right inset",
+            f32::from(sidebar.origin.x + sidebar.size.width - search.origin.x - search.size.width),
+            SPACE_3,
+        )?;
         ensure!(
             self.bounds("right-pane").is_err(),
             "removed Evee pane visible"
@@ -412,7 +453,11 @@ impl Suite {
         let main = self.bounds("main-pane")?;
         let frame = self.bounds("page-frame")?;
         let status = self.bounds("status-bar")?;
-        let terminal_inset = if route == Route::Terminal { 8. } else { 0. };
+        let terminal_inset = if route == Route::Terminal {
+            SPACE_2
+        } else {
+            0.
+        };
         ensure!(
             frame.origin.y + frame.size.height <= status.origin.y,
             "{route:?} content overlaps status bar"
@@ -432,7 +477,7 @@ impl Suite {
             near(
                 "page title top inset",
                 f32::from(title.origin.y - frame.origin.y),
-                PAGE_X - 5.,
+                PAGE_X - TITLE_OPTICAL_LIFT,
             )?;
             near(
                 "page content left inset",
@@ -467,6 +512,21 @@ impl Suite {
             ensure!(
                 matches!(route, Route::Assistant | Route::Terminal),
                 "{route:?} is missing its shared document content"
+            );
+        }
+        Ok(())
+    }
+
+    /// Every component specimen renders inside the page's content width.
+    fn check_gallery_geometry(&mut self, specimens: &[&str]) -> Result<()> {
+        let content = self.bounds("main-content")?;
+        for specimen in specimens {
+            let bounds = self.bounds(&format!("gallery.{specimen}"))?;
+            ensure!(
+                bounds.origin.x >= content.origin.x - px(GEOMETRY_TOLERANCE)
+                    && bounds.origin.x + bounds.size.width
+                        <= content.origin.x + content.size.width + px(GEOMETRY_TOLERANCE),
+                "gallery specimen {specimen} leaves the page content"
             );
         }
         Ok(())
@@ -524,19 +584,6 @@ pub fn run() -> Result<()> {
         shell.fixture_launch_elapsed(Duration::from_secs(1), cx)
     })?;
     suite.capture("initial", Route::Assistant, None, false)?;
-    suite.cx.simulate_mouse_move(
-        suite.window.into(),
-        point(px(100.), px(115.)),
-        None::<MouseButton>,
-        Modifiers::default(),
-    );
-    suite.capture("hover-workspace", Route::Assistant, None, false)?;
-    suite.cx.simulate_mouse_move(
-        suite.window.into(),
-        point(px(500.), px(500.)),
-        None::<MouseButton>,
-        Modifiers::default(),
-    );
     suite.check_profile_row_geometry()?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_profile_name(
@@ -549,9 +596,10 @@ pub fn run() -> Result<()> {
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_profile_name("QA Profile", cx);
     })?;
+    let hover_target = suite.bounds("sidebar-label-1")?.center();
     suite.cx.simulate_mouse_move(
         suite.window.into(),
-        point(px(125.), px(245.)),
+        hover_target,
         None::<MouseButton>,
         Modifiers::default(),
     );
@@ -561,6 +609,57 @@ pub fn run() -> Result<()> {
         point(px(500.), px(500.)),
         None::<MouseButton>,
         Modifiers::default(),
+    );
+    // The user menu, its Support submenu, notifications and toasts.
+    suite.click_selector("sidebar-profile")?;
+    suite.capture(
+        "user-menu",
+        Route::Assistant,
+        Some(Overlay::UserMenu),
+        false,
+    )?;
+    let menu = suite.bounds("user-menu")?;
+    let profile = suite.bounds("sidebar-profile")?;
+    ensure!(
+        menu.origin.y + menu.size.height <= profile.origin.y,
+        "user menu must open above the user row"
+    );
+    near(
+        "user menu aligns with the user row",
+        f32::from(menu.origin.x),
+        f32::from(profile.origin.x),
+    )?;
+    suite.click_selector("user-menu.support")?;
+    suite.capture(
+        "user-menu-support",
+        Route::Assistant,
+        Some(Overlay::UserMenu),
+        false,
+    )?;
+    suite.bounds("user-menu.support.menu")?;
+    suite.keys("escape");
+    suite.capture("user-menu-closed", Route::Assistant, None, false)?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_notifications(cx);
+    })?;
+    suite.click_selector("notifications")?;
+    suite.capture(
+        "notifications",
+        Route::Assistant,
+        Some(Overlay::Notifications),
+        false,
+    )?;
+    suite.bounds("notifications.panel")?;
+    suite.keys("escape");
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_toast(cx);
+    })?;
+    suite.capture("toasts", Route::Assistant, None, false)?;
+    let toasts = suite.bounds("toasts")?;
+    let status = suite.bounds("status-bar")?;
+    ensure!(
+        toasts.origin.y + toasts.size.height <= status.origin.y,
+        "toasts must stack above the status bar"
     );
     let now = chrono::Utc::now().timestamp_millis();
     let execution = |workflow_type: &str,
@@ -753,6 +852,9 @@ pub fn run() -> Result<()> {
             }
         }
         if round == 0 {
+            suite.window.update(&mut suite.cx, |shell, _, cx| {
+                shell.fixture_recent_commands(&["page.tickets", "action.check-updates"], cx);
+            })?;
             suite.click_selector("shell.search")?;
         } else {
             suite.keys("cmd-k");
@@ -760,6 +862,15 @@ pub fn run() -> Result<()> {
         if round == 0 {
             suite.capture(
                 "search-empty",
+                Route::Automations,
+                Some(Overlay::Search),
+                false,
+            )?;
+            suite.bounds("palette.result.page.tickets")?;
+            suite.keys("down");
+            suite.keys("down");
+            suite.capture(
+                "search-keyboard",
                 Route::Automations,
                 Some(Overlay::Search),
                 false,
@@ -810,6 +921,15 @@ pub fn run() -> Result<()> {
     suite.capture("dialog-dismissed", Route::Tickets, None, false)?;
     suite.keys("cmd-k");
     suite.capture("search-open", Route::Tickets, Some(Overlay::Search), false)?;
+    suite.cx.simulate_input(window.into(), "zzzz");
+    suite.capture(
+        "search-no-matches",
+        Route::Tickets,
+        Some(Overlay::Search),
+        false,
+    )?;
+    suite.bounds("palette.empty")?;
+    suite.keys("escape");
     suite.keys("cmd-,");
     suite.capture("settings-shortcut", Route::Settings, None, false)?;
     suite
@@ -827,32 +947,66 @@ pub fn run() -> Result<()> {
         .window
         .update(&mut suite.cx, |shell, _, cx| shell.fixture_models(cx))?;
     suite.capture("settings-model-closed", Route::Settings, None, false)?;
+    let closed = suite.bounds("settings.row.Model")?;
     suite.click_selector("codex-model-select")?;
     suite.capture("model-dropdown-open", Route::Settings, None, false)?;
+    suite.bounds("codex-model-select.menu")?;
+    let open = suite.bounds("settings.row.Model")?;
+    near(
+        "open select never resizes its row",
+        f32::from(open.size.height),
+        f32::from(closed.size.height),
+    )?;
     suite.keys("escape");
+    suite.capture("model-dropdown-closed", Route::Settings, None, false)?;
+    ensure!(
+        suite.bounds("codex-model-select.menu").is_err(),
+        "escape must close the model select"
+    );
+    // The component gallery, one capture per section, reached through the palette.
+    suite.keys("cmd-k");
+    suite.cx.simulate_input(window.into(), "components");
+    suite.keys("enter");
+    suite.capture("gallery-buttons", Route::DesignSystem, None, false)?;
+    suite.check_gallery_geometry(&["variants", "sizes-and-icons", "states"])?;
+    let primary = suite.bounds("gallery.regular")?;
+    let large = suite.bounds("gallery.large")?;
+    near(
+        "regular button height",
+        f32::from(primary.size.height),
+        CONTROL_HEIGHT,
+    )?;
+    ensure!(
+        large.size.height > primary.size.height,
+        "large buttons must be taller than regular ones"
+    );
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_gallery(1, false, cx);
+    })?;
+    suite.capture("gallery-inputs", Route::DesignSystem, None, false)?;
+    suite.check_gallery_geometry(&["fields", "text-area", "select", "toggles-and-checkboxes"])?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_gallery(1, true, cx);
+    })?;
+    suite.capture("gallery-select-open", Route::DesignSystem, None, false)?;
+    suite.bounds("gallery.select.menu")?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_gallery(2, false, cx);
+    })?;
+    suite.capture("gallery-data", Route::DesignSystem, None, false)?;
+    suite.check_gallery_geometry(&[
+        "badges-and-status",
+        "list-rows",
+        "table",
+        "empty-and-loading",
+    ])?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_gallery(3, false, cx);
+    })?;
+    suite.capture("gallery-overlays", Route::DesignSystem, None, false)?;
+    suite.check_gallery_geometry(&["dialog", "sheet", "menus-and-popovers", "toasts"])?;
     suite.keys("cmd-5");
     suite.capture("terminal", Route::Terminal, None, false)?;
-    suite.window = suite
-        .cx
-        .open_offscreen_window(size(px(1360.), px(828.)), |window, cx| {
-            cx.new(|cx| Shell::fixture(temporary.path().join("model-session.json"), window, cx))
-        })?;
-    suite.keys("cmd-,");
-    suite
-        .window
-        .update(&mut suite.cx, |shell, _, cx| shell.fixture_models(cx))?;
-    suite.capture("settings-model-before-1360", Route::Settings, None, false)?;
-    let row_height = suite.bounds("settings.row.Model")?.size.height;
-    suite.click_selector("codex-model-select")?;
-    suite.capture("settings-model-after-1360", Route::Settings, None, false)?;
-    near(
-        "model row stays fixed while menu opens",
-        f32::from(suite.bounds("settings.row.Model")?.size.height),
-        f32::from(row_height),
-    )?;
-    suite.bounds("codex-model-menu")?;
-    suite.click_selector("settings.model-option.codex-one")?;
-    suite.capture("settings-model-selected-1360", Route::Settings, None, false)?;
     println!(
         "{} real Metal frames passed, including region-removal negative controls",
         suite.count

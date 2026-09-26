@@ -4,6 +4,10 @@ mod header;
 mod layout;
 #[path = "shell/main_content.rs"]
 mod main_content;
+#[path = "shell/menus.rs"]
+mod menus;
+#[path = "shell/palette.rs"]
+mod palette;
 #[path = "shell/pane.rs"]
 mod pane;
 #[path = "shell/sidebar.rs"]
@@ -16,6 +20,7 @@ use crate::{
     ui::*,
 };
 use gpui::{prelude::*, *};
+use sidebar::handle_for;
 use std::{cell::RefCell, path::PathBuf, rc::Rc, time::Instant};
 actions!(
     control,
@@ -55,6 +60,14 @@ pub(crate) enum Control {
     Dismiss,
     Font(FontChoice),
     FontSize(FontSize),
+    UserMenu,
+    SupportMenu,
+    CheckForUpdates,
+    InstallUpdate,
+    HelpCenter,
+    SendFeedback,
+    About,
+    DismissToast(u64),
 }
 pub struct Shell {
     store: Option<std::sync::Arc<Store>>,
@@ -64,6 +77,8 @@ pub struct Shell {
     tickets: Entity<crate::tickets::TicketsPage>,
     automations: Entity<crate::automations::AutomationsPage>,
     temporal: Entity<crate::temporal::TemporalPage>,
+    gallery: Entity<crate::gallery::GalleryPage>,
+    _gallery_subscription: Subscription,
     _automation_subscriptions: Vec<Subscription>,
     _temporal_subscription: Subscription,
     _tickets_subscription: Subscription,
@@ -83,6 +98,7 @@ pub struct Shell {
     workspace_error: Option<String>,
     picker_result_focus: Vec<FocusHandle>,
     picker_close_focus: FocusHandle,
+    palette_scroll: ScrollHandle,
     _input_subscription: Subscription,
     command_held: bool,
     palette_transition: Option<Instant>,
@@ -90,6 +106,7 @@ pub struct Shell {
     selected: usize,
     notification_items: Vec<Notification>,
     save_error: bool,
+    save_toast: Option<u64>,
     session_writable: bool,
     resizing: Option<pane::Side>,
     grip_opacity: [f32; 1],
@@ -98,6 +115,9 @@ pub struct Shell {
     pane_animation: [Option<(Instant, f32, f32)>; 1],
     assistant_focus_pending: bool,
     shell_focus_pending: bool,
+    support_open: bool,
+    hover: HoverFade,
+    toasts: Toasts,
     #[cfg(target_os = "macos")]
     terminal: Option<Rc<RefCell<crate::terminal::TerminalHost>>>,
     #[cfg(target_os = "macos")]
@@ -114,15 +134,10 @@ struct Notification {
     relative_time: String,
     unread: bool,
 }
-#[derive(Clone)]
-enum PaletteItem {
-    Route(Route),
-    Workspace {
-        id: String,
-        name: String,
-        icon: Option<String>,
-    },
-    CreateWorkspace,
+impl HoverHost for Shell {
+    fn hover_fade(&mut self) -> &mut HoverFade {
+        &mut self.hover
+    }
 }
 impl Shell {
     #[cfg(target_os = "macos")]
@@ -141,39 +156,25 @@ impl Shell {
             .map(|store| store.workspaces())
             .unwrap_or_else(|| Store::new().workspaces())
     }
-    fn palette_items(&self, query: &str) -> Vec<PaletteItem> {
-        let query = query.trim().to_lowercase();
-        let mut items = if self.workspace_only {
-            Vec::new()
-        } else {
-            Route::matching(&query)
-                .into_iter()
-                .map(PaletteItem::Route)
-                .collect()
-        };
-        let show_all = query.is_empty() || query == "workspace" || query == "switch workspace";
-        for workspace in self.workspace_state().workspaces {
-            if show_all || workspace.name.to_lowercase().contains(&query) {
-                items.push(PaletteItem::Workspace {
-                    id: workspace.id,
-                    name: workspace.name,
-                    icon: workspace.icon,
-                });
-            }
-        }
-        if show_all || "create workspace".contains(&query) || "new workspace".contains(&query) {
-            items.push(PaletteItem::CreateWorkspace);
-        }
-        items
-    }
-    fn choose_palette(&mut self, item: PaletteItem, window: &mut Window, cx: &mut Context<Self>) {
-        match item {
-            PaletteItem::Route(route) => self.dispatch(Control::Open(route), window, cx),
-            PaletteItem::Workspace { id, .. } => {
-                self.dispatch(Control::SwitchWorkspace(id), window, cx)
-            }
-            PaletteItem::CreateWorkspace => self.dispatch(Control::NewWorkspace, window, cx),
-        }
+    /// Shows a transient notice above the status bar.
+    pub(crate) fn toast(
+        &mut self,
+        title: impl Into<SharedString>,
+        body: Option<String>,
+        tone: Tone,
+        cx: &mut Context<Self>,
+    ) {
+        let id = self.toasts.push(title, body.map(Into::into), tone);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Toasts::LIFETIME).await;
+            let _ = this.update(cx, |this, cx| {
+                if this.toasts.dismiss(id) {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+        cx.notify();
     }
     fn change_workspace(
         &mut self,
@@ -214,7 +215,13 @@ impl Shell {
                         });
                     }
                     Err(error) => {
-                        this.workspace_error = Some(format!("Workspace unavailable: {error}"))
+                        this.workspace_error = Some(format!("Workspace unavailable: {error}"));
+                        this.toast(
+                            "Workspace unavailable",
+                            Some(error.to_string()),
+                            Tone::Danger,
+                            cx,
+                        );
                     }
                 }
                 cx.notify();
@@ -299,6 +306,8 @@ impl Shell {
             cx.new(|cx| crate::automations::AutomationsPage::new(store.clone(), storage_error, cx));
         let temporal = cx.new(crate::temporal::TemporalPage::new);
         let temporal_subscription = cx.observe(&temporal, |_, _, cx| cx.notify());
+        let gallery = cx.new(crate::gallery::GalleryPage::new);
+        let gallery_subscription = cx.observe(&gallery, |_, _, cx| cx.notify());
         let automation_subscriptions = vec![
             cx.observe(&automations, |_, _, cx| cx.notify()),
             cx.subscribe(
@@ -349,6 +358,8 @@ impl Shell {
             tickets,
             automations,
             temporal,
+            gallery,
+            _gallery_subscription: gallery_subscription,
             _automation_subscriptions: automation_subscriptions,
             _temporal_subscription: temporal_subscription,
             _tickets_subscription: tickets_subscription,
@@ -359,6 +370,9 @@ impl Shell {
             pane_animation: [None; 1],
             assistant_focus_pending: false,
             shell_focus_pending: false,
+            support_open: false,
+            hover: HoverFade::default(),
+            toasts: Toasts::default(),
             #[cfg(target_os = "macos")]
             terminal: None,
             #[cfg(target_os = "macos")]
@@ -380,6 +394,7 @@ impl Shell {
             workspace_error: None,
             picker_result_focus: (0..64).map(|_| cx.focus_handle()).collect(),
             picker_close_focus: cx.focus_handle(),
+            palette_scroll: ScrollHandle::new(),
             _input_subscription: subscription,
             command_held: false,
             palette_transition: None,
@@ -387,6 +402,7 @@ impl Shell {
             selected: 0,
             notification_items: Vec::new(),
             save_error: !session_writable,
+            save_toast: None,
             session_writable,
             resizing: None,
             grip_opacity: [0.; 1],
@@ -422,6 +438,7 @@ impl Shell {
         )
     }
     #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
     pub(crate) fn fixture_launch_elapsed(
         &mut self,
         elapsed: std::time::Duration,
@@ -440,17 +457,79 @@ impl Shell {
         self.temporal.update(cx, |view, cx| view.fixture(page, cx));
     }
     #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
     pub(crate) fn fixture_temporal_error(&mut self, cx: &mut Context<Self>) {
         self.temporal.update(cx, |view, cx| view.fixture_error(cx));
     }
     #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
     pub(crate) fn fixture_temporal_loading(&mut self, cx: &mut Context<Self>) {
         self.temporal
             .update(cx, |view, cx| view.fixture_loading(cx));
     }
     #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
     pub(crate) fn fixture_profile_name(&mut self, name: &str, cx: &mut Context<Self>) {
         self.profile.name = name.into();
+        cx.notify();
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_toast(&mut self, cx: &mut Context<Self>) {
+        self.toasts.push(
+            "Ticket assigned to Evee",
+            Some("Reconcile weekly budget and receipts".into()),
+            Tone::Success,
+        );
+        self.toasts.push(
+            "Workspace unavailable",
+            Some("The daemon did not acknowledge the switch.".into()),
+            Tone::Danger,
+        );
+        cx.notify();
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_notifications(&mut self, cx: &mut Context<Self>) {
+        self.notification_items = vec![
+            Notification {
+                icon: "tasks",
+                title: "Ticket moved to Done".into(),
+                body: "Evee finished “Reconcile weekly budget”.".into(),
+                relative_time: "2m".into(),
+                unread: true,
+            },
+            Notification {
+                icon: "refresh",
+                title: "Automation fired".into(),
+                body: "Weekday morning review created Ticket 4821.".into(),
+                relative_time: "1h".into(),
+                unread: false,
+            },
+        ];
+        cx.notify();
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_gallery(
+        &mut self,
+        section: usize,
+        select_open: bool,
+        cx: &mut Context<Self>,
+    ) {
+        self.session.navigate(Route::DesignSystem);
+        self.gallery.update(cx, |gallery, cx| {
+            gallery.fixture_section(section, cx);
+            gallery.fixture_select_open(select_open, cx);
+        });
+        cx.notify();
+    }
+    #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_recent_commands(&mut self, ids: &[&str], cx: &mut Context<Self>) {
+        for id in ids.iter().rev() {
+            self.session.remember_command(id);
+        }
         cx.notify();
     }
 
@@ -519,6 +598,23 @@ impl Shell {
         };
         cx.notify();
     }
+    /// Keeps one sticky toast in step with the session save state.
+    fn sync_save_toast(&mut self) {
+        match (self.save_error, self.save_toast) {
+            (true, None) => {
+                self.save_toast = Some(self.toasts.push(
+                    "Session could not be saved",
+                    Some("Changes remain in this window.".into()),
+                    Tone::Warning,
+                ));
+            }
+            (false, Some(id)) => {
+                self.toasts.dismiss(id);
+                self.save_toast = None;
+            }
+            _ => {}
+        }
+    }
     fn focus_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selected = 0;
         self.creating_workspace = false;
@@ -530,6 +626,7 @@ impl Shell {
             .open(Overlay::Search, window, cx, Some(initial_focus));
     }
     fn cycle_focus(&self, backwards: bool, window: &mut Window, cx: &mut Context<Self>) {
+        set_focus_visible(true);
         let handles = match self.overlays.borrow().active() {
             Some(Overlay::Search) => {
                 let mut handles =
@@ -546,7 +643,7 @@ impl Shell {
                 handles.extend(
                     self.picker_result_focus
                         .iter()
-                        .take(self.palette_items(&self.input.read(cx).content).len())
+                        .take(self.palette_results(&self.input.read(cx).content).len())
                         .cloned(),
                 );
                 handles
@@ -570,6 +667,14 @@ impl Shell {
             .borrow()
             .cycle_focus(&handles, backwards, window, cx);
     }
+    fn toggle_overlay(&mut self, overlay: Overlay, window: &mut Window, cx: &mut Context<Self>) {
+        let active = self.overlays.borrow().active();
+        if active == Some(overlay) {
+            self.overlays.borrow_mut().dismiss(window, cx);
+        } else {
+            self.overlays.borrow_mut().open(overlay, window, cx, None);
+        }
+    }
     pub(crate) fn dispatch(
         &mut self,
         control: Control,
@@ -582,7 +687,7 @@ impl Shell {
             .borrow()
             .active()
             .is_some_and(Overlay::is_dialog)
-            && !matches!(&control, Control::Dismiss)
+            && !matches!(&control, Control::Dismiss | Control::DismissToast(_))
         {
             return;
         }
@@ -620,6 +725,10 @@ impl Shell {
                 self.change_workspace(WorkspaceCommand::Switch { id }, window, cx)
             }
             Control::NewWorkspace => {
+                if self.overlays.borrow().active() != Some(Overlay::Search) {
+                    self.workspace_only = true;
+                    self.focus_picker(window, cx);
+                }
                 self.creating_workspace = true;
                 self.workspace_name.update(cx, |input, _| input.reset());
                 self.workspace_icon.update(cx, |input, _| input.reset());
@@ -655,9 +764,13 @@ impl Shell {
                     );
                 }
             }
-            Control::Sidebar => self.toggle_pane(pane::Side::Left),
+            Control::Sidebar => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                self.toggle_pane(pane::Side::Left)
+            }
             Control::Font(font) => self.session.font = font,
             Control::FontSize(size) => {
+                self.overlays.borrow_mut().dismiss(window, cx);
                 self.session.font_size = size;
                 set_type_scale(size.scale());
                 self.assistant.update(cx, |_, cx| cx.notify());
@@ -665,26 +778,55 @@ impl Shell {
                 self.automations.update(cx, |_, cx| cx.notify());
                 self.temporal.update(cx, |_, cx| cx.notify());
                 self.input.update(cx, |_, cx| cx.notify());
+                self.gallery.update(cx, |_, cx| cx.notify());
                 if let Some(updates) = cx.try_global::<crate::updates::Updates>().cloned() {
                     updates.0.update(cx, |_, cx| cx.notify());
                 }
             }
-            Control::Notifications => {
-                let active = self.overlays.borrow().active();
-                if active == Some(Overlay::Notifications) {
-                    self.overlays.borrow_mut().dismiss(window, cx);
-                } else {
-                    self.overlays
-                        .borrow_mut()
-                        .open(Overlay::Notifications, window, cx, None);
+            Control::Notifications => self.toggle_overlay(Overlay::Notifications, window, cx),
+            Control::UserMenu => {
+                self.support_open = false;
+                self.toggle_overlay(Overlay::UserMenu, window, cx)
+            }
+            Control::SupportMenu => self.support_open = !self.support_open,
+            Control::CheckForUpdates => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                if cx.has_global::<crate::updates::Updates>() {
+                    crate::updates::open(cx, true);
                 }
+            }
+            Control::InstallUpdate => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                if cx.has_global::<crate::updates::Updates>() {
+                    crate::updates::open(cx, false);
+                }
+            }
+            Control::HelpCenter => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                cx.open_url(&format!("{}#readme", ainc_release::REPOSITORY));
+            }
+            Control::SendFeedback => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                cx.open_url(&format!("{}/issues/new", ainc_release::REPOSITORY));
+            }
+            Control::About => {
+                self.overlays.borrow_mut().dismiss(window, cx);
+                crate::about::show();
             }
             Control::MarkAllRead => {
                 for item in &mut self.notification_items {
                     item.unread = false;
                 }
             }
+            Control::DismissToast(id) => {
+                self.toasts.dismiss(id);
+                if self.save_toast == Some(id) {
+                    self.save_toast = None;
+                    self.save_error = false;
+                }
+            }
             Control::Dismiss => {
+                self.support_open = false;
                 self.overlays.borrow_mut().dismiss(window, cx);
             }
         }
@@ -704,6 +846,8 @@ impl Shell {
         self.save(cx);
         window.refresh();
     }
+    /// A bare ghost control with the shared contract and hover fade; callers
+    /// compose its children. Labeled buttons use `ui::Button`.
     fn button(
         &self,
         id: impl Into<ElementId>,
@@ -719,26 +863,25 @@ impl Shell {
             .unwrap_or(&label)
             .to_owned()
             .into();
-        let hover_open = matches!(&control, Control::Open(_));
-        let hover_workspace = matches!(&control, Control::WorkspacePicker);
         let click_control = control.clone();
+        let hover_id = id.clone();
+        let progress = self.hover.progress(&id);
+        let on_hover = cx.listener(move |this: &mut Self, over: &bool, _, cx| {
+            this.hover.set(hover_id.clone(), *over);
+            cx.notify();
+        });
         let button = action_button(
             ButtonSpec {
                 id,
                 label: spoken,
-                kind: ButtonKind::Quiet,
                 enabled: true,
             },
             |button| {
-                button.gap(px(8.)).hover(move |s| {
-                    if hover_open {
-                        s.text_color(rgb(TEXT))
-                    } else if hover_workspace {
-                        s.bg(rgb(HOVER_CONTROL)).text_color(rgb(TEXT))
-                    } else {
-                        s.bg(rgb(HOVER)).text_color(rgb(TEXT))
-                    }
-                })
+                button
+                    .gap(px(CONTROL_GAP))
+                    .bg(rgba((HOVER << 8) | (progress * 255.) as u32))
+                    .on_hover(on_hover)
+                    .hover(|s| s.text_color(rgb(TEXT)))
             },
             move |this: &mut Self, window, cx| this.dispatch(click_control.clone(), window, cx),
             cx,
@@ -746,20 +889,6 @@ impl Shell {
         match &control {
             Control::Sidebar => button.role(accesskit::Role::Switch).aria_toggled(
                 if self.session.panes[pane::Side::Left.index()].open {
-                    accesskit::Toggled::True
-                } else {
-                    accesskit::Toggled::False
-                },
-            ),
-            Control::Font(font) => button.role(accesskit::Role::RadioButton).aria_toggled(
-                if self.session.font == *font {
-                    accesskit::Toggled::True
-                } else {
-                    accesskit::Toggled::False
-                },
-            ),
-            Control::FontSize(size) => button.role(accesskit::Role::RadioButton).aria_toggled(
-                if self.session.font_size == *size {
                     accesskit::Toggled::True
                 } else {
                     accesskit::Toggled::False
@@ -776,232 +905,25 @@ impl Shell {
         control: Control,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        icon_control(
-            self.button(id, label, control, cx)
-                .debug_selector(move || id.into()),
-        )
-        .child(
-            row()
-                .size(px(HEADER_ICON_SIZE))
-                .justify_center()
-                .debug_selector(move || format!("{id}.glyph"))
-                .child(icon(name, HEADER_ICON_SIZE)),
-        )
-    }
-    fn command_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let matches = self.palette_items(&self.input.read(cx).content);
-        let current_id = self.workspace_state().current_id;
-        panel()
-            .id("search.dialog")
-            .accessibility_id("search.dialog")
-            .role(accesskit::Role::Dialog)
-            .aria_label(if self.creating_workspace { "Create workspace" } else { "Search spaces and workspaces" })
-            .w(px(520.))
-            .overflow_hidden()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(|_, _, cx| cx.stop_propagation())
+        self.button(id, label, control, cx)
+            .debug_selector(move || id.into())
+            .size(px(HEADER_CONTROL))
+            .justify_center()
             .child(
                 row()
-                    .h(px(56.))
-                    .px(px(16.))
-                    .gap(px(12.))
-                    .border_b_1()
-                    .border_color(rgb(BORDER))
-                    .child(icon(if self.creating_workspace { "plus" } else { "search" }, 18.))
-                    .child(if self.creating_workspace { self.workspace_name.clone() } else { self.input.clone() })
-                    .child(
-                        self.button("palette-close", "Close search", Control::Dismiss, cx)
-                            .track_focus(&self.picker_close_focus)
-                            .child(shortcut_badge("esc").px(px(8.))),
-                    ),
-            )
-            .when(self.creating_workspace, |panel| panel.child(
-                column()
-                    .p(px(16.))
-                    .gap(px(12.))
-                    .child(div().font_weight(FontWeight::MEDIUM).child("New workspace"))
-                    .child(self.workspace_icon.clone())
-                    .child(self.workspace_color.clone())
-                    .when_some(self.workspace_error.as_ref(), |form, error| form.child(div().text_color(rgb(ERROR)).child(error.clone())))
-                    .child(self.button("create-workspace", "Create workspace", Control::CreateWorkspace, cx)
-                        .h(px(36.)).px(px(12.)).bg(rgb(HOVER)).child("Create workspace")),
-            ))
-            .when(!self.creating_workspace, |panel| panel.child(
-                column()
-                    .id("workspace-results")
-                    .p(px(8.))
-                    .max_h(px(420.))
-                    .overflow_y_scroll()
-                    .when(matches.is_empty(), |s| {
-                        s.child(column().p(px(24.)).gap(px(6.)).child("No matches."))
-                    })
-                    .children(matches.iter().cloned().enumerate().map(|(index, item)| {
-                        let (label, control) = match &item {
-                            PaletteItem::Route(route) => (route.label().to_owned(), Control::Open(*route)),
-                            PaletteItem::Workspace { id, name, .. } => (format!("Switch to {name}"), Control::SwitchWorkspace(id.clone())),
-                            PaletteItem::CreateWorkspace => ("Create workspace".into(), Control::NewWorkspace),
-                        };
-                        let selected_workspace = matches!(&item, PaletteItem::Workspace { id, .. } if *id == current_id);
-                        self.button(
-                            SharedString::from(format!("search.result.{index}")),
-                            "Open result",
-                            control,
-                            cx,
-                        )
-                        .when_some(self.picker_result_focus.get(index), |row, focus| row.track_focus(focus))
-                        .on_hover(cx.listener(move |this, hovered, _, cx| {
-                            if *hovered {
-                                this.selected = index;
-                                cx.notify();
-                            }
-                        }))
-                        .h(px(40.))
-                        .px(px(10.))
-                        .gap(px(12.))
-                        .when(index == self.selected, |s| s.bg(rgb(HOVER)))
-                        .child(match item {
-                            PaletteItem::Route(route) => icon(route.icon(), 17.).into_any_element(),
-                            PaletteItem::Workspace { icon, name, .. } => div().w(px(17.)).child(icon.unwrap_or_else(|| name.chars().next().unwrap_or('W').to_string())).into_any_element(),
-                            PaletteItem::CreateWorkspace => icon("plus", 17.).into_any_element(),
-                        })
-                        .child(label)
-                        .child(div().flex_1())
-                        .when(selected_workspace, |row| row.child(div().text_color(rgb(MUTED)).child("Current")))
-                        .child(
-                            div()
-                                .w(px(24.))
-                                .when(index == self.selected, |s| s.child(shortcut_badge("↵"))),
-                        )
-                    })),
-            ))
-            .child(
-                row()
-                    .h(px(40.))
-                    .px(px(16.))
-                    .gap(px(6.))
-                    .border_t_1()
-                    .border_color(rgb(BORDER))
-                    .text_size(type_size(CAPTION_SIZE))
-                    .text_color(rgb(MUTED))
-                    .child(shortcut_badge("↑ ↓"))
-                    .child("Navigate")
-                    .child(div().flex_1())
-                    .child(shortcut_badge("↵"))
-                    .child("Open"),
-            )
-    }
-    fn notification_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        panel()
-            .absolute()
-            .top(px(56.))
-            .right(px(16.))
-            .w(px(350.))
-            .overflow_hidden()
-            .child(
-                row()
-                    .h(px(52.))
-                    .px(px(16.))
-                    .gap(px(12.))
-                    .border_b_1()
-                    .border_color(rgb(BORDER))
-                    .child(div().font_weight(FontWeight::MEDIUM).child("Notifications"))
-                    .child(div().flex_1())
-                    .when(
-                        self.notification_items.iter().any(|item| item.unread),
-                        |s| {
-                            s.child(
-                                self.button(
-                                    "mark-all-read",
-                                    "Mark all read",
-                                    Control::MarkAllRead,
-                                    cx,
-                                )
-                                .text_size(type_size(CAPTION_SIZE))
-                                .text_color(rgb(MUTED))
-                                .child("Mark all read"),
-                            )
-                        },
-                    )
-                    .child(
-                        self.button(
-                            "dismiss-notifications",
-                            "Close notifications",
-                            Control::Dismiss,
-                            cx,
-                        )
-                        .size(px(24.))
-                        .justify_center()
-                        .child(icon("close", 12.)),
-                    ),
-            )
-            .when(self.notification_items.is_empty(), |s| {
-                s.child(
-                    column()
-                        .py(px(24.))
-                        .px(px(16.))
-                        .items_center()
-                        .gap(px(8.))
-                        .child(icon("bell", 16.))
-                        .child(
-                            div()
-                                .text_size(type_size(LABEL_SIZE))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child("No notifications yet"),
-                        ),
-                )
-            })
-            .children(
-                self.notification_items
-                    .iter()
-                    .enumerate()
-                    .map(|(index, item)| {
-                        list_item(("notification", index), item.title.clone())
-                            .gap(px(12.))
-                            .px(px(16.))
-                            .py(px(14.))
-                            .when(index > 0, |s| s.border_t_1().border_color(rgb(BORDER)))
-                            .child(icon(item.icon, 17.))
-                            .child(
-                                column()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .gap(px(3.))
-                                    .child(
-                                        row()
-                                            .gap(px(6.))
-                                            .child(
-                                                div()
-                                                    .font_weight(FontWeight::MEDIUM)
-                                                    .child(item.title.clone()),
-                                            )
-                                            .child(div().flex_1())
-                                            .child(
-                                                div()
-                                                    .text_size(type_size(CAPTION_SIZE))
-                                                    .text_color(rgb(MUTED))
-                                                    .child(item.relative_time.clone()),
-                                            ),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(type_size(LABEL_SIZE))
-                                            .text_color(rgb(MUTED))
-                                            .child(item.body.clone()),
-                                    ),
-                            )
-                            .when(item.unread, |s| {
-                                s.child(div().size(px(5.)).rounded_full().bg(rgb(STATUS_UNREAD)))
-                            })
-                    }),
+                    .size(px(HEADER_ICON_SIZE))
+                    .justify_center()
+                    .debug_selector(move || format!("{id}.glyph"))
+                    .child(icon(name, HEADER_ICON_SIZE)),
             )
     }
     fn keys(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.overlays.borrow().active() == Some(Overlay::Search) {
-            let matches = self.palette_items(&self.input.read(cx).content);
+            let count = self.palette_results(&self.input.read(cx).content).len();
             match event.keystroke.key.as_str() {
                 "down" => {
                     if !self.creating_workspace {
-                        self.selected = (self.selected + 1).min(matches.len().saturating_sub(1));
+                        self.selected = (self.selected + 1).min(count.saturating_sub(1));
                     }
                     cx.stop_propagation();
                 }
@@ -1014,8 +936,8 @@ impl Shell {
                 "enter" => {
                     if self.creating_workspace {
                         self.dispatch(Control::CreateWorkspace, window, cx);
-                    } else if let Some(item) = matches.get(self.selected) {
-                        self.choose_palette(item.clone(), window, cx);
+                    } else {
+                        self.choose_palette(self.selected, window, cx);
                     }
                     cx.stop_propagation();
                 }
@@ -1032,29 +954,28 @@ impl Render for Shell {
                 .size_full()
                 .items_center()
                 .justify_center()
-                .gap(px(20.))
+                .gap(px(SPACE_5))
                 .bg(rgb(SHELL))
                 .text_color(rgb(TEXT))
-                .child(div().text_size(type_size(24.)).child("Update to continue"))
-                .child(action_button(
-                    ButtonSpec {
-                        id: "required-update".into(),
-                        label: "Check for Updates".into(),
-                        kind: ButtonKind::Secondary,
-                        enabled: true,
-                    },
-                    |button| {
-                        button
-                            .px(px(16.))
-                            .py(px(10.))
-                            .bg(rgb(HOVER_CONTROL))
-                            .child("Check for Updates")
-                    },
-                    |_, _, cx| crate::updates::open(cx, true),
-                    cx,
+                .child(
+                    div()
+                        .text_size(type_size(DISPLAY_SIZE))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child("Update to continue"),
+                )
+                .child(caption(
+                    "This version of AgentInc is older than its daemon.",
                 ))
+                .child(
+                    Button::new("required-update", "Check for Updates")
+                        .primary()
+                        .large()
+                        .build(&self.hover, |_, _, cx| crate::updates::open(cx, true), cx),
+                )
                 .into_any_element();
         }
+        self.hover.animate(window);
+        self.sync_save_toast();
         if reduced_motion() {
             for index in 0..self.pane_visible.len() {
                 if let Some((_, _, to)) = self.grip_animation[index].take() {
@@ -1162,23 +1083,27 @@ impl Render for Shell {
                 .terminal_page(active_overlay.is_none())
                 .into_any_element(),
             Route::Settings => self
-                .static_page(self.session.current(), cx)
+                .static_page(self.session.current(), window, cx)
                 .into_any_element(),
+            Route::DesignSystem => self.gallery.clone().into_any_element(),
         };
         #[cfg(target_os = "macos")]
         {
             self.pending_terminal_focus = false;
         }
         let dialog_content = match active_overlay {
-            Some(Overlay::Search) => Some(self.command_palette(cx).into_any_element()),
-            Some(Overlay::AddTicket | Overlay::AddAgent | Overlay::DeleteTicket(_)) => {
-                self.tickets.update(cx, |tickets, cx| tickets.overlay(cx))
-            }
+            Some(Overlay::Search) => Some(self.command_palette(window, cx)),
+            Some(Overlay::AddTicket | Overlay::AddAgent | Overlay::DeleteTicket(_)) => self
+                .tickets
+                .update(cx, |tickets, cx| tickets.overlay(window, cx)),
             Some(Overlay::RenameConversation(_) | Overlay::DeleteConversation(_)) => self
                 .assistant
-                .update(cx, |assistant, cx| assistant.overlay(cx)),
+                .update(cx, |assistant, cx| assistant.overlay(window, cx)),
             _ => None,
         };
+        let update_ready = cx
+            .try_global::<crate::updates::Updates>()
+            .is_some_and(|updates| updates.0.read(cx).is_ready());
         column()
             .id("shell")
             .relative()
@@ -1187,19 +1112,21 @@ impl Render for Shell {
             .text_color(rgb(TEXT))
             .font_family(self.session.font.family())
             .text_size(type_size(BODY_SIZE))
-            .line_height(relative(1.5))
+            .line_height(relative(BODY_LINE_HEIGHT))
             .track_focus(&self.focus)
             .key_context("Control")
             .on_click(cx.listener(|this, _, window, cx| {
                 let active = this.overlays.borrow().active();
-                if active
-                    .is_some_and(|overlay| overlay.is_menu() || overlay == Overlay::Notifications)
-                {
+                if active.is_some_and(Overlay::is_popover) {
+                    this.support_open = false;
                     this.overlays.borrow_mut().dismiss(window, cx);
                     cx.notify();
                 }
+                this.assistant
+                    .update(cx, |assistant, cx| assistant.dismiss_menus(cx));
             }))
             .on_key_down(cx.listener(Self::keys))
+            .capture_any_mouse_down(|_, _, _| set_focus_visible(false))
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
                 this.command_held = event.modifiers.platform;
                 cx.notify();
@@ -1247,7 +1174,11 @@ impl Render for Shell {
                 }),
             )
             .on_action(cx.listener(|this, _: &Escape, w, cx| {
-                if !this.overlays.borrow_mut().dismiss(w, cx) {
+                this.support_open = false;
+                let closed_menu = this
+                    .assistant
+                    .update(cx, |assistant, cx| assistant.dismiss_menus(cx));
+                if !this.overlays.borrow_mut().dismiss(w, cx) && !closed_menu {
                     w.focus(&this.focus, cx);
                 }
                 cx.notify();
@@ -1270,64 +1201,23 @@ impl Render for Shell {
                     .right_0()
                     .child(self.header(cx)),
             )
-            .when(
-                cx.try_global::<crate::updates::Updates>()
-                    .is_some_and(|updates| updates.0.read(cx).is_ready()),
-                |view| {
-                    view.child(action_button(
-                        ButtonSpec {
-                            id: "update-ready".into(),
-                            label: "Update ready".into(),
-                            kind: ButtonKind::Secondary,
-                            enabled: true,
-                        },
-                        |button| {
-                            button
-                                .accessibility_id("updates.ready")
-                                .absolute()
-                                .bottom(px(16.))
-                                .left(px(220.))
-                                .px(px(16.))
-                                .py(px(10.))
-                                .rounded(px(8.))
-                                .bg(rgb(HOVER_CONTROL))
-                                .child("Update ready · View update")
-                        },
-                        |_, _, cx| crate::updates::open(cx, false),
-                        cx,
-                    ))
-                },
-            )
-            .when(self.save_error, |s| {
-                s.child(
+            .when(update_ready, |view| {
+                view.child(
                     div()
                         .absolute()
-                        .bottom(px(12.))
-                        .left(px(190.))
-                        .px(px(12.))
-                        .py(px(8.))
-                        .bg(rgb(SURFACE_ERROR))
-                        .child("Session could not be saved. Changes remain in this window."),
+                        .bottom(px(PANEL_GAP + STATUS_BAR_HEIGHT + SPACE_3))
+                        .left(px(self.pane_visible[0] + PANEL_GAP + SPACE_3))
+                        .child(
+                            Button::new("update-ready", "Update ready · Install")
+                                .primary()
+                                .small()
+                                .icon("download")
+                                .build(&self.hover, |_, _, cx| crate::updates::open(cx, false), cx)
+                                .accessibility_id("updates.ready")
+                                .shadow(shadow_toast()),
+                        ),
                 )
             })
-            .when_some(
-                self.workspace_error
-                    .as_ref()
-                    .filter(|_| active_overlay != Some(Overlay::Search)),
-                |s, error| {
-                    s.child(
-                        div()
-                            .absolute()
-                            .bottom(px(12.))
-                            .left(px(220.))
-                            .px(px(12.))
-                            .py(px(8.))
-                            .bg(rgb(SURFACE_ERROR))
-                            .text_color(rgb(ERROR))
-                            .child(error.clone()),
-                    )
-                },
-            )
             .when(active_overlay == Some(Overlay::Notifications), |s| {
                 s.child(self.notification_panel(cx))
             })
@@ -1344,7 +1234,7 @@ impl Render for Shell {
                         .items_center()
                         .justify_center()
                         .when(active_overlay == Some(Overlay::Search), |s| {
-                            s.items_start().pt(px(80.))
+                            s.items_start().pt(px(96.))
                         })
                         .on_mouse_move(|_, _, cx| cx.stop_propagation())
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -1356,14 +1246,22 @@ impl Render for Shell {
                         }))
                         .child(
                             div()
-                                .opacity(if active_overlay == Some(Overlay::Search) {
-                                    0.65 + 0.35 * palette_progress
-                                } else {
-                                    1.
+                                .when(active_overlay == Some(Overlay::Search), |s| {
+                                    s.opacity(0.65 + 0.35 * palette_progress)
+                                        .mt(px(-6. * (1. - palette_progress)))
                                 })
                                 .child(content),
                         ),
                 )
+            })
+            .when(!self.toasts.is_empty(), |s| {
+                s.child(self.toasts.render(
+                    &self.hover,
+                    |this: &mut Self, id, window, cx| {
+                        this.dispatch(Control::DismissToast(id), window, cx)
+                    },
+                    cx,
+                ))
             })
             .when_some(
                 launch_overlay(
@@ -1613,13 +1511,6 @@ mod interaction_tests {
         });
         cx.simulate_keystrokes("cmd-1");
         cx.update(|window, cx| window.draw(cx).clear(cx));
-        let profile = cx.debug_bounds("sidebar-profile").unwrap().center();
-        cx.simulate_click(profile, Modifiers::default());
-        shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Settings)
-        });
-        cx.simulate_keystrokes("cmd-1");
-        cx.update(|window, cx| window.draw(cx).clear(cx));
         let settings = cx.debug_bounds("sidebar-settings").unwrap().center();
         cx.simulate_click(settings, Modifiers::default());
         shell.read_with(cx, |shell, _| {
@@ -1686,7 +1577,10 @@ mod interaction_tests {
         cx.simulate_keystrokes("cmd-k");
         cx.simulate_input("Personal");
         shell.read_with(cx, |shell, cx| {
-            assert_eq!(shell.palette_items(&shell.input.read(cx).content).len(), 1);
+            assert_eq!(
+                shell.palette_results(&shell.input.read(cx).content).len(),
+                1
+            );
         });
         cx.simulate_keystrokes("enter");
         cx.run_until_parked();
@@ -1755,7 +1649,7 @@ mod interaction_tests {
         });
         cx.simulate_keystrokes("cmd-k shift-tab");
         let last = shell.read_with(cx, |shell, cx| {
-            let count = shell.palette_items(&shell.input.read(cx).content).len();
+            let count = shell.palette_results(&shell.input.read(cx).content).len();
             shell.picker_result_focus[count - 1].clone()
         });
         cx.update(|window, _| assert!(last.is_focused(window)));
