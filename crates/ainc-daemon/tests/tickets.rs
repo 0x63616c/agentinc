@@ -1115,3 +1115,116 @@ async fn board_migration_orders_existing_columns_and_starts_their_history(pool: 
         .await
         .unwrap();
 }
+
+#[sqlx::test]
+async fn stopped_work_returns_to_the_top_of_to_do(pool: PgPool) {
+    let (app, id, _) = assigned(&pool).await;
+    // The executor would move it; do what it does, then stop the work.
+    apply(
+        &app,
+        Command::SetStatus {
+            id,
+            revision: 1,
+            status: TicketStatus::InProgress,
+        },
+    )
+    .await;
+    let waiting = detailed(&app, "Already waiting", TicketStatus::ToDo).await;
+    let current = state(&app).await;
+    apply(
+        &app,
+        Command::Cancel {
+            id,
+            revision: revision(&current, id),
+        },
+    )
+    .await;
+    let current = state(&app).await;
+    let order: Vec<i64> = current
+        .tickets
+        .iter()
+        .filter(|t| t.status == TicketStatus::ToDo)
+        .map(|t| t.id)
+        .collect();
+    assert_eq!(order, [id, waiting]);
+    let entries = history(&app, id).await;
+    assert!(entries.iter().any(|e| e.kind == ActivityKind::Status
+        && e.from_value.as_deref() == Some("in_progress")
+        && e.to_value.as_deref() == Some("to_do")));
+}
+
+#[sqlx::test]
+async fn concurrent_links_cannot_close_a_loop(pool: PgPool) {
+    let app = app(&pool);
+    let [a, b, c, d] = [
+        detailed(&app, "A", TicketStatus::ToDo).await,
+        detailed(&app, "B", TicketStatus::ToDo).await,
+        detailed(&app, "C", TicketStatus::ToDo).await,
+        detailed(&app, "D", TicketStatus::ToDo).await,
+    ];
+    let blocks = |from_id, to_id| Command::Link {
+        from_id,
+        to_id,
+        link: LinkKind::Blocks,
+    };
+    apply(&app, blocks(a, b)).await;
+    apply(&app, blocks(c, d)).await;
+    let (closing, other) = (request(blocks(b, c)), request(blocks(d, a)));
+    let (first, second) = tokio::join!(
+        command(&app, "owner-fixture", &closing),
+        command(&app, "owner-fixture", &other)
+    );
+    let mut outcomes = [first.0, second.0];
+    outcomes.sort();
+    assert_eq!(outcomes, [StatusCode::OK, StatusCode::BAD_REQUEST]);
+    assert_eq!(state(&app).await.links.len(), 3);
+}
+
+#[sqlx::test]
+async fn a_stale_agent_credential_reads_no_history(pool: PgPool) {
+    let (app, id, agent) = assigned(&pool).await;
+    credential(&pool, id, "agent-fixture").await;
+    assert_eq!(activity(&app, "agent-fixture", id).await.0, StatusCode::OK);
+    apply(
+        &app,
+        Command::Assign {
+            id,
+            revision: 1,
+            assignee_kind: AssigneeKind::Agent,
+            assignee_id: agent,
+        },
+    )
+    .await;
+    assert_eq!(
+        activity(&app, "agent-fixture", id).await.0,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[sqlx::test]
+async fn deleting_a_ticket_leaves_the_relationship_in_the_other_history(pool: PgPool) {
+    let app = app(&pool);
+    let kept = detailed(&app, "Kept", TicketStatus::ToDo).await;
+    let gone = detailed(&app, "Gone", TicketStatus::ToDo).await;
+    apply(
+        &app,
+        Command::Link {
+            from_id: gone,
+            to_id: kept,
+            link: LinkKind::Blocks,
+        },
+    )
+    .await;
+    apply(
+        &app,
+        Command::Delete {
+            id: gone,
+            revision: 0,
+        },
+    )
+    .await;
+    let last = history(&app, kept).await.pop().unwrap();
+    assert_eq!(last.kind, ActivityKind::Unlinked);
+    assert_eq!(last.from_value.as_deref(), Some("blocked_by"));
+    assert_eq!(last.to_value, Some(gone.to_string()));
+}

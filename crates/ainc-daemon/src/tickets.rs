@@ -14,6 +14,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
+pub(crate) use board::{enter_column, lock as lock_board};
 pub use links::{LinkKind, TicketLink};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -391,9 +392,21 @@ pub async fn history(
     if actor.assignment.is_some_and(|(ticket, _)| ticket != id) {
         return Err(denied());
     }
-    Ok(Json(
-        activity::for_ticket(&product.pool, &actor.workspace, id).await?,
-    ))
+    let mut tx = product.pool.begin().await?;
+    fence_read(&mut tx, &actor).await?;
+    let history = activity::for_ticket(&mut tx, &actor.workspace, id).await?;
+    tx.commit().await?;
+    Ok(Json(history))
+}
+
+/// An agent reads only while its assignment's run is live; a stale credential
+/// sees nothing, in the same transaction as the read.
+async fn fence_read(tx: &mut Transaction<'_, Postgres>, actor: &Actor) -> Result<(), ApiError> {
+    let Some((id, generation)) = actor.assignment else {
+        return Ok(());
+    };
+    let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tickets t JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE t.id=$1 AND t.workspace_id=$2 AND t.generation=$3 AND t.assignee_id=$4 AND t.assignee_kind='agent' AND r.state IN ('queued','running'))").bind(id).bind(&actor.workspace).bind(generation).bind(&actor.id).fetch_one(&mut **tx).await?;
+    if active { Ok(()) } else { Err(denied()) }
 }
 
 pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<TicketSnapshot, ApiError> {
@@ -402,12 +415,7 @@ pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<TicketSnaps
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         .execute(&mut *tx)
         .await?;
-    if let Some((id, generation)) = actor.assignment {
-        let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tickets t JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE t.id=$1 AND t.workspace_id=$2 AND t.generation=$3 AND t.assignee_id=$4 AND t.assignee_kind='agent' AND r.state IN ('queued','running'))").bind(id).bind(&actor.workspace).bind(generation).bind(&actor.id).fetch_one(&mut *tx).await?;
-        if !active {
-            return Err(denied());
-        }
-    }
+    fence_read(&mut tx, actor).await?;
     let tickets = sqlx::query_as(&format!("SELECT {TICKET_COLUMNS} FROM tickets WHERE workspace_id=$1 AND ($2::bigint IS NULL OR id=$2) ORDER BY array_position($3::text[],status),position,id DESC"))
         .bind(&actor.workspace)
         .bind(ticket)
@@ -502,6 +510,8 @@ pub(crate) async fn execute_in(
     }
     let payload =
         serde_json::to_value(&request.command).map_err(|_| invalid("Invalid command."))?;
+    // Every command may move Tickets or relate them; one writer per board.
+    board::lock(tx, &actor.workspace).await?;
     // Fence even receipt reads after reassignment, within the same transaction.
     if let Some((id, _)) = actor.assignment {
         lock_ticket(tx, actor, id, None).await?;
@@ -551,7 +561,8 @@ async fn create(
     ticket: NewTicket,
 ) -> Result<i64, ApiError> {
     let dispatch = ticket.assignee_kind == AssigneeKind::Agent && ticket.status.actionable();
-    let id: i64 = sqlx::query_scalar("INSERT INTO tickets(workspace_id,title,description,status,priority,labels,assignee_kind,assignee_id,generation,conversation_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,(SELECT COALESCE(min(position),1)-1 FROM tickets WHERE workspace_id=$1 AND status=$4)) RETURNING id")
+    let position = board::top(tx, &actor.workspace, ticket.status).await?;
+    let id: i64 = sqlx::query_scalar("INSERT INTO tickets(workspace_id,title,description,status,priority,labels,assignee_kind,assignee_id,generation,conversation_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id")
         .bind(&actor.workspace)
         .bind(&ticket.title)
         .bind(&ticket.description)
@@ -562,6 +573,7 @@ async fn create(
         .bind(&ticket.assignee_id)
         .bind(i64::from(dispatch))
         .bind(actor.conversation)
+        .bind(position)
         .fetch_one(&mut **tx)
         .await?;
     actor
@@ -701,6 +713,7 @@ async fn apply(
             if worked {
                 return Err(ApiError::conflict());
             }
+            links::detach_all(tx, actor, id).await?;
             sqlx::query("DELETE FROM tickets WHERE id=$1")
                 .bind(id)
                 .execute(&mut **tx)
@@ -812,11 +825,6 @@ async fn apply(
             status,
             after,
         } => {
-            // One board writer per workspace keeps column order consistent.
-            sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
-                .bind(format!("board/{}", actor.workspace))
-                .execute(&mut **tx)
-                .await?;
             let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             change_status(tx, actor, &ticket, status).await?;
             board::place(tx, &actor.workspace, id, status, after).await?;
@@ -830,7 +838,11 @@ async fn apply(
         } => {
             let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             cancel_generation(tx, actor, &ticket).await?;
-            sqlx::query("UPDATE tickets SET assignee_kind=$2,assignee_id=$3,revision=revision+1,generation=generation+1,status=CASE WHEN status='in_progress' THEN 'to_do' ELSE status END WHERE id=$1").bind(id).bind(assignee_kind).bind(&assignee_id).execute(&mut **tx).await?;
+            sqlx::query("UPDATE tickets SET assignee_kind=$2,assignee_id=$3,revision=revision+1,generation=generation+1 WHERE id=$1").bind(id).bind(assignee_kind).bind(&assignee_id).execute(&mut **tx).await?;
+            // Stopped work goes back to To do, at the top like any status change.
+            if ticket.status == TicketStatus::InProgress {
+                board::enter_column(tx, id, TicketStatus::ToDo).await?;
+            }
             actor
                 .log(
                     tx,
@@ -852,7 +864,15 @@ async fn apply(
         TicketCommand::Cancel { id, revision } => {
             let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             cancel_generation(tx, actor, &ticket).await?;
-            sqlx::query("UPDATE tickets SET generation=generation+1,revision=revision+1,status=CASE WHEN status='in_progress' THEN 'to_do' ELSE status END WHERE id=$1").bind(id).execute(&mut **tx).await?;
+            sqlx::query(
+                "UPDATE tickets SET generation=generation+1,revision=revision+1 WHERE id=$1",
+            )
+            .bind(id)
+            .execute(&mut **tx)
+            .await?;
+            if ticket.status == TicketStatus::InProgress {
+                board::enter_column(tx, id, TicketStatus::ToDo).await?;
+            }
             if ticket.status == TicketStatus::InProgress {
                 actor
                     .log(tx, Entry::status(id, ticket.status, TicketStatus::ToDo))
@@ -899,12 +919,12 @@ async fn change_status(
     if owner {
         cancel_generation(tx, actor, ticket).await?;
     }
-    sqlx::query("UPDATE tickets SET status=$2,revision=revision+1,generation=generation+$3,position=(SELECT COALESCE(min(c.position),1)-1 FROM tickets c WHERE c.workspace_id=tickets.workspace_id AND c.status=$2) WHERE id=$1")
+    sqlx::query("UPDATE tickets SET revision=revision+1,generation=generation+$2 WHERE id=$1")
         .bind(ticket.id)
-        .bind(status)
         .bind(i64::from(owner))
         .execute(&mut **tx)
         .await?;
+    board::enter_column(tx, ticket.id, status).await?;
     actor
         .log(tx, Entry::status(ticket.id, ticket.status, status))
         .await?;
@@ -934,7 +954,11 @@ async fn start_generation(
 ) -> Result<(), ApiError> {
     // A fresh assignment owns immutable prompt/model/definition snapshots.
     let run_id = uuid::Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO ticket_runs(run_id,ticket_id,generation,agent_id,model,instructions,prompt,state) SELECT $1,t.id,t.generation,a.id,a.model,a.instructions,t.title||CASE WHEN t.description='' THEN '' ELSE E'\n\n'||t.description END,'queued' FROM tickets t JOIN agents a ON a.workspace_id=t.workspace_id AND a.id=t.assignee_id WHERE t.id=$2 AND t.workspace_id=$3").bind(&run_id).bind(id).bind(&actor.workspace).execute(&mut **tx).await?;
+    let queued = sqlx::query("INSERT INTO ticket_runs(run_id,ticket_id,generation,agent_id,model,instructions,prompt,state) SELECT $1,t.id,t.generation,a.id,a.model,a.instructions,t.title||CASE WHEN t.description='' THEN '' ELSE E'\n\n'||t.description END,'queued' FROM tickets t JOIN agents a ON a.workspace_id=t.workspace_id AND a.id=t.assignee_id WHERE t.id=$2 AND t.workspace_id=$3").bind(&run_id).bind(id).bind(&actor.workspace).execute(&mut **tx).await?.rows_affected();
+    // An agent principal without a definition has nothing to run.
+    if queued == 0 {
+        return Ok(());
+    }
     sqlx::query("INSERT INTO dispatch_outbox(ticket_id,generation,action,run_id) SELECT ticket_id,generation,'start',run_id FROM ticket_runs WHERE run_id=$1").bind(&run_id).execute(&mut **tx).await?;
     actor.log(tx, Entry::work(id, &run_id, "queued")).await?;
     Ok(())

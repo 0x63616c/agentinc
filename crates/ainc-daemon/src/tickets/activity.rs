@@ -3,7 +3,7 @@
 use super::TicketStatus;
 use crate::product::ApiError;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
+use sqlx::{FromRow, Postgres, Transaction};
 use utoipa::ToSchema;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, ToSchema, sqlx::Type, PartialEq, Eq)]
@@ -106,13 +106,13 @@ pub(crate) async fn record(
 }
 
 pub(super) async fn for_ticket(
-    pool: &PgPool,
+    tx: &mut Transaction<'_, Postgres>,
     workspace: &str,
     ticket_id: i64,
 ) -> Result<Vec<TicketActivity>, ApiError> {
     Ok(sqlx::query_as("SELECT a.id,a.ticket_id,a.actor_id,a.kind,a.from_value,a.to_value,a.conversation_id,a.run_id,a.created_at FROM ticket_activity a JOIN tickets t ON t.id=a.ticket_id WHERE t.workspace_id=$1 AND t.id=$2 ORDER BY a.id")
         .bind(workspace)
         .bind(ticket_id)
-        .fetch_all(pool)
+        .fetch_all(&mut **tx)
         .await?)
 }

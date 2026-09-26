@@ -191,7 +191,14 @@ impl Runner {
                     // Mark running before dispatch so tools can pass their authorization
                     // fence. A crash here leaves the outbox pending for the next process.
                     let mut tx = self.pool.begin().await?;
-                    if enter_column(&mut tx, &definition, "to_do", TicketStatus::InProgress).await?
+                    tickets::lock_board(&mut tx, &definition.workspace_id).await?;
+                    if advance(
+                        &mut tx,
+                        &definition,
+                        TicketStatus::ToDo,
+                        TicketStatus::InProgress,
+                    )
+                    .await?
                     {
                         tickets::record(
                             &mut tx,
@@ -228,22 +235,29 @@ impl Runner {
 }
 
 /// Move the run's Ticket from `from` to the top of `to`, if it is still that
-/// generation in that status. Returns whether it moved.
-async fn enter_column(
+/// generation in that status. The caller holds the board lock. Returns whether
+/// it moved.
+async fn advance(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     definition: &Definition,
-    from: &str,
+    from: TicketStatus,
     to: TicketStatus,
 ) -> Result<bool, sqlx::Error> {
-    Ok(sqlx::query("UPDATE tickets SET status=$4,revision=revision+1,position=(SELECT COALESCE(min(c.position),1)-1 FROM tickets c WHERE c.workspace_id=tickets.workspace_id AND c.status=$4) WHERE id=$1 AND generation=$2 AND status=$3 AND status<>$4")
-        .bind(definition.ticket_id)
-        .bind(definition.generation)
-        .bind(from)
-        .bind(to)
-        .execute(&mut **tx)
-        .await?
-        .rows_affected()
-        > 0)
+    let moved = sqlx::query(
+        "UPDATE tickets SET revision=revision+1 WHERE id=$1 AND generation=$2 AND status=$3 AND status<>$4",
+    )
+    .bind(definition.ticket_id)
+    .bind(definition.generation)
+    .bind(from)
+    .bind(to)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected()
+        > 0;
+    if moved {
+        tickets::enter_column(tx, definition.ticket_id, to).await?;
+    }
+    Ok(moved)
 }
 
 async fn project(
@@ -252,6 +266,8 @@ async fn project(
     result: Result<String, String>,
 ) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
+    // The board lock comes before the Ticket's row lock, as in every command.
+    tickets::lock_board(&mut tx, &definition.workspace_id).await?;
     let current:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tickets t JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE r.run_id=$1 AND r.state='running')").bind(&definition.run_id).fetch_one(&mut *tx).await?;
     if !current {
         return Ok(());
@@ -301,7 +317,7 @@ async fn project(
             .bind(definition.ticket_id)
             .fetch_one(&mut *tx)
             .await?;
-        if enter_column(&mut tx, definition, previous.as_str(), TicketStatus::Done).await? {
+        if advance(&mut tx, definition, previous, TicketStatus::Done).await? {
             tickets::record(
                 &mut tx,
                 &definition.agent_id,

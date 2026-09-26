@@ -149,6 +149,37 @@ pub(super) async fn link(
     Ok(())
 }
 
+/// Before a Ticket is deleted, tell each Ticket related to it that the
+/// relationship is gone; the rows themselves cascade.
+pub(super) async fn detach_all(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: &Actor,
+    id: i64,
+) -> Result<(), ApiError> {
+    let links: Vec<TicketLink> =
+        sqlx::query_as("SELECT from_id,to_id,kind FROM ticket_links WHERE from_id=$1 OR to_id=$1")
+            .bind(id)
+            .fetch_all(&mut **tx)
+            .await?;
+    for link in links {
+        let (source, target) = link.kind.sides();
+        let (other, side) = if link.from_id == id {
+            (link.to_id, target)
+        } else {
+            (link.from_id, source)
+        };
+        actor
+            .log(
+                tx,
+                Entry::new(other, ActivityKind::Unlinked)
+                    .from(side)
+                    .to(id.to_string()),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
 pub(super) async fn unlink(
     tx: &mut Transaction<'_, Postgres>,
     actor: &Actor,

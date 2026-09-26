@@ -4,6 +4,56 @@ use super::{TicketStatus, invalid};
 use crate::product::ApiError;
 use sqlx::{Postgres, Transaction};
 
+/// Serialize every writer of one workspace's board: statuses, order and
+/// relationships. Take it before any Ticket row lock so writers never wait on
+/// each other in opposite orders.
+pub(crate) async fn lock(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!("board/{workspace}"))
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+/// The position that puts a Ticket above everything in a column.
+pub(super) async fn top(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace: &str,
+    status: TicketStatus,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT COALESCE(min(position),1)-1 FROM tickets WHERE workspace_id=$1 AND status=$2",
+    )
+    .bind(workspace)
+    .bind(status)
+    .fetch_one(&mut **tx)
+    .await
+}
+
+/// Put a Ticket in `status` at the top of that column. Every status change
+/// goes through here; revision and generation stay with the caller.
+pub(crate) async fn enter_column(
+    tx: &mut Transaction<'_, Postgres>,
+    id: i64,
+    status: TicketStatus,
+) -> Result<(), sqlx::Error> {
+    let workspace: String = sqlx::query_scalar("SELECT workspace_id FROM tickets WHERE id=$1")
+        .bind(id)
+        .fetch_one(&mut **tx)
+        .await?;
+    let position = top(tx, &workspace, status).await?;
+    sqlx::query("UPDATE tickets SET status=$2,position=$3 WHERE id=$1")
+        .bind(id)
+        .bind(status)
+        .bind(position)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 /// `column` without `id`, with `id` inserted directly below `after` (or first).
 /// `None` when `after` is not in the column.
 fn insert_after(column: &[i64], id: i64, after: Option<i64>) -> Option<Vec<i64>> {
