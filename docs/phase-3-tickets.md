@@ -45,20 +45,25 @@ labels, a position inside each status column, created and updated times, and the
 Conversation a Ticket came from. Only To do and In progress dispatch an agent; any
 other status stops live work, exactly as Backlog and Done did.
 
-`move` puts a Ticket into a column directly below a neighbour (or first) and
-renumbers that column, under one board lock per workspace. Reordering is not an
-edit: it keeps the revision. A neighbour that left the column is a stale view and
-conflicts. New Tickets and status changes land at the top of their new column,
-including the executor's To do → In progress → Done moves.
+Every Ticket command and executor transaction first takes its workspace's board
+lock, before any row lock, so moves and relationships cannot deadlock or close a
+loop concurrently. `move` puts a Ticket into a column directly below a neighbour
+(or first) and renumbers that column. Reordering is not an edit: it keeps the
+revision. A neighbour that left the column is a stale view and conflicts. New
+Tickets and every status change land at the top of their new column through one
+`enter_column`, including stopped work returning to To do and the executor's
+To do → In progress → Done moves.
 
 Relationships (`ticket_links`, in `src/tickets/links.rs`) are stored once from their
 source: blocks, relates to (stored lower ID first), duplicates and parent of. The
-reverse readings are blocked by, duplicated by and sub-issue. Loops and a second
+reverse readings are blocked by, duplicated by and Sub-Ticket. Loops and a second
 parent are refused, and both Tickets must be in the actor's workspace.
 
 History (`ticket_activity`, in `src/tickets/activity.rs`) commits with each change:
 created, renamed, described, status, priority, assigned, labels, linked/unlinked on
 both sides, and run lifecycle (queued, completed, failed, cancelled) with its run ID.
 Changes made through Evee carry the Conversation's ID. History is served per Ticket
-from `GET /v1/tickets/{id}/activity`, so the polled snapshot and Evee's
-`list_tickets` result stay small; relationships are in the snapshot.
+from `GET /v1/tickets/{id}/activity`, behind the same run-and-generation fence as
+the snapshot, so the polled snapshot and Evee's `list_tickets` result stay small;
+relationships are in the snapshot. Deleting a Ticket records the lost relationship
+in the other Ticket's history.
