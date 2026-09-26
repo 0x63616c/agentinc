@@ -6,7 +6,7 @@ exclude = ["vendor/gpui"]
 [workspace.package]
 # Product version for ainc-release, ainc-cli, ainc-client, ainc-daemon and agentinc-os.
 # After editing, run `cargo xtask generate` and commit its generated API/client changes.
-version = "0.3.3"
+version = "0.3.4"
 edition = "2024"
 license = "MIT"
 rust-version = "1.98"

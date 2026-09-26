@@ -24,6 +24,9 @@ the same button. Each pass must exit normally, run the signed `ainc-update`
 helper, replace the app bundle, relaunch as the newer version, and retire the
 backup after runtime readiness. The test hook calls the real AppKit button's
 `performClick`; the old window ownership bug crashes that call.
+After relaunch, the gate runs the signed bundle's `aincd --terminal-attach`
+through a PTY. A new pane and a saved pane whose daemon session is gone must
+both show startup output before input and run a command.
 
 ## Previously published apps
 

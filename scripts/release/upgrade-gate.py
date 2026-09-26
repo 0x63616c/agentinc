@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import urllib.request
+from terminal_smoke import check as check_terminal
 
 
 KNOWN_BROKEN = {
@@ -122,6 +123,7 @@ def exercise(mode, candidate, newer, key, manifest_tool):
                 wait_for(app.parent, lambda: not backup.exists(), 120,
                          f'{mode} installer did not finish; see {profile / "updates" / "install.log"}')
                 os.kill(int(pid_text), 0)
+                check_terminal(app, profile)
                 print(f'PASS {mode}: {old_version} -> {next_version}, relaunch PID {pid_text}', flush=True)
             except Exception:
                 log = profile / 'updates' / 'install.log'
