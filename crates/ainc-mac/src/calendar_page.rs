@@ -836,7 +836,7 @@ impl CalendarPage {
                         div()
                             .text_size(type_size(TITLE_SIZE))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(date.format("%A, %B %-d").to_string()),
+                            .child(date.format("%A, %b %-d").to_string()),
                     ),
             )
             .child(list)

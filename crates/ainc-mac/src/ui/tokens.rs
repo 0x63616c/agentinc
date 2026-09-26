@@ -189,7 +189,10 @@ pub const TOAST_WIDTH: f32 = 360.;
 /// The one inset inside feature cards, tiles and panels on every side.
 pub const CARD_INSET: f32 = SPACE_5;
 /// Switch tiles: the narrowest a tile shrinks to and its fixed height.
-pub const TILE_MIN_WIDTH: f32 = 148.;
+pub const TILE_MIN_WIDTH: f32 = 132.;
+pub const TILE_MAX_WIDTH: f32 = 300.;
+/// A tile is a control inside a card, so it takes the tighter control inset.
+pub const TILE_INSET: f32 = SPACE_4;
 pub const TILE_HEIGHT: f32 = 96.;
 /// The value column of a stepper, wide enough for "100°".
 pub const STEPPER_VALUE_WIDTH: f32 = 56.;
@@ -206,7 +209,7 @@ pub const AGENDA_DATE_WIDTH: f32 = 128.;
 pub const AGENDA_TIME_WIDTH: f32 = 136.;
 /// The thermostat card's reading column, and its track: the rail, the
 /// setpoint handle and the reading mark.
-pub const READING_WIDTH: f32 = 200.;
+pub const READING_WIDTH: f32 = 260.;
 pub const TRACK_HEIGHT: f32 = 4.;
 pub const TRACK_HANDLE: f32 = 14.;
 pub const TRACK_MARK: f32 = 8.;

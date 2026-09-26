@@ -107,7 +107,7 @@ impl SwitchTile {
                     .flex_1()
                     .min_w(px(TILE_MIN_WIDTH))
                     .h(px(TILE_HEIGHT))
-                    .p(px(CARD_INSET))
+                    .p(px(TILE_INSET))
                     .rounded(px(RADIUS_LG))
                     .border_1()
                     .border_color(rgb(if on || pending {

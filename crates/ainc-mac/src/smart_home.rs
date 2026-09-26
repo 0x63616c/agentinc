@@ -289,10 +289,12 @@ impl SmartHomePage {
             .border_color(rgb(BORDER))
             .bg(rgb(SURFACE_RAISED))
             .child(
-                // A fixed column, so the controls never move when the mode does.
+                // A fixed column, so the controls never move when the mode does;
+                // it only gives way when the window is too narrow for both.
                 column()
                     .w(px(READING_WIDTH))
-                    .flex_shrink_0()
+                    .min_w(px(TILE_MIN_WIDTH))
+                    .flex_shrink(1.)
                     .gap(px(SPACE_3))
                     .child(
                         row()
@@ -377,6 +379,10 @@ impl SmartHomePage {
             let mut card = column()
                 .flex_basis(relative(0.))
                 .min_w(px(slots * TILE_MIN_WIDTH
+                    + (slots - 1.) * SPACE_3
+                    + CARD_INSET * 2.))
+                // A room alone on its line never stretches its tiles into a wall.
+                .max_w(px(slots * TILE_MAX_WIDTH
                     + (slots - 1.) * SPACE_3
                     + CARD_INSET * 2.))
                 .gap(px(SPACE_4))
