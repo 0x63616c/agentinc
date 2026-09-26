@@ -16,10 +16,6 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::AutomationsState => Self::cli_automations_state(),
             CliCommand::AutomationsCommand => Self::cli_automations_command(),
             CliCommand::ProductCommand => Self::cli_product_command(),
-            CliCommand::ConnectionStatus => Self::cli_connection_status(),
-            CliCommand::ConnectionCancel => Self::cli_connection_cancel(),
-            CliCommand::ConnectionLogin => Self::cli_connection_login(),
-            CliCommand::ConnectionLogout => Self::cli_connection_logout(),
             CliCommand::ProvidersState => Self::cli_providers_state(),
             CliCommand::ProviderCancel => Self::cli_provider_cancel(),
             CliCommand::ProviderConnect => Self::cli_provider_connect(),
@@ -92,18 +88,6 @@ impl<T: CliConfig> Cli<T> {
                     .action(::clap::ArgAction::SetTrue)
                     .help("XXX"),
             )
-    }
-    pub fn cli_connection_status() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_connection_cancel() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_connection_login() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_connection_logout() -> ::clap::Command {
-        ::clap::Command::new("")
     }
     pub fn cli_providers_state() -> ::clap::Command {
         ::clap::Command::new("").arg(
@@ -343,10 +327,6 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::AutomationsState => self.execute_automations_state(matches).await,
             CliCommand::AutomationsCommand => self.execute_automations_command(matches).await,
             CliCommand::ProductCommand => self.execute_product_command(matches).await,
-            CliCommand::ConnectionStatus => self.execute_connection_status(matches).await,
-            CliCommand::ConnectionCancel => self.execute_connection_cancel(matches).await,
-            CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
-            CliCommand::ConnectionLogout => self.execute_connection_logout(matches).await,
             CliCommand::ProvidersState => self.execute_providers_state(matches).await,
             CliCommand::ProviderCancel => self.execute_provider_cancel(matches).await,
             CliCommand::ProviderConnect => self.execute_provider_connect(matches).await,
@@ -463,82 +443,6 @@ impl<T: CliConfig> Cli<T> {
             request = request.body(body_value);
         }
         self.config.execute_product_command(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_connection_status(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.connection_status();
-        self.config
-            .execute_connection_status(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_connection_cancel(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.connection_cancel();
-        self.config
-            .execute_connection_cancel(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_connection_login(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.connection_login();
-        self.config
-            .execute_connection_login(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_connection_logout(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.connection_logout();
-        self.config
-            .execute_connection_logout(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -978,34 +882,6 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
-    fn execute_connection_status(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConnectionStatus,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_connection_cancel(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConnectionCancel,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_connection_login(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConnectionLogin,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_connection_logout(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConnectionLogout,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
     fn execute_providers_state(
         &self,
         matches: &::clap::ArgMatches,
@@ -1126,10 +1002,6 @@ pub enum CliCommand {
     AutomationsState,
     AutomationsCommand,
     ProductCommand,
-    ConnectionStatus,
-    ConnectionCancel,
-    ConnectionLogin,
-    ConnectionLogout,
     ProvidersState,
     ProviderCancel,
     ProviderConnect,
@@ -1155,10 +1027,6 @@ impl CliCommand {
             CliCommand::AutomationsState,
             CliCommand::AutomationsCommand,
             CliCommand::ProductCommand,
-            CliCommand::ConnectionStatus,
-            CliCommand::ConnectionCancel,
-            CliCommand::ConnectionLogin,
-            CliCommand::ConnectionLogout,
             CliCommand::ProvidersState,
             CliCommand::ProviderCancel,
             CliCommand::ProviderConnect,
@@ -1185,10 +1053,6 @@ impl CliCommand {
             CliCommand::AutomationsState => "automations_state",
             CliCommand::AutomationsCommand => "automations_command",
             CliCommand::ProductCommand => "product_command",
-            CliCommand::ConnectionStatus => "connection_status",
-            CliCommand::ConnectionCancel => "connection_cancel",
-            CliCommand::ConnectionLogin => "connection_login",
-            CliCommand::ConnectionLogout => "connection_logout",
             CliCommand::ProvidersState => "providers_state",
             CliCommand::ProviderCancel => "provider_cancel",
             CliCommand::ProviderConnect => "provider_connect",

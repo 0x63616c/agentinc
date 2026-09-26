@@ -531,36 +531,6 @@
         },
         "type": "object"
       },
-      "ConnectionStatus": {
-        "properties": {
-          "account": {
-            "nullable": true,
-            "type": "string"
-          },
-          "auth_url": {
-            "nullable": true,
-            "type": "string"
-          },
-          "error": {
-            "nullable": true,
-            "type": "string"
-          },
-          "models": {
-            "items": {
-              "$ref": "#/components/schemas/Model"
-            },
-            "type": "array"
-          },
-          "signing_in": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "models",
-          "signing_in"
-        ],
-        "type": "object"
-      },
       "Conversation": {
         "properties": {
           "id": {
@@ -735,21 +705,6 @@
         "required": [
           "allow",
           "deny"
-        ],
-        "type": "object"
-      },
-      "Model": {
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name"
         ],
         "type": "object"
       },
@@ -1413,10 +1368,6 @@
             "format": "int64",
             "type": "integer"
           },
-          "model": {
-            "nullable": true,
-            "type": "string"
-          },
           "prompt": {
             "type": "string"
           },
@@ -1891,168 +1842,6 @@
         "tags": [
           "product"
         ]
-      }
-    },
-    "/v1/connection": {
-      "get": {
-        "operationId": "connection_status",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConnectionStatus"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": []
-      }
-    },
-    "/v1/connection/cancel": {
-      "post": {
-        "operationId": "connection_cancel",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConnectionStatus"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": []
-      }
-    },
-    "/v1/connection/login": {
-      "post": {
-        "operationId": "connection_login",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConnectionStatus"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": []
-      }
-    },
-    "/v1/connection/logout": {
-      "post": {
-        "operationId": "connection_logout",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConnectionStatus"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": []
       }
     },
     "/v1/providers": {

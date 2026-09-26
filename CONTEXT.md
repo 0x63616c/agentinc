@@ -39,6 +39,10 @@ _Avoid_: run, job
 A user's link to an external account or provider that makes its capabilities available in AgentInc.
 _Avoid_: integration, account
 
+**Provider**:
+A source of models AgentInc can talk to: Claude, ChatGPT or OpenRouter. A Connection is the user's link to a Provider.
+_Avoid_: backend, vendor, engine
+
 **Route**:
 A named destination in the AgentInc app's navigation.
 _Avoid_: tab index, screen ID

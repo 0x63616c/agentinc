@@ -2,7 +2,6 @@ pub mod agent_tools;
 pub mod automations;
 mod codex;
 pub mod coding;
-mod connection;
 mod conversation_tools;
 pub mod conversations;
 pub mod execution;
@@ -102,7 +101,6 @@ struct Api;
 pub fn openapi() -> serde_json::Value {
     serde_json::to_value({
         let mut api = Api::openapi();
-        api.merge(connection::openapi());
         api.merge(providers::openapi());
         api
     })
@@ -135,7 +133,7 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
 /// The product API with offline providers: fixtures, examples and round trips
 /// that never touch a profile, Keychain or network.
 pub fn product_router(product: product::Product) -> Router {
-    let dir = std::env::temp_dir().join(format!("ainc-offline-{}", uuid::Uuid::new_v4()));
+    let dir = std::env::temp_dir().join("ainc-offline-providers");
     let providers = providers::Providers::offline(&dir).expect("offline providers");
     product_router_with(product, std::sync::Arc::new(providers))
 }
@@ -146,7 +144,6 @@ pub fn product_router_with(
 ) -> Router {
     router(product.pool.clone())
         .merge(product::router(product.clone()))
-        .merge(connection::router(product.clone(), providers.clone()))
         .merge(providers::router(product.clone(), providers))
         .merge(tickets::router(product.clone()))
         .merge(automations::router(product.clone()))

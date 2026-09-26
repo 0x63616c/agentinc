@@ -1,12 +1,11 @@
 //! Evee's outward-facing tools: HTTP requests under an explicit host policy and
 //! a read-only view of durable runs. Request and response bodies are recorded
 //! as Conversation steps so the user sees exactly what was sent and received.
-use crate::providers::DeltaSink;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::PgPool;
-use std::{net::IpAddr, sync::Arc, time::Duration};
+use std::{net::IpAddr, time::Duration};
 use turnkeel::{RuntimeConfig, Tool, ToolCtx, ToolError};
 
 const TIMEOUT: Duration = Duration::from_secs(20);
@@ -141,11 +140,17 @@ impl Tool for HttpTool {
             let policy = HttpPolicy::load(&this.pool, &this.workspace)
                 .await
                 .map_err(|_| ToolError::Failed("HTTP policy is unavailable.".into()))?;
-            request(&policy, args).await
+            request(&policy, args, false).await
         })
     }
 }
-async fn request(policy: &HttpPolicy, args: HttpArgs) -> Result<Value, ToolError> {
+/// `allow_private` exists only so tests can reach a loopback fixture; the tool
+/// always passes `false`.
+async fn request(
+    policy: &HttpPolicy,
+    args: HttpArgs,
+    allow_private: bool,
+) -> Result<Value, ToolError> {
     let method = reqwest::Method::from_bytes(args.method.to_ascii_uppercase().as_bytes())
         .map_err(|_| ToolError::InvalidArguments("Unsupported HTTP method.".into()))?;
     if !matches!(
@@ -192,7 +197,10 @@ async fn request(policy: &HttpPolicy, args: HttpArgs) -> Result<Value, ToolError
     if addresses.is_empty() {
         return Err(ToolError::Failed(format!("{host} has no addresses.")));
     }
-    if let Some(private) = addresses.iter().find(|a| !is_public(a.ip())) {
+    if let Some(private) = addresses
+        .iter()
+        .find(|a| !allow_private && !is_public(a.ip()))
+    {
         return Err(ToolError::InvalidArguments(format!(
             "{host} resolves to a private address ({}), which agents may not call.",
             private.ip()
@@ -316,7 +324,6 @@ impl Tool for RunsTool {
 pub struct Toolbox {
     pub pool: PgPool,
     pub config: RuntimeConfig,
-    pub sink: Option<DeltaSink>,
 }
 impl Toolbox {
     pub fn http(&self, workspace: &str) -> HttpTool {
@@ -329,13 +336,6 @@ impl Toolbox {
         RunsTool {
             config: self.config.clone(),
         }
-    }
-    pub fn shared(pool: PgPool, config: RuntimeConfig) -> Arc<Self> {
-        Arc::new(Self {
-            pool,
-            config,
-            sink: None,
-        })
     }
 }
 
@@ -373,41 +373,95 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn loopback_requests_are_refused_by_address_and_shape_is_recorded() -> anyhow::Result<()>
-    {
-        let app = Router::new().route(
-            "/ok",
-            get(|| async { ([("content-type", "text/plain")], "hello") }),
-        );
+    async fn requests_are_recorded_capped_and_private_addresses_refused() -> anyhow::Result<()> {
+        use axum::{body::Bytes, http::HeaderMap, routing::post};
+        let app = Router::new()
+            .route(
+                "/ok",
+                get(|| async { ([("content-type", "text/plain")], "hello") }),
+            )
+            .route(
+                "/big",
+                get(|| async { ([("content-type", "text/plain")], "x".repeat(70 * 1024)) }),
+            )
+            .route(
+                "/echo",
+                post(|headers: HeaderMap, body: Bytes| async move {
+                    format!(
+                        "{}|{}",
+                        headers["x-fixture"].to_str().unwrap(),
+                        String::from_utf8_lossy(&body)
+                    )
+                }),
+            );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let policy = HttpPolicy::default();
-        let args = |url: String| HttpArgs {
-            method: "GET".into(),
-            url,
-            headers: Default::default(),
-            body: None,
+        let args = |method: &str, path: &str, body: Option<&str>| HttpArgs {
+            method: method.into(),
+            url: format!("http://{address}/{path}"),
+            headers: serde_json::from_value(json!({"x-fixture": "seen"})).unwrap(),
+            body: body.map(str::to_owned),
         };
-        let refused = request(&policy, args(format!("http://{address}/ok")))
+        let refused = request(&policy, args("GET", "ok", None), false)
             .await
             .unwrap_err();
         assert!(refused.to_string().contains("private address"));
-        let refused = request(&policy, args("ftp://example.test/x".into()))
+        let refused = request(
+            &policy,
+            HttpArgs {
+                method: "GET".into(),
+                url: format!("http://localhost:{}/ok", address.port()),
+                headers: Default::default(),
+                body: None,
+            },
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.to_string().contains("private address"));
+        let ok = request(&policy, args("GET", "ok", None), true).await?;
+        assert_eq!(ok["status"], 200);
+        assert_eq!(ok["body"], "hello");
+        assert_eq!(ok["truncated"], false);
+        assert_eq!(ok["request"]["url"], format!("http://{address}/ok"));
+        let echoed = request(&policy, args("POST", "echo", Some("payload")), true).await?;
+        assert_eq!(echoed["body"], "seen|payload");
+        let big = request(&policy, args("GET", "big", None), true).await?;
+        assert_eq!(big["truncated"], true);
+        assert_eq!(big["body"].as_str().unwrap().len(), MAX_BODY);
+        for url in ["ftp://example.test/x", "http://user:pw@example.test/x"] {
+            let refused = request(
+                &policy,
+                HttpArgs {
+                    method: "GET".into(),
+                    url: url.into(),
+                    headers: Default::default(),
+                    body: None,
+                },
+                true,
+            )
             .await
             .unwrap_err();
-        assert!(matches!(refused, ToolError::InvalidArguments(_)));
-        let refused = request(&policy, args("http://user:pw@example.test/x".into()))
-            .await
-            .unwrap_err();
-        assert!(matches!(refused, ToolError::InvalidArguments(_)));
+            assert!(matches!(refused, ToolError::InvalidArguments(_)));
+        }
         let denied = HttpPolicy {
             allow: vec![],
             deny: vec![],
         };
-        let refused = request(&denied, args("https://example.test/".into()))
-            .await
-            .unwrap_err();
+        let refused = request(
+            &denied,
+            HttpArgs {
+                method: "GET".into(),
+                url: "https://example.test/".into(),
+                headers: Default::default(),
+                body: None,
+            },
+            true,
+        )
+        .await
+        .unwrap_err();
         assert!(refused.to_string().contains("allow list"));
         server.abort();
         Ok(())

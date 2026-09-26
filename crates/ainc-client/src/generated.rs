@@ -963,65 +963,6 @@ pub mod types {
             Default::default()
         }
     }
-    ///`ConnectionStatus`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "models",
-    ///    "signing_in"
-    ///  ],
-    ///  "properties": {
-    ///    "account": {
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
-    ///    "auth_url": {
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
-    ///    "error": {
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
-    ///    "models": {
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/Model"
-    ///      }
-    ///    },
-    ///    "signing_in": {
-    ///      "type": "boolean"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct ConnectionStatus {
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub account: ::std::option::Option<::std::string::String>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub auth_url: ::std::option::Option<::std::string::String>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub error: ::std::option::Option<::std::string::String>,
-        pub models: ::std::vec::Vec<Model>,
-        pub signing_in: bool,
-    }
-    impl ConnectionStatus {
-        pub fn builder() -> builder::ConnectionStatus {
-            Default::default()
-        }
-    }
     ///`Conversation`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1353,38 +1294,6 @@ pub mod types {
     }
     impl HttpPolicy {
         pub fn builder() -> builder::HttpPolicy {
-            Default::default()
-        }
-    }
-    ///`Model`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "id",
-    ///    "name"
-    ///  ],
-    ///  "properties": {
-    ///    "id": {
-    ///      "type": "string"
-    ///    },
-    ///    "name": {
-    ///      "type": "string"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct Model {
-        pub id: ::std::string::String,
-        pub name: ::std::string::String,
-    }
-    impl Model {
-        pub fn builder() -> builder::Model {
             Default::default()
         }
     }
@@ -2606,12 +2515,6 @@ pub mod types {
     ///      "type": "integer",
     ///      "format": "int64"
     ///    },
-    ///    "model": {
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
     ///    "prompt": {
     ///      "type": "string"
     ///    },
@@ -2656,8 +2559,6 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub finished_at: ::std::option::Option<i64>,
         pub id: i64,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub model: ::std::option::Option<::std::string::String>,
         pub prompt: ::std::string::String,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub response: ::std::option::Option<::std::string::String>,
@@ -3736,111 +3637,6 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
-        pub struct ConnectionStatus {
-            account: ::std::result::Result<
-                ::std::option::Option<::std::string::String>,
-                ::std::string::String,
-            >,
-            auth_url: ::std::result::Result<
-                ::std::option::Option<::std::string::String>,
-                ::std::string::String,
-            >,
-            error: ::std::result::Result<
-                ::std::option::Option<::std::string::String>,
-                ::std::string::String,
-            >,
-            models: ::std::result::Result<::std::vec::Vec<super::Model>, ::std::string::String>,
-            signing_in: ::std::result::Result<bool, ::std::string::String>,
-        }
-        impl ::std::default::Default for ConnectionStatus {
-            fn default() -> Self {
-                Self {
-                    account: Ok(Default::default()),
-                    auth_url: Ok(Default::default()),
-                    error: Ok(Default::default()),
-                    models: Err("no value supplied for models".to_string()),
-                    signing_in: Err("no value supplied for signing_in".to_string()),
-                }
-            }
-        }
-        impl ConnectionStatus {
-            pub fn account<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.account = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for account: {e}"));
-                self
-            }
-            pub fn auth_url<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.auth_url = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for auth_url: {e}"));
-                self
-            }
-            pub fn error<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.error = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for error: {e}"));
-                self
-            }
-            pub fn models<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::vec::Vec<super::Model>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.models = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for models: {e}"));
-                self
-            }
-            pub fn signing_in<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<bool>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.signing_in = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for signing_in: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<ConnectionStatus> for super::ConnectionStatus {
-            type Error = super::error::ConversionError;
-            fn try_from(
-                value: ConnectionStatus,
-            ) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    account: value.account?,
-                    auth_url: value.auth_url?,
-                    error: value.error?,
-                    models: value.models?,
-                    signing_in: value.signing_in?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::ConnectionStatus> for ConnectionStatus {
-            fn from(value: super::ConnectionStatus) -> Self {
-                Self {
-                    account: Ok(value.account),
-                    auth_url: Ok(value.auth_url),
-                    error: Ok(value.error),
-                    models: Ok(value.models),
-                    signing_in: Ok(value.signing_in),
-                }
-            }
-        }
-        #[derive(Clone, Debug)]
         pub struct Conversation {
             id: ::std::result::Result<i64, ::std::string::String>,
             snippet: ::std::result::Result<::std::string::String, ::std::string::String>,
@@ -4418,60 +4214,6 @@ pub mod types {
                 Self {
                     allow: Ok(value.allow),
                     deny: Ok(value.deny),
-                }
-            }
-        }
-        #[derive(Clone, Debug)]
-        pub struct Model {
-            id: ::std::result::Result<::std::string::String, ::std::string::String>,
-            name: ::std::result::Result<::std::string::String, ::std::string::String>,
-        }
-        impl ::std::default::Default for Model {
-            fn default() -> Self {
-                Self {
-                    id: Err("no value supplied for id".to_string()),
-                    name: Err("no value supplied for name".to_string()),
-                }
-            }
-        }
-        impl Model {
-            pub fn id<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.id = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for id: {e}"));
-                self
-            }
-            pub fn name<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.name = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for name: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<Model> for super::Model {
-            type Error = super::error::ConversionError;
-            fn try_from(
-                value: Model,
-            ) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    id: value.id?,
-                    name: value.name?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::Model> for Model {
-            fn from(value: super::Model) -> Self {
-                Self {
-                    id: Ok(value.id),
-                    name: Ok(value.name),
                 }
             }
         }
@@ -5767,10 +5509,6 @@ pub mod types {
             >,
             finished_at: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
             id: ::std::result::Result<i64, ::std::string::String>,
-            model: ::std::result::Result<
-                ::std::option::Option<::std::string::String>,
-                ::std::string::String,
-            >,
             prompt: ::std::result::Result<::std::string::String, ::std::string::String>,
             response: ::std::result::Result<
                 ::std::option::Option<::std::string::String>,
@@ -5790,7 +5528,6 @@ pub mod types {
                     error: Ok(Default::default()),
                     finished_at: Ok(Default::default()),
                     id: Err("no value supplied for id".to_string()),
-                    model: Ok(Default::default()),
                     prompt: Err("no value supplied for prompt".to_string()),
                     response: Ok(Default::default()),
                     started_at: Ok(Default::default()),
@@ -5870,16 +5607,6 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for id: {e}"));
                 self
             }
-            pub fn model<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.model = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for model: {e}"));
-                self
-            }
             pub fn prompt<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<::std::string::String>,
@@ -5942,7 +5669,6 @@ pub mod types {
                     error: value.error?,
                     finished_at: value.finished_at?,
                     id: value.id?,
-                    model: value.model?,
                     prompt: value.prompt?,
                     response: value.response?,
                     started_at: value.started_at?,
@@ -5961,7 +5687,6 @@ pub mod types {
                     error: Ok(value.error),
                     finished_at: Ok(value.finished_at),
                     id: Ok(value.id),
-                    model: Ok(value.model),
                     prompt: Ok(value.prompt),
                     response: Ok(value.response),
                     started_at: Ok(value.started_at),
@@ -6572,46 +6297,6 @@ impl Client {
     pub fn product_command(&self) -> builder::ProductCommand<'_> {
         builder::ProductCommand::new(self)
     }
-    /*Sends a `GET` request to `/v1/connection`
-
-    ```ignore
-    let response = client.connection_status()
-        .send()
-        .await;
-    ```*/
-    pub fn connection_status(&self) -> builder::ConnectionStatus<'_> {
-        builder::ConnectionStatus::new(self)
-    }
-    /*Sends a `POST` request to `/v1/connection/cancel`
-
-    ```ignore
-    let response = client.connection_cancel()
-        .send()
-        .await;
-    ```*/
-    pub fn connection_cancel(&self) -> builder::ConnectionCancel<'_> {
-        builder::ConnectionCancel::new(self)
-    }
-    /*Sends a `POST` request to `/v1/connection/login`
-
-    ```ignore
-    let response = client.connection_login()
-        .send()
-        .await;
-    ```*/
-    pub fn connection_login(&self) -> builder::ConnectionLogin<'_> {
-        builder::ConnectionLogin::new(self)
-    }
-    /*Sends a `POST` request to `/v1/connection/logout`
-
-    ```ignore
-    let response = client.connection_logout()
-        .send()
-        .await;
-    ```*/
-    pub fn connection_logout(&self) -> builder::ConnectionLogout<'_> {
-        builder::ConnectionLogout::new(self)
-    }
     /*Sends a `GET` request to `/v1/providers`
 
     Arguments:
@@ -7144,245 +6829,6 @@ pub mod builder {
                 400u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                401u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                409u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                503u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                _ => Err(Error::UnexpectedResponse(response)),
-            }
-        }
-    }
-    /*Builder for [`Client::connection_status`]
-
-    [`Client::connection_status`]: super::Client::connection_status*/
-    #[derive(Debug, Clone)]
-    pub struct ConnectionStatus<'a> {
-        client: &'a super::Client,
-    }
-    impl<'a> ConnectionStatus<'a> {
-        pub fn new(client: &'a super::Client) -> Self {
-            Self { client: client }
-        }
-        ///Sends a `GET` request to `/v1/connection`
-        pub async fn send(
-            self,
-        ) -> Result<ResponseValue<types::ConnectionStatus>, Error<types::ErrorBody>> {
-            let Self { client } = self;
-            let url = format!("{}/v1/connection", client.baseurl,);
-            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-            header_map.append(
-                ::reqwest::header::HeaderName::from_static("api-version"),
-                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
-            );
-            #[allow(unused_mut)]
-            let mut request = client
-                .client
-                .get(url)
-                .header(
-                    ::reqwest::header::ACCEPT,
-                    ::reqwest::header::HeaderValue::from_static("application/json"),
-                )
-                .headers(header_map)
-                .build()?;
-            let info = OperationInfo {
-                operation_id: "connection_status",
-            };
-            match (crate::client_header)(&mut request).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            client.pre(&mut request, &info).await?;
-            let result = client.exec(request, &info).await;
-            client.post(&result, &info).await?;
-            match (crate::server_compatibility)(&result).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            let response = result?;
-            match response.status().as_u16() {
-                200u16 => ResponseValue::from_response(response).await,
-                401u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                503u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                _ => Err(Error::UnexpectedResponse(response)),
-            }
-        }
-    }
-    /*Builder for [`Client::connection_cancel`]
-
-    [`Client::connection_cancel`]: super::Client::connection_cancel*/
-    #[derive(Debug, Clone)]
-    pub struct ConnectionCancel<'a> {
-        client: &'a super::Client,
-    }
-    impl<'a> ConnectionCancel<'a> {
-        pub fn new(client: &'a super::Client) -> Self {
-            Self { client: client }
-        }
-        ///Sends a `POST` request to `/v1/connection/cancel`
-        pub async fn send(
-            self,
-        ) -> Result<ResponseValue<types::ConnectionStatus>, Error<types::ErrorBody>> {
-            let Self { client } = self;
-            let url = format!("{}/v1/connection/cancel", client.baseurl,);
-            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-            header_map.append(
-                ::reqwest::header::HeaderName::from_static("api-version"),
-                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
-            );
-            #[allow(unused_mut)]
-            let mut request = client
-                .client
-                .post(url)
-                .header(
-                    ::reqwest::header::ACCEPT,
-                    ::reqwest::header::HeaderValue::from_static("application/json"),
-                )
-                .headers(header_map)
-                .build()?;
-            let info = OperationInfo {
-                operation_id: "connection_cancel",
-            };
-            match (crate::client_header)(&mut request).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            client.pre(&mut request, &info).await?;
-            let result = client.exec(request, &info).await;
-            client.post(&result, &info).await?;
-            match (crate::server_compatibility)(&result).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            let response = result?;
-            match response.status().as_u16() {
-                200u16 => ResponseValue::from_response(response).await,
-                401u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                503u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                _ => Err(Error::UnexpectedResponse(response)),
-            }
-        }
-    }
-    /*Builder for [`Client::connection_login`]
-
-    [`Client::connection_login`]: super::Client::connection_login*/
-    #[derive(Debug, Clone)]
-    pub struct ConnectionLogin<'a> {
-        client: &'a super::Client,
-    }
-    impl<'a> ConnectionLogin<'a> {
-        pub fn new(client: &'a super::Client) -> Self {
-            Self { client: client }
-        }
-        ///Sends a `POST` request to `/v1/connection/login`
-        pub async fn send(
-            self,
-        ) -> Result<ResponseValue<types::ConnectionStatus>, Error<types::ErrorBody>> {
-            let Self { client } = self;
-            let url = format!("{}/v1/connection/login", client.baseurl,);
-            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-            header_map.append(
-                ::reqwest::header::HeaderName::from_static("api-version"),
-                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
-            );
-            #[allow(unused_mut)]
-            let mut request = client
-                .client
-                .post(url)
-                .header(
-                    ::reqwest::header::ACCEPT,
-                    ::reqwest::header::HeaderValue::from_static("application/json"),
-                )
-                .headers(header_map)
-                .build()?;
-            let info = OperationInfo {
-                operation_id: "connection_login",
-            };
-            match (crate::client_header)(&mut request).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            client.pre(&mut request, &info).await?;
-            let result = client.exec(request, &info).await;
-            client.post(&result, &info).await?;
-            match (crate::server_compatibility)(&result).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            let response = result?;
-            match response.status().as_u16() {
-                200u16 => ResponseValue::from_response(response).await,
-                401u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                503u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                _ => Err(Error::UnexpectedResponse(response)),
-            }
-        }
-    }
-    /*Builder for [`Client::connection_logout`]
-
-    [`Client::connection_logout`]: super::Client::connection_logout*/
-    #[derive(Debug, Clone)]
-    pub struct ConnectionLogout<'a> {
-        client: &'a super::Client,
-    }
-    impl<'a> ConnectionLogout<'a> {
-        pub fn new(client: &'a super::Client) -> Self {
-            Self { client: client }
-        }
-        ///Sends a `POST` request to `/v1/connection/logout`
-        pub async fn send(
-            self,
-        ) -> Result<ResponseValue<types::ConnectionStatus>, Error<types::ErrorBody>> {
-            let Self { client } = self;
-            let url = format!("{}/v1/connection/logout", client.baseurl,);
-            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-            header_map.append(
-                ::reqwest::header::HeaderName::from_static("api-version"),
-                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
-            );
-            #[allow(unused_mut)]
-            let mut request = client
-                .client
-                .post(url)
-                .header(
-                    ::reqwest::header::ACCEPT,
-                    ::reqwest::header::HeaderValue::from_static("application/json"),
-                )
-                .headers(header_map)
-                .build()?;
-            let info = OperationInfo {
-                operation_id: "connection_logout",
-            };
-            match (crate::client_header)(&mut request).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            client.pre(&mut request, &info).await?;
-            let result = client.exec(request, &info).await;
-            client.post(&result, &info).await?;
-            match (crate::server_compatibility)(&result).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            let response = result?;
-            match response.status().as_u16() {
-                200u16 => ResponseValue::from_response(response).await,
                 401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),

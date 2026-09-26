@@ -61,7 +61,8 @@ ChatGPT Connection. `Providers` implements `execution::ModelCatalog`, and
   (`reply` plus `tool_calls`). Turnkeel still executes every tool call. Status comes
   from `claude auth status`; sign-in spawns `claude auth login`, opens the browser
   link and forwards the pasted code. The daemon never reads or copies Anthropic
-  credentials.
+  credentials. Verified against Claude Code 2.1.283; the CLI's flags are not a
+  stable contract, so a usage error is reported as a permanent step failure.
 - **ChatGPT** (`inference.rs`, `codex.rs`) is the existing Codex Responses adapter,
   now with `response.output_text.delta` streaming.
 - **OpenRouter** (`providers/openrouter.rs`) speaks OpenAI-style chat completions with

@@ -8,7 +8,7 @@ pub(crate) mod sse;
 
 use crate::{
     codex,
-    execution::ModelCatalog,
+    execution::{DeltaSink, ModelCatalog},
     inference::CodexModels,
     product::{ApiError, ErrorBody, Product},
 };
@@ -30,27 +30,25 @@ use std::{
 use turnkeel::{Message, Model, ModelError, ModelRequest};
 use utoipa::ToSchema;
 
-/// Receives reply text as it streams from a provider.
-pub type DeltaSink = Arc<dyn Fn(&str) + Send + Sync>;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderId {
     Claude,
     Codex,
-    Openrouter,
+    #[serde(rename = "openrouter")]
+    OpenRouter,
 }
 impl ProviderId {
     pub const ALL: [ProviderId; 3] = [
         ProviderId::Claude,
         ProviderId::Codex,
-        ProviderId::Openrouter,
+        ProviderId::OpenRouter,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
             ProviderId::Claude => "claude",
             ProviderId::Codex => "codex",
-            ProviderId::Openrouter => "openrouter",
+            ProviderId::OpenRouter => "openrouter",
         }
     }
     pub fn parse(value: &str) -> Option<Self> {
@@ -60,7 +58,7 @@ impl ProviderId {
         match self {
             ProviderId::Claude => "Claude",
             ProviderId::Codex => "ChatGPT",
-            ProviderId::Openrouter => "OpenRouter",
+            ProviderId::OpenRouter => "OpenRouter",
         }
     }
 }
@@ -130,12 +128,20 @@ pub struct ProvidersState {
     pub providers: Vec<ProviderStatus>,
     pub default_model: Option<String>,
 }
-#[derive(Clone, Debug, Default, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct ConnectRequest {
     #[serde(default)]
     pub api_key: Option<String>,
     #[serde(default)]
     pub code: Option<String>,
+}
+impl std::fmt::Debug for ConnectRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectRequest")
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("code", &self.code.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize, ToSchema)]
 pub struct TestRequest {
@@ -228,11 +234,20 @@ impl Providers {
         Ok(match selected.provider {
             ProviderId::Claude => Arc::new(self.claude.model(&selected.model, sink)?),
             ProviderId::Codex => self.codex.resolve_with(&selected.model, sink)?,
-            ProviderId::Openrouter => Arc::new(self.openrouter.model(&selected.model, sink)?),
+            ProviderId::OpenRouter => Arc::new(self.openrouter.model(&selected.model, sink)?),
         })
     }
 
     async fn status(&self, id: ProviderId, refresh: bool) -> ProviderStatus {
+        if refresh {
+            // A refresh clears the last sign-in failure unless one is in progress.
+            for signin in [&self.claude_signin, &self.codex_signin] {
+                let mut signin = signin.lock().expect("sign-in");
+                if !signin.signing_in {
+                    signin.error = None;
+                }
+            }
+        }
         if !refresh
             && let Some((at, status)) = self.cache.lock().expect("status cache").get(&id)
             && at.elapsed() < STATUS_TTL
@@ -242,7 +257,7 @@ impl Providers {
         let status = match id {
             ProviderId::Claude => self.claude_status().await,
             ProviderId::Codex => self.codex_status().await,
-            ProviderId::Openrouter => self.openrouter_status(refresh).await,
+            ProviderId::OpenRouter => self.openrouter_status(refresh).await,
         };
         self.cache
             .lock()
@@ -258,7 +273,7 @@ impl Providers {
         let signin = match status.id {
             ProviderId::Claude => Some(self.claude_signin.lock().expect("sign-in").clone()),
             ProviderId::Codex => Some(self.codex_signin.lock().expect("sign-in").clone()),
-            ProviderId::Openrouter => None,
+            ProviderId::OpenRouter => None,
         };
         if let Some(signin) = signin {
             status.signing_in = signin.signing_in;
@@ -280,8 +295,8 @@ impl Providers {
                 "Your ChatGPT subscription through Codex's sign-in.",
                 ConnectMethod::Browser,
             ),
-            ProviderId::Openrouter => (
-                "Hundreds of models with one API key, including Jev.",
+            ProviderId::OpenRouter => (
+                "Hundreds of models with one API key. Jev is the cheap, capable default.",
                 ConnectMethod::ApiKey,
             ),
         };
@@ -336,11 +351,10 @@ impl Providers {
                     ProviderId::Codex,
                     models
                         .into_iter()
-                        .enumerate()
-                        .map(|(index, model)| ProviderModel {
+                        .map(|model| ProviderModel {
                             id: model.id,
                             name: model.name,
-                            featured: index == 0,
+                            featured: false,
                         })
                         .collect(),
                 );
@@ -351,7 +365,7 @@ impl Providers {
         status
     }
     async fn openrouter_status(&self, refresh: bool) -> ProviderStatus {
-        let mut status = Self::blank(ProviderId::Openrouter);
+        let mut status = Self::blank(ProviderId::OpenRouter);
         let cached = self
             .openrouter_models
             .lock()
@@ -377,7 +391,7 @@ impl Providers {
                     .collect(),
             },
         };
-        status.models = Self::canonical(ProviderId::Openrouter, models);
+        status.models = Self::canonical(ProviderId::OpenRouter, models);
         match self.openrouter.key() {
             Ok(Some(_)) => {
                 if refresh {
@@ -410,12 +424,20 @@ impl Providers {
         request: ConnectRequest,
     ) -> Result<(), ApiError> {
         match id {
-            ProviderId::Openrouter => {
+            ProviderId::OpenRouter => {
                 let key = request.api_key.unwrap_or_default();
                 self.openrouter.store_key(&key).map_err(|error| {
                     ApiError::new(StatusCode::BAD_REQUEST, "invalid", &error.to_string())
                 })?;
                 if let Err(error) = self.openrouter.account().await {
+                    // Only a refused key is discarded; an unreachable service keeps it.
+                    if error.downcast_ref::<openrouter::Rejected>().is_none() {
+                        return Err(ApiError::new(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "unavailable",
+                            &error.to_string(),
+                        ));
+                    }
                     let _ = self.openrouter.forget_key();
                     return Err(ApiError::new(
                         StatusCode::BAD_REQUEST,
@@ -463,6 +485,12 @@ impl Providers {
                     .await;
                 match result {
                     Ok(login) => {
+                        // Cancelled while the CLI was starting: drop the child instead.
+                        let still_wanted = self.claude_signin.lock().expect("sign-in").signing_in;
+                        if !still_wanted {
+                            login.cancel().await;
+                            return Ok(());
+                        }
                         *self.claude_login.lock().await = Some(login);
                         self.claude_signin.lock().expect("sign-in").awaiting_code = true;
                     }
@@ -516,12 +544,12 @@ impl Providers {
                 }
                 *self.claude_signin.lock().expect("sign-in") = SignIn::default();
             }
-            ProviderId::Openrouter => {}
+            ProviderId::OpenRouter => {}
         }
     }
     async fn disconnect(&self, id: ProviderId, pool: &sqlx::PgPool) -> Result<(), ApiError> {
         match id {
-            ProviderId::Openrouter => self.openrouter.forget_key().map_err(|error| {
+            ProviderId::OpenRouter => self.openrouter.forget_key().map_err(|error| {
                 ApiError::new(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "unavailable",
@@ -607,38 +635,6 @@ impl Providers {
                 error: Some(error.message),
             },
         }
-    }
-    /// Legacy `/v1/connection` view of the ChatGPT provider.
-    pub(crate) async fn codex_connection(
-        &self,
-        refresh: bool,
-    ) -> crate::connection::ConnectionStatus {
-        let status = self.status(ProviderId::Codex, refresh).await;
-        crate::connection::ConnectionStatus {
-            account: status.account,
-            models: status
-                .models
-                .into_iter()
-                .map(|model| codex::Model {
-                    id: ModelRef::parse(&model.id).model,
-                    name: model.name,
-                })
-                .collect(),
-            signing_in: status.signing_in,
-            auth_url: status.auth_url,
-            error: status.error,
-        }
-    }
-    pub(crate) async fn codex_connect(self: &Arc<Self>) {
-        let _ = self
-            .connect(ProviderId::Codex, ConnectRequest::default())
-            .await;
-    }
-    pub(crate) async fn codex_cancel(&self) {
-        self.cancel(ProviderId::Codex).await;
-    }
-    pub(crate) async fn codex_disconnect(&self, pool: &sqlx::PgPool) -> Result<(), ApiError> {
-        self.disconnect(ProviderId::Codex, pool).await
     }
 }
 impl ModelCatalog for Providers {
@@ -797,7 +793,7 @@ mod tests {
     #[test]
     fn model_references_are_namespaced_with_legacy_fallback() {
         let jev = ModelRef::parse("openrouter:typesafe/jev-router");
-        assert_eq!(jev.provider, ProviderId::Openrouter);
+        assert_eq!(jev.provider, ProviderId::OpenRouter);
         assert_eq!(jev.model, "typesafe/jev-router");
         assert_eq!(jev.canonical(), "openrouter:typesafe/jev-router");
         assert_eq!(
@@ -817,7 +813,7 @@ mod tests {
     async fn offline_providers_report_disconnected_and_refuse_work_safely() {
         let dir = tempfile::tempdir().unwrap();
         let providers = Arc::new(Providers::offline(dir.path()).unwrap());
-        let openrouter = providers.status(ProviderId::Openrouter, false).await;
+        let openrouter = providers.status(ProviderId::OpenRouter, false).await;
         assert!(!openrouter.connected);
         assert!(
             openrouter

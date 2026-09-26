@@ -1,6 +1,7 @@
 //! OpenRouter chat completions. The API key lives in the Keychain and is read
 //! for each request; it never appears in agent definitions, records or errors.
-use super::{DeltaSink, ProviderModel, secrets::SecretStore, sse::SseReader};
+use super::{ProviderModel, secrets::SecretStore, sse::SseReader};
+use crate::execution::DeltaSink;
 use futures::{StreamExt, future::BoxFuture};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -36,6 +37,15 @@ pub struct OpenRouter {
 pub struct Account {
     pub label: String,
 }
+/// The key itself was refused, as opposed to the service being unreachable.
+#[derive(Debug)]
+pub struct Rejected;
+impl std::fmt::Display for Rejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("OpenRouter rejected the API key.")
+    }
+}
+impl std::error::Error for Rejected {}
 impl OpenRouter {
     pub fn new(secrets: Arc<dyn SecretStore>) -> Result<Self, ModelError> {
         Self::with_endpoint(ENDPOINT, secrets)
@@ -82,8 +92,11 @@ impl OpenRouter {
             .send()
             .await
             .map_err(|_| anyhow::anyhow!("OpenRouter is unreachable."))?;
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            anyhow::bail!("OpenRouter rejected the API key.");
+        if matches!(
+            response.status(),
+            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+        ) {
+            return Err(Rejected.into());
         }
         if !response.status().is_success() {
             anyhow::bail!("OpenRouter returned {}.", response.status());
@@ -204,7 +217,6 @@ impl OpenRouterModel {
             .http
             .post(format!("{}/chat/completions", self.provider.endpoint))
             .bearer_auth(key)
-            .header("HTTP-Referer", "https://agentinc.app")
             .header("X-Title", "AgentInc")
             .header("accept", "text/event-stream")
             .json(&request_body(&self.model, request)?)

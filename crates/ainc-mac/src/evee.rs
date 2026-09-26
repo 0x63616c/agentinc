@@ -469,7 +469,7 @@ impl AssistantPage {
             .child(settings_divider())
             .child(settings_row(
                 "Model",
-                "Used for new replies. Jev on OpenRouter is the inexpensive default for everyday work.",
+                "Used for new replies. The composer can switch models per conversation.",
                 self.model_menu(true, cx),
             ))
             .child(settings_divider())
@@ -717,12 +717,14 @@ impl AssistantPage {
             )
             .w_full()
             .justify_between()
-            .child("⌄")
+            .child(icon("chevronDown", 12.).text_color(rgb(MUTED)))
         } else {
             self.action("model-select", &label, enabled, Self::toggle_model_menu, cx)
+                .h(px(32.))
+                .gap(px(6.))
                 .border_1()
                 .border_color(rgb(BORDER))
-                .child("⌄")
+                .child(icon("chevronDown", 12.).text_color(rgb(MUTED)))
         };
         let menu_open = self.model_menu_open;
         column()
@@ -735,7 +737,7 @@ impl AssistantPage {
                     .id("model-menu")
                     .debug_selector(|| "model-menu".into())
                     .absolute()
-                    .when(settings, |menu| menu.right(px(0.)).top(px(36.)))
+                    .when(settings, |menu| menu.right(px(0.)).bottom(px(36.)))
                     .when(!settings, |menu| menu.left(px(0.)).bottom(px(34.)))
                     .w(px(300.))
                     .max_h(px(340.))
@@ -1350,7 +1352,7 @@ impl AssistantPage {
     pub fn fixture_palette(&mut self, cx: &mut Context<Self>) {
         self.fixture_chat(true, cx);
         self.input.update(cx, |input, cx| input.set_text("/ti", cx));
-        self.palette_index = 1;
+        self.palette_index = 0;
         cx.notify();
     }
     #[cfg(test)]
@@ -1413,7 +1415,7 @@ impl AssistantPage {
                 provider(
                     ProviderId::Openrouter,
                     "OpenRouter",
-                    "Hundreds of models with one API key, including Jev.",
+                    "Hundreds of models with one API key. Jev is the cheap, capable default.",
                     ConnectMethod::ApiKey,
                     false,
                     None,
@@ -1841,7 +1843,6 @@ fn fixture_turn(
         created_at: 1_790_249_400,
         draft: None,
         finished_at: (state == "completed").then_some(1_790_249_460),
-        model: Some("codex:model-one".into()),
         started_at: Some(1_790_249_401),
         steps,
     }
@@ -1893,12 +1894,16 @@ fn result_summary(name: &str, result: &TurnStep) -> String {
     {
         return format!("{status} · {ms} ms");
     }
-    let size = content.to_string().len();
-    if size > 1024 {
-        format!("{} KB", size / 1024)
-    } else {
-        format!("{size} B")
+    if let Some(tickets) = content["tickets"].as_array() {
+        return match tickets.len() {
+            1 => "1 Ticket".into(),
+            n => format!("{n} Tickets"),
+        };
     }
+    if let Some(runs) = content["runs"].as_array() {
+        return format!("{} runs", runs.len());
+    }
+    "done".into()
 }
 fn pretty(value: &serde_json::Value) -> String {
     let text = match value {
@@ -1972,12 +1977,10 @@ impl AssistantPage {
     }
     fn user_bubble(&self, turn: &Turn) -> Div {
         column()
+            .items_end()
             .gap(px(5.))
-            .p(px(12.))
             .ml_auto()
             .max_w(px(620.))
-            .rounded(px(10.))
-            .bg(rgb(HOVER))
             .child(
                 div()
                     .text_size(type_size(10.))
@@ -1987,19 +1990,37 @@ impl AssistantPage {
             .child(match &turn.command {
                 Some(command) => self.command_chip(command),
                 None => div()
+                    .p(px(12.))
+                    .rounded(px(10.))
+                    .bg(rgb(HOVER))
                     .text_size(type_size(LABEL_SIZE))
                     .child(turn.prompt.clone()),
             })
+    }
+    fn status_dot(&self, color: u32, running: bool, window: &mut Window) -> Div {
+        let mut dot = div()
+            .size(px(7.))
+            .flex_shrink_0()
+            .rounded_full()
+            .bg(rgb(color));
+        if running && !reduced_motion() {
+            window.request_animation_frame();
+            let phase = (self.loading_started.elapsed().as_secs_f32() * 3.).sin();
+            dot = dot.opacity(0.45 + 0.55 * (phase + 1.) * 0.5);
+        }
+        dot
     }
     fn tool_card(
         &self,
         step: &TurnStep,
         result: Option<&TurnStep>,
         running: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
         let name = step.content["name"].as_str().unwrap_or("tool").to_owned();
-        let summary = tool_summary(&name, &step.content["input"]);
+        let input = step.content["input"].clone();
+        let summary = tool_summary(&name, &input);
         let (status, color) = match result {
             Some(result) if result.content["is_error"] == true => ("Failed", ERROR),
             Some(_) => ("Done", STATUS_GREEN),
@@ -2008,6 +2029,7 @@ impl AssistantPage {
         };
         let expanded = self.expanded_steps.contains(&step.id);
         let id = step.id;
+        let empty_input = input.as_object().is_some_and(|map| map.is_empty()) || input.is_null();
         column()
             .w_full()
             .rounded(px(10.))
@@ -2017,22 +2039,17 @@ impl AssistantPage {
             .overflow_hidden()
             .child(
                 row()
-                    .px(px(12.))
-                    .py(px(8.))
+                    .pl(px(12.))
+                    .pr(px(6.))
+                    .py(px(6.))
                     .gap(px(10.))
                     .items_center()
-                    .child(
-                        div()
-                            .size(px(7.))
-                            .flex_shrink_0()
-                            .rounded_full()
-                            .bg(rgb(color)),
-                    )
+                    .child(self.status_dot(color, running && result.is_none(), window))
                     .child(
                         div()
                             .font_family("SF Mono")
                             .text_size(type_size(CAPTION_SIZE))
-                            .text_color(rgb(TEXT_ACCENT))
+                            .text_color(rgb(TEXT))
                             .child(name.clone()),
                     )
                     .child(
@@ -2044,7 +2061,7 @@ impl AssistantPage {
                             .text_color(rgb(MUTED))
                             .child(match result {
                                 Some(result) if !summary.is_empty() => {
-                                    format!("{summary} → {}", result_summary(&name, result))
+                                    format!("{summary} · {}", result_summary(&name, result))
                                 }
                                 Some(result) => result_summary(&name, result),
                                 None => summary,
@@ -2053,7 +2070,7 @@ impl AssistantPage {
                     .child(
                         div()
                             .text_size(type_size(CAPTION_SIZE))
-                            .text_color(rgb(color))
+                            .text_color(rgb(MUTED))
                             .child(status),
                     )
                     .child(
@@ -2064,6 +2081,7 @@ impl AssistantPage {
                             move |this, cx| this.toggle_step(id, cx),
                             cx,
                         )
+                        .min_w(px(64.))
                         .debug_selector(move || format!("step-toggle-{id}")),
                     ),
             )
@@ -2076,12 +2094,15 @@ impl AssistantPage {
                         .py(px(10.))
                         .gap(px(8.))
                         .child(
-                            div()
+                            row()
+                                .gap(px(8.))
+                                .items_center()
                                 .text_size(type_size(CAPTION_SIZE))
                                 .text_color(rgb(MUTED))
-                                .child("Request"),
+                                .child("Request")
+                                .when(empty_input, |label| label.child("· no arguments")),
                         )
-                        .child(code_panel(pretty(&step.content["input"])))
+                        .when(!empty_input, |card| card.child(code_panel(pretty(&input))))
                         .when_some(result, |card, result| {
                             card.child(
                                 div()
@@ -2115,7 +2136,7 @@ impl AssistantPage {
                     let result = steps[index + 1..]
                         .iter()
                         .find(|s| s.kind == "tool_result" && s.content["tool_use_id"] == call);
-                    reply = reply.child(self.tool_card(step, result, running, cx));
+                    reply = reply.child(self.tool_card(step, result, running, window, cx));
                 }
                 _ => {}
             }
@@ -2127,7 +2148,9 @@ impl AssistantPage {
         }
         if running {
             if let Some(draft) = turn.draft.as_deref().filter(|d| !d.trim().is_empty()) {
-                reply = reply.child(markdown::render(&format!("{draft}▍")));
+                reply = reply
+                    .child(markdown::render(draft))
+                    .child(LoadingFrame::new(self.loading_started, window).inline(""));
             } else {
                 reply = reply.child(
                     LoadingFrame::new(self.loading_started, window).inline(activity_label(turn)),
@@ -2146,6 +2169,7 @@ impl AssistantPage {
                         },
                         cx,
                     )
+                    .ml(px(-COMPACT_CONTROL_INSET_X))
                     .text_size(type_size(CAPTION_SIZE))
                     .text_color(rgb(MUTED)),
                 ),
@@ -2161,11 +2185,9 @@ impl AssistantPage {
         column()
             .debug_selector(|| "slash-palette".into())
             .gap(px(2.))
-            .p(px(4.))
-            .rounded(px(8.))
-            .border_1()
-            .border_color(rgb(BORDER_OVERLAY))
-            .bg(rgb(SURFACE_MENU))
+            .pb(px(8.))
+            .border_b_1()
+            .border_color(rgb(BORDER))
             .children(items.iter().enumerate().map(|(index, command)| {
                 let selected = index == self.palette_index.min(items.len() - 1);
                 let label = match command.argument {
@@ -2189,14 +2211,16 @@ impl AssistantPage {
                 .px(px(10.))
                 .py(px(7.))
                 .rounded(px(6.))
-                .bg(rgb(if selected { SELECTED } else { SURFACE_MENU }))
+                .bg(rgb(if selected { SELECTED } else { SURFACE_COMPOSER }))
                 .child(
                     row()
                         .w_full()
-                        .gap(px(10.))
+                        .gap(px(12.))
                         .items_center()
                         .child(
                             div()
+                                .w(px(150.))
+                                .flex_shrink_0()
                                 .font_family("SF Mono")
                                 .text_size(type_size(LABEL_SIZE))
                                 .text_color(rgb(TEXT))
@@ -2214,6 +2238,23 @@ impl AssistantPage {
                         .when(selected, |item| item.child(shortcut_badge("⏎"))),
                 )
             }))
+    }
+    fn suggestion_chip(&self, command: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
+        self.action(
+            ElementId::Name(format!("suggest-{command}").into()),
+            command,
+            true,
+            move |this, cx| {
+                this.input
+                    .update(cx, |input, cx| input.set_text(&format!("{command} "), cx));
+                cx.notify();
+            },
+            cx,
+        )
+        .font_family("SF Mono")
+        .border_1()
+        .border_color(rgb(BORDER))
+        .rounded_full()
     }
 }
 
@@ -2261,6 +2302,9 @@ impl Render for AssistantPage {
                         row()
                             .gap(px(8.))
                             .items_center()
+                            .pb(px(12.))
+                            .border_b_1()
+                            .border_color(rgb(BORDER_SUBTLE))
                             .text_size(type_size(CAPTION_SIZE))
                             .text_color(rgb(MUTED))
                             .child(
@@ -2274,21 +2318,34 @@ impl Render for AssistantPage {
                                 .debug_selector(|| "back-to-conversations".into()),
                             )
                             .child(
-                                div().flex_1().min_w_0().truncate().child(
-                                    self.conversations
-                                        .iter()
-                                        .find(|c| Some(c.id) == self.conversation)
-                                        .map(|c| c.title.clone())
-                                        .unwrap_or("New conversation".into()),
-                                ),
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_size(type_size(BODY_SIZE))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(TEXT))
+                                    .child(
+                                        self.conversations
+                                            .iter()
+                                            .find(|c| Some(c.id) == self.conversation)
+                                            .map(|c| c.title.clone())
+                                            .unwrap_or("New conversation".into()),
+                                    ),
                             )
-                            .child(self.action(
-                                "panel-new",
-                                "+",
-                                self.active.is_none() && !self.pending,
-                                Self::new_conversation,
-                                cx,
-                            )),
+                            .child(
+                                self.action_window(
+                                    "panel-new",
+                                    "",
+                                    Some("New conversation"),
+                                    self.active.is_none() && !self.pending,
+                                    |this, _, cx| this.new_conversation(cx),
+                                    cx,
+                                )
+                                .size(px(28.))
+                                .p(px(0.))
+                                .child(icon("plus", 14.).text_color(rgb(TEXT))),
+                            ),
                     )
                     .when(self.account.is_none() && !self.credentials_busy, |s| {
                         s.child(
@@ -2347,17 +2404,26 @@ impl Render for AssistantPage {
                             .when(turns.is_empty() && !self.help_open, |s| {
                                 s.child(
                                     column()
-                                        .py(px(16.))
-                                        .gap(px(6.))
-                                        .text_size(type_size(LABEL_SIZE))
-                                        .text_color(rgb(MUTED))
+                                        .debug_selector(|| "empty-conversation".into())
+                                        .flex_1()
+                                        .min_h(px(240.))
+                                        .justify_center()
+                                        .items_center()
+                                        .gap(px(14.))
                                         .child(
                                             div()
-                                                .text_size(type_size(BODY_SIZE))
+                                                .text_size(type_size(DIALOG_TITLE_SIZE + 2.))
+                                                .font_weight(FontWeight::SEMIBOLD)
                                                 .text_color(rgb(TEXT))
                                                 .child("What are we working on?"),
                                         )
-                                        .child("Ask anything, or type / for commands like /tickets, /runs and /http."),
+                                        .child(
+                                            row()
+                                                .gap(px(8.))
+                                                .child(self.suggestion_chip("/tickets", cx))
+                                                .child(self.suggestion_chip("/runs", cx))
+                                                .child(self.suggestion_chip("/http", cx)),
+                                        ),
                                 )
                             })
                             .children(turns.iter().map(|turn| {
@@ -2502,10 +2568,16 @@ impl Render for AssistantPage {
                                             |this, _, cx| this.send(cx),
                                             cx,
                                         )
-                                        .size(px(30.))
+                                        .size(px(32.))
                                         .p(px(0.))
-                                        .bg(rgb(HOVER_SEND))
-                                        .child(icon("send", 16.).text_color(rgb(TEXT))),
+                                        .bg(rgb(if send_enabled { PRIMARY } else { HOVER_SEND }))
+                                        .child(
+                                            icon("send", 16.).text_color(rgb(if send_enabled {
+                                                TEXT_ON_PRIMARY
+                                            } else {
+                                                TEXT
+                                            })),
+                                        ),
                                     ),
                             ),
                     ),

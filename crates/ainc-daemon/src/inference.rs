@@ -1,6 +1,6 @@
 //! Personal subscription model steps. OAuth remains owned by the official Codex
 //! sign-in client; the Responses request and agent loop are ours.
-use crate::providers::{DeltaSink, sse::SseReader};
+use crate::{execution::DeltaSink, providers::sse::SseReader};
 use futures::{StreamExt, future::BoxFuture};
 use serde::Deserialize;
 use serde_json::{Value, json};

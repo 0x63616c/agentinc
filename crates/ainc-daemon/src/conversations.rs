@@ -1,5 +1,8 @@
 //! Durable SDK sessions with a Postgres message outbox and event projection.
-use crate::{agent_tools, execution::ModelCatalog, providers::DeltaSink};
+use crate::{
+    agent_tools,
+    execution::{DeltaSink, ModelCatalog},
+};
 use anyhow::Result;
 use futures::{StreamExt, future::BoxFuture};
 use sqlx::{FromRow, PgPool, postgres::PgListener};
@@ -54,9 +57,8 @@ impl StoredSession {
         let toolbox = agent_tools::Toolbox {
             pool: pool.clone(),
             config: config.clone(),
-            sink: None,
         };
-        Ok(Agent::builder(format!("conversation-{}-v2", self.id))
+        Ok(Agent::builder(format!("conversation-{}-v1", self.id))
             .model(SharedModel(model))
             .instructions(INSTRUCTIONS)
             .tool(crate::conversation_tools::TicketsTool {
@@ -257,51 +259,65 @@ async fn prepare(pool: &PgPool, id: i64) -> Result<(StoredSession, String, i64)>
         session = Some(new);
     }
     let session = session.expect("existing or newly inserted session");
-    sqlx::query("UPDATE turns SET state='running',session_id=$2,started_at=COALESCE(started_at,extract(epoch FROM now())::bigint) WHERE id=$1 AND state IN ('queued','running')").bind(id).bind(&session.id).execute(&mut *tx).await?;
+    sqlx::query("UPDATE turns SET state='running',session_id=$2,draft=NULL,started_at=COALESCE(started_at,extract(epoch FROM now())::bigint) WHERE id=$1 AND state IN ('queued','running')").bind(id).bind(&session.id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok((session, prompt, attempt))
 }
 
-/// Reply text streams into `turns.draft` until its step is recorded. A late
-/// flush after that step is a no-op because the text step count moved on.
+/// Reply text streams into `turns.draft` until its step is recorded. Deltas
+/// carry the text-step generation they belong to, so a flush that lands after
+/// that step was recorded is a no-op.
 struct Draft {
     sink: DeltaSink,
     flusher: tokio::task::JoinHandle<()>,
     generation: Arc<AtomicI64>,
 }
+async fn flush_draft(pool: &PgPool, id: i64, attempt: i64, generation: i64, text: &str) -> u64 {
+    sqlx::query("UPDATE turns SET draft=COALESCE(draft,'')||$2 WHERE id=$1 AND state='running' AND attempt=$3 AND (SELECT count(*) FROM turn_steps WHERE turn_id=$1 AND attempt=$3 AND kind='text')=$4")
+        .bind(id)
+        .bind(text)
+        .bind(attempt)
+        .bind(generation)
+        .execute(pool)
+        .await
+        .map(|done| done.rows_affected())
+        .unwrap_or(0)
+}
 fn draft(pool: PgPool, id: i64, attempt: i64) -> Draft {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(i64, String)>();
     let generation = Arc::new(AtomicI64::new(0));
-    let seen = generation.clone();
+    let stamp = generation.clone();
     let flusher = tokio::spawn(async move {
-        let mut buffer = String::new();
         let mut tick = tokio::time::interval(Duration::from_millis(120));
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let mut open = true;
-        while open {
-            tokio::select! {
-                delta = rx.recv() => match delta {
-                    Some(delta) => buffer.push_str(&delta),
-                    None => open = false,
-                },
-                _ = tick.tick() => {}
+        loop {
+            tick.tick().await;
+            let mut batches: Vec<(i64, String)> = Vec::new();
+            let mut open = true;
+            loop {
+                match rx.try_recv() {
+                    Ok((generation, delta)) => match batches.last_mut() {
+                        Some((last, text)) if *last == generation => text.push_str(&delta),
+                        _ => batches.push((generation, delta)),
+                    },
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                        open = false;
+                        break;
+                    }
+                }
             }
-            if buffer.is_empty() {
-                continue;
+            for (generation, text) in batches {
+                flush_draft(&pool, id, attempt, generation, &text).await;
             }
-            let text = std::mem::take(&mut buffer);
-            let _ = sqlx::query("UPDATE turns SET draft=COALESCE(draft,'')||$2 WHERE id=$1 AND state='running' AND attempt=$3 AND (SELECT count(*) FROM turn_steps WHERE turn_id=$1 AND attempt=$3 AND kind='text')=$4")
-                .bind(id)
-                .bind(&text)
-                .bind(attempt)
-                .bind(seen.load(Ordering::Relaxed))
-                .execute(&pool)
-                .await;
+            if !open {
+                return;
+            }
         }
     });
     Draft {
         sink: Arc::new(move |delta: &str| {
-            let _ = tx.send(delta.to_owned());
+            let _ = tx.send((stamp.load(Ordering::Relaxed), delta.to_owned()));
         }),
         flusher,
         generation,
@@ -388,11 +404,11 @@ async fn project_steps(
     message: &Message,
     generation: &AtomicI64,
 ) -> Result<()> {
-    let mut seq = offset * 16;
+    let mut seq = offset * 4096;
     for block in &message.content {
         let (kind, content) = match (message.role, block) {
             (Role::Assistant, Content::Text { text }) => {
-                sqlx::query("UPDATE turns SET response=COALESCE(response,'')||$2,draft=NULL WHERE id=$1 AND state='running' AND attempt=$3").bind(id).bind(text).bind(attempt).execute(&mut *tx).await?;
+                sqlx::query("UPDATE turns SET response=CASE WHEN COALESCE(response,'')='' THEN $2 ELSE response||E'\\n\\n'||$2 END,draft=NULL WHERE id=$1 AND state='running' AND attempt=$3").bind(id).bind(text).bind(attempt).execute(&mut *tx).await?;
                 generation.fetch_add(1, Ordering::Relaxed);
                 ("text", serde_json::json!({"text": text}))
             }
@@ -591,6 +607,16 @@ mod tests {
         assert_eq!(response.as_deref(), Some("Created your Ticket"));
         assert_eq!(draft, None);
         assert!(finished.is_some());
+        // A delta stamped before the text step landed is refused once it exists,
+        // and nothing streams into a turn that is no longer running.
+        assert_eq!(flush_draft(&pool, first, 0, 0, "late").await, 0);
+        assert_eq!(flush_draft(&pool, first, 0, 1, "late").await, 0);
+        let stale: Option<String> = sqlx::query_scalar("SELECT draft FROM turns WHERE id=$1")
+            .bind(first)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(stale, None);
         let snapshot = product::snapshot(&pool).await.unwrap();
         assert_eq!(snapshot.turns[0].steps.len(), 3);
         assert_eq!(snapshot.turns[0].steps[0].kind, "tool_use");

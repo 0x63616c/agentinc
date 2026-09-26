@@ -1,7 +1,8 @@
 //! Claude through the user's own Claude subscription: every model step is one
 //! `claude -p` invocation of the official Claude Code CLI, signed in by the
 //! user. The daemon never reads, copies or replays Anthropic credentials.
-use super::{DeltaSink, ProviderModel};
+use super::ProviderModel;
+use crate::execution::DeltaSink;
 use anyhow::{Context, Result};
 use futures::future::BoxFuture;
 use serde_json::{Value, json};
@@ -15,16 +16,16 @@ pub const MODELS: &[(&str, &str)] = &[
     ("claude-sonnet-5", "Sonnet 5"),
     ("claude-haiku-4-5-20251001", "Haiku 4.5"),
 ];
-const STEP_TIMEOUT: Duration = Duration::from_secs(600);
+/// Shorter than the model activity timeout so a stuck CLI fails as one step.
+const STEP_TIMEOUT: Duration = Duration::from_secs(240);
 
 pub fn models() -> Vec<ProviderModel> {
     MODELS
         .iter()
-        .enumerate()
-        .map(|(index, (id, name))| ProviderModel {
+        .map(|(id, name)| ProviderModel {
             id: (*id).into(),
             name: (*name).into(),
-            featured: index == 0,
+            featured: false,
         })
         .collect()
 }
@@ -105,6 +106,7 @@ impl ClaudeCli {
         let mut child = self
             .command()?
             .args(["auth", "login", "--claudeai"])
+            .stderr(Stdio::null())
             .spawn()
             .context("Install Claude Code to connect Claude.")?;
         let stdin = child
@@ -132,7 +134,11 @@ impl ClaudeCli {
             "Claude Code did not offer a sign-in link. Run `claude` in Terminal to sign in.",
         )?;
         open(url);
-        Ok(Login { child, stdin })
+        Ok(Login {
+            child,
+            stdin,
+            lines,
+        })
     }
     pub fn model(
         self: &Arc<Self>,
@@ -153,6 +159,7 @@ impl ClaudeCli {
 pub struct Login {
     child: tokio::process::Child,
     stdin: tokio::process::ChildStdin,
+    lines: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
 }
 impl Login {
     /// Hand the copied code to the CLI and wait for it to finish.
@@ -166,9 +173,14 @@ impl Login {
         self.stdin.write_all(b"\n").await?;
         self.stdin.flush().await?;
         drop(self.stdin);
-        let status = tokio::time::timeout(Duration::from_secs(60), self.child.wait())
-            .await
-            .context("Claude Code did not finish signing in.")??;
+        // Keep draining output so the CLI never blocks on a full pipe.
+        let mut lines = self.lines;
+        let drain = async { while let Ok(Some(_)) = lines.next_line().await {} };
+        let (status, _) = tokio::join!(
+            tokio::time::timeout(Duration::from_secs(60), self.child.wait()),
+            drain
+        );
+        let status = status.context("Claude Code did not finish signing in.")??;
         anyhow::ensure!(status.success(), "Sign-in was not completed. Try again.");
         Ok(())
     }
@@ -288,17 +300,17 @@ impl ClaudeModel {
                     .find(|l| !l.trim().is_empty())
                     .unwrap_or("")
                     .trim();
-                return Err(
-                    if detail.to_ascii_lowercase().contains("log")
-                        && detail.to_ascii_lowercase().contains("in")
-                    {
-                        ModelError::fatal("Sign in to Claude in Settings.")
-                    } else if output.status.success() {
-                        ModelError::fatal("Claude Code returned an unreadable reply.")
-                    } else {
-                        ModelError::retryable(format!("Claude Code failed: {}", sanitize(detail)))
-                    },
-                );
+                // A usage error or an unknown flag is permanent; only a killed
+                // process is worth another attempt.
+                return Err(if needs_sign_in(detail) {
+                    ModelError::fatal("Sign in to Claude in Settings.")
+                } else if output.status.code().is_none() {
+                    ModelError::retryable("Claude Code stopped unexpectedly.")
+                } else if output.status.success() {
+                    ModelError::fatal("Claude Code returned an unreadable reply.")
+                } else {
+                    ModelError::fatal(format!("Claude Code failed: {}", sanitize(detail)))
+                });
             }
         };
         if value["is_error"] == true
@@ -311,21 +323,16 @@ impl ClaudeModel {
                 .or_else(|| value["error"].as_str())
                 .unwrap_or("");
             let lower = detail.to_ascii_lowercase();
-            return Err(
-                if lower.contains("log in")
-                    || lower.contains("login")
-                    || lower.contains("authentication")
-                {
-                    ModelError::fatal("Sign in to Claude in Settings.")
-                } else if lower.contains("rate")
-                    || lower.contains("overloaded")
-                    || lower.contains("limit")
-                {
-                    ModelError::retryable(format!("Claude is busy: {}", sanitize(detail)))
-                } else {
-                    ModelError::fatal(format!("Claude could not finish: {}", sanitize(detail)))
-                },
-            );
+            return Err(if needs_sign_in(detail) {
+                ModelError::fatal("Sign in to Claude in Settings.")
+            } else if lower.contains("rate limit")
+                || lower.contains("overloaded")
+                || lower.contains("limit")
+            {
+                ModelError::retryable(format!("Claude is busy: {}", sanitize(detail)))
+            } else {
+                ModelError::fatal(format!("Claude could not finish: {}", sanitize(detail)))
+            });
         }
         let structured = match value.get("structured_output") {
             Some(structured) if structured.is_object() => structured.clone(),
@@ -369,6 +376,13 @@ impl ClaudeModel {
         })
     }
 }
+fn needs_sign_in(detail: &str) -> bool {
+    let lower = detail.to_ascii_lowercase();
+    lower.contains("not logged in")
+        || lower.contains("/login")
+        || lower.contains("please log in")
+        || lower.contains("authentication_error")
+}
 fn sanitize(detail: &str) -> String {
     let trimmed: String = detail.chars().take(200).collect();
     trimmed.replace(|c: char| c.is_control(), " ")
@@ -397,7 +411,9 @@ fn render(request: &ModelRequest) -> (String, String) {
                 (Role::User, Content::Text { text }) => prompt.push_str(&format!("\n<user>\n{text}\n</user>\n")),
                 (Role::Assistant, Content::Text { text }) => prompt.push_str(&format!("\n<assistant>\n{text}\n</assistant>\n")),
                 (_, Content::ToolUse { id, name, input }) => prompt.push_str(&format!("\n<tool_call id=\"{id}\" name=\"{name}\">\n{input}\n</tool_call>\n")),
-                (_, Content::ToolResult { tool_use_id, content, is_error }) => prompt.push_str(&format!("\n<tool_result id=\"{tool_use_id}\" error=\"{is_error}\">\n{content}\n</tool_result>\n")),
+                // Tool results are untrusted (web pages, API bodies); escape tags
+                // so a result cannot pose as the user or close its own block.
+                (_, Content::ToolResult { tool_use_id, content, is_error }) => prompt.push_str(&format!("\n<tool_result id=\"{tool_use_id}\" error=\"{is_error}\">\n{}\n</tool_result>\n", content.to_string().replace('<', "&lt;"))),
                 (_, Content::ModelContext { .. }) => {}
             }
         }
@@ -474,15 +490,24 @@ esac
         let cli = fake_cli(
             dir.path(),
             r#"
-if [ "$1" = "auth" ]; then printf '%s' '{"loggedIn":false}'; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then printf '%s' '{"loggedIn":false}'; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "login" ]; then
+  echo 'Opening browser to sign in…'
+  echo 'If the browser did not open, visit: https://claude.example.test/oauth?state=fixture'
+  read -r code
+  [ "$code" = "fixture-code" ] || exit 3
+  echo 'Signed in'
+  exit 0
+fi
 cat >/dev/null
-case "$AINC_FIXTURE" in
+case "$(cat fixture)" in
   denied) printf '%s' '{"type":"result","is_error":true,"subtype":"error","result":"Not logged in. Please run /login"}';;
   busy) printf '%s' '{"type":"result","is_error":true,"result":"Rate limit reached"}';;
-  garbage) echo 'unexpected'; exit 1;;
+  garbage) echo 'unknown option --json-schema'; exit 1;;
 esac
 "#,
         );
+        std::fs::create_dir_all(dir.path().join("cwd"))?;
         assert_eq!(cli.status().await?.account(), None);
         let request = || ModelRequest {
             instructions: "t".into(),
@@ -492,10 +517,9 @@ esac
         for (fixture, retryable, needle) in [
             ("denied", false, "Sign in"),
             ("busy", true, "busy"),
-            ("garbage", true, "failed"),
+            ("garbage", false, "failed"),
         ] {
-            // SAFETY: tests in this module run serially on this variable.
-            unsafe { std::env::set_var("AINC_FIXTURE", fixture) };
+            std::fs::write(dir.path().join("cwd/fixture"), fixture)?;
             let error = cli
                 .model("claude-sonnet-5", None)?
                 .step(request())
@@ -508,7 +532,18 @@ esac
                 error.message
             );
         }
-        unsafe { std::env::remove_var("AINC_FIXTURE") };
+        let opened = Arc::new(std::sync::Mutex::new(None));
+        let target = opened.clone();
+        let login = cli
+            .login(move |url| *target.lock().unwrap() = Some(url))
+            .await?;
+        assert_eq!(
+            opened.lock().unwrap().as_deref(),
+            Some("https://claude.example.test/oauth?state=fixture")
+        );
+        login.submit("fixture-code").await?;
+        let login = cli.login(|_| {}).await?;
+        assert!(login.submit("wrong").await.is_err());
         Ok(())
     }
 

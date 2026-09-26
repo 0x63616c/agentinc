@@ -76,8 +76,6 @@ pub struct Turn {
     /// The slash command the user typed, shown as a chip instead of the prompt.
     #[serde(default)]
     pub command: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
     pub created_at: i64,
     #[serde(default)]
     pub started_at: Option<i64>,
@@ -235,7 +233,7 @@ pub async fn snapshot_in(pool: &PgPool, workspace: &str) -> Result<Snapshot, sql
         .execute(&mut *tx)
         .await?;
     let conversations = sqlx::query_as("SELECT c.id,c.title,COALESCE((SELECT COALESCE(response,prompt) FROM turns WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1),'') AS snippet,to_char(to_timestamp(c.updated_at),'YYYY-MM-DD HH24:MI') AS updated,c.updated_at FROM conversations c WHERE workspace_id=$1 ORDER BY updated_at DESC,id DESC").bind(workspace).fetch_all(&mut *tx).await?;
-    let mut turns: Vec<Turn> = sqlx::query_as("SELECT t.id,conversation_id,prompt,response,error,state,draft,command,model,created_at,started_at,finished_at FROM turns t JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id=$1 ORDER BY t.id").bind(workspace).fetch_all(&mut *tx).await?;
+    let mut turns: Vec<Turn> = sqlx::query_as("SELECT t.id,conversation_id,prompt,response,error,state,draft,command,created_at,started_at,finished_at FROM turns t JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id=$1 ORDER BY t.id").bind(workspace).fetch_all(&mut *tx).await?;
     let steps: Vec<TurnStep> = sqlx::query_as("SELECT s.id,s.turn_id,s.kind,s.content FROM turn_steps s JOIN turns t ON t.id=s.turn_id AND t.attempt=s.attempt JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id=$1 ORDER BY s.turn_id,s.seq,s.id").bind(workspace).fetch_all(&mut *tx).await?;
     for step in steps {
         if let Some(turn) = turns.iter_mut().find(|turn| turn.id == step.turn_id) {
@@ -385,6 +383,18 @@ pub async fn execute_in(
             prompt,
             command,
         } => {
+            let command = command
+                .as_deref()
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .map(str::to_owned);
+            if command.as_ref().is_some_and(|c| c.chars().count() > 200) {
+                return Err(ApiError::new(
+                    StatusCode::BAD_REQUEST,
+                    "invalid",
+                    "The command is too long.",
+                ));
+            }
             let parent: Option<i64> = sqlx::query_scalar(
                 "SELECT id FROM conversations WHERE id=$1 AND workspace_id=$2 FOR UPDATE",
             )
@@ -395,7 +405,7 @@ pub async fn execute_in(
             if parent.is_none() {
                 return Err(ApiError::conflict());
             }
-            let id = sqlx::query_scalar("INSERT INTO turns(conversation_id,prompt,state,model,command) VALUES ($1,$2,'queued',(SELECT value FROM assistant_settings WHERE workspace_id=$3 AND key='model'),$4) RETURNING id").bind(conversation_id).bind(prompt.trim()).bind(workspace).bind(command.as_deref().map(str::trim).filter(|c| !c.is_empty())).fetch_one(&mut *tx).await?;
+            let id = sqlx::query_scalar("INSERT INTO turns(conversation_id,prompt,state,model,command) VALUES ($1,$2,'queued',(SELECT value FROM assistant_settings WHERE workspace_id=$3 AND key='model'),$4) RETURNING id").bind(conversation_id).bind(prompt.trim()).bind(workspace).bind(&command).fetch_one(&mut *tx).await?;
             sqlx::query("UPDATE conversations SET updated_at=extract(epoch FROM now())::bigint,title=CASE WHEN title='New conversation' THEN left($2,60) ELSE title END WHERE id=$1").bind(conversation_id).bind(prompt.trim()).execute(&mut *tx).await?;
             Some(id)
         }
