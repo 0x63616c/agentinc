@@ -145,12 +145,13 @@ impl TicketsPage {
                         .rounded_full(),
                     )
             }))
-            // The trigger's wrapper takes the rest of the line, so the menu can
-            // end on the value column's right edge and never leave the window.
+            // The trigger's wrapper grows into the rest of its line, so the menu
+            // can end on the value column's right edge, but starts at its own
+            // width, so it wraps to a new line instead of overflowing.
             .child(
                 row()
                     .relative()
-                    .flex_1()
+                    .flex_grow(1.)
                     .child(
                         Button::new("tickets.labels.open", "Add label")
                             .ghost()

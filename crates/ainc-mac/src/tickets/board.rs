@@ -193,7 +193,6 @@ impl TicketsPage {
             .min_h_0()
             .overflow_y_scroll()
             .px(px(BOARD_LANE_INSET))
-            .pb(px(BOARD_LANE_INSET))
             .child(
                 drop_line(indicator.is_some_and(|t| t.after.is_none())).mb(px(
                     if indicator.is_some_and(|t| t.after.is_none()) {
@@ -286,7 +285,15 @@ impl TicketsPage {
                         )
                     }),
             )
-            .child(body)
+            // The scroll area stops one inset above the lane's edge, so cards
+            // never run into the bottom even while the lane scrolls.
+            .child(
+                column()
+                    .flex_1()
+                    .min_h_0()
+                    .pb(px(BOARD_LANE_INSET))
+                    .child(body),
+            )
             .on_drag_move(
                 cx.listener(move |this, event: &DragMoveEvent<DraggedTicket>, _, cx| {
                     // Every lane hears every move; only the one under the pointer answers.

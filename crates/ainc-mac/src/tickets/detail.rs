@@ -445,13 +445,34 @@ impl TicketsPage {
                 ("tag", sentence)
             }
             ActivityKind::Linked | ActivityKind::Unlinked => {
-                let relation = Relation::from_history(from).map_or("Related", Relation::name);
-                let verb = if entry.kind == ActivityKind::Linked {
-                    "added"
-                } else {
-                    "removed"
+                let key = other(to);
+                let sentence = match (entry.kind, Relation::from_history(from)) {
+                    (ActivityKind::Linked, Some(Relation::Blocks)) => {
+                        format!("marked it as blocking {key}")
+                    }
+                    (ActivityKind::Linked, Some(Relation::BlockedBy)) => {
+                        format!("marked it as blocked by {key}")
+                    }
+                    (ActivityKind::Linked, Some(Relation::Duplicates)) => {
+                        format!("marked it as a duplicate of {key}")
+                    }
+                    (ActivityKind::Linked, Some(Relation::DuplicatedBy)) => {
+                        format!("marked {key} as a duplicate of it")
+                    }
+                    (ActivityKind::Linked, Some(Relation::Parent)) => {
+                        format!("made it a Sub-Ticket of {key}")
+                    }
+                    (ActivityKind::Linked, Some(Relation::SubIssue)) => {
+                        format!("added {key} as a Sub-Ticket")
+                    }
+                    (ActivityKind::Linked, _) => format!("related it to {key}"),
+                    (_, relation) => format!(
+                        "removed its link to {key}{}",
+                        relation
+                            .map_or(String::new(), |r| format!(" ({})", r.name().to_lowercase()))
+                    ),
                 };
-                ("link", format!("{verb} {relation} {}", other(to)))
+                ("link", sentence)
             }
             ActivityKind::Work => (
                 "play",
@@ -833,9 +854,9 @@ impl TicketsPage {
             )
             .when(runs.is_empty(), |s| {
                 s.child(hint(if self.is_agent(&ticket.assignee_id) {
-                    "Work starts when this Ticket is in To do or In progress."
+                    "Starts in To do or In progress."
                 } else {
-                    "Assign an agent to have it work on this Ticket."
+                    "Assign an agent to start work."
                 }))
             })
             .children(runs.into_iter().take(RECENT_RUNS).map(|run| {

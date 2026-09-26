@@ -4,6 +4,8 @@ use super::*;
 
 /// Candidates shown in the relationship picker.
 const LINK_CANDIDATES: usize = 5;
+/// Room for every candidate row, inside the list's inset and border.
+const LINK_LIST_HEIGHT: f32 = LINK_CANDIDATES as f32 * LIST_ROW_HEIGHT + 2. * SPACE_1 + 2.;
 
 impl TicketsPage {
     pub fn overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -353,11 +355,19 @@ impl TicketsPage {
                     .leading_icon("search")
                     .build(window, cx),
             )
+            // The list keeps room for every candidate, so the dialog does not
+            // jump as a search narrows it.
             .child(if candidates.is_empty() {
-                hint("No other Tickets match.").into_any_element()
+                row()
+                    .h(px(LINK_LIST_HEIGHT))
+                    .justify_center()
+                    .child(hint("No other Tickets match."))
+                    .into_any_element()
             } else {
                 card()
                     .debug_selector(|| "tickets.link.candidates".into())
+                    .h(px(LINK_LIST_HEIGHT))
+                    .justify_start()
                     .p(px(SPACE_1))
                     .gap_0()
                     .children(candidates.into_iter().enumerate().map(|(index, ticket)| {
