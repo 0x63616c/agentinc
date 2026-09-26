@@ -47,4 +47,4 @@ commits a `durable_actions` row and its receipt in one transaction, then the
 daemon starts it as a Temporal workflow under the row's ID. The workflow retries
 the effect; effects are idempotent (a switch is set to a state, an import upserts
 by external ID), so a retry after a lost acknowledgement cannot double-apply. Each
-action appears in Temporal's run history as `action-<id>`.
+action appears in Temporal's run history as `home-<id>` or `calendar-import-<id>`.

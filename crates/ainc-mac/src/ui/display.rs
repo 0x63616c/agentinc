@@ -198,6 +198,20 @@ impl AssetSource for Assets {
             });
         }
         let data: &'static [u8] = match path {
+            "dashboard.svg" => include_bytes!("../../assets/icons/dashboard.svg"),
+            "home.svg" => include_bytes!("../../assets/icons/home.svg"),
+            "calendar.svg" => include_bytes!("../../assets/icons/calendar.svg"),
+            "lamp.svg" => include_bytes!("../../assets/icons/lamp.svg"),
+            "bulb.svg" => include_bytes!("../../assets/icons/bulb.svg"),
+            "thermometer.svg" => include_bytes!("../../assets/icons/thermometer.svg"),
+            "minus.svg" => include_bytes!("../../assets/icons/minus.svg"),
+            "mapPin.svg" => include_bytes!("../../assets/icons/mapPin.svg"),
+            "clock.svg" => include_bytes!("../../assets/icons/clock.svg"),
+            "power.svg" => include_bytes!("../../assets/icons/power.svg"),
+            "bed.svg" => include_bytes!("../../assets/icons/bed.svg"),
+            "sofa.svg" => include_bytes!("../../assets/icons/sofa.svg"),
+            "ceiling.svg" => include_bytes!("../../assets/icons/ceiling.svg"),
+            "strip.svg" => include_bytes!("../../assets/icons/strip.svg"),
             "refresh.svg" => include_bytes!("../../assets/icons/refresh.svg"),
             "temporal.svg" => include_bytes!("../../assets/icons/temporal.svg"),
             "check.svg" => include_bytes!("../../assets/icons/check.svg"),

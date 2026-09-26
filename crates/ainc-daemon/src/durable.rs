@@ -1,6 +1,6 @@
 //! Durable actions: product effects that must survive restarts and retry
 //! safely. A command commits a `durable_actions` row with its receipt; this
-//! runner starts a Temporal workflow named `action-<id>` for each new row, and
+//! runner starts a Temporal workflow named `<kind>-<id>` for each new row, and
 //! the workflow applies the row's idempotent effect and records the outcome.
 use crate::{home::Home, tickets::Actor};
 use futures::future::BoxFuture;
@@ -21,6 +21,19 @@ impl ActionKind {
         match self {
             Self::Home => "home",
             Self::CalendarImport => "calendar_import",
+        }
+    }
+    fn parse(kind: &str) -> Self {
+        match kind {
+            "home" => Self::Home,
+            _ => Self::CalendarImport,
+        }
+    }
+    /// The workflow ID prefix, so run history names what each action is.
+    fn workflow_prefix(self) -> &'static str {
+        match self {
+            Self::Home => "home",
+            Self::CalendarImport => "calendar-import",
         }
     }
     /// How long an effect stays wanted. A light switched a minute ago must not
@@ -139,10 +152,7 @@ pub(crate) async fn attempt(effects: &Effects, id: &str) -> anyhow::Result<()> {
     let Some((workspace, kind, input)) = row else {
         return Ok(()); // Already finished; a retried workflow has nothing to do.
     };
-    let kind = match kind.as_str() {
-        "home" => ActionKind::Home,
-        _ => ActionKind::CalendarImport,
-    };
+    let kind = ActionKind::parse(&kind);
     let result = match kind {
         ActionKind::Home => crate::home::apply(pool, &effects.home, &workspace, &input).await,
         ActionKind::CalendarImport => crate::calendar::apply_import(pool, id).await,
@@ -234,14 +244,14 @@ impl Runner {
         }
     }
     pub(crate) async fn dispatch(&self) -> anyhow::Result<()> {
-        let pending: Vec<String> =
-            sqlx::query_scalar("SELECT id FROM durable_actions WHERE NOT dispatched ORDER BY seq")
+        let pending: Vec<(String, String)> =
+            sqlx::query_as("SELECT id,kind FROM durable_actions WHERE NOT dispatched ORDER BY seq")
                 .fetch_all(&self.pool)
                 .await?;
-        for id in pending {
+        for (id, kind) in pending {
             self.runtime
                 .run_occurrence(Occurrence {
-                    id: format!("action-{id}"),
+                    id: format!("{}-{id}", ActionKind::parse(&kind).workflow_prefix()),
                     input: json!({ "id": id }),
                 })
                 .await?;

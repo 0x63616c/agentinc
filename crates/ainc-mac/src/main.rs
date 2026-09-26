@@ -1,8 +1,11 @@
 mod about;
 mod assistant;
 mod automations;
+mod calendar;
+mod calendar_store;
 mod components;
 mod evee;
+mod home;
 mod input;
 mod model;
 mod native_update;

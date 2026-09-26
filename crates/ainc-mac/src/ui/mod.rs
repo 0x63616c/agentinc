@@ -20,6 +20,7 @@ mod settings;
 mod table;
 #[cfg(target_os = "macos")]
 mod terminal;
+mod tile;
 mod toast;
 mod toggle;
 mod tokens;
@@ -44,6 +45,7 @@ pub use settings::*;
 pub use table::*;
 #[cfg(target_os = "macos")]
 pub use terminal::*;
+pub use tile::*;
 pub use toast::*;
 pub use toggle::*;
 pub use tokens::*;

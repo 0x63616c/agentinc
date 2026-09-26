@@ -585,3 +585,17 @@ impl Store {
         }
     }
 }
+
+/// The daemon's own explanation for a refused request, or a plain sentence
+/// when it could not be reached.
+pub fn api_error(error: progenitor_client::Error<ainc_client::types::ErrorBody>) -> anyhow::Error {
+    match error {
+        progenitor_client::Error::ErrorResponse(response) => {
+            anyhow::anyhow!(response.into_inner().message)
+        }
+        progenitor_client::Error::CommunicationError(_) => {
+            anyhow::anyhow!("AgentInc's background service is unavailable.")
+        }
+        other => anyhow::anyhow!(other.to_string()),
+    }
+}

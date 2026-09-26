@@ -59,6 +59,8 @@ pub const TEXT_TERTIARY: u32 = 0x858585; // AA (4.5:1 or better) on every surfac
 pub const TEXT_PLACEHOLDER: u32 = 0x5a5a5a;
 /// Ink on white primary surfaces.
 pub const TEXT_ON_PRIMARY: u32 = 0x0a0a0a;
+/// Secondary ink on white surfaces, such as the caption of a lit switch tile.
+pub const TEXT_ON_PRIMARY_SECONDARY: u32 = 0x5c5c5c;
 
 /// The white primary action.
 pub const PRIMARY: u32 = 0xffffff;
@@ -184,6 +186,11 @@ pub const PALETTE_FOOTER_HEIGHT: f32 = 40.;
 pub const PALETTE_RESULTS_MAX_HEIGHT: f32 = 420.;
 pub const POPOVER_WIDTH: f32 = 264.;
 pub const TOAST_WIDTH: f32 = 360.;
+/// Switch tiles: the narrowest a tile shrinks to and its fixed height.
+pub const TILE_MIN_WIDTH: f32 = 148.;
+pub const TILE_HEIGHT: f32 = 104.;
+/// The value column of a stepper, wide enough for "100°".
+pub const STEPPER_VALUE_WIDTH: f32 = 56.;
 pub const AVATAR_SIZE: f32 = 24.;
 pub const AVATAR_SIZE_LG: f32 = 40.;
 pub const TOGGLE_WIDTH: f32 = 36.;
@@ -217,6 +224,8 @@ pub const FIELD_RADIUS: f32 = RADIUS_MD;
 // two-point product offset and the user's chosen scale.
 // ---------------------------------------------------------------------------
 
+/// Glanceable numerals: the indoor temperature, open work.
+pub const HERO_SIZE: f32 = 54.;
 pub const DISPLAY_SIZE: f32 = 22.;
 pub const TITLE_SIZE: f32 = 18.;
 pub const HEADING_SIZE: f32 = 14.;

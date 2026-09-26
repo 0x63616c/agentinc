@@ -20,10 +20,13 @@ fn status_label(status: &str) -> &str {
         .map_or(status, |(_, label)| label)
 }
 
-fn workflow_label(workflow_type: &str) -> &str {
+fn workflow_label<'a>(workflow_type: &'a str, workflow_id: &str) -> &'a str {
     match workflow_type {
         "agentinc.run" => "Agent run",
         "agentinc.session" => "Conversation",
+        // Durable product actions share the occurrence workflow; their IDs say which.
+        "turnkeel.occurrence" if workflow_id.starts_with("home-") => "Smart Home action",
+        "turnkeel.occurrence" if workflow_id.starts_with("calendar-import-") => "Calendar import",
         "turnkeel.occurrence" => "Automation occurrence",
         other => other,
     }
@@ -243,7 +246,7 @@ impl TemporalPage {
                                 .truncate()
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(rgb(TEXT))
-                                .child(workflow_label(&execution.workflow_type).to_owned()),
+                                .child(workflow_label(&execution.workflow_type, &id).to_owned()),
                         )
                         .child(
                             div()
