@@ -2329,7 +2329,7 @@ pub mod types {
     ///      "type": "string"
     ///    },
     ///    "lit": {
-    ///      "description": "How many of the lights it covers are on, out of `total`.",
+    ///      "description": "How many of the lights it covers are confirmed on, out of `total`.",
     ///      "type": "integer",
     ///      "format": "int64"
     ///    },
@@ -2363,7 +2363,7 @@ pub mod types {
     pub struct HomeSwitch {
         pub key: SwitchKey,
         pub label: ::std::string::String,
-        ///How many of the lights it covers are on, out of `total`.
+        ///How many of the lights it covers are confirmed on, out of `total`.
         pub lit: i64,
         ///The single switches a group covers; empty for a single switch.
         pub members: ::std::vec::Vec<SwitchKey>,

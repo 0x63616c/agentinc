@@ -1240,7 +1240,7 @@
             "type": "string"
           },
           "lit": {
-            "description": "How many of the lights it covers are on, out of `total`.",
+            "description": "How many of the lights it covers are confirmed on, out of `total`.",
             "format": "int64",
             "type": "integer"
           },
