@@ -1283,7 +1283,7 @@ impl AssistantPage {
                         1,
                         1,
                         "text",
-                        serde_json::json!({"text":"Start with the **blocking Ticket**, then the agent run.\n\n1. Review `ticket-142` (blocked on the API contract)\n2. Kick off the nightly automation\n3. Reply to the design thread"}),
+                        serde_json::json!({"text":"Start with the **blocking Ticket**, then the agent run.\n\n1. Review `ticket-142` (blocked on the API contract)\n2. Kick off the nightly automation"}),
                     )],
                 ),
                 fixture_turn(
@@ -1317,6 +1317,7 @@ impl AssistantPage {
             vec![]
         };
         self.show_chat = true;
+        self.scroll.scroll_to_bottom();
         cx.notify();
     }
     /// A turn mid-flight: a tool call still running and reply text streaming in.
@@ -1340,6 +1341,7 @@ impl AssistantPage {
         self.turns.push(turn);
         self.active = Some(3);
         self.expanded_steps.insert(2);
+        self.scroll.scroll_to_bottom();
         cx.notify();
     }
     /// The slash palette open with a partial command typed.
