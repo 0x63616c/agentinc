@@ -94,11 +94,11 @@ pub fn panel() -> Div {
 }
 
 pub fn status_bar() -> Div {
-    panel()
+    row()
         .debug_selector(|| "status-bar".into())
-        .flex_row()
-        .items_center()
         .justify_between()
-        .h(px(20.))
-        .rounded(px(5.))
+        .h(px(28.))
+        .flex_shrink_0()
+        .border_t_1()
+        .border_color(rgb(BORDER_SUBTLE))
 }

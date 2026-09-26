@@ -48,4 +48,4 @@ The view shown for a Route.
 _Avoid_: route, tab
 
 **Status bar**:
-The thin strip beneath the main pane at the bottom of the AgentInc window.
+The short bar attached to the bottom inside the main content card.

@@ -3,24 +3,23 @@ use crate::ui::*;
 
 impl Shell {
     pub(super) fn main_area(&self, content: AnyElement) -> Div {
-        if self.session.current() == Route::Terminal {
-            return panel()
-                .debug_selector(|| "main-pane".into())
-                .flex_1()
-                .min_w_0()
-                .min_h_0()
-                .h_full()
-                .overflow_hidden()
-                .p(px(8.))
-                .child(content);
-        }
+        let terminal = self.session.current() == Route::Terminal;
         panel()
             .debug_selector(|| "main-pane".into())
             .flex_1()
             .min_w_0()
             .min_h_0()
+            .h_full()
             .overflow_hidden()
-            .child(content)
+            .child(
+                column()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .when(terminal, |pane| pane.p(px(8.)))
+                    .child(content),
+            )
+            .child(status_bar())
     }
 
     pub(super) fn terminal_page(&self, _visible: bool) -> impl IntoElement {
