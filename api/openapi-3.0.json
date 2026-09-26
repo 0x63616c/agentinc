@@ -930,6 +930,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "http_policy"
+        ],
         "type": "object"
       },
       "Snapshot": {

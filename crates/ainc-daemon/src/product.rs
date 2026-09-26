@@ -91,7 +91,6 @@ pub struct Turn {
 pub struct Settings {
     pub model: Option<String>,
     pub selected_conversation: Option<i64>,
-    #[serde(default)]
     #[sqlx(skip)]
     pub http_policy: crate::agent_tools::HttpPolicy,
 }

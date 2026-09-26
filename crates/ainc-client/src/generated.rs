@@ -1754,6 +1754,9 @@ pub mod types {
     /// ```json
     ///{
     ///  "type": "object",
+    ///  "required": [
+    ///    "http_policy"
+    ///  ],
     ///  "properties": {
     ///    "http_policy": {
     ///      "$ref": "#/components/schemas/HttpPolicy"
@@ -1777,21 +1780,11 @@ pub mod types {
     /// </details>
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
     pub struct Settings {
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub http_policy: ::std::option::Option<HttpPolicy>,
+        pub http_policy: HttpPolicy,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub model: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub selected_conversation: ::std::option::Option<i64>,
-    }
-    impl ::std::default::Default for Settings {
-        fn default() -> Self {
-            Self {
-                http_policy: Default::default(),
-                model: Default::default(),
-                selected_conversation: Default::default(),
-            }
-        }
     }
     impl Settings {
         pub fn builder() -> builder::Settings {
@@ -5017,10 +5010,7 @@ pub mod types {
         }
         #[derive(Clone, Debug)]
         pub struct Settings {
-            http_policy: ::std::result::Result<
-                ::std::option::Option<super::HttpPolicy>,
-                ::std::string::String,
-            >,
+            http_policy: ::std::result::Result<super::HttpPolicy, ::std::string::String>,
             model: ::std::result::Result<
                 ::std::option::Option<::std::string::String>,
                 ::std::string::String,
@@ -5031,7 +5021,7 @@ pub mod types {
         impl ::std::default::Default for Settings {
             fn default() -> Self {
                 Self {
-                    http_policy: Ok(Default::default()),
+                    http_policy: Err("no value supplied for http_policy".to_string()),
                     model: Ok(Default::default()),
                     selected_conversation: Ok(Default::default()),
                 }
@@ -5040,7 +5030,7 @@ pub mod types {
         impl Settings {
             pub fn http_policy<T>(mut self, value: T) -> Self
             where
-                T: ::std::convert::TryInto<::std::option::Option<super::HttpPolicy>>,
+                T: ::std::convert::TryInto<super::HttpPolicy>,
                 T::Error: ::std::fmt::Display,
             {
                 self.http_policy = value
