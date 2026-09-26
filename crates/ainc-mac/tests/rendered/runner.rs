@@ -771,7 +771,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
         Some(Overlay::Search),
         false,
     )?;
-    suite.bounds(&format!("palette.result.tickets.ticket.{dentist}"))?;
+    suite.bounds(&format!("palette.result.tickets.goto-ticket.{dentist}"))?;
     suite.keys("enter");
     suite.capture("ticket-from-palette", Route::Tickets, None, false)?;
     suite.bounds("tickets.properties")?;

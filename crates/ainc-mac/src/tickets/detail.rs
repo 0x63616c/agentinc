@@ -80,11 +80,12 @@ impl TicketsPage {
         let running = self.running(ticket);
         let has_runs = self.state.runs.iter().any(|r| r.ticket_id == id);
         let enabled = !self.pending;
+        // The properties column holds status and times; the line under the
+        // title says only which Ticket this is and who holds it.
         let meta = format!(
-            "{} · {} · Created {}",
+            "{} · {}",
             ticket_key(id),
-            status_name(ticket.status),
-            timestamp(ticket.created_at)
+            self.assignee_name(&ticket.assignee_id)
         );
         PageHeader::new(ticket.title.clone())
             .leading(
@@ -117,6 +118,28 @@ impl TicketsPage {
                                 ),
                         )
                     })
+                    .when(!has_runs, |s| {
+                        s.child(
+                            Button::new("tickets.delete", "Delete")
+                                .ghost()
+                                .icon("trash")
+                                .tint(DESTRUCTIVE_TEXT)
+                                .enabled(enabled)
+                                .build(
+                                    &self.hover,
+                                    move |this, window, cx| {
+                                        this.overlays.borrow_mut().open(
+                                            Overlay::DeleteTicket(id),
+                                            window,
+                                            cx,
+                                            Some(this.cancel_focus.clone()),
+                                        );
+                                        cx.notify();
+                                    },
+                                    cx,
+                                ),
+                        )
+                    })
                     .child(
                         Button::new("tickets.rename", "Rename")
                             .ghost()
@@ -142,29 +165,7 @@ impl TicketsPage {
                                 },
                                 cx,
                             ),
-                    )
-                    .when(!has_runs, |s| {
-                        s.child(
-                            Button::new("tickets.delete", "Delete")
-                                .ghost()
-                                .icon("trash")
-                                .tint(TEXT_SECONDARY)
-                                .enabled(enabled)
-                                .build(
-                                    &self.hover,
-                                    move |this, window, cx| {
-                                        this.overlays.borrow_mut().open(
-                                            Overlay::DeleteTicket(id),
-                                            window,
-                                            cx,
-                                            Some(this.cancel_focus.clone()),
-                                        );
-                                        cx.notify();
-                                    },
-                                    cx,
-                                ),
-                        )
-                    }),
+                    ),
             )
     }
 
@@ -612,7 +613,7 @@ impl TicketsPage {
             },
             cx,
         );
-        let bleed = |select: Div| select.ml(px(-CONTROL_INSET_X));
+        let bleed = |select: Div| select.ml(px(-CONTROL_INSET_X)).flex_shrink_0();
         card()
             .debug_selector(|| "tickets.properties".into())
             .px(px(SPACE_4))
@@ -623,7 +624,7 @@ impl TicketsPage {
             .child(property_row("Assignee", bleed(assignee)))
             .child(property_row(
                 "Labels",
-                self.labels_editor(ticket, window, cx),
+                self.label_picker(&ticket.labels, Menu::Labels, window, cx),
             ))
             .child(divider().my(px(SPACE_3)))
             .child(self.relationships(ticket, cx))
@@ -638,135 +639,6 @@ impl TicketsPage {
                 "Updated",
                 caption(timestamp(ticket.updated_at)),
             ))
-    }
-
-    fn labels_editor(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> Div {
-        let id = ticket.id;
-        let revision = ticket.revision;
-        let open = self.menu == Some(Menu::Labels);
-        let typed = self.label_input.read(cx).content.trim().to_owned();
-        let suggestions: Vec<String> = all_labels(&self.state.tickets)
-            .into_iter()
-            .filter(|label| label.to_lowercase().contains(&typed.to_lowercase()))
-            .collect();
-        let exists = all_labels(&self.state.tickets)
-            .iter()
-            .any(|label| label.eq_ignore_ascii_case(&typed));
-        let mut menu = menu_shell(MENU_WIDTH)
-            .debug_selector(|| "tickets.labels.menu".into())
-            .child(
-                div().p(px(SPACE_1)).child(
-                    Field::new(self.label_input.clone())
-                        .leading_icon("tag")
-                        .selector("tickets.label")
-                        .build(window, cx),
-                ),
-            );
-        for label in suggestions {
-            let chosen = label.clone();
-            let applied = ticket
-                .labels
-                .iter()
-                .any(|existing| existing.eq_ignore_ascii_case(&label));
-            menu = menu.child(
-                MenuEntry::new(
-                    SharedString::from(format!("tickets.labels.add.{label}")),
-                    label.clone(),
-                )
-                .glyph("dot", label_color(&label))
-                .checked(applied)
-                .build(
-                    &self.hover,
-                    move |this: &mut Self, _, cx| this.toggle_label(chosen.clone(), cx),
-                    cx,
-                ),
-            );
-        }
-        if !typed.is_empty() && !exists {
-            let created = typed.clone();
-            menu = menu.child(
-                MenuEntry::new("tickets.labels.create", format!("Create “{typed}”"))
-                    .icon("plus")
-                    .build(
-                        &self.hover,
-                        move |this: &mut Self, _, cx| this.add_label(created.clone(), cx),
-                        cx,
-                    ),
-            );
-        }
-        row()
-            .flex_wrap()
-            .gap(px(CHIP_GAP))
-            .py(px(SPACE_1))
-            .children(ticket.labels.iter().map(|label| {
-                let remaining: Vec<String> = ticket
-                    .labels
-                    .iter()
-                    .filter(|other| *other != label)
-                    .cloned()
-                    .collect();
-                tag(label.clone(), label_color(label))
-                    .pr(px(SPACE_HALF))
-                    .child(
-                        Button::new(
-                            SharedString::from(format!("tickets.labels.remove.{label}")),
-                            format!("Remove {label}"),
-                        )
-                        .ghost()
-                        .small()
-                        .icon("close")
-                        .icon_only()
-                        .tint(TEXT_TERTIARY)
-                        .enabled(!self.pending)
-                        .build(
-                            &self.hover,
-                            move |this: &mut Self, _, cx| {
-                                this.command(
-                                    TicketCommand::SetLabels {
-                                        id,
-                                        revision,
-                                        labels: remaining.clone(),
-                                    },
-                                    cx,
-                                )
-                            },
-                            cx,
-                        )
-                        .size(px(PILL_REMOVE_SIZE))
-                        .rounded_full(),
-                    )
-            }))
-            .child(
-                column()
-                    .relative()
-                    .child(
-                        Button::new("tickets.labels.open", "Add label")
-                            .ghost()
-                            .small()
-                            .icon("plus")
-                            .tint(TEXT_SECONDARY)
-                            .selected(open)
-                            .enabled(!self.pending && ticket.labels.len() < 10)
-                            .build(
-                                &self.hover,
-                                |this: &mut Self, window, cx| {
-                                    this.toggle_menu(Menu::Labels, cx);
-                                    if this.menu == Some(Menu::Labels) {
-                                        window.focus(&this.label_input.focus_handle(cx), cx);
-                                    }
-                                },
-                                cx,
-                            )
-                            .ml(px(-CONTROL_INSET_X_SM)),
-                    )
-                    .when(open, |s| {
-                        s.child(floating(
-                            menu,
-                            Anchor::TopLeft,
-                            point(px(0.), px(CONTROL_HEIGHT_SM + SPACE_1)),
-                        ))
-                    }),
-            )
     }
 
     fn relationships(&self, ticket: &Ticket, cx: &mut Context<Self>) -> Div {

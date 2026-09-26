@@ -102,7 +102,7 @@ impl Shell {
                 items.push(PaletteCandidate {
                     group: "Tickets",
                     entry: PaletteEntry::new(
-                        format!("ticket.{}", ticket.id),
+                        format!("goto-ticket.{}", ticket.id),
                         format!(
                             "{} {}",
                             crate::tickets::model::ticket_key(ticket.id),

@@ -12,6 +12,8 @@ mod dialogs;
 #[cfg(all(test, feature = "rendered-tests"))]
 #[path = "tickets/fixture.rs"]
 mod fixture;
+#[path = "tickets/labels.rs"]
+mod labels;
 #[path = "tickets/list.rs"]
 mod list;
 #[path = "tickets/model.rs"]
@@ -47,6 +49,7 @@ pub(crate) enum Menu {
     Priority,
     Assignee,
     Labels,
+    DraftLabels,
     DraftStatus,
     DraftPriority,
     DraftAssignee,
@@ -67,7 +70,6 @@ struct Draft {
     status: TicketStatus,
     priority: TicketPriority,
     assignee: Option<String>,
-    /// Existing labels chosen as chips; new ones are typed.
     labels: Vec<String>,
 }
 impl Default for Draft {
@@ -93,7 +95,6 @@ pub struct TicketsPage {
     search: Entity<TextInput>,
     input: Entity<TextInput>,
     draft_description: Entity<TextInput>,
-    draft_labels: Entity<TextInput>,
     draft: Draft,
     comment: Entity<TextInput>,
     description: Entity<TextInput>,
@@ -184,7 +185,6 @@ impl TicketsPage {
         let input = field("What needs doing?", "tickets.title", cx);
         let search = field("Search Tickets", "tickets.search", cx);
         let draft_description = field("Add details (optional)", "tickets.draft.description", cx);
-        let draft_labels = field("Home, Money", "tickets.draft.labels", cx);
         let comment = field("Add a Comment…", "tickets.comment", cx);
         let description = field("Describe the work", "tickets.description", cx);
         let rename = field("Ticket title", "tickets.rename", cx);
@@ -210,7 +210,7 @@ impl TicketsPage {
             cx.observe(&rename, |_, _, cx| cx.notify()),
             cx.subscribe(&label_input, |this, _, _: &Submit, cx| {
                 let label = this.label_input.read(cx).content.trim().to_owned();
-                this.add_label(label, cx);
+                this.toggle_label(label, cx);
             }),
             cx.observe(&label_input, |_, _, cx| cx.notify()),
             cx.observe(&link_search, |this, _, cx| {
@@ -237,7 +237,6 @@ impl TicketsPage {
             search,
             input,
             draft_description,
-            draft_labels,
             draft: Draft::default(),
             comment,
             description,
@@ -438,7 +437,8 @@ impl TicketsPage {
             status: status.unwrap_or(TicketStatus::ToDo),
             ..Draft::default()
         };
-        for input in [&self.input, &self.draft_description, &self.draft_labels] {
+        self.label_input.update(cx, |input, _| input.reset());
+        for input in [&self.input, &self.draft_description] {
             input.update(cx, |input, cx| {
                 input.reset();
                 cx.notify();
@@ -473,7 +473,6 @@ impl TicketsPage {
             Some(Overlay::AddTicket) => vec![
                 self.input.focus_handle(cx),
                 self.draft_description.focus_handle(cx),
-                self.draft_labels.focus_handle(cx),
             ],
             Some(Overlay::AddAgent) => vec![
                 self.agent_name.focus_handle(cx),
@@ -501,13 +500,7 @@ impl TicketsPage {
             return;
         }
         let description = self.draft_description.read(cx).content.trim().to_owned();
-        let mut labels = self.draft.labels.clone();
-        for typed in self.draft_labels.read(cx).content.split(',') {
-            let typed = typed.trim();
-            if !typed.is_empty() && !labels.iter().any(|l| l.eq_ignore_ascii_case(typed)) {
-                labels.push(typed.to_owned());
-            }
-        }
+        let labels = self.draft.labels.clone();
         let draft = self.draft.clone();
         self.command(
             TicketCommand::CreateDetailed {
@@ -548,63 +541,6 @@ impl TicketsPage {
                 id,
                 revision,
                 title,
-            },
-            cx,
-        );
-    }
-    /// Remove an applied label, or apply one that is not.
-    fn toggle_label(&mut self, label: String, cx: &mut Context<Self>) {
-        let Some(ticket) = self.selected.and_then(|id| self.ticket(id)) else {
-            return;
-        };
-        if !ticket
-            .labels
-            .iter()
-            .any(|existing| existing.eq_ignore_ascii_case(&label))
-        {
-            return self.add_label(label, cx);
-        }
-        let labels = ticket
-            .labels
-            .iter()
-            .filter(|existing| !existing.eq_ignore_ascii_case(&label))
-            .cloned()
-            .collect();
-        let (id, revision) = (ticket.id, ticket.revision);
-        self.menu = None;
-        self.command(
-            TicketCommand::SetLabels {
-                id,
-                revision,
-                labels,
-            },
-            cx,
-        );
-    }
-    fn add_label(&mut self, label: String, cx: &mut Context<Self>) {
-        let Some(ticket) = self.selected.and_then(|id| self.ticket(id)) else {
-            return;
-        };
-        if label.is_empty() || label.contains(',') || label.chars().count() > 32 {
-            return;
-        }
-        if ticket
-            .labels
-            .iter()
-            .any(|existing| existing.eq_ignore_ascii_case(&label))
-        {
-            return;
-        }
-        let mut labels = ticket.labels.clone();
-        labels.push(label);
-        let (id, revision) = (ticket.id, ticket.revision);
-        self.label_input.update(cx, |input, _| input.reset());
-        self.menu = None;
-        self.command(
-            TicketCommand::SetLabels {
-                id,
-                revision,
-                labels,
             },
             cx,
         );

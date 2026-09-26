@@ -15,11 +15,18 @@ pub(crate) struct DraggedTicket {
     title: SharedString,
     priority: TicketPriority,
     labels: Vec<String>,
+    /// The assignee's name, photo and whether it is an agent.
+    assignee: (SharedString, Option<Arc<Image>>, bool),
     width: Pixels,
 }
 impl Render for DraggedTicket {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let (name, photo, agent) = &self.assignee;
+        // Lifted off the board: offset from where it was picked up, so the drop
+        // line under the pointer stays visible.
         column()
+            .mt(px(DRAG_LIFT))
+            .ml(px(DRAG_LIFT))
             .w(self.width)
             .p(px(SPACE_3))
             .gap(px(SPACE_1))
@@ -30,7 +37,17 @@ impl Render for DraggedTicket {
             .shadow(shadow_dialog())
             .text_color(rgb(TEXT))
             .gap(px(SPACE_2))
-            .child(hint(self.key.clone()))
+            .child(
+                row()
+                    .w_full()
+                    .child(hint(self.key.clone()))
+                    .child(div().flex_1())
+                    .child(if *agent {
+                        agent_avatar(name, AVATAR_SIZE_SM)
+                    } else {
+                        avatar(name, photo.clone(), AVATAR_SIZE_SM)
+                    }),
+            )
             .child(
                 div()
                     .w_full()
@@ -186,23 +203,13 @@ impl TicketsPage {
                     })
             }))
             .when(cards.is_empty(), |s| {
-                s.child(
-                    row()
-                        .h(px(EMPTY_LANE_HEIGHT))
-                        .justify_center()
-                        .rounded(px(RADIUS_MD))
-                        .border_1()
-                        .border_color(rgb(if over.is_some() {
-                            BORDER_STRONG
-                        } else {
-                            BORDER_SUBTLE
-                        }))
-                        .child(hint(if over.is_some() {
-                            "Drop here"
-                        } else {
-                            "No Tickets"
-                        })),
-                )
+                s.child(row().h(px(EMPTY_LANE_HEIGHT)).justify_center().child(hint(
+                    if over.is_some() {
+                        "Drop here"
+                    } else {
+                        "No Tickets"
+                    },
+                )))
             });
         let name = status_name(status);
         // Closed work is moved there, not created there.
@@ -316,6 +323,13 @@ impl TicketsPage {
             title: title.clone(),
             priority: ticket.priority,
             labels: ticket.labels.clone(),
+            assignee: (
+                self.assignee_name(&ticket.assignee_id),
+                (ticket.assignee_id == "owner")
+                    .then(|| self.owner.1.clone())
+                    .flatten(),
+                self.is_agent(&ticket.assignee_id),
+            ),
             width: px(BOARD_LANE_MIN_WIDTH),
         };
         let dragging = self.drag.dragging.clone();
@@ -399,12 +413,12 @@ impl TicketsPage {
         {
             return None;
         }
-        let meta = |name: &'static str, text: String, color: u32| {
+        let meta = |name: &'static str, text: String, glyph: u32, color: u32| {
             row()
                 .gap(px(SPACE_1))
                 .text_size(type_size(CAPTION_SIZE))
                 .text_color(rgb(color))
-                .child(icon(name, ICON_SIZE_XS).text_color(rgb(color)))
+                .child(icon(name, ICON_SIZE_XS).text_color(rgb(glyph)))
                 .child(text)
         };
         Some(
@@ -425,13 +439,24 @@ impl TicketsPage {
                         .map(|id| ticket_key(*id))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    s.child(meta("status-blocked", text, STATUS_RED))
+                    // Only the glyph is red; the keys stay quiet so text leads.
+                    s.child(meta("status-blocked", text, STATUS_RED, TEXT_SECONDARY))
                 })
                 .when(children > 0, |s| {
-                    s.child(meta("list", children.to_string(), TEXT_TERTIARY))
+                    s.child(meta(
+                        "list",
+                        children.to_string(),
+                        TEXT_TERTIARY,
+                        TEXT_TERTIARY,
+                    ))
                 })
                 .when(comments > 0, |s| {
-                    s.child(meta("feedback", comments.to_string(), TEXT_TERTIARY))
+                    s.child(meta(
+                        "feedback",
+                        comments.to_string(),
+                        TEXT_TERTIARY,
+                        TEXT_TERTIARY,
+                    ))
                 }),
         )
     }
@@ -517,18 +542,11 @@ fn card_width(geometry: &Geometry, id: i64) -> Option<Pixels> {
         .map(|(_, bounds)| bounds.size.width)
 }
 
-/// The square priority mark beside a card's labels.
+/// A card's priority: the bare glyph at the height of the labels beside it.
 fn priority_chip(priority: TicketPriority) -> Div {
-    row()
-        .size(px(PILL_HEIGHT))
-        .flex_shrink_0()
-        .justify_center()
-        .rounded(px(RADIUS_SM))
-        .border_1()
-        .border_color(rgb(BORDER_STRONG))
-        .child(
-            icon(priority_icon(priority), ICON_SIZE_XS).text_color(rgb(priority_color(priority))),
-        )
+    row().h(px(PILL_HEIGHT)).flex_shrink_0().child(
+        icon(priority_icon(priority), ICON_SIZE_SM).text_color(rgb(priority_color(priority))),
+    )
 }
 
 /// The white line where a dragged card will land; zero height when idle.

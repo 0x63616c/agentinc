@@ -347,6 +347,8 @@ pub const MESSAGE_MS: u64 = 220;
 pub const SKELETON_MS: u64 = 1400;
 /// How long a dropped card's edge takes to settle back to rest.
 pub const SETTLE_MS: u64 = 600;
+/// How far a dragged card's copy floats from where it was picked up.
+pub const DRAG_LIFT: f32 = SPACE_3;
 /// The card left behind while its copy follows the pointer.
 pub const GHOST_OPACITY: f32 = 0.35;
 /// Controls that snap into place: toggles, segment thumbs, palette selection.

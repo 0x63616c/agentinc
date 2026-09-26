@@ -37,6 +37,7 @@ pub struct Select {
     open: bool,
     enabled: bool,
     quiet: bool,
+    below: bool,
     width: f32,
 }
 
@@ -50,6 +51,7 @@ impl Select {
             open: false,
             enabled: true,
             quiet: false,
+            below: false,
             width: MENU_WIDTH,
         }
     }
@@ -76,6 +78,12 @@ impl Select {
         self.quiet = true;
         self
     }
+    /// Open the menu below the trigger, left edges aligned, for selects in
+    /// dialogs where a menu over the trigger would cover the fields above it.
+    pub fn below(mut self) -> Self {
+        self.below = true;
+        self
+    }
     pub fn width(mut self, width: f32) -> Self {
         self.width = width;
         self
@@ -96,6 +104,7 @@ impl Select {
             open,
             enabled,
             quiet,
+            below,
             width,
         } = self;
         let current = value.and_then(|index| options.get(index));
@@ -161,6 +170,13 @@ impl Select {
                         menu,
                         Anchor::TopRight,
                         point(px(width), px(CONTROL_HEIGHT + SPACE_1)),
+                    ));
+                }
+                if below {
+                    return s.child(floating(
+                        menu,
+                        Anchor::TopLeft,
+                        point(px(0.), px(CONTROL_HEIGHT + SPACE_1)),
                     ));
                 }
                 let current = value.unwrap_or(0) as f32;

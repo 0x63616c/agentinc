@@ -164,6 +164,7 @@ impl TicketsPage {
         .value(STATUSES.iter().position(|s| *s == self.draft.status))
         .open(self.menu == Some(Menu::DraftStatus))
         .width(half)
+        .below()
         .build(
             &self.hover,
             |this: &mut Self, _, cx| this.toggle_menu(Menu::DraftStatus, cx),
@@ -187,6 +188,7 @@ impl TicketsPage {
         .value(PRIORITIES.iter().position(|p| *p == self.draft.priority))
         .open(self.menu == Some(Menu::DraftPriority))
         .width(half)
+        .below()
         .build(
             &self.hover,
             |this: &mut Self, _, cx| this.toggle_menu(Menu::DraftPriority, cx),
@@ -225,6 +227,7 @@ impl TicketsPage {
         .value(assignees.iter().position(|a| a.id == chosen))
         .open(self.menu == Some(Menu::DraftAssignee))
         .width(full)
+        .below()
         .build(
             &self.hover,
             |this: &mut Self, _, cx| this.toggle_menu(Menu::DraftAssignee, cx),
@@ -277,43 +280,11 @@ impl TicketsPage {
                         s.child(hint("The agent starts work as soon as you create it."))
                     }),
             )
-            .child({
-                let known = all_labels(&self.state.tickets);
+            .child(
                 column_gap(FIELD_LABEL_GAP)
                     .child(field_label("Labels"))
-                    .when(!known.is_empty(), |s| {
-                        s.child(row().flex_wrap().gap(px(CHIP_GAP)).children(
-                            known.into_iter().map(|label| {
-                                let chosen = self.draft.labels.contains(&label);
-                                let toggled = label.clone();
-                                chip(
-                                    SharedString::from(format!("tickets.draft.label.{label}")),
-                                    label,
-                                    chosen,
-                                    true,
-                                    &self.hover,
-                                    move |this: &mut Self, _, cx| {
-                                        if let Some(index) =
-                                            this.draft.labels.iter().position(|l| *l == toggled)
-                                        {
-                                            this.draft.labels.remove(index);
-                                        } else {
-                                            this.draft.labels.push(toggled.clone());
-                                        }
-                                        cx.notify();
-                                    },
-                                    cx,
-                                )
-                            }),
-                        ))
-                    })
-                    .child(
-                        Field::new(self.draft_labels.clone())
-                            .selector("Labels")
-                            .hint("New labels, separated by commas.")
-                            .build(window, cx),
-                    )
-            })
+                    .child(self.label_picker(&self.draft.labels, Menu::DraftLabels, window, cx)),
+            )
     }
 
     /// Tickets the relationship can point at: not this one, not already
@@ -354,6 +325,7 @@ impl TicketsPage {
         .value(Relation::ALL.iter().position(|r| *r == self.link_relation))
         .open(self.menu == Some(Menu::Relation))
         .width(full)
+        .below()
         .build(
             &self.hover,
             |this: &mut Self, _, cx| this.toggle_menu(Menu::Relation, cx),
@@ -412,6 +384,11 @@ impl TicketsPage {
                                     status_name(ticket.status)
                                 ))
                                 .selected(self.link_target == Some(other))
+                                .trailing(
+                                    icon("check", ICON_SIZE_SM)
+                                        .text_color(rgb(TEXT))
+                                        .when(self.link_target != Some(other), |s| s.opacity(0.)),
+                                )
                                 .build(
                                     &self.hover,
                                     move |this: &mut Self, _, cx| {
