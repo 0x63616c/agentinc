@@ -110,7 +110,7 @@ impl Shell {
                 .pl(px(SIDEBAR_IDENTITY_LEFT_INSET))
                 .pr(px(SIDEBAR_IDENTITY_RIGHT_INSET))
                 .gap(px(8.5))
-                .mb(px(22.))
+                .mb(px(16.))
                 .child(
                     row()
                         .size(px(24.))
@@ -132,6 +132,26 @@ impl Shell {
                         .text_size(type_size(LABEL_SIZE))
                         .child(workspace_name),
                 ),
+            )
+            .child(
+                self.button("shell.search", "Search · ⌘ K", Control::Search, cx)
+                    .debug_selector(|| "shell.search".into())
+                    .w_full()
+                    .min_w_0()
+                    .h(px(32.))
+                    .mb(px(16.))
+                    .pl(px(HEADER_SEARCH_LEFT_INSET))
+                    .pr(px(HEADER_SEARCH_RIGHT_INSET))
+                    .bg(rgb(SURFACE_SEARCH))
+                    .border_1()
+                    .border_color(rgb(BORDER))
+                    .text_color(rgb(MUTED))
+                    .text_size(type_size(LABEL_SIZE))
+                    .child(icon("search", 14.))
+                    .child(div().flex_1().min_w_0().truncate().child("Go to…"))
+                    .when(self.session.panes[0].width >= 210., |s| {
+                        s.child(shortcut_badge("⌘ K").w(px(36.)))
+                    }),
             )
             .child(nav)
             .child(div().flex_1())

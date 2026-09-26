@@ -1522,6 +1522,15 @@ mod interaction_tests {
                 window.draw(cx).clear(cx);
             });
             let sidebar = cx.debug_bounds("sidebar-content").unwrap();
+            let search = cx.debug_bounds("shell.search").unwrap();
+            assert!(
+                f32::from(search.origin.x) >= f32::from(sidebar.origin.x),
+                "search left edge at width {width}"
+            );
+            assert!(
+                right(search) <= right(sidebar),
+                "search right edge at width {width}"
+            );
             let title = cx.debug_bounds("workspace-title").unwrap();
             assert!(
                 right(title) <= right(sidebar) - 6.,
