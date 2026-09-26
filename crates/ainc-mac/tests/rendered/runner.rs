@@ -706,14 +706,13 @@ pub fn run() -> Result<()> {
         shell.fixture_home_pages(true, cx);
     })?;
     suite.capture("dashboard", Route::Dashboard, None, false)?;
-    for selector in [
-        "dashboard.band",
-        "dashboard.lights",
-        "dashboard.upcoming",
-        "dashboard.work-list",
-    ] {
+    for selector in ["dashboard.band", "dashboard.lights", "dashboard.upcoming"] {
         suite.bounds(selector)?;
     }
+    ensure!(
+        suite.bounds("dashboard.work-list").is_err(),
+        "with no open work the glance band says so and Upcoming takes the row"
+    );
     suite.click_selector("dashboard.switch.under_cabinet")?;
     suite.capture("dashboard-switched", Route::Dashboard, None, false)?;
     suite.keys(&go(Route::SmartHome));
@@ -733,7 +732,11 @@ pub fn run() -> Result<()> {
     suite.keys(&go(Route::Calendar));
     suite.capture("calendar-month", Route::Calendar, None, false)?;
     suite.bounds("calendar.month")?;
-    suite.bounds("calendar.day-panel")?;
+    // The selected day only sits beside the month in a wide window.
+    ensure!(
+        suite.bounds("calendar.day-panel").is_err(),
+        "a 1360-point window gives the whole width to the month"
+    );
     suite.click_selector("calendar.view.1")?;
     suite.capture("calendar-week", Route::Calendar, None, false)?;
     suite.bounds("calendar.week")?;

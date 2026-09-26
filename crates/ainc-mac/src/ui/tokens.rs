@@ -204,12 +204,18 @@ pub const HOUR_HEIGHT: f32 = 48.;
 pub const TIME_GUTTER: f32 = 56.;
 pub const DAY_PANEL_WIDTH: f32 = 260.;
 /// The narrowest window that shows the selected day beside the month.
-pub const MONTH_WITH_DAY_MIN: f32 = 1100.;
+pub const MONTH_WITH_DAY_MIN: f32 = 1500.;
+/// Month rows shrink to fit short windows, but not below this.
+pub const MONTH_CELL_MIN_HEIGHT: f32 = 64.;
+/// Everything above and below the month grid in the window, for fitting rows.
+pub const MONTH_CHROME: f32 = 330.;
 pub const AGENDA_DATE_WIDTH: f32 = 128.;
 pub const AGENDA_TIME_WIDTH: f32 = 136.;
 /// The thermostat card's reading column, and its track: the rail, the
 /// setpoint handle and the reading mark.
 pub const READING_WIDTH: f32 = 260.;
+/// Below this window width the thermostat stacks its reading above its controls.
+pub const CLIMATE_STACK_BELOW: f32 = 1000.;
 pub const TRACK_HEIGHT: f32 = 4.;
 pub const TRACK_HANDLE: f32 = 14.;
 pub const TRACK_MARK: f32 = 8.;

@@ -198,7 +198,6 @@ impl CalendarPage {
                     )
                 }
             }
-            View::Agenda if self.anchor == today() => "Next six weeks".into(),
             View::Agenda => {
                 let last = self.anchor + Duration::days(AGENDA_DAYS);
                 format!(
@@ -679,7 +678,13 @@ impl CalendarPage {
             .child(date.day().to_string())
     }
 
-    fn month(&self, events: &[CalendarEvent], wide: bool, cx: &mut Context<Self>) -> Div {
+    fn month(
+        &self,
+        events: &[CalendarEvent],
+        wide: bool,
+        cell_height: f32,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let grid = month_grid(self.anchor);
         let month = self.anchor.month();
         let mut header = row()
@@ -733,7 +738,7 @@ impl CalendarPage {
                         button
                             .flex_1()
                             .min_w_0()
-                            .h(px(MONTH_CELL_HEIGHT))
+                            .h(px(cell_height))
                             .items_start()
                             .p(px(SPACE_2))
                             .rounded(px(0.))
@@ -970,10 +975,11 @@ impl CalendarPage {
                                     .child(if tall {
                                         event.title.clone()
                                     } else {
+                                        // Title first: the time gives way before the name does.
                                         format!(
-                                            "{} {}",
-                                            crate::calendar::clock(event.starts_at),
-                                            event.title
+                                            "{} · {}",
+                                            event.title,
+                                            crate::calendar::clock(event.starts_at)
                                         )
                                     });
                                 button
@@ -1357,8 +1363,14 @@ impl Render for CalendarPage {
         } else {
             match self.view {
                 View::Month => {
-                    let wide = window.viewport_size().width >= px(MONTH_WITH_DAY_MIN);
-                    self.month(&events, wide, cx).into_any_element()
+                    let viewport = window.viewport_size();
+                    let wide = viewport.width >= px(MONTH_WITH_DAY_MIN);
+                    // Every week fits in the window, down to a readable minimum.
+                    let rows = (month_grid(self.anchor).len() / 7) as f32;
+                    let cell_height = ((f32::from(viewport.height) - MONTH_CHROME) / rows)
+                        .clamp(MONTH_CELL_MIN_HEIGHT, MONTH_CELL_HEIGHT);
+                    self.month(&events, wide, cell_height, cx)
+                        .into_any_element()
                 }
                 View::Week => self.week_view(&events, cx).into_any_element(),
                 View::Agenda => self.agenda(&events, cx).into_any_element(),

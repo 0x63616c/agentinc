@@ -43,19 +43,22 @@ pub fn degrees(value: f64) -> String {
 }
 /// What the thermostat is doing, and the tone that says it.
 pub fn climate_status(climate: &HomeClimate) -> (String, Tone) {
-    let target = match climate.mode {
+    if climate.pending {
+        return ("Updating…".into(), Tone::Neutral);
+    }
+    let low = climate.target_low.unwrap_or(DEFAULT_LOW);
+    let high = climate.target_high.unwrap_or(DEFAULT_HIGH);
+    let target = climate.target.unwrap_or(DEFAULT_TARGET);
+    // In Auto, cooling heads for the top of the band and heating for the bottom.
+    let (cool_to, heat_to, holding) = match climate.mode {
         ClimateMode::Off => return ("Thermostat off".into(), Tone::Neutral),
-        ClimateMode::HeatCool => format!(
-            "{}–{}°",
-            climate.target_low.unwrap_or(DEFAULT_LOW),
-            climate.target_high.unwrap_or(DEFAULT_HIGH)
-        ),
-        _ => format!("{}°", climate.target.unwrap_or(DEFAULT_TARGET)),
+        ClimateMode::HeatCool => (high, low, format!("{low}–{high}°")),
+        _ => (target, target, format!("{target}°")),
     };
     match climate.action.as_deref() {
-        Some("Cooling") => (format!("Cooling to {target}"), Tone::Info),
-        Some("Heating") => (format!("Heating to {target}"), Tone::Warning),
-        _ => (format!("Holding {target}"), Tone::Neutral),
+        Some("Cooling") => (format!("Cooling to {cool_to}°"), Tone::Info),
+        Some("Heating") => (format!("Heating to {heat_to}°"), Tone::Warning),
+        _ => (format!("Holding {holding}"), Tone::Neutral),
     }
 }
 /// The host a connection points at.
@@ -82,12 +85,11 @@ fn room_lights(snapshot: &HomeSnapshot, switches: &[(SwitchKey, &str)]) -> (i64,
         ),
     }
 }
-/// One pattern for every room: "All on", "N of M on", "On" or "Off".
+/// One pattern for every room: "On", "N of M on" or "Off".
 pub fn room_summary(lit: i64, total: i64) -> String {
     match (lit, total) {
         (0, _) => "Off".into(),
-        (1, 1) => "On".into(),
-        (lit, total) if lit == total => "All on".into(),
+        (lit, total) if lit == total => "On".into(),
         (lit, total) => format!("{lit} of {total} on"),
     }
 }
@@ -224,13 +226,8 @@ impl SmartHomePage {
         ))
     }
 
-    fn climate(&self, climate: &HomeClimate, cx: &mut Context<Self>) -> Div {
+    fn climate(&self, climate: &HomeClimate, stacked: bool, cx: &mut Context<Self>) -> Div {
         let (status, tone) = climate_status(climate);
-        let status = if climate.pending {
-            format!("{status} · updating")
-        } else {
-            status
-        };
         let mode = MODES
             .iter()
             .position(|(mode, _)| *mode == climate.mode)
@@ -277,11 +274,14 @@ impl SmartHomePage {
                 .into_any_element()
             }
         };
-        row()
-            .debug_selector(|| "home.climate".into())
+        let card = if stacked {
+            column()
+        } else {
+            row().items_start()
+        };
+        card.debug_selector(|| "home.climate".into())
             .w_full()
-            .items_start()
-            .gap(px(SPACE_8))
+            .gap(px(if stacked { SPACE_5 } else { SPACE_8 }))
             .p(px(CARD_INSET))
             .pt(px(CARD_INSET - EYEBROW_OPTICAL_LIFT))
             .rounded(px(RADIUS_LG))
@@ -353,6 +353,9 @@ impl SmartHomePage {
             .gap(px(SPACE_4));
         for (room, switches) in ROOMS {
             let (lit, total) = room_lights(snapshot, switches);
+            let travelling = switches
+                .iter()
+                .any(|(key, _)| tile_state(snapshot, *key).pending);
             let mut tiles = row().w_full().gap(px(SPACE_3));
             for (key, label) in switches.iter().copied() {
                 let state = tile_state(snapshot, key);
@@ -403,7 +406,11 @@ impl SmartHomePage {
                                 .font_weight(FontWeight::MEDIUM)
                                 .child(room),
                         )
-                        .child(hint(room_summary(lit, total))),
+                        .child(hint(if travelling {
+                            "Updating…".to_owned()
+                        } else {
+                            room_summary(lit, total)
+                        })),
                 )
                 .child(tiles),
             );
@@ -519,7 +526,9 @@ impl Render for SmartHomePage {
                         .child(banner(Tone::Danger, error).debug_selector(|| "home.error".into()));
                 }
                 if let Some(climate) = &snapshot.climate {
-                    page = page.child(self.climate(climate, cx));
+                    // Narrow windows stack the reading above the controls.
+                    let stacked = window.viewport_size().width < px(CLIMATE_STACK_BELOW);
+                    page = page.child(self.climate(climate, stacked, cx));
                 }
                 page = page.child(
                     column()
@@ -560,7 +569,7 @@ mod tests {
         climate.mode = ClimateMode::Off;
         assert_eq!(climate_status(&climate).0, "Thermostat off");
         assert_eq!(degrees(71.6), "72°");
-        assert_eq!(room_summary(4, 4), "All on");
+        assert_eq!(room_summary(4, 4), "On");
         assert_eq!(room_summary(3, 4), "3 of 4 on");
         assert_eq!(room_summary(1, 1), "On");
         assert_eq!(room_summary(0, 2), "Off");

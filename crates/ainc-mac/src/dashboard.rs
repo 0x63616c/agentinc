@@ -2,7 +2,7 @@
 //! on the calendar and what the agents are doing.
 use crate::{
     automations::OpenTicket,
-    calendar::{CalendarModel, clock, day_label, local, now, span, today, until},
+    calendar::{CalendarModel, day_label, local, now, span, today, until},
     calendar_page::event_color,
     home::{HomeModel, glyph, tile_state},
     model::{OpenRoute, Route},
@@ -148,6 +148,7 @@ impl DashboardPage {
                                     .w_full()
                                     .min_w_0()
                                     .h(type_size(HERO_SIZE))
+                                    .overflow_hidden()
                                     .flex()
                                     .items_end()
                                     .child(value),
@@ -194,12 +195,23 @@ impl DashboardPage {
         // Next up leads with its time, so all three values share one baseline.
         let (next_value, next_detail) = match next {
             Some(event) => (
-                hero(if event.all_day {
-                    "All day".to_owned()
+                if event.all_day {
+                    hero("All day").into_any_element()
                 } else {
-                    clock(event.starts_at)
-                })
-                .into_any_element(),
+                    // The meridiem is a unit beside the numeral, so the value stays narrow.
+                    let time = local(event.starts_at);
+                    row()
+                        .items_baseline()
+                        .gap(px(SPACE_1))
+                        .child(hero(time.format("%-I:%M").to_string()))
+                        .child(
+                            div()
+                                .text_size(type_size(TITLE_SIZE))
+                                .text_color(rgb(TEXT_SECONDARY))
+                                .child(time.format("%p").to_string()),
+                        )
+                        .into_any_element()
+                },
                 caption(format!(
                     "{} · {}",
                     event.title,
@@ -334,13 +346,17 @@ impl DashboardPage {
                 SwitchKey::KitchenCeiling,
                 SwitchKey::UnderCabinet,
             ] {
-                let Some(label) = home
-                    .switches
-                    .iter()
-                    .find(|s| s.key == key)
-                    .map(|s| s.label.clone())
-                else {
+                if !home.switches.iter().any(|s| s.key == key) {
                     continue;
+                }
+                // Short names: the icon already says which room.
+                let label = match key {
+                    SwitchKey::All => "All lights",
+                    SwitchKey::Lamps => "All lamps",
+                    SwitchKey::LivingRoomLamps => "Living room",
+                    SwitchKey::BedroomLamps => "Bedroom",
+                    SwitchKey::KitchenCeiling => "Ceiling",
+                    SwitchKey::UnderCabinet => "Under cabinet",
                 };
                 let state = tile_state(&home, key);
                 let on = state.on;
@@ -588,7 +604,8 @@ impl Render for DashboardPage {
         if let Some(lights) = self.lights(cx) {
             page = page.child(lights);
         }
-        // Equal heights only when both sides have something to show.
+        // Equal heights only when both sides have something to show; with no
+        // open work, the glance band already says so and Upcoming takes the row.
         let both = !open.is_empty() && self.calendar.read(cx).upcoming(1).len() == 1;
         page = page.child(
             row()
@@ -597,7 +614,7 @@ impl Render for DashboardPage {
                 .when(!both, |s| s.items_start())
                 .gap(px(SPACE_6))
                 .child(self.upcoming(cx))
-                .child(self.work(&open, cx)),
+                .when(!open.is_empty(), |s| s.child(self.work(&open, cx))),
         );
         div()
             .id("dashboard.page")
