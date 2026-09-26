@@ -256,6 +256,8 @@ pub const FIELD_RADIUS: f32 = RADIUS_MD;
 
 /// Glanceable numerals: the indoor temperature, open work.
 pub const HERO_SIZE: f32 = 54.;
+/// Glanceable numerals in a narrow window.
+pub const COMPACT_HERO_SIZE: f32 = 36.;
 pub const DISPLAY_SIZE: f32 = 22.;
 pub const TITLE_SIZE: f32 = 18.;
 pub const HEADING_SIZE: f32 = 14.;

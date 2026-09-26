@@ -62,6 +62,8 @@ pub struct DashboardPage {
     calendar: Entity<CalendarModel>,
     store: Option<Arc<Store>>,
     name: SharedString,
+    /// A narrow window: glance numerals step down a size so they never clip.
+    compact: bool,
     hover: HoverFade,
     _observe: Vec<Subscription>,
 }
@@ -90,11 +92,15 @@ impl DashboardPage {
             calendar,
             store,
             name: name.into(),
+            compact: false,
             hover: HoverFade::default(),
         }
     }
     pub fn set_name(&mut self, name: impl Into<SharedString>) {
         self.name = name.into();
+    }
+    fn numeral(&self, text: impl Into<SharedString>) -> Div {
+        hero(text).when(self.compact, |s| s.text_size(type_size(COMPACT_HERO_SIZE)))
     }
 
     /// One third of the glance band: an eyebrow, a value on the shared
@@ -147,7 +153,11 @@ impl DashboardPage {
                                 div()
                                     .w_full()
                                     .min_w_0()
-                                    .h(type_size(HERO_SIZE))
+                                    .h(type_size(if self.compact {
+                                        COMPACT_HERO_SIZE
+                                    } else {
+                                        HERO_SIZE
+                                    }))
                                     .overflow_hidden()
                                     .flex()
                                     .items_end()
@@ -174,7 +184,8 @@ impl DashboardPage {
             (_, Some(climate)) => {
                 let (status, tone) = climate_status(climate);
                 (
-                    hero(climate.ambient.map_or_else(|| "—".into(), degrees)).into_any_element(),
+                    self.numeral(climate.ambient.map_or_else(|| "—".into(), degrees))
+                        .into_any_element(),
                     row()
                         .gap(px(SPACE_2))
                         .child(status_dot(tone))
@@ -183,11 +194,15 @@ impl DashboardPage {
                 )
             }
             (Some(h), None) if h.connection.is_none() => (
-                hero("—").text_color(rgb(TEXT_TERTIARY)).into_any_element(),
+                self.numeral("—")
+                    .text_color(rgb(TEXT_TERTIARY))
+                    .into_any_element(),
                 caption("Connect your control center").into_any_element(),
             ),
             _ => (
-                hero("—").text_color(rgb(TEXT_TERTIARY)).into_any_element(),
+                self.numeral("—")
+                    .text_color(rgb(TEXT_TERTIARY))
+                    .into_any_element(),
                 caption("Waiting for the thermostat").into_any_element(),
             ),
         };
@@ -196,14 +211,14 @@ impl DashboardPage {
         let (next_value, next_detail) = match next {
             Some(event) => (
                 if event.all_day {
-                    hero("All day").into_any_element()
+                    self.numeral("All day").into_any_element()
                 } else {
                     // The meridiem is a unit beside the numeral, so the value stays narrow.
                     let time = local(event.starts_at);
                     row()
                         .items_baseline()
                         .gap(px(SPACE_1))
-                        .child(hero(time.format("%-I:%M").to_string()))
+                        .child(self.numeral(time.format("%-I:%M").to_string()))
                         .child(
                             div()
                                 .text_size(type_size(TITLE_SIZE))
@@ -229,7 +244,9 @@ impl DashboardPage {
                 .into_any_element(),
             ),
             None => (
-                hero("—").text_color(rgb(TEXT_TERTIARY)).into_any_element(),
+                self.numeral("—")
+                    .text_color(rgb(TEXT_TERTIARY))
+                    .into_any_element(),
                 caption("Nothing scheduled").into_any_element(),
             ),
         };
@@ -275,7 +292,7 @@ impl DashboardPage {
                 "dashboard.work",
                 "Open work",
                 "tasks",
-                hero(open.len().to_string()).into_any_element(),
+                self.numeral(open.len().to_string()).into_any_element(),
                 caption(work_detail).into_any_element(),
                 Route::Tickets,
                 false,
@@ -569,6 +586,7 @@ impl DashboardPage {
 impl Render for DashboardPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
+        self.compact = window.viewport_size().width < px(CLIMATE_STACK_BELOW);
         let now = chrono::Local::now();
         let first = self.name.split_whitespace().next().unwrap_or("").to_owned();
         let title = if first.is_empty() {
