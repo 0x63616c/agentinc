@@ -1610,6 +1610,13 @@ mod interaction_tests {
         });
         cx.simulate_keystrokes("cmd-1");
         cx.update(|window, cx| window.draw(cx).clear(cx));
+        let profile = cx.debug_bounds("sidebar-profile").unwrap().center();
+        cx.simulate_click(profile, Modifiers::default());
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Settings)
+        });
+        cx.simulate_keystrokes("cmd-1");
+        cx.update(|window, cx| window.draw(cx).clear(cx));
         let settings = cx.debug_bounds("sidebar-settings").unwrap().center();
         cx.simulate_click(settings, Modifiers::default());
         shell.read_with(cx, |shell, _| {

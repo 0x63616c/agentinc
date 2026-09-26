@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 pub const SHELL: u32 = 0x090909;
 pub const SURFACE: u32 = 0x020202;
 pub const SURFACE_RAISED: u32 = 0x141414;
+pub const SURFACE_SETTINGS_ROW: u32 = 0x101010;
 pub const SURFACE_MENU: u32 = 0x191919;
 pub const SURFACE_SEARCH: u32 = 0x080808;
 pub const SURFACE_SEGMENT: u32 = 0x181818;
@@ -32,7 +33,6 @@ pub const TEXT_ACCENT: u32 = 0xbebebe;
 pub const STATUS_UNREAD: u32 = TEXT_ACCENT;
 pub const TEXT_ON_PRIMARY: u32 = 0x141414;
 pub const PRIMARY: u32 = 0xe8e8e8;
-pub const ACCENT: u32 = 0x0a84ff;
 #[cfg(target_os = "macos")]
 pub const TERMINAL_ANSI: [u32; 16] = [
     0x171717, 0xb67171, 0x8eae9b, 0xcbb38a, 0x7aa7d8, 0xb69aca, 0x82b4bc, 0xc6c6c6, 0x555555,

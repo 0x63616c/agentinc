@@ -346,6 +346,11 @@ impl Suite {
             SETTINGS_INSET,
         )?;
         near(
+            &format!("{label} SettingsRow top inset"),
+            f32::from(text.origin.y - row.origin.y),
+            SETTINGS_INSET,
+        )?;
+        near(
             &format!("{label} SettingsRow control inset"),
             f32::from(row.origin.x + row.size.width - control.origin.x - control.size.width),
             SETTINGS_INSET,
@@ -814,6 +819,27 @@ pub fn run() -> Result<()> {
     suite.keys("escape");
     suite.keys("cmd-5");
     suite.capture("terminal", Route::Terminal, None, false)?;
+    suite.window = suite
+        .cx
+        .open_offscreen_window(size(px(1360.), px(828.)), |window, cx| {
+            cx.new(|cx| Shell::fixture(temporary.path().join("model-session.json"), window, cx))
+        })?;
+    suite.keys("cmd-,");
+    suite
+        .window
+        .update(&mut suite.cx, |shell, _, cx| shell.fixture_models(cx))?;
+    suite.capture("settings-model-before-1360", Route::Settings, None, false)?;
+    let row_height = suite.bounds("settings.row.Model")?.size.height;
+    suite.click_selector("codex-model-select")?;
+    suite.capture("settings-model-after-1360", Route::Settings, None, false)?;
+    near(
+        "model row stays fixed while menu opens",
+        f32::from(suite.bounds("settings.row.Model")?.size.height),
+        f32::from(row_height),
+    )?;
+    suite.bounds("codex-model-menu")?;
+    suite.click_selector("settings.model-option.codex-one")?;
+    suite.capture("settings-model-selected-1360", Route::Settings, None, false)?;
     println!(
         "{} real Metal frames passed, including region-removal negative controls",
         suite.count
