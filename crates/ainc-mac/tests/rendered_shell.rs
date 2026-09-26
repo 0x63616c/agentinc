@@ -4,20 +4,28 @@
 #![allow(dead_code, unused_imports)]
 #[path = "../src/about.rs"]
 mod about;
-#[path = "../src/assistant.rs"]
-mod assistant;
 #[path = "../src/automations.rs"]
 mod automations;
+#[path = "../src/commands.rs"]
+mod commands;
 #[path = "../src/evee.rs"]
 mod evee;
 #[path = "../src/input.rs"]
 mod input;
+#[path = "../src/markdown.rs"]
+mod markdown;
 #[path = "../src/model.rs"]
 mod model;
+#[path = "../src/model_menu.rs"]
+mod model_menu;
 #[path = "../src/native_update.rs"]
 mod native_update;
 #[path = "../src/profile.rs"]
 mod profile;
+#[path = "../src/providers.rs"]
+mod providers;
+#[path = "../src/providers_settings.rs"]
+mod providers_settings;
 #[path = "../src/shell.rs"]
 mod shell;
 #[path = "../src/storage.rs"]

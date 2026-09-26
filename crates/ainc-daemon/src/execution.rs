@@ -10,10 +10,19 @@ use turnkeel::{
     Agent, Model, ModelError, ModelRequest, ModelResponse, RunId, Runtime, RuntimeConfig,
 };
 
+/// Receives reply text as it streams from a provider.
+pub type DeltaSink = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// Resolve an immutable model ID when reconstructing a persisted agent definition.
 /// Tests supply scripted models; production supplies the Connection's model adapter.
 pub trait ModelCatalog: Send + Sync + 'static {
     fn resolve(&self, id: &str) -> Result<Arc<dyn Model>, ModelError>;
+    /// Resolve a model that reports reply text as it streams. Catalogs without
+    /// streaming transports return the plain model.
+    fn resolve_streaming(&self, id: &str, sink: DeltaSink) -> Result<Arc<dyn Model>, ModelError> {
+        let _ = sink;
+        self.resolve(id)
+    }
 }
 #[derive(Clone)]
 struct SharedModel(Arc<dyn Model>);

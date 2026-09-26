@@ -52,6 +52,16 @@ pub struct Conversation {
     pub updated: String,
     pub updated_at: i64,
 }
+/// One durable step of a turn: reply text, a tool call or a tool result.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema, FromRow)]
+pub struct TurnStep {
+    pub id: i64,
+    pub turn_id: i64,
+    /// `text`, `tool_use` or `tool_result`.
+    pub kind: String,
+    #[schema(value_type = Object)]
+    pub content: sqlx::types::Json<serde_json::Value>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema, FromRow)]
 pub struct Turn {
     pub id: i64,
@@ -60,11 +70,27 @@ pub struct Turn {
     pub response: Option<String>,
     pub error: Option<String>,
     pub state: String,
+    /// Reply text still streaming in; cleared once its step is recorded.
+    #[serde(default)]
+    pub draft: Option<String>,
+    /// The slash command the user typed, shown as a chip instead of the prompt.
+    #[serde(default)]
+    pub command: Option<String>,
+    pub created_at: i64,
+    #[serde(default)]
+    pub started_at: Option<i64>,
+    #[serde(default)]
+    pub finished_at: Option<i64>,
+    #[serde(default)]
+    #[sqlx(skip)]
+    pub steps: Vec<TurnStep>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema, FromRow)]
 pub struct Settings {
     pub model: Option<String>,
     pub selected_conversation: Option<i64>,
+    #[sqlx(skip)]
+    pub http_policy: crate::agent_tools::HttpPolicy,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct Snapshot {
@@ -90,8 +116,15 @@ pub enum Command {
     Send {
         conversation_id: i64,
         prompt: String,
+        /// The slash command that produced this prompt, for the transcript.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        command: Option<String>,
     },
     Retry {
+        id: i64,
+    },
+    /// Stop a queued or running reply. Recorded as a failed turn that can be retried.
+    StopTurn {
         id: i64,
     },
     CreateTodo {
@@ -106,6 +139,9 @@ pub enum Command {
     },
     SelectModel {
         model: String,
+    },
+    SetHttpPolicy {
+        policy: crate::agent_tools::HttpPolicy,
     },
 }
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
@@ -201,7 +237,13 @@ pub async fn snapshot_in(pool: &PgPool, workspace: &str) -> Result<Snapshot, sql
         .execute(&mut *tx)
         .await?;
     let conversations = sqlx::query_as("SELECT c.id,c.title,COALESCE((SELECT COALESCE(response,prompt) FROM turns WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1),'') AS snippet,to_char(to_timestamp(c.updated_at),'YYYY-MM-DD HH24:MI') AS updated,c.updated_at FROM conversations c WHERE workspace_id=$1 ORDER BY updated_at DESC,id DESC").bind(workspace).fetch_all(&mut *tx).await?;
-    let turns = sqlx::query_as("SELECT t.id,conversation_id,prompt,response,error,state FROM turns t JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id=$1 ORDER BY t.id").bind(workspace).fetch_all(&mut *tx).await?;
+    let mut turns: Vec<Turn> = sqlx::query_as("SELECT t.id,conversation_id,prompt,response,error,state,draft,command,created_at,started_at,finished_at FROM turns t JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id=$1 ORDER BY t.id").bind(workspace).fetch_all(&mut *tx).await?;
+    let steps: Vec<TurnStep> = sqlx::query_as("SELECT s.id,s.turn_id,s.kind,s.content FROM turn_steps s JOIN turns t ON t.id=s.turn_id AND t.attempt=s.attempt JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id=$1 ORDER BY s.turn_id,s.seq,s.id").bind(workspace).fetch_all(&mut *tx).await?;
+    for step in steps {
+        if let Some(turn) = turns.iter_mut().find(|turn| turn.id == step.turn_id) {
+            turn.steps.push(step);
+        }
+    }
     let todos = sqlx::query_as("SELECT id,title,(status='done') AS completed FROM tickets WHERE workspace_id=$1 ORDER BY (status='done'),id DESC").bind(workspace).fetch_all(&mut *tx).await?;
     let model = sqlx::query_scalar(
         "SELECT value FROM assistant_settings WHERE workspace_id=$1 AND key='model'",
@@ -210,6 +252,12 @@ pub async fn snapshot_in(pool: &PgPool, workspace: &str) -> Result<Snapshot, sql
     .fetch_optional(&mut *tx)
     .await?;
     let selected: Option<String> = sqlx::query_scalar("SELECT value FROM assistant_settings WHERE workspace_id=$1 AND key='selected_conversation'").bind(workspace).fetch_optional(&mut *tx).await?;
+    let http_policy: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM assistant_settings WHERE workspace_id=$1 AND key='http_policy'",
+    )
+    .bind(workspace)
+    .fetch_optional(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(Snapshot {
         conversations,
@@ -218,6 +266,9 @@ pub async fn snapshot_in(pool: &PgPool, workspace: &str) -> Result<Snapshot, sql
         settings: Settings {
             model,
             selected_conversation: selected.and_then(|v| v.parse().ok()),
+            http_policy: http_policy
+                .and_then(|value| serde_json::from_str(&value).ok())
+                .unwrap_or_default(),
         },
     })
 }
@@ -334,7 +385,20 @@ pub async fn execute_in(
         Command::Send {
             conversation_id,
             prompt,
+            command,
         } => {
+            let command = command
+                .as_deref()
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .map(str::to_owned);
+            if command.as_ref().is_some_and(|c| c.chars().count() > 200) {
+                return Err(ApiError::new(
+                    StatusCode::BAD_REQUEST,
+                    "invalid",
+                    "The command is too long.",
+                ));
+            }
             let parent: Option<i64> = sqlx::query_scalar(
                 "SELECT id FROM conversations WHERE id=$1 AND workspace_id=$2 FOR UPDATE",
             )
@@ -345,8 +409,9 @@ pub async fn execute_in(
             if parent.is_none() {
                 return Err(ApiError::conflict());
             }
-            let id = sqlx::query_scalar("INSERT INTO turns(conversation_id,prompt,state,model) VALUES ($1,$2,'queued',(SELECT value FROM assistant_settings WHERE workspace_id=$3 AND key='model')) RETURNING id").bind(conversation_id).bind(prompt.trim()).bind(workspace).fetch_one(&mut *tx).await?;
-            sqlx::query("UPDATE conversations SET updated_at=extract(epoch FROM now())::bigint,title=CASE WHEN title='New conversation' THEN left($2,60) ELSE title END WHERE id=$1").bind(conversation_id).bind(prompt.trim()).execute(&mut *tx).await?;
+            let id = sqlx::query_scalar("INSERT INTO turns(conversation_id,prompt,state,model,command) VALUES ($1,$2,'queued',(SELECT value FROM assistant_settings WHERE workspace_id=$3 AND key='model'),$4) RETURNING id").bind(conversation_id).bind(prompt.trim()).bind(workspace).bind(&command).fetch_one(&mut *tx).await?;
+            // A slash command names the Conversation better than its expanded prompt.
+            sqlx::query("UPDATE conversations SET updated_at=extract(epoch FROM now())::bigint,title=CASE WHEN title='New conversation' THEN left(COALESCE($3,$2),60) ELSE title END WHERE id=$1").bind(conversation_id).bind(prompt.trim()).bind(&command).execute(&mut *tx).await?;
             Some(id)
         }
         Command::Retry { id } => {
@@ -363,6 +428,26 @@ pub async fn execute_in(
                 .await?
                 .rows_affected(),
             )?;
+            Some(id)
+        }
+        Command::StopTurn { id } => {
+            let parent: Option<i64> = sqlx::query_scalar("SELECT c.id FROM conversations c JOIN turns t ON c.id=t.conversation_id WHERE t.id=$1 AND c.workspace_id=$2 FOR UPDATE OF c").bind(id).bind(workspace).fetch_optional(&mut *tx).await?;
+            if parent.is_none() {
+                return Err(ApiError::conflict());
+            }
+            changed(
+                sqlx::query("UPDATE turns SET state='failed',error='Stopped.',draft=NULL,finished_at=extract(epoch FROM now())::bigint WHERE id=$1 AND state IN ('queued','running')")
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected(),
+            )?;
+            // Closing the session cancels its workflow; the next turn starts a fresh one.
+            sqlx::query("UPDATE conversation_sessions SET state='closed' WHERE id=(SELECT session_id FROM turns WHERE id=$1) AND state='active'").bind(id).execute(&mut *tx).await?;
+            sqlx::query("SELECT pg_notify('agentinc_results',$1)")
+                .bind(id.to_string())
+                .execute(&mut *tx)
+                .await?;
             Some(id)
         }
         Command::CreateTodo { title } => Some(
@@ -396,6 +481,11 @@ pub async fn execute_in(
         }
         Command::SelectModel { model } => {
             sqlx::query("INSERT INTO assistant_settings(workspace_id,key,value) VALUES ($1,'model',$2) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value").bind(workspace).bind(model).execute(&mut *tx).await?;
+            None
+        }
+        Command::SetHttpPolicy { policy } => {
+            let policy = policy.normalized();
+            sqlx::query("INSERT INTO assistant_settings(workspace_id,key,value) VALUES ($1,'http_policy',$2) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value").bind(workspace).bind(serde_json::to_string(&policy).expect("serializable policy")).execute(&mut *tx).await?;
             None
         }
     };

@@ -322,6 +322,11 @@
           },
           {
             "properties": {
+              "command": {
+                "description": "The slash command that produced this prompt, for the transcript.",
+                "nullable": true,
+                "type": "string"
+              },
               "conversation_id": {
                 "format": "int64",
                 "type": "integer"
@@ -352,6 +357,26 @@
               "kind": {
                 "enum": [
                   "retry"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Stop a queued or running reply. Recorded as a failed turn that can be retried.",
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "stop_turn"
                 ],
                 "type": "string"
               }
@@ -439,6 +464,24 @@
               "kind"
             ],
             "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "set_http_policy"
+                ],
+                "type": "string"
+              },
+              "policy": {
+                "$ref": "#/components/schemas/HttpPolicy"
+              }
+            },
+            "required": [
+              "policy",
+              "kind"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -487,34 +530,25 @@
         ],
         "type": "object"
       },
-      "ConnectionStatus": {
+      "ConnectMethod": {
+        "enum": [
+          "browser",
+          "browser_code",
+          "api_key"
+        ],
+        "type": "string"
+      },
+      "ConnectRequest": {
         "properties": {
-          "account": {
+          "api_key": {
             "nullable": true,
             "type": "string"
           },
-          "auth_url": {
+          "code": {
             "nullable": true,
             "type": "string"
-          },
-          "error": {
-            "nullable": true,
-            "type": "string"
-          },
-          "models": {
-            "items": {
-              "$ref": "#/components/schemas/Model"
-            },
-            "type": "array"
-          },
-          "signing_in": {
-            "type": "boolean"
           }
         },
-        "required": [
-          "models",
-          "signing_in"
-        ],
         "type": "object"
       },
       "Conversation": {
@@ -672,18 +706,25 @@
         ],
         "type": "object"
       },
-      "Model": {
+      "HttpPolicy": {
+        "description": "Which hosts the agent may call. Patterns are exact hosts or `*.suffix`;\n`*` allows every public host. Loopback, private and link-local addresses\nare always refused, whatever the policy says.",
         "properties": {
-          "id": {
-            "type": "string"
+          "allow": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
-          "name": {
-            "type": "string"
+          "deny": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
-          "id",
-          "name"
+          "allow",
+          "deny"
         ],
         "type": "object"
       },
@@ -720,8 +761,140 @@
         ],
         "type": "object"
       },
+      "ProviderId": {
+        "enum": [
+          "claude",
+          "codex",
+          "openrouter"
+        ],
+        "type": "string"
+      },
+      "ProviderModel": {
+        "properties": {
+          "featured": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "featured"
+        ],
+        "type": "object"
+      },
+      "ProviderStatus": {
+        "properties": {
+          "account": {
+            "nullable": true,
+            "type": "string"
+          },
+          "auth_url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "awaiting_code": {
+            "type": "boolean"
+          },
+          "connect": {
+            "$ref": "#/components/schemas/ConnectMethod"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ProviderId"
+          },
+          "models": {
+            "description": "Canonical model IDs (`provider:model`), featured models first.",
+            "items": {
+              "$ref": "#/components/schemas/ProviderModel"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "signing_in": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "connect",
+          "connected",
+          "models",
+          "signing_in",
+          "awaiting_code"
+        ],
+        "type": "object"
+      },
+      "ProviderTest": {
+        "properties": {
+          "elapsed_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "reply": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "model",
+          "elapsed_ms"
+        ],
+        "type": "object"
+      },
+      "ProvidersState": {
+        "properties": {
+          "default_model": {
+            "nullable": true,
+            "type": "string"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderStatus"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "type": "object"
+      },
       "Settings": {
         "properties": {
+          "http_policy": {
+            "$ref": "#/components/schemas/HttpPolicy"
+          },
           "model": {
             "nullable": true,
             "type": "string"
@@ -732,6 +905,9 @@
             "type": "integer"
           }
         },
+        "required": [
+          "http_policy"
+        ],
         "type": "object"
       },
       "Snapshot": {
@@ -783,6 +959,15 @@
           "workspace_id",
           "state"
         ],
+        "type": "object"
+      },
+      "TestRequest": {
+        "properties": {
+          "model": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "Ticket": {
@@ -1172,13 +1357,32 @@
       },
       "Turn": {
         "properties": {
+          "command": {
+            "description": "The slash command the user typed, shown as a chip instead of the prompt.",
+            "nullable": true,
+            "type": "string"
+          },
           "conversation_id": {
             "format": "int64",
             "type": "integer"
           },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "draft": {
+            "description": "Reply text still streaming in; cleared once its step is recorded.",
+            "nullable": true,
+            "type": "string"
+          },
           "error": {
             "nullable": true,
             "type": "string"
+          },
+          "finished_at": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
           },
           "id": {
             "format": "int64",
@@ -1191,15 +1395,54 @@
             "nullable": true,
             "type": "string"
           },
+          "started_at": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
           "state": {
             "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/TurnStep"
+            },
+            "type": "array"
           }
         },
         "required": [
           "id",
           "conversation_id",
           "prompt",
-          "state"
+          "state",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "TurnStep": {
+        "description": "One durable step of a turn: reply text, a tool call or a tool result.",
+        "properties": {
+          "content": {
+            "type": "object"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "`text`, `tool_use` or `tool_result`.",
+            "type": "string"
+          },
+          "turn_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "turn_id",
+          "kind",
+          "content"
         ],
         "type": "object"
       },
@@ -1621,15 +1864,26 @@
         ]
       }
     },
-    "/v1/connection": {
+    "/v1/providers": {
       "get": {
-        "operationId": "connection_status",
+        "operationId": "providers_state",
+        "parameters": [
+          {
+            "description": "Re-check every provider instead of using the recent snapshot",
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConnectionStatus"
+                  "$ref": "#/components/schemas/ProvidersState"
                 }
               }
             },
@@ -1659,21 +1913,42 @@
         "tags": []
       }
     },
-    "/v1/connection/cancel": {
+    "/v1/providers/{id}/cancel": {
       "post": {
-        "operationId": "connection_cancel",
+        "operationId": "provider_cancel",
+        "parameters": [
+          {
+            "description": "claude, codex or openrouter",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConnectionStatus"
+                  "$ref": "#/components/schemas/ProvidersState"
                 }
               }
             },
             "description": ""
           },
           "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1697,59 +1972,62 @@
         "tags": []
       }
     },
-    "/v1/connection/login": {
+    "/v1/providers/{id}/connect": {
       "post": {
-        "operationId": "connection_login",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConnectionStatus"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+        "operationId": "provider_connect",
+        "parameters": [
+          {
+            "description": "claude, codex or openrouter",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectRequest"
+              }
+            }
+          },
+          "required": true
         },
-        "tags": []
-      }
-    },
-    "/v1/connection/logout": {
-      "post": {
-        "operationId": "connection_logout",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConnectionStatus"
+                  "$ref": "#/components/schemas/ProvidersState"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
             "description": ""
           },
           "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1760,6 +2038,154 @@
             "description": ""
           },
           "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": []
+      }
+    },
+    "/v1/providers/{id}/disconnect": {
+      "post": {
+        "operationId": "provider_disconnect",
+        "parameters": [
+          {
+            "description": "claude, codex or openrouter",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersState"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": []
+      }
+    },
+    "/v1/providers/{id}/test": {
+      "post": {
+        "operationId": "provider_test",
+        "parameters": [
+          {
+            "description": "claude, codex or openrouter",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderTest"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {

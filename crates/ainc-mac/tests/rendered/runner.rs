@@ -820,6 +820,20 @@ pub fn run() -> Result<()> {
         .window
         .update(&mut suite.cx, |shell, _, cx| shell.fixture_chat(true, cx))?;
     suite.capture("assistant-conversation", Route::Assistant, None, false)?;
+    suite.bounds("step-toggle-2")?;
+    suite.click_selector("step-toggle-2")?;
+    suite.capture("assistant-tool-details", Route::Assistant, None, false)?;
+    suite
+        .window
+        .update(&mut suite.cx, |shell, _, cx| shell.fixture_streaming(cx))?;
+    suite.capture("assistant-streaming", Route::Assistant, None, false)?;
+    suite
+        .window
+        .update(&mut suite.cx, |shell, _, cx| shell.fixture_palette(cx))?;
+    suite.capture("assistant-slash-palette", Route::Assistant, None, false)?;
+    suite.bounds("slash-palette")?;
+    suite.click_selector("slash-tickets")?;
+    suite.bounds("composer")?;
     suite.click_selector("back-to-conversations")?;
     suite.capture("assistant-conversation-list", Route::Assistant, None, false)?;
     suite.keys("cmd-,");
@@ -827,7 +841,7 @@ pub fn run() -> Result<()> {
         .window
         .update(&mut suite.cx, |shell, _, cx| shell.fixture_models(cx))?;
     suite.capture("settings-model-closed", Route::Settings, None, false)?;
-    suite.click_selector("codex-model-select")?;
+    suite.click_selector("model-select")?;
     suite.capture("model-dropdown-open", Route::Settings, None, false)?;
     suite.keys("escape");
     suite.keys("cmd-5");
@@ -843,14 +857,14 @@ pub fn run() -> Result<()> {
         .update(&mut suite.cx, |shell, _, cx| shell.fixture_models(cx))?;
     suite.capture("settings-model-before-1360", Route::Settings, None, false)?;
     let row_height = suite.bounds("settings.row.Model")?.size.height;
-    suite.click_selector("codex-model-select")?;
+    suite.click_selector("model-select")?;
     suite.capture("settings-model-after-1360", Route::Settings, None, false)?;
     near(
         "model row stays fixed while menu opens",
         f32::from(suite.bounds("settings.row.Model")?.size.height),
         f32::from(row_height),
     )?;
-    suite.bounds("codex-model-menu")?;
+    suite.bounds("model-menu")?;
     suite.click_selector("settings.model-option.codex-one")?;
     suite.capture("settings-model-selected-1360", Route::Settings, None, false)?;
     println!(

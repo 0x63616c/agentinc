@@ -56,9 +56,6 @@ impl Drop for Client {
     }
 }
 impl Client {
-    pub fn start() -> Result<Self> {
-        Self::start_at(&home()?)
-    }
     pub(crate) fn start_at(home: &Path) -> Result<Self> {
         std::fs::create_dir_all(home)?;
         let child = Command::new(executable())
@@ -180,8 +177,8 @@ pub struct Model {
     pub id: String,
     pub name: String,
 }
-pub fn status() -> Result<(Option<String>, Vec<Model>)> {
-    let mut client = Client::start()?;
+pub fn status_at(home: &Path) -> Result<(Option<String>, Vec<Model>)> {
+    let mut client = Client::start_at(home)?;
     let account = client.account()?;
     let mut models = Vec::new();
     if account.is_some() {
@@ -208,8 +205,8 @@ pub fn status() -> Result<(Option<String>, Vec<Model>)> {
     }
     Ok((account, models))
 }
-pub fn login(cancel: Arc<AtomicBool>, open: impl FnOnce(String)) -> Result<()> {
-    let mut client = Client::start()?;
+pub fn login_at(home: &Path, cancel: Arc<AtomicBool>, open: impl FnOnce(String)) -> Result<()> {
+    let mut client = Client::start_at(home)?;
     let result = client.call("account/login/start", json!({"type":"chatgpt"}))?;
     let url = result["authUrl"]
         .as_str()
@@ -241,8 +238,8 @@ pub fn login(cancel: Arc<AtomicBool>, open: impl FnOnce(String)) -> Result<()> {
         }
     }
 }
-pub fn logout() -> Result<()> {
-    Client::start()?.call("account/logout", json!({}))?;
+pub fn logout_at(home: &Path) -> Result<()> {
+    Client::start_at(home)?.call("account/logout", json!({}))?;
     Ok(())
 }
 

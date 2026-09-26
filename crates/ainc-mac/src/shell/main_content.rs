@@ -120,8 +120,14 @@ impl Shell {
                         },
                     )
                     .child(settings_section(
-                        "Accounts & connections",
-                        self.assistant.update(cx, |this, cx| this.settings_view(cx)),
+                        "Providers",
+                        self.providers_settings
+                            .update(cx, |this, cx| this.providers_view(cx)),
+                    ))
+                    .child(settings_section(
+                        "Agent tools",
+                        self.providers_settings
+                            .update(cx, |this, cx| this.agent_view(cx)),
                     )),
             );
         }

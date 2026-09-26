@@ -7,7 +7,7 @@ pub use ainc_client::types::{
 };
 use ainc_client::{
     Client,
-    types::{Assignee, CommandRequest, Snapshot, TicketCommandRequest},
+    types::{Assignee, CommandRequest, HttpPolicy, Settings, Snapshot, TicketCommandRequest},
 };
 #[cfg(test)]
 use anyhow::bail;
@@ -130,7 +130,14 @@ impl Store {
                 conversations: vec![],
                 turns: vec![],
                 todos: vec![],
-                settings: Default::default(),
+                settings: Settings {
+                    model: None,
+                    selected_conversation: None,
+                    http_policy: HttpPolicy {
+                        allow: vec!["*".into()],
+                        deny: vec![],
+                    },
+                },
             }),
             tickets: Mutex::new(TicketSnapshot {
                 tickets: vec![],
@@ -490,11 +497,12 @@ impl Store {
         self.command(Command::CreateConversation)?
             .context("Missing conversation acknowledgement")
     }
-    pub fn begin_turn(&self, id: i64, prompt: &str) -> Result<i64> {
+    pub fn begin_turn(&self, id: i64, prompt: &str, command: Option<&str>) -> Result<i64> {
         let turn = self
             .command(Command::Send {
                 conversation_id: id,
                 prompt: prompt.into(),
+                command: command.map(str::to_owned),
             })?
             .context("Missing turn acknowledgement")?;
         Ok(turn)

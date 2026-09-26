@@ -1,18 +1,20 @@
 use crate::{
-    assistant,
+    commands::{self, Parsed},
     input::{Submit, TextInput},
+    markdown,
+    model_menu::{self, ModelMenu},
+    providers::{self, ProvidersState},
     storage::{Command, Conversation, Store, Turn},
     ui::*,
 };
+use ainc_client::types::TurnStep;
 use gpui::{prelude::*, *};
 use std::{
     cell::RefCell,
+    collections::HashSet,
     rc::Rc,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    sync::Arc,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
@@ -48,14 +50,14 @@ pub struct AssistantPage {
     cancel_focus: FocusHandle,
     submit_focus: FocusHandle,
     account: Option<String>,
-    models: Vec<assistant::Model>,
+    providers: Option<ProvidersState>,
     model: Option<String>,
-    model_menu_open: bool,
-    model_menu_closing: bool,
-    model_menu_generation: u64,
+    menu: ModelMenu,
     credentials_busy: bool,
-    login_cancel: Option<Arc<AtomicBool>>,
-    connection_error: Option<String>,
+    expanded_steps: HashSet<i64>,
+    palette_index: usize,
+    help_open: bool,
+    notice: Option<String>,
     active: Option<i64>,
     error: Option<String>,
     pending: bool,
@@ -152,11 +154,11 @@ impl AssistantPage {
         {
             let request = cx
                 .background_executor()
-                .spawn(async { assistant::status() });
+                .spawn(async { providers::state(false) });
             cx.spawn(async move |this, cx| {
                 let result = request.await;
                 let _ = this.update(cx, |this, cx| {
-                    this.apply_status(result);
+                    this.apply_providers(result);
                     cx.notify();
                 });
             })
@@ -175,14 +177,14 @@ impl AssistantPage {
             cancel_focus: cx.focus_handle(),
             submit_focus: cx.focus_handle(),
             account: None,
-            models: vec![],
+            providers: None,
             model,
-            model_menu_open: false,
-            model_menu_closing: false,
-            model_menu_generation: 0,
+            menu: ModelMenu::default(),
             credentials_busy: !cfg!(test),
-            login_cancel: None,
-            connection_error: None,
+            expanded_steps: HashSet::new(),
+            palette_index: 0,
+            help_open: false,
+            notice: None,
             active: None,
             error,
             pending: false,
@@ -194,296 +196,68 @@ impl AssistantPage {
             _subscriptions: subscriptions,
         }
     }
-    fn apply_status(&mut self, result: anyhow::Result<(Option<String>, Vec<assistant::Model>)>) {
+    fn apply_providers(&mut self, result: anyhow::Result<ProvidersState>) {
         self.credentials_busy = false;
-        self.login_cancel = None;
         match result {
-            Ok((account, models)) => {
-                self.account = account;
-                self.models = models;
-                self.connection_error = None;
+            Ok(state) => {
+                self.account = state
+                    .providers
+                    .iter()
+                    .find(|provider| provider.connected)
+                    .map(|provider| {
+                        provider
+                            .account
+                            .clone()
+                            .unwrap_or_else(|| provider.name.clone())
+                    });
+                self.providers = Some(state);
             }
-            Err(e) => {
-                self.account = None;
-                self.connection_error = Some(e.to_string());
-            }
+            Err(error) => self.error = Some(error.to_string()),
         }
     }
-    fn refresh_connection(&mut self, cx: &mut Context<Self>) {
-        if self.credentials_busy || self.active.is_some() {
+    pub(crate) fn refresh_providers(&mut self, cx: &mut Context<Self>) {
+        if self.credentials_busy {
             return;
         }
         self.credentials_busy = true;
         let request = cx
             .background_executor()
-            .spawn(async { assistant::status() });
+            .spawn(async { providers::state(false) });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
-                this.apply_status(result);
+                this.apply_providers(result);
                 cx.notify();
             });
         })
         .detach();
         cx.notify();
     }
-    fn connect(&mut self, cx: &mut Context<Self>) {
-        if self.credentials_busy || self.active.is_some() {
-            return;
-        }
-        self.credentials_busy = true;
-        self.connection_error = None;
-        let cancel = Arc::new(AtomicBool::new(false));
-        self.login_cancel = Some(cancel.clone());
-        let request = cx.background_executor().spawn(async move {
-            assistant::login(cancel, |url| {
-                let _ = std::process::Command::new("/usr/bin/open").arg(url).spawn();
-            })
-            .and_then(|_| assistant::status())
-        });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.apply_status(result);
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-    fn disconnect(&mut self, cx: &mut Context<Self>) {
-        if self.credentials_busy || self.active.is_some() {
-            return;
-        }
-        self.credentials_busy = true;
-        let request = cx
-            .background_executor()
-            .spawn(async { assistant::logout().and_then(|_| assistant::status()) });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.apply_status(result);
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-    pub fn settings_view(&self, cx: &mut Context<Self>) -> Div {
-        let enabled = !self.credentials_busy && self.active.is_none();
-        let state = if self.credentials_busy {
-            if self.login_cancel.is_some() {
-                "Complete sign-in in your browser.".to_owned()
-            } else {
-                "Checking connection…".to_owned()
-            }
-        } else if let Some(account) = &self.account {
-            format!("Connected as {account}")
-        } else {
-            "Not connected · Uses your ChatGPT subscription.".to_owned()
-        };
-        column()
-            .child(settings_row(
-                "ChatGPT",
-                state,
-                if self.account.is_some() {
-                    settings_button(
-                        "codex-sign-in",
-                        "Sign out",
-                        enabled,
-                        |this: &mut Self, _, cx| this.disconnect(cx),
-                        cx,
-                    )
-                } else {
-                    settings_icon_button(
-                        "codex-sign-in",
-                        "Sign in with ChatGPT",
-                        "openai",
-                        enabled,
-                        |this: &mut Self, _, cx| this.connect(cx),
-                        cx,
-                    )
-                },
-            ))
-            .when_some(self.connection_error.clone(), |s, error| {
-                s.child(settings_divider()).child(settings_row(
-                    "Connection issue",
-                    error,
-                    settings_button(
-                        "codex-refresh-error",
-                        "Retry",
-                        enabled,
-                        |this: &mut Self, _, cx| this.refresh_connection(cx),
-                        cx,
-                    ),
-                ))
-            })
-            .when(self.login_cancel.is_some(), |s| {
-                s.child(settings_divider()).child(settings_row(
-                    "Sign-in in progress",
-                    "Waiting for your browser to complete sign-in.",
-                    settings_button(
-                        "cancel-sign-in",
-                        "Cancel",
-                        true,
-                        |this: &mut Self, _, cx| {
-                            if let Some(cancel) = &this.login_cancel {
-                                cancel.store(true, Ordering::Relaxed);
-                            }
-                            cx.notify();
-                        },
-                        cx,
-                    ),
-                ))
-            })
-            .when(self.account.is_some(), |s| {
-                s.child(settings_divider()).child(settings_row(
-                    "Model",
-                    "Choose the Codex model for conversations.",
-                    column()
-                        .relative()
-                        .w(px(210.))
-                        .h(px(CONTROL_HEIGHT))
-                        .child(
-                            settings_button(
-                                "codex-model-select",
-                                self.model
-                                    .as_ref()
-                                    .and_then(|id| {
-                                        self.models
-                                            .iter()
-                                            .find(|model| &model.id == id)
-                                            .map(|model| model.name.clone())
-                                    })
-                                    .unwrap_or_else(|| "Codex default".into()),
-                                enabled,
-                                |this: &mut Self, _, cx| {
-                                    if this.model_menu_open {
-                                        this.close_model_menu(cx);
-                                    } else {
-                                        this.model_menu_generation += 1;
-                                        this.model_menu_open = true;
-                                        this.model_menu_closing = false;
-                                        cx.notify();
-                                    }
-                                },
-                                cx,
-                            )
-                            .w_full()
-                            .justify_between()
-                            .debug_selector(|| "codex-model-select".into())
-                            .child("⌄"),
-                        )
-                        .when(self.model_menu_open || self.model_menu_closing, |anchor| {
-                            let menu_open = self.model_menu_open;
-                            anchor.child(
-                                deferred(
-                                    column()
-                                        .id("codex-model-menu")
-                                        .debug_selector(|| "codex-model-menu".into())
-                                        .absolute()
-                                        .right(px(0.))
-                                        .top(px(36.))
-                                        .w(px(210.))
-                                        .max_h(px(280.))
-                                        .overflow_y_scroll()
-                                        .p(px(4.))
-                                        .rounded(px(CONTROL_RADIUS))
-                                        .border_1()
-                                        .border_color(rgb(BORDER_OVERLAY))
-                                        .bg(rgb(SURFACE_MENU))
-                                        .shadow(vec![
-                                            BoxShadow::new(px(0.), px(8.), rgba(SCRIM).into())
-                                                .blur_radius(px(24.)),
-                                        ])
-                                        .child(self.model_option(
-                                            "model-default",
-                                            "Codex default".into(),
-                                            None,
-                                            enabled && menu_open,
-                                            cx,
-                                        ))
-                                        .children(self.models.iter().enumerate().map(
-                                            |(index, model)| {
-                                                self.model_option(
-                                                    ("codex-model", index),
-                                                    model.name.clone(),
-                                                    Some(model.id.clone()),
-                                                    enabled && menu_open,
-                                                    cx,
-                                                )
-                                            },
-                                        ))
-                                        .with_animation(
-                                            if menu_open {
-                                                "codex-model-menu-open"
-                                            } else {
-                                                "codex-model-menu-close"
-                                            },
-                                            Animation::new(Duration::from_millis(PANEL_MS)),
-                                            move |menu, progress| {
-                                                menu.opacity(if menu_open {
-                                                    progress
-                                                } else {
-                                                    1. - progress
-                                                })
-                                            },
-                                        ),
-                                )
-                                .with_priority(1),
-                            )
-                        }),
-                ))
-            })
-            .child(settings_divider())
-            .child(settings_row(
-                "Connection status",
-                "Refresh your ChatGPT account and available models.",
-                settings_button(
-                    "codex-refresh",
-                    "Refresh",
-                    enabled,
-                    |this: &mut Self, _, cx| this.refresh_connection(cx),
-                    cx,
-                ),
-            ))
-    }
-    fn model_option(
-        &self,
-        id: impl Into<ElementId>,
-        name: String,
-        model: Option<String>,
-        enabled: bool,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let selected = self.model == model;
-        let choice = model.clone();
-        let selector = format!(
-            "settings.model-option.{}",
-            name.to_lowercase().replace(' ', "-")
-        );
-        action_button(
-            ButtonSpec {
-                id: id.into(),
-                label: name.clone().into(),
-                kind: ButtonKind::Quiet,
+    /// The composer's model chip and its floating list.
+    fn model_chip(&self, cx: &mut Context<Self>) -> Div {
+        let enabled = self.store.is_some() && !self.pending;
+        let label = model_menu::label(&self.providers, &self.model);
+        let trigger = self
+            .action(
+                "model-select",
+                &label,
                 enabled,
-            },
-            |button| {
-                button
-                    .debug_selector(move || selector.clone())
-                    .w_full()
-                    .min_h(px(34.))
-                    .px(px(10.))
-                    .gap(px(10.))
-                    .rounded(px(CONTROL_RADIUS))
-                    .bg(rgb(if selected { SELECTED } else { SURFACE_MENU }))
-                    .hover(|item| item.bg(rgb(HOVER_CONTROL)))
-                    .text_size(type_size(LABEL_SIZE))
-                    .child(div().flex_1().min_w_0().truncate().child(name))
-                    .when(selected, |item| item.child("✓"))
-            },
-            move |this: &mut Self, _, cx| this.select_model(choice.clone(), cx),
+                |this, cx| this.menu.toggle(|this: &mut Self| &mut this.menu, cx),
+                cx,
+            )
+            .h(px(32.))
+            .gap(px(6.))
+            .border_1()
+            .border_color(rgb(BORDER))
+            .child(icon("chevronDown", 12.).text_color(rgb(MUTED)));
+        model_menu::render(
+            &self.menu,
+            &self.providers,
+            &self.model,
+            false,
+            enabled,
+            trigger,
+            |this: &mut Self, model, _, cx| this.select_model(model, cx),
             cx,
         )
     }
@@ -555,10 +329,13 @@ impl AssistantPage {
         self.input.update(cx, |input, _| input.reset());
         self.rename_input.update(cx, |input, _| input.reset());
         self.form_error = None;
+        self.help_open = false;
+        self.notice = None;
         self.reload_snapshot();
+        self.refresh_providers(cx);
     }
     fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
-        self.close_model_menu(cx);
+        self.menu.close(|this: &mut Self| &mut this.menu, cx);
         self.mutate(
             move |db| {
                 db.command(Command::SelectModel {
@@ -568,29 +345,6 @@ impl AssistantPage {
             |_, _, _| {},
             cx,
         );
-    }
-    fn close_model_menu(&mut self, cx: &mut Context<Self>) {
-        if !self.model_menu_open {
-            return;
-        }
-        self.model_menu_open = false;
-        self.model_menu_closing = true;
-        self.model_menu_generation += 1;
-        let generation = self.model_menu_generation;
-        let timer = cx
-            .background_executor()
-            .timer(Duration::from_millis(PANEL_MS));
-        cx.spawn(async move |this, cx| {
-            timer.await;
-            let _ = this.update(cx, |this, cx| {
-                if this.model_menu_generation == generation {
-                    this.model_menu_closing = false;
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-        cx.notify();
     }
     fn open_conversation(&mut self, id: i64, cx: &mut Context<Self>) {
         if self.pending {
@@ -887,6 +641,8 @@ impl AssistantPage {
     #[allow(dead_code)]
     pub fn fixture_chat(&mut self, populated: bool, cx: &mut Context<Self>) {
         self.fixture_models(cx);
+        self.active = None;
+        self.expanded_steps.clear();
         self.conversation = Some(1);
         self.conversations = vec![Conversation {
             id: 1,
@@ -897,32 +653,167 @@ impl AssistantPage {
         }];
         self.turns = if populated {
             vec![
-                Turn { conversation_id: 1, id: 1, prompt: "What should I focus on today?".into(), response: Some("Let's prioritize the work. Review your open Tickets, then plan the next agent run.".into()), error: None, state: "done".into() },
-                Turn { conversation_id: 1, id: 2, prompt: "Can you help me choose the first one?".into(), response: Some("Yes. Start with the Ticket that is blocking the rest of your plan.".into()), error: None, state: "done".into() },
+                fixture_turn(
+                    1,
+                    "What should I focus on today?",
+                    None,
+                    "completed",
+                    vec![fixture_step(
+                        1,
+                        1,
+                        "text",
+                        serde_json::json!({"text":"Start with the **blocking Ticket**, then the agent run.\n\n1. Review `ticket-142` (blocked on the API contract)\n2. Kick off the nightly automation"}),
+                    )],
+                ),
+                fixture_turn(
+                    2,
+                    "List my Tickets grouped by state.",
+                    Some("/tickets"),
+                    "completed",
+                    vec![
+                        fixture_step(
+                            2,
+                            2,
+                            "tool_use",
+                            serde_json::json!({"id":"call_1","name":"list_tickets","input":{}}),
+                        ),
+                        fixture_step(
+                            3,
+                            2,
+                            "tool_result",
+                            serde_json::json!({"tool_use_id":"call_1","content":{"tickets":[{"id":142,"title":"Ship the API contract","status":"in_progress"}]},"is_error":false}),
+                        ),
+                        fixture_step(
+                            4,
+                            2,
+                            "text",
+                            serde_json::json!({"text":"You have **one Ticket in progress**: *Ship the API contract*. Nothing is blocked."}),
+                        ),
+                    ],
+                ),
             ]
         } else {
             vec![]
         };
         self.show_chat = true;
+        self.scroll.scroll_to_bottom();
+        cx.notify();
+    }
+    /// A turn mid-flight: a tool call still running and reply text streaming in.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub fn fixture_streaming(&mut self, cx: &mut Context<Self>) {
+        self.fixture_chat(true, cx);
+        let mut turn = fixture_turn(
+            3,
+            "Fetch https://example.test/status and summarize it.",
+            Some("/http https://example.test/status"),
+            "running",
+            vec![fixture_step(
+                5,
+                3,
+                "tool_use",
+                serde_json::json!({"id":"call_2","name":"http_request","input":{"method":"GET","url":"https://example.test/status"}}),
+            )],
+        );
+        turn.draft = Some("Checking the status page now. So far the service reports".into());
+        self.turns.push(turn);
+        self.active = Some(3);
+        self.expanded_steps.insert(2);
+        self.scroll.scroll_to_bottom();
+        cx.notify();
+    }
+    /// The slash palette open with a partial command typed.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub fn fixture_palette(&mut self, cx: &mut Context<Self>) {
+        self.fixture_chat(true, cx);
+        self.input.update(cx, |input, cx| input.set_text("/ti", cx));
+        self.palette_index = 0;
         cx.notify();
     }
     #[cfg(test)]
     #[allow(dead_code)]
     pub fn fixture_models(&mut self, cx: &mut Context<Self>) {
+        self.providers = Some(fixture_providers());
+        self.model = Some("codex:model-one".into());
         self.account = Some("Fixture account".into());
         self.credentials_busy = false;
-        self.models = vec![
-            assistant::Model {
-                id: "model-one".into(),
-                name: "Codex One".into(),
-            },
-            assistant::Model {
-                id: "model-two".into(),
-                name: "Codex Two".into(),
-            },
-        ];
         cx.notify();
     }
+}
+#[cfg(test)]
+#[allow(dead_code)]
+pub fn fixture_providers() -> ProvidersState {
+    {
+        use ainc_client::types::{ConnectMethod, ProviderId, ProviderModel, ProviderStatus};
+        let provider = |id: ProviderId,
+                        name: &str,
+                        description: &str,
+                        connect: ConnectMethod,
+                        connected: bool,
+                        account: Option<&str>,
+                        models: Vec<(&str, &str, bool)>| ProviderStatus {
+            id,
+            name: name.into(),
+            description: description.into(),
+            connect,
+            connected,
+            account: account.map(str::to_owned),
+            models: models
+                .into_iter()
+                .map(|(id, name, featured)| ProviderModel {
+                    id: id.into(),
+                    name: name.into(),
+                    featured,
+                })
+                .collect(),
+            error: None,
+            signing_in: false,
+            auth_url: None,
+            awaiting_code: false,
+        };
+        ProvidersState {
+            default_model: Some("codex:model-one".into()),
+            providers: vec![
+                provider(
+                    ProviderId::Claude,
+                    "Claude",
+                    "Your Claude subscription through Claude Code's sign-in.",
+                    ConnectMethod::BrowserCode,
+                    true,
+                    Some("fixture@example.test · Claude Max"),
+                    vec![
+                        ("claude:claude-fable-5-1", "Fable 5.1", false),
+                        ("claude:claude-sonnet-5", "Sonnet 5", false),
+                    ],
+                ),
+                provider(
+                    ProviderId::Codex,
+                    "ChatGPT",
+                    "Your ChatGPT subscription through Codex's sign-in.",
+                    ConnectMethod::Browser,
+                    true,
+                    Some("fixture@example.test · Plus"),
+                    vec![
+                        ("codex:model-one", "Codex One", false),
+                        ("codex:model-two", "Codex Two", false),
+                    ],
+                ),
+                provider(
+                    ProviderId::Openrouter,
+                    "OpenRouter",
+                    "Hundreds of models with one API key. Jev is the cheap, capable default.",
+                    ConnectMethod::ApiKey,
+                    false,
+                    None,
+                    vec![("openrouter:typesafe/jev-router", "Jev Router", true)],
+                ),
+            ],
+        }
+    }
+}
+impl AssistantPage {
     pub fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
         if matches!(
             self.overlays.borrow().active(),
@@ -1053,14 +944,60 @@ impl AssistantPage {
         if self.active.is_some() || self.pending || self.credentials_busy {
             return;
         }
+        let text = self.input.read(cx).content.trim().to_owned();
+        if text.is_empty() {
+            return;
+        }
+        match commands::parse(&text) {
+            Parsed::New => {
+                self.reset_composer(cx);
+                self.new_conversation(cx);
+            }
+            Parsed::Clear => {
+                self.reset_composer(cx);
+                self.clear_conversation(cx);
+            }
+            Parsed::Help => {
+                self.reset_composer(cx);
+                self.help_open = true;
+                self.notice = None;
+                self.scroll.scroll_to_bottom();
+                cx.notify();
+            }
+            Parsed::Model(None) => {
+                self.reset_composer(cx);
+                self.menu.toggle(|this: &mut Self| &mut this.menu, cx);
+            }
+            Parsed::Model(Some(name)) => {
+                self.reset_composer(cx);
+                match model_menu::find(&self.providers, &name) {
+                    Some(id) => self.select_model(Some(id), cx),
+                    None => {
+                        self.notice = Some(format!(
+                            "No connected model matches “{name}”. Type /model to choose one."
+                        ));
+                        cx.notify();
+                    }
+                }
+            }
+            Parsed::Unknown(command) => {
+                self.notice = Some(format!(
+                    "Unknown command {command}. Type / to see commands."
+                ));
+                cx.notify();
+            }
+            Parsed::Prompt { command, prompt } => self.submit(prompt, Some(command), cx),
+            Parsed::Plain(prompt) => self.submit(prompt, None, cx),
+        }
+    }
+    fn submit(&mut self, prompt: String, command: Option<String>, cx: &mut Context<Self>) {
         if self.account.is_none() {
             cx.emit(Navigation::Settings);
             return;
         }
-        let prompt = self.input.read(cx).content.trim().to_owned();
-        if prompt.is_empty() {
-            return;
-        }
+        self.help_open = false;
+        self.notice = None;
+        self.palette_index = 0;
         let conversation = self.conversation;
         self.mutate(
             move |db| {
@@ -1068,7 +1005,7 @@ impl AssistantPage {
                     Some(id) => id,
                     None => db.new_conversation()?,
                 };
-                let turn = db.begin_turn(id, &prompt)?;
+                let turn = db.begin_turn(id, &prompt, command.as_deref())?;
                 Ok((id, turn))
             },
             |this, (conversation, id), cx| {
@@ -1080,6 +1017,81 @@ impl AssistantPage {
                 });
                 this.scroll.scroll_to_bottom();
                 this.watch_turn(id, cx);
+            },
+            cx,
+        );
+    }
+    fn clear_conversation(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.conversation else {
+            self.new_conversation(cx);
+            return;
+        };
+        self.help_open = false;
+        self.mutate(
+            move |db| {
+                db.command(Command::DeleteConversation { id })?;
+                let id = db.new_conversation()?;
+                db.command(Command::SelectConversation { id })?;
+                Ok(id)
+            },
+            |this, id, cx| {
+                this.conversation = Some(id);
+                this.show_chat = true;
+                this.reload_snapshot();
+                this.notice = Some("Conversation cleared.".into());
+                cx.notify();
+            },
+            cx,
+        );
+    }
+    fn reset_composer(&mut self, cx: &mut Context<Self>) {
+        self.palette_index = 0;
+        self.input.update(cx, |input, cx| {
+            input.reset();
+            cx.notify();
+        });
+    }
+    fn palette(&self, cx: &App) -> Vec<&'static commands::SlashCommand> {
+        commands::suggestions(self.input.read(cx).content.trim_start())
+    }
+    fn accept_suggestion(&mut self, cx: &mut Context<Self>) {
+        let items = self.palette(cx);
+        if items.is_empty() {
+            return;
+        }
+        let command = items[self.palette_index.min(items.len() - 1)];
+        self.palette_index = 0;
+        if command.argument.is_some() {
+            let text = format!("/{} ", command.name);
+            self.input.update(cx, |input, cx| input.set_text(&text, cx));
+            cx.notify();
+        } else {
+            let text = format!("/{}", command.name);
+            self.input.update(cx, |input, cx| input.set_text(&text, cx));
+            self.send(cx);
+        }
+    }
+    fn toggle_step(&mut self, id: i64, cx: &mut Context<Self>) {
+        if !self.expanded_steps.remove(&id) {
+            self.expanded_steps.insert(id);
+            // Keep the opened details in view when they belong to the newest turn.
+            if self
+                .turns
+                .last()
+                .is_some_and(|turn| turn.steps.iter().any(|step| step.id == id))
+            {
+                self.scroll.scroll_to_bottom();
+            }
+        }
+        cx.notify();
+    }
+    fn stop(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.active else { return };
+        self.mutate(
+            move |db| db.command(Command::StopTurn { id }),
+            |this, _, cx| {
+                this.reload_snapshot();
+                cx.notify();
             },
             cx,
         );
@@ -1132,10 +1144,9 @@ impl AssistantPage {
                 if done {
                     break;
                 }
+                // GPUI's executor has no Tokio reactor; use its own timer.
                 cx.background_executor()
-                    .spawn(async {
-                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                    })
+                    .timer(std::time::Duration::from_millis(150))
                     .await;
             }
             let _ = this.update(cx, |this, cx| {
@@ -1211,6 +1222,485 @@ impl AssistantPage {
     }
 }
 
+#[cfg(test)]
+fn fixture_turn(
+    id: i64,
+    prompt: &str,
+    command: Option<&str>,
+    state: &str,
+    steps: Vec<TurnStep>,
+) -> Turn {
+    let response = steps
+        .iter()
+        .filter(|step| step.kind == "text")
+        .filter_map(|step| step.content["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("");
+    Turn {
+        conversation_id: 1,
+        id,
+        prompt: prompt.into(),
+        response: (!response.is_empty()).then_some(response),
+        error: None,
+        state: state.into(),
+        command: command.map(str::to_owned),
+        created_at: 1_790_249_400,
+        draft: None,
+        finished_at: (state == "completed").then_some(1_790_249_460),
+        started_at: Some(1_790_249_401),
+        steps,
+    }
+}
+#[cfg(test)]
+fn fixture_step(id: i64, turn_id: i64, kind: &str, content: serde_json::Value) -> TurnStep {
+    TurnStep {
+        id,
+        turn_id,
+        kind: kind.into(),
+        content: content.as_object().cloned().unwrap_or_default(),
+    }
+}
+
+/// The tool as a person would name it; the identifier stays in the details.
+fn tool_title(name: &str) -> String {
+    match name {
+        "list_tickets" => "List Tickets".into(),
+        "ticket_command" => "Ticket command".into(),
+        "list_automations" => "List Automations".into(),
+        "automation_command" => "Automation command".into(),
+        "list_runs" => "List runs".into(),
+        "http_request" => "HTTP request".into(),
+        other => {
+            let mut words = other.replace('_', " ");
+            if let Some(first) = words.get(..1) {
+                let upper = first.to_uppercase();
+                words.replace_range(..1, &upper);
+            }
+            words
+        }
+    }
+}
+/// What a tool call did, in one line: the request for HTTP, the name otherwise.
+fn tool_summary(name: &str, input: &serde_json::Value) -> String {
+    match name {
+        "http_request" => format!(
+            "{} {}",
+            input["method"].as_str().unwrap_or("GET"),
+            input["url"].as_str().unwrap_or("")
+        ),
+        "ticket_command" => format!(
+            "{} {}",
+            input["command"]["kind"].as_str().unwrap_or("command"),
+            input["command"]["title"].as_str().unwrap_or("")
+        )
+        .trim()
+        .to_owned(),
+        "list_runs" => input["status"]
+            .as_str()
+            .map(|status| format!("status {status}"))
+            .unwrap_or_else(|| "latest runs".into()),
+        _ => String::new(),
+    }
+}
+/// The response in one line: HTTP status and timing, or the size of the result.
+fn result_summary(name: &str, result: &TurnStep) -> String {
+    let content = &result.content["content"];
+    if result.content["is_error"] == true {
+        return content
+            .as_str()
+            .map(|text| text.chars().take(80).collect())
+            .unwrap_or_else(|| "failed".into());
+    }
+    if name == "http_request"
+        && let (Some(status), Some(ms)) =
+            (content["status"].as_u64(), content["elapsed_ms"].as_u64())
+    {
+        return format!("{status} · {ms} ms");
+    }
+    if let Some(tickets) = content["tickets"].as_array() {
+        return match tickets.len() {
+            1 => "1 Ticket".into(),
+            n => format!("{n} Tickets"),
+        };
+    }
+    if let Some(runs) = content["runs"].as_array() {
+        return format!("{} runs", runs.len());
+    }
+    "done".into()
+}
+fn pretty(value: &serde_json::Value) -> String {
+    let text = match value {
+        serde_json::Value::String(text) => text.clone(),
+        other => serde_json::to_string_pretty(other).unwrap_or_default(),
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() > 60 {
+        format!(
+            "{}\n… {} more lines",
+            lines[..60].join("\n"),
+            lines.len() - 60
+        )
+    } else if text.chars().count() > 6000 {
+        let cut: String = text.chars().take(6000).collect();
+        format!("{cut}\n…")
+    } else {
+        text
+    }
+}
+fn code_panel(text: String) -> Div {
+    div()
+        .w_full()
+        .min_w_0()
+        .px(px(10.))
+        .py(px(8.))
+        .rounded(px(6.))
+        .bg(rgb(SURFACE_SEGMENT))
+        .font_family("SF Mono")
+        .text_size(type_size(CAPTION_SIZE))
+        .text_color(rgb(TEXT))
+        .child(text)
+}
+/// The label beside the typing indicator while a turn runs.
+fn activity_label(turn: &Turn) -> String {
+    if turn.state == "queued" {
+        return "Queued…".into();
+    }
+    match turn.steps.last() {
+        Some(step) if step.kind == "tool_use" => format!(
+            "Running {}…",
+            step.content["name"].as_str().unwrap_or("tool")
+        ),
+        _ => "Evee is thinking…".into(),
+    }
+}
+
+impl AssistantPage {
+    fn command_chip(&self, command: &str) -> Div {
+        let (name, argument) = command
+            .split_once(' ')
+            .map(|(name, argument)| (name.to_owned(), Some(argument.to_owned())))
+            .unwrap_or((command.to_owned(), None));
+        row()
+            .gap(px(8.))
+            .items_center()
+            .child(
+                div()
+                    .px(px(8.))
+                    .py(px(2.))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(rgb(SELECTED_BORDER))
+                    .bg(rgb(SURFACE_SEGMENT))
+                    .font_family("SF Mono")
+                    .text_size(type_size(CAPTION_SIZE))
+                    .text_color(rgb(TEXT))
+                    .child(name),
+            )
+            .when_some(argument, |chip, argument| {
+                chip.child(
+                    div()
+                        .text_size(type_size(LABEL_SIZE))
+                        .text_color(rgb(TEXT))
+                        .child(argument),
+                )
+            })
+    }
+    fn user_bubble(&self, turn: &Turn) -> Div {
+        column()
+            .items_end()
+            .gap(px(5.))
+            .ml_auto()
+            .max_w(px(620.))
+            .child(
+                div()
+                    .text_size(type_size(10.))
+                    .text_color(rgb(MUTED))
+                    .child("You"),
+            )
+            .child(match &turn.command {
+                Some(command) => self.command_chip(command),
+                None => div()
+                    .p(px(12.))
+                    .rounded(px(10.))
+                    .bg(rgb(HOVER))
+                    .text_size(type_size(LABEL_SIZE))
+                    .child(turn.prompt.clone()),
+            })
+    }
+    fn status_dot(&self, color: u32, running: bool, window: &mut Window) -> Div {
+        let mut dot = div()
+            .size(px(7.))
+            .flex_shrink_0()
+            .rounded_full()
+            .bg(rgb(color));
+        if running && !reduced_motion() {
+            window.request_animation_frame();
+            let phase = (self.loading_started.elapsed().as_secs_f32() * 3.).sin();
+            dot = dot.opacity(0.45 + 0.55 * (phase + 1.) * 0.5);
+        }
+        dot
+    }
+    fn tool_card(
+        &self,
+        step: &TurnStep,
+        result: Option<&TurnStep>,
+        running: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let name = step.content["name"].as_str().unwrap_or("tool").to_owned();
+        let input = step.content["input"].clone();
+        let summary = tool_summary(&name, &input);
+        let (status, color) = match result {
+            Some(result) if result.content["is_error"] == true => ("Failed", ERROR),
+            Some(_) => ("Done", STATUS_GREEN),
+            None if running => ("Running", STATUS_AMBER),
+            None => ("Interrupted", MUTED),
+        };
+        let expanded = self.expanded_steps.contains(&step.id);
+        let id = step.id;
+        let empty_input = input.as_object().is_some_and(|map| map.is_empty()) || input.is_null();
+        column()
+            .w_full()
+            .rounded(px(10.))
+            .border_1()
+            .border_color(rgb(BORDER))
+            .bg(rgb(SURFACE_RAISED))
+            .overflow_hidden()
+            .child(
+                row()
+                    .pl(px(12.))
+                    .pr(px(6.))
+                    .py(px(6.))
+                    .gap(px(10.))
+                    .items_center()
+                    .child(self.status_dot(color, running && result.is_none(), window))
+                    .child(
+                        div()
+                            .text_size(type_size(LABEL_SIZE))
+                            .text_color(rgb(TEXT))
+                            .child(tool_title(&name)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(type_size(CAPTION_SIZE))
+                            .text_color(rgb(MUTED))
+                            .child(match result {
+                                Some(result) if !summary.is_empty() => {
+                                    format!("{summary} · {}", result_summary(&name, result))
+                                }
+                                Some(result) => result_summary(&name, result),
+                                None => summary,
+                            }),
+                    )
+                    .child(
+                        div()
+                            .w(px(64.))
+                            .flex_shrink_0()
+                            .text_size(type_size(CAPTION_SIZE))
+                            .text_color(rgb(MUTED))
+                            .child(status),
+                    )
+                    .child(
+                        self.action(
+                            ("step-toggle", id as u64),
+                            if expanded { "Hide" } else { "Details" },
+                            true,
+                            move |this, cx| this.toggle_step(id, cx),
+                            cx,
+                        )
+                        .h(px(26.))
+                        .min_w(px(64.))
+                        .border_1()
+                        .border_color(rgb(BORDER))
+                        .debug_selector(move || format!("step-toggle-{id}")),
+                    ),
+            )
+            .when(expanded, |card| {
+                card.child(
+                    column()
+                        .border_t_1()
+                        .border_color(rgb(BORDER_SUBTLE))
+                        .px(px(12.))
+                        .py(px(10.))
+                        .gap(px(8.))
+                        .child(
+                            div()
+                                .font_family("SF Mono")
+                                .text_size(type_size(CAPTION_SIZE))
+                                .text_color(rgb(MUTED))
+                                .child(name.clone()),
+                        )
+                        .child(
+                            row()
+                                .gap(px(8.))
+                                .items_center()
+                                .text_size(type_size(CAPTION_SIZE))
+                                .text_color(rgb(MUTED))
+                                .child("Request")
+                                .when(empty_input, |label| label.child("· no arguments")),
+                        )
+                        .when(!empty_input, |card| card.child(code_panel(pretty(&input))))
+                        .when_some(result, |card, result| {
+                            card.child(
+                                div()
+                                    .text_size(type_size(CAPTION_SIZE))
+                                    .text_color(rgb(MUTED))
+                                    .child("Response"),
+                            )
+                            .child(code_panel(pretty(&result.content["content"])))
+                        }),
+                )
+            })
+    }
+    fn reply_column(&self, turn: &Turn, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let running = self.active == Some(turn.id);
+        let mut reply = column().gap(px(10.)).px(px(2.)).max_w(px(720.)).child(
+            div()
+                .text_size(type_size(10.))
+                .text_color(rgb(TEXT_ACCENT))
+                .child("Evee"),
+        );
+        let steps = &turn.steps;
+        for (index, step) in steps.iter().enumerate() {
+            match step.kind.as_str() {
+                "text" => {
+                    if let Some(text) = step.content["text"].as_str() {
+                        reply = reply.child(markdown::render(text));
+                    }
+                }
+                "tool_use" => {
+                    let call = step.content["id"].as_str().unwrap_or_default();
+                    let result = steps[index + 1..]
+                        .iter()
+                        .find(|s| s.kind == "tool_result" && s.content["tool_use_id"] == call);
+                    reply = reply.child(self.tool_card(step, result, running, window, cx));
+                }
+                _ => {}
+            }
+        }
+        if steps.is_empty()
+            && let Some(text) = turn.response.as_deref().filter(|t| !t.trim().is_empty())
+        {
+            reply = reply.child(markdown::render(text));
+        }
+        if running {
+            if let Some(draft) = turn.draft.as_deref().filter(|d| !d.trim().is_empty()) {
+                reply = reply
+                    .child(markdown::render(draft))
+                    .child(LoadingFrame::new(self.loading_started, window).inline(""));
+            } else {
+                reply = reply.child(
+                    LoadingFrame::new(self.loading_started, window).inline(activity_label(turn)),
+                );
+            }
+        } else if turn.state == "completed" {
+            let response = turn.response.clone().unwrap_or_default();
+            reply = reply.child(
+                row().child(
+                    self.action(
+                        ("copy", turn.id as u64),
+                        "Copy",
+                        true,
+                        move |_, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(response.clone()))
+                        },
+                        cx,
+                    )
+                    .h(px(26.))
+                    .ml(px(-COMPACT_CONTROL_INSET_X))
+                    .opacity(0.75)
+                    .text_size(type_size(CAPTION_SIZE))
+                    .text_color(rgb(MUTED)),
+                ),
+            );
+        }
+        reply
+    }
+    fn palette_view(
+        &self,
+        items: &[&'static commands::SlashCommand],
+        cx: &mut Context<Self>,
+    ) -> Div {
+        column()
+            .debug_selector(|| "slash-palette".into())
+            .gap(px(2.))
+            .pb(px(8.))
+            .border_b_1()
+            .border_color(rgb(BORDER))
+            .children(items.iter().enumerate().map(|(index, command)| {
+                let selected = index == self.palette_index.min(items.len() - 1);
+                let label = match command.argument {
+                    Some(argument) => format!("/{} <{argument}>", command.name),
+                    None => format!("/{}", command.name),
+                };
+                self.action_window(
+                    ("slash", index),
+                    "",
+                    Some(command.name),
+                    true,
+                    move |this, _, cx| {
+                        this.palette_index = index;
+                        this.accept_suggestion(cx);
+                    },
+                    cx,
+                )
+                .debug_selector(move || format!("slash-{}", command.name))
+                .w_full()
+                .justify_start()
+                .px(px(10.))
+                .py(px(7.))
+                .rounded(px(6.))
+                .bg(rgb(if selected { SELECTED } else { SURFACE_COMPOSER }))
+                .child(
+                    row()
+                        .w_full()
+                        .gap(px(12.))
+                        .items_center()
+                        .child(
+                            div()
+                                .w(px(150.))
+                                .flex_shrink_0()
+                                .font_family("SF Mono")
+                                .text_size(type_size(LABEL_SIZE))
+                                .text_color(rgb(TEXT))
+                                .child(label),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .text_size(type_size(CAPTION_SIZE))
+                                .text_color(rgb(MUTED))
+                                .child(command.summary),
+                        )
+                        .when(selected, |item| item.child(shortcut_badge("⏎"))),
+                )
+            }))
+    }
+    fn suggestion_chip(&self, command: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
+        self.action(
+            ElementId::Name(format!("suggest-{command}").into()),
+            command,
+            true,
+            move |this, cx| {
+                this.input
+                    .update(cx, |input, cx| input.set_text(&format!("{command} "), cx));
+                cx.notify();
+            },
+            cx,
+        )
+        .font_family("SF Mono")
+        .border_1()
+        .border_color(rgb(BORDER))
+        .rounded_full()
+    }
+}
+
 impl Render for AssistantPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
@@ -1240,6 +1730,8 @@ impl Render for AssistantPage {
                 .id("conversation-list")
                 .into_any_element();
         }
+        let palette = self.palette(cx);
+        let turns: Vec<Turn> = self.turns.clone();
         Page::canvas()
             .child(
                 column()
@@ -1252,6 +1744,10 @@ impl Render for AssistantPage {
                     .child(
                         row()
                             .gap(px(8.))
+                            .items_center()
+                            .pb(px(12.))
+                            .border_b_1()
+                            .border_color(rgb(BORDER_SUBTLE))
                             .text_size(type_size(CAPTION_SIZE))
                             .text_color(rgb(MUTED))
                             .child(
@@ -1265,30 +1761,43 @@ impl Render for AssistantPage {
                                 .debug_selector(|| "back-to-conversations".into()),
                             )
                             .child(
-                                div().flex_1().child(
-                                    self.conversations
-                                        .iter()
-                                        .find(|c| Some(c.id) == self.conversation)
-                                        .map(|c| c.title.clone())
-                                        .unwrap_or("New conversation".into()),
-                                ),
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_size(type_size(BODY_SIZE))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(TEXT))
+                                    .child(
+                                        self.conversations
+                                            .iter()
+                                            .find(|c| Some(c.id) == self.conversation)
+                                            .map(|c| c.title.clone())
+                                            .unwrap_or("New conversation".into()),
+                                    ),
                             )
-                            .child(self.action(
-                                "panel-new",
-                                "+",
-                                self.active.is_none() && !self.pending,
-                                Self::new_conversation,
-                                cx,
-                            )),
+                            .child(
+                                self.action_window(
+                                    "panel-new",
+                                    "",
+                                    Some("New conversation"),
+                                    !self.pending,
+                                    |this, _, cx| this.new_conversation(cx),
+                                    cx,
+                                )
+                                .size(px(28.))
+                                .p(px(0.))
+                                .child(icon("plus", 14.).text_color(rgb(TEXT))),
+                            ),
                     )
-                    .when(self.account.is_none(), |s| {
+                    .when(self.account.is_none() && !self.credentials_busy, |s| {
                         s.child(
                             column()
                                 .gap(px(5.))
                                 .items_start()
                                 .text_size(type_size(CAPTION_SIZE))
                                 .text_color(rgb(MUTED))
-                                .child("Connect ChatGPT to chat.")
+                                .child("Connect Claude, ChatGPT or OpenRouter to chat.")
                                 .child(
                                     self.action(
                                         "open-settings",
@@ -1327,13 +1836,6 @@ impl Render for AssistantPage {
                             cx,
                         ))
                     })
-                    .when(self.pending, |s| {
-                        s.child(
-                            div()
-                                .text_color(rgb(MUTED))
-                                .child("Waiting for acknowledgement…"),
-                        )
-                    })
                     .child(
                         column()
                             .id("chat-history")
@@ -1342,20 +1844,38 @@ impl Render for AssistantPage {
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll)
                             .gap(px(16.))
-                            .when(self.turns.is_empty() && self.account.is_some(), |s| {
+                            .when(turns.is_empty() && !self.help_open, |s| {
                                 s.child(
                                     column()
-                                        .py(px(16.))
-                                        .gap(px(8.))
-                                        .text_size(type_size(LABEL_SIZE))
-                                        .text_color(rgb(MUTED))
+                                        .debug_selector(|| "empty-conversation".into())
+                                        .flex_1()
+                                        .min_h(px(240.))
+                                        .justify_center()
+                                        .items_center()
+                                        .gap(px(14.))
                                         .child(
-                                            LoadingFrame::new(self.loading_started, window)
-                                                .inline("Evee is thinking…"),
+                                            div()
+                                                .text_size(type_size(DIALOG_TITLE_SIZE + 2.))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(rgb(TEXT))
+                                                .child("What are we working on?"),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(type_size(LABEL_SIZE))
+                                                .text_color(rgb(MUTED))
+                                                .child("Evee can list Tickets, watch runs and fetch a URL."),
+                                        )
+                                        .child(
+                                            row()
+                                                .gap(px(8.))
+                                                .child(self.suggestion_chip("/tickets", cx))
+                                                .child(self.suggestion_chip("/runs", cx))
+                                                .child(self.suggestion_chip("/http", cx)),
                                         ),
                                 )
                             })
-                            .children(self.turns.iter().map(|turn| {
+                            .children(turns.iter().map(|turn| {
                                 column()
                                     .id(("turn", turn.id as u64))
                                     .gap(px(12.))
@@ -1363,84 +1883,19 @@ impl Render for AssistantPage {
                                     .when(latest == Some(turn.id), |s| {
                                         s.relative().opacity(0.4 + 0.6 * progress)
                                     })
-                                    .child(
-                                        column()
-                                            .gap(px(5.))
-                                            .p(px(12.))
-                                            .ml_auto()
-                                            .max_w(px(620.))
-                                            .rounded(px(10.))
-                                            .bg(rgb(HOVER))
-                                            .child(
-                                                div()
-                                                    .text_size(type_size(10.))
-                                                    .text_color(rgb(MUTED))
-                                                    .child("You"),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(type_size(LABEL_SIZE))
-                                                    .child(turn.prompt.clone()),
-                                            ),
+                                    .child(self.user_bubble(turn))
+                                    .when(
+                                        !turn.steps.is_empty()
+                                            || turn.response.is_some()
+                                            || self.active == Some(turn.id),
+                                        |s| s.child(self.reply_column(turn, window, cx)),
                                     )
-                                    .when_some(turn.response.clone(), |s, reply| {
-                                        s.child(
-                                            column()
-                                                .gap(px(5.))
-                                                .px(px(2.))
-                                                .max_w(px(680.))
-                                                .child(
-                                                    div()
-                                                        .text_size(type_size(10.))
-                                                        .text_color(rgb(TEXT_ACCENT))
-                                                        .child("Evee"),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_size(type_size(LABEL_SIZE))
-                                                        .child(reply),
-                                                )
-                                                .child(
-                                                    row().child(
-                                                        self.action(
-                                                            ("copy", turn.id as u64),
-                                                            "Copy reply",
-                                                            true,
-                                                            {
-                                                                let response = turn
-                                                                    .response
-                                                                    .clone()
-                                                                    .unwrap_or_default();
-                                                                move |_, cx| {
-                                                                    cx.write_to_clipboard(
-                                                                        ClipboardItem::new_string(
-                                                                            response.clone(),
-                                                                        ),
-                                                                    )
-                                                                }
-                                                            },
-                                                            cx,
-                                                        )
-                                                        .text_size(type_size(CAPTION_SIZE))
-                                                        .text_color(rgb(MUTED)),
-                                                    ),
-                                                ),
-                                        )
-                                    })
-                                    .when(self.active == Some(turn.id), |s| {
-                                        s.child(
-                                            div()
-                                                .px(px(2.))
-                                                .text_size(type_size(LABEL_SIZE))
-                                                .text_color(rgb(MUTED))
-                                                .child("Evee is thinking…"),
-                                        )
-                                    })
                                     .when_some(turn.error.clone(), |s, error| {
                                         let id = turn.id;
                                         s.child(
                                             column()
                                                 .gap(px(6.))
+                                                .items_start()
                                                 .child(
                                                     div()
                                                         .text_size(type_size(CAPTION_SIZE))
@@ -1456,10 +1911,51 @@ impl Render for AssistantPage {
                                                 )),
                                         )
                                     })
-                            })),
+                            }))
+                            .when(self.help_open, |s| {
+                                s.child(
+                                    column()
+                                        .debug_selector(|| "help-card".into())
+                                        .gap(px(10.))
+                                        .p(px(14.))
+                                        .max_w(px(720.))
+                                        .rounded(px(10.))
+                                        .border_1()
+                                        .border_color(rgb(BORDER))
+                                        .bg(rgb(SURFACE_RAISED))
+                                        .child(markdown::render(commands::HELP))
+                                        .child(
+                                            row().child(
+                                                self.action(
+                                                    "help-dismiss",
+                                                    "Got it",
+                                                    true,
+                                                    |this, cx| {
+                                                        this.help_open = false;
+                                                        cx.notify();
+                                                    },
+                                                    cx,
+                                                )
+                                                .border_1()
+                                                .border_color(rgb(BORDER)),
+                                            ),
+                                        ),
+                                )
+                            }),
                     )
+                    .when_some(self.notice.clone(), |s, notice| {
+                        s.child(
+                            div()
+                                .debug_selector(|| "composer-notice".into())
+                                .text_size(type_size(CAPTION_SIZE))
+                                .text_color(rgb(MUTED))
+                                .child(notice),
+                        )
+                    })
                     .child(
                         column()
+                            .id("composer")
+                            .debug_selector(|| "composer".into())
                             .flex_shrink_0()
                             .gap(px(8.))
                             .p(px(12.))
@@ -1467,22 +1963,88 @@ impl Render for AssistantPage {
                             .border_1()
                             .border_color(rgb(BORDER))
                             .bg(rgb(SURFACE_COMPOSER))
+                            .capture_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                                let items = this.palette(cx);
+                                if items.is_empty() {
+                                    return;
+                                }
+                                match event.keystroke.key.as_str() {
+                                    "down" => {
+                                        this.palette_index = (this.palette_index + 1) % items.len();
+                                        cx.stop_propagation();
+                                        cx.notify();
+                                    }
+                                    "up" => {
+                                        this.palette_index =
+                                            (this.palette_index + items.len() - 1) % items.len();
+                                        cx.stop_propagation();
+                                        cx.notify();
+                                    }
+                                    "enter" | "tab" => {
+                                        cx.stop_propagation();
+                                        this.accept_suggestion(cx);
+                                    }
+                                    "escape" => {
+                                        cx.stop_propagation();
+                                        this.reset_composer(cx);
+                                    }
+                                    _ => {}
+                                }
+                            }))
+                            .when(!palette.is_empty(), |composer| {
+                                composer.child(self.palette_view(&palette, cx))
+                            })
                             .child(self.input.clone())
                             .child(
-                                row().justify_end().child(
-                                    self.action_window(
-                                        "send",
-                                        "",
-                                        Some("Send message"),
-                                        send_enabled,
-                                        |this, _, cx| this.send(cx),
-                                        cx,
+                                row()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .child(self.model_chip(cx))
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .truncate()
+                                            .text_size(type_size(CAPTION_SIZE))
+                                            .text_color(rgb(TEXT_PLACEHOLDER))
+                                            .child("/ for commands · ⇧⏎ for a new line"),
                                     )
-                                    .size(px(30.))
-                                    .p(px(0.))
-                                    .bg(rgb(HOVER_SEND))
-                                    .child(icon("send", 16.).text_color(rgb(TEXT))),
-                                ),
+                                    .child(if let Some(active) = self.active {
+                                        let _ = active;
+                                        self.action_window(
+                                            "stop",
+                                            "",
+                                            Some("Stop reply"),
+                                            !self.pending,
+                                            |this, _, cx| this.stop(cx),
+                                            cx,
+                                        )
+                                        .debug_selector(|| "stop".into())
+                                        .size(px(32.))
+                                        .p(px(0.))
+                                        .bg(rgb(PRIMARY))
+                                        .child(
+                                            div()
+                                                .size(px(11.))
+                                                .rounded(px(2.))
+                                                .bg(rgb(TEXT_ON_PRIMARY)),
+                                        )
+                                    } else {
+                                        self.action_window(
+                                            "send",
+                                            "",
+                                            Some("Send message"),
+                                            send_enabled,
+                                            |this, _, cx| this.send(cx),
+                                            cx,
+                                        )
+                                        .size(px(32.))
+                                        .p(px(0.))
+                                        .bg(rgb(if send_enabled { PRIMARY } else { HOVER_SEND }))
+                                        .child(icon("send", 16.).text_color(rgb(
+                                            if send_enabled { TEXT_ON_PRIMARY } else { TEXT },
+                                        )))
+                                    }),
                             ),
                     ),
             )
