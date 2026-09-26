@@ -54,8 +54,8 @@ impl Toasts {
     ) -> Div {
         column()
             .absolute()
-            .right(px(SPACE_4))
-            .bottom(px(SPACE_4 + STATUS_BAR_HEIGHT))
+            .right(px(SPACE_6))
+            .bottom(px(SPACE_6 + STATUS_BAR_HEIGHT))
             .gap(px(SPACE_2))
             .items_end()
             .debug_selector(|| "toasts".into())
@@ -111,7 +111,6 @@ impl Toasts {
                             .icon_only()
                             .ghost()
                             .small()
-                            .on_surface(SURFACE_OVERLAY)
                             .build(
                                 hover,
                                 move |view, window, cx| on_dismiss(view, id, window, cx),

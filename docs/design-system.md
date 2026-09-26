@@ -50,16 +50,16 @@ exercised only on the Components page today.
 
 | Component | File | Use it for |
 | --- | --- | --- |
-| `Button` (primary, secondary, ghost, destructive; small, regular, large; `icon_only`) | `button.rs` | Every labeled action. One primary per surface; ghost for actions inside rows; destructive only when something is removed. |
-| `Field` / `text_field` | `field.rs` | Labeled single-line inputs and `.multiline()` text areas, with hint, error and focus states. |
+| `Button` (primary, secondary, ghost, destructive; small, regular, large; `.icon_only()`, `.tint()`) | `button.rs` | Every labeled action. One white primary per surface (the header's, never also the empty state's); secondary is outlined; ghost is transparent at rest and paints its hover as an overlay, so it sits on any surface; destructive is an outlined red control, never a solid slab; a disabled primary is an outline, not a gray block. |
+| `Field` / `text_field` | `field.rs` | Labeled single-line inputs and `.multiline()` text areas, with hint, error and a quiet `FOCUS_FIELD` border while editing. Fields, selects and buttons share `CONTROL_HEIGHT`; inline forms cap at `FORM_WIDTH` and end with a `dialog_footer`. |
 | `Select` | `select.rs` | Choosing one option from a short list. The menu floats, so the row never resizes. |
 | `MenuEntry`, `menu_label`, `menu_divider`, `floating` | `menu.rs` | Dropdown and context menu rows and the deferred, anchored placement they share with popovers. `menu_shell` and `popover_shell` in `overlay.rs` are their surfaces. |
 | `banner`, `error_text` | `banner.rs` | A toned full-width notice inside a page; short red copy under a field or inside a dialog. |
 | `toggle`, `checkbox` | `toggle.rs` | Boolean settings. Toggles for immediate effect, checkboxes inside forms. |
-| `segmented`, `tabs`, `chip` | `segmented.rs` | One of a few options (segments), switching views inside a page (tabs), picking a value in a form (chips). |
+| `segmented`, `tabs`, `chip` | `segmented.rs` | One of a few options (segments hug their content), switching views inside a page (tabs underline their label), picking a value in a form (chips: the chosen one is filled with full-strength text, the rest are outlined). |
 | `badge`, `status_pill`, `status_dot`, `count_badge`, `Tone` | `badge.rs` | States and counts. Badges in lists and headers, pills in tables. |
 | `avatar` | `avatar.rs` | People and agents, with an initials fallback. |
-| `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `Page`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. |
+| `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `Page`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. A detail page makes its record the one H1 and puts the way back in `PageHeader::leading`; rows live in a `card` with hairlines between them. |
 | `table_container`, `table_header`, `table_cells`, `table_row`, `TableColumn` | `table.rs` | Columnar data with an eyebrow header and clickable rows. |
 | `dialog_shell`, `dialog_footer`, `sheet_shell`, `popover_shell`, `menu_shell`, `OverlayHost<O>` | `overlay.rs` | Modal confirmations and forms with a Cancel / confirm footer, side panels, floating surfaces; one active overlay per window with focus return. The overlay vocabulary itself (`model::Overlay`) belongs to the shell. |
 | `Toasts` | `toast.rs` | Transient notices above the status bar. Hosts schedule dismissal for non-sticky ones. |

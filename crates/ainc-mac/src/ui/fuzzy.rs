@@ -35,14 +35,19 @@ pub fn fuzzy_match(query: &str, candidate: &str) -> Option<FuzzyMatch> {
     let mut score = 0;
     let mut cursor = 0;
     let mut previous_match: Option<usize> = None;
+    let mut anchored = 0;
     for needle in &query {
         let found = (cursor..lowered.len()).find(|&index| lowered[index] == *needle)?;
         let boundary = is_boundary(found.checked_sub(1).map(|i| candidate[i]));
+        let consecutive = previous_match == Some(found.wrapping_sub(1));
+        if boundary || consecutive {
+            anchored += 1;
+        }
         score += 1;
         if boundary {
             score += 8;
         }
-        if previous_match == Some(found.wrapping_sub(1)) {
+        if consecutive {
             score += 6;
         }
         if found == 0 {
@@ -52,6 +57,11 @@ pub fn fuzzy_match(query: &str, candidate: &str) -> Option<FuzzyMatch> {
         positions.push(found);
         previous_match = Some(found);
         cursor = found + 1;
+    }
+    // Letters scattered through unrelated words read as noise, not a match:
+    // at least half of the query has to start a word or continue a run.
+    if anchored * 2 < query.len() {
+        return None;
     }
     // Shorter candidates that consume more of their text rank higher.
     score += (20 - candidate.len().min(20)) as i32 / 2;
@@ -87,19 +97,26 @@ mod tests {
 
     #[test]
     fn subsequence_matches_are_case_insensitive() {
-        let m = fuzzy_match("stg", "Settings").unwrap();
-        assert_eq!(m.positions, vec![0, 2, 6]);
+        let m = fuzzy_match("SETT", "Settings").unwrap();
+        assert_eq!(m.positions, vec![0, 1, 2, 3]);
         assert!(fuzzy_match("xyz", "Settings").is_none());
     }
 
     #[test]
-    fn prefixes_and_word_starts_outrank_scattered_matches() {
+    fn prefixes_and_word_starts_outrank_later_matches() {
         let prefix = fuzzy_match("tick", "Tickets").unwrap().score;
-        let scattered = fuzzy_match("tick", "Automatic check").unwrap().score;
-        assert!(prefix > scattered);
-        let word_start = fuzzy_match("tf", "Toggle Font").unwrap().score;
-        let inside = fuzzy_match("tf", "Notification").unwrap().score;
-        assert!(word_start > inside);
+        let later = fuzzy_match("tick", "Open ticket").unwrap().score;
+        assert!(prefix > later);
+        assert!(fuzzy_match("tf", "Toggle Font").is_some());
+        assert!(fuzzy_match("tf", "Notification").is_none());
+    }
+
+    #[test]
+    fn scattered_letters_do_not_match() {
+        assert!(fuzzy_match("tem", "Font size: Small").is_none());
+        assert!(fuzzy_match("tem", "Temporal").is_some());
+        assert!(fuzzy_match("fs", "Font size").is_some());
+        assert!(fuzzy_match("te", "Tickets").is_some());
     }
 
     #[test]

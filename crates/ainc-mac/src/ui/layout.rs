@@ -82,7 +82,6 @@ pub struct ListRow {
     trailing: Option<AnyElement>,
     selected: bool,
     enabled: bool,
-    surface: u32,
 }
 
 impl ListRow {
@@ -95,7 +94,6 @@ impl ListRow {
             trailing: None,
             selected: false,
             enabled: true,
-            surface: SURFACE,
         }
     }
     pub fn subtitle(mut self, subtitle: impl Into<SharedString>) -> Self {
@@ -118,10 +116,6 @@ impl ListRow {
         self.enabled = enabled;
         self
     }
-    pub fn on_surface(mut self, surface: u32) -> Self {
-        self.surface = surface;
-        self
-    }
     pub fn build<V: HoverHost>(
         self,
         hover: &HoverFade,
@@ -136,10 +130,8 @@ impl ListRow {
             trailing,
             selected,
             enabled,
-            surface,
         } = self;
         let (progress, on_hover) = hover.track(&id, enabled, cx);
-        let base = if selected { SELECTED } else { surface };
         action_button(
             ButtonSpec {
                 id,
@@ -154,7 +146,11 @@ impl ListRow {
                     .py(px(SPACE_2))
                     .gap(px(SPACE_3))
                     .rounded(px(RADIUS_MD))
-                    .bg(blend(base, HOVER, progress))
+                    .bg(if selected {
+                        blend(SELECTED, HOVER_STRONG, progress)
+                    } else {
+                        rgba((HOVER_STRONG << 8) | (progress * 255.) as u32)
+                    })
                     .on_hover(on_hover)
                     .when_some(leading, |s, leading| s.child(leading))
                     .child(
@@ -219,7 +215,7 @@ pub fn status_bar() -> Div {
         .justify_between()
         .h(px(STATUS_BAR_HEIGHT))
         .flex_shrink_0()
-        .px(px(SPACE_3))
+        .px(px(PAGE_X))
         .gap(px(SPACE_3))
         .border_t_1()
         .border_color(rgb(BORDER_SUBTLE))

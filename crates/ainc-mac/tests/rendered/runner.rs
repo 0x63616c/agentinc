@@ -134,8 +134,9 @@ impl Suite {
     // Check actual pixels in independent shell regions, rather than trusting scene/AX nodes.
     // Regions come from the current layout; thresholds are below normal text contrast.
     fn probes(&mut self, width: u32, dimmed: bool) -> Result<Vec<Probe>> {
-        let text = if dimmed { 35 } else { 90 };
-        let border = if dimmed { 7 } else { 20 };
+        // The scrim leaves a fifth of each surface's brightness behind it.
+        let text = if dimmed { 25 } else { 90 };
+        let border = if dimmed { 5 } else { 20 };
         let mut probes: Vec<Probe> = vec![("header".into(), [150, 10, width - 10, 40], text, 80)];
         for (name, selector, minimum) in [
             ("workspace", "workspace-title", 60),
@@ -144,7 +145,7 @@ impl Suite {
             probes.push((name.into(), rect(self.bounds(selector)?), text, minimum));
         }
         // Tertiary text is dim by design; under a scrim it still has to be there.
-        let tertiary = if dimmed { 18 } else { 60 };
+        let tertiary = if dimmed { 12 } else { 60 };
         for (name, selector, minimum) in [
             ("profile handle", "sidebar-profile-handle", 20),
             ("status route", "status-bar.route", 30),
@@ -304,7 +305,7 @@ impl Suite {
         near(
             "version right inset in the status bar",
             f32::from(status.origin.x + status.size.width - version.origin.x - version.size.width),
-            SPACE_3,
+            PAGE_X,
         )?;
         near(
             "version centred in the status bar",
@@ -472,12 +473,21 @@ impl Suite {
             terminal_inset,
         )?;
         if let Ok(content) = self.bounds("main-content") {
-            let title = self.bounds("page-title")?;
-            near(
-                "page title top inset",
-                f32::from(title.origin.y - frame.origin.y),
-                PAGE_X - TITLE_OPTICAL_LIFT,
-            )?;
+            match self.bounds("page-leading") {
+                Ok(leading) => near(
+                    "page breadcrumb top inset",
+                    f32::from(leading.origin.y - frame.origin.y),
+                    PAGE_X - TITLE_OPTICAL_LIFT,
+                )?,
+                Err(_) => {
+                    let title = self.bounds("page-title")?;
+                    near(
+                        "page title top inset",
+                        f32::from(title.origin.y - frame.origin.y),
+                        PAGE_X - TITLE_OPTICAL_LIFT,
+                    )?;
+                }
+            }
             near(
                 "page content left inset",
                 f32::from(content.origin.x - frame.origin.x),

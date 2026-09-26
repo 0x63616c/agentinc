@@ -11,6 +11,7 @@ pub struct PageHeader {
     title: SharedString,
     description: Option<SharedString>,
     actions: Option<AnyElement>,
+    leading: Option<AnyElement>,
 }
 
 impl PageHeader {
@@ -19,7 +20,14 @@ impl PageHeader {
             title: title.into(),
             description: None,
             actions: None,
+            leading: None,
         }
+    }
+
+    /// A small row above the title, such as a breadcrumb or a back link.
+    pub fn leading(mut self, leading: impl IntoElement) -> Self {
+        self.leading = Some(leading.into_any_element());
+        self
     }
 
     pub fn description(mut self, description: impl Into<SharedString>) -> Self {
@@ -36,6 +44,15 @@ impl PageHeader {
         column()
             .mt(px(-TITLE_OPTICAL_LIFT))
             .gap(px(SPACE_1))
+            .when_some(self.leading, |s, leading| {
+                s.child(
+                    row()
+                        .debug_selector(|| "page-leading".into())
+                        .h(px(CONTROL_HEIGHT_SM))
+                        .mb(px(SPACE_1))
+                        .child(leading),
+                )
+            })
             .child(
                 row()
                     .w_full()
@@ -182,6 +199,7 @@ impl AssetSource for Assets {
             "pause.svg" => include_bytes!("../../assets/icons/pause.svg"),
             "stop.svg" => include_bytes!("../../assets/icons/stop.svg"),
             "history.svg" => include_bytes!("../../assets/icons/history.svg"),
+            "repeat.svg" => include_bytes!("../../assets/icons/repeat.svg"),
             "command.svg" => include_bytes!("../../assets/icons/command.svg"),
             "send.svg" => include_bytes!("../../assets/send.svg"),
             "openai.svg" => include_bytes!("../../assets/openai.svg"),

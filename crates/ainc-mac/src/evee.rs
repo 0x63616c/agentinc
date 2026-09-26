@@ -554,7 +554,7 @@ impl AssistantPage {
     }
     fn new_conversation_button(&self, id: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
         let enabled = self.active.is_none() && !self.pending && self.store.is_some();
-        Button::new(id, "New conversation")
+        Button::new(id, "New Conversation")
             .primary()
             .icon("plus")
             .enabled(enabled)
@@ -1129,6 +1129,7 @@ impl Render for AssistantPage {
             .map(|c| c.title.clone())
             .unwrap_or("New conversation".into());
         let composer_focused = self.input.read(cx).focus_handle(cx).is_focused(window);
+        let has_draft = !self.input.read(cx).content.trim().is_empty();
         let turns: Vec<Stateful<Div>> = self
             .turns
             .iter()
@@ -1147,11 +1148,13 @@ impl Render for AssistantPage {
                         row()
                             .gap(px(SPACE_2))
                             .child(
-                                Button::new("back-to-conversations", "Conversations")
-                                    .ghost()
-                                    .icon("chevronLeft")
-                                    .build(&self.hover, |this, _, cx| this.show_list(cx), cx)
-                                    .debug_selector(|| "back-to-conversations".into()),
+                                row().w(px(160.)).child(
+                                    Button::new("back-to-conversations", "Conversations")
+                                        .ghost()
+                                        .icon("chevronLeft")
+                                        .build(&self.hover, |this, _, cx| this.show_list(cx), cx)
+                                        .ml(px(-CONTROL_INSET_X)),
+                                ),
                             )
                             .child(
                                 div()
@@ -1164,32 +1167,33 @@ impl Render for AssistantPage {
                                     .child(title),
                             )
                             .child(
-                                Button::new("panel-new", "New conversation").icon("plus").icon_only().ghost()
-                                    .enabled(self.active.is_none() && !self.pending)
-                                    .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx),
+                                row().w(px(160.)).justify_end().child(
+                                    Button::new("panel-new", "New Conversation")
+                                        .icon("plus")
+                                        .icon_only()
+                                        .ghost()
+                                        .enabled(self.active.is_none() && !self.pending)
+                                        .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx)
+                                        .mr(px(-SPACE_2)),
+                                ),
                             ),
                     )
                     .when(self.account.is_none(), |s| {
                         s.child(
-                            row()
-                                .gap(px(SPACE_3))
-                                .px(px(SPACE_4))
-                                .py(px(SPACE_3))
-                                .rounded(px(RADIUS_MD))
-                                .border_1()
-                                .border_color(rgb(BORDER))
-                                .bg(rgb(SURFACE_RAISED))
-                                .child(icon("openai", ICON_SIZE))
+                            column()
+                                .flex_1()
+                                .items_center()
+                                .justify_center()
+                                .gap(px(SPACE_4))
+                                .child(evee_mark(56.))
+                                .child(heading("Connect ChatGPT to chat with Evee"))
+                                .child(caption(
+                                    "Evee replies through your ChatGPT subscription. Sign in once in Settings.",
+                                ))
                                 .child(
-                                    div()
-                                        .flex_1()
-                                        .text_size(type_size(LABEL_SIZE))
-                                        .child("Connect ChatGPT to chat with Evee."),
-                                )
-                                .child(
-                                    Button::new("open-settings", "Open Settings")
-                                        .secondary()
-                                        .small()
+                                    Button::new("open-settings", "Connect ChatGPT")
+                                        .primary()
+                                        .icon("openai")
                                         .build(&self.hover, |_, _, cx| cx.emit(Navigation::Settings), cx),
                                 ),
                         )
@@ -1214,7 +1218,8 @@ impl Render for AssistantPage {
                         )
                     })
                     .when(self.pending, |s| s.child(caption("Waiting for acknowledgement…")))
-                    .child(
+                    .when(self.account.is_some(), |s| {
+                        s.child(
                         column()
                             .id("chat-history")
                             .flex_1()
@@ -1238,31 +1243,43 @@ impl Render for AssistantPage {
                                 )
                             })
                             .children(turns),
-                    )
-                    .child(
-                        column()
-                            .flex_shrink_0()
-                            .gap(px(SPACE_2))
-                            .p(px(SPACE_3))
-                            .rounded(px(RADIUS_LG))
-                            .border_1()
-                            .border_color(rgb(if composer_focused { FOCUS } else { BORDER }))
-                            .bg(rgb(SURFACE_INPUT))
-                            .debug_selector(|| "composer".into())
-                            .child(self.input.clone())
-                            .child(
-                                row()
-                                    .justify_between()
-                                    .child(caption("Return to send · Shift+Return for a new line"))
-                                    .child(
-                                        Button::new("send", "Send message").icon("send").icon_only().ghost()
-                                            .primary()
-                                            .enabled(send_enabled)
-                                            .build(&self.hover, |this, _, cx| this.send(cx), cx)
-                                            .rounded_full(),
-                                    ),
-                            ),
-                    ),
+                        )
+                        .child(
+                            column()
+                                .flex_shrink_0()
+                                .gap(px(SPACE_2))
+                                .p(px(SPACE_3))
+                                .rounded(px(RADIUS_LG))
+                                .border_1()
+                                .border_color(rgb(if composer_focused {
+                                    FOCUS_FIELD
+                                } else {
+                                    BORDER
+                                }))
+                                .bg(rgb(SURFACE_INPUT))
+                                .debug_selector(|| "composer".into())
+                                .child(self.input.clone())
+                                .child(
+                                    row()
+                                        .justify_between()
+                                        .child(if has_draft {
+                                            caption("Return to send · Shift+Return for a new line")
+                                                .into_any_element()
+                                        } else {
+                                            div().into_any_element()
+                                        })
+                                        .child(
+                                            Button::new("send", "Send message")
+                                                .icon("send")
+                                                .icon_only()
+                                                .primary()
+                                                .enabled(send_enabled)
+                                                .build(&self.hover, |this, _, cx| this.send(cx), cx)
+                                                .rounded_full(),
+                                        ),
+                                ),
+                        )
+                    }),
             )
             .build()
             .into_any_element()

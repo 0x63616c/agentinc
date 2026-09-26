@@ -62,24 +62,30 @@ impl Shell {
             });
             items.push(PaletteCandidate {
                 group: "Actions",
-                entry: PaletteEntry::new("action.check-updates", "Check for updates")
+                entry: PaletteEntry::new("action.check-updates", "Check for Updates")
                     .icon("download"),
                 control: Control::CheckForUpdates,
             });
-            for (size, label) in FontSize::ALL {
+            let current = FontSize::ALL
+                .iter()
+                .position(|(size, _)| *size == self.session.font_size)
+                .unwrap_or(1);
+            if let Some((size, label)) = FontSize::ALL.get(current + 1) {
                 items.push(PaletteCandidate {
                     group: "Actions",
-                    entry: PaletteEntry::new(
-                        format!("action.font-size.{}", label.to_lowercase()),
-                        format!("Font size: {label}"),
-                    )
-                    .icon("settings")
-                    .detail(if self.session.font_size == size {
-                        "Current"
-                    } else {
-                        ""
-                    }),
-                    control: Control::FontSize(size),
+                    entry: PaletteEntry::new("action.font-size.larger", "Increase font size")
+                        .icon("plus")
+                        .detail(*label),
+                    control: Control::FontSize(*size),
+                });
+            }
+            if let Some((size, label)) = current.checked_sub(1).and_then(|i| FontSize::ALL.get(i)) {
+                items.push(PaletteCandidate {
+                    group: "Actions",
+                    entry: PaletteEntry::new("action.font-size.smaller", "Decrease font size")
+                        .icon("settings")
+                        .detail(*label),
+                    control: Control::FontSize(*size),
                 });
             }
         }

@@ -90,7 +90,7 @@ pub const PAGES: &[PageSpec] = &[
     PageSpec {
         route: Route::Automations,
         title: "Automations",
-        icon: "refresh",
+        icon: "repeat",
         in_sidebar: true,
     },
     PageSpec {

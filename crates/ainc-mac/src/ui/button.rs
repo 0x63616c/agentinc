@@ -89,7 +89,7 @@ pub fn button_base(spec: ButtonSpec) -> Stateful<Div> {
         })
         .when(spec.enabled, |s| s.tab_index(0).cursor_pointer())
         .rounded(px(CONTROL_RADIUS))
-        .opacity(if spec.enabled { 1. } else { DISABLED_OPACITY })
+        .when(!spec.enabled, |s| s.opacity(DISABLED_OPACITY))
         .when(focus_visible(), |s| s.focus(|s| s.shadow(focus_ring())))
 }
 
@@ -129,7 +129,7 @@ struct Look {
 }
 
 impl ButtonKind {
-    fn look(self, selected: bool, on: u32) -> Look {
+    fn look(self, selected: bool) -> Look {
         match self {
             Self::Primary => Look {
                 base: PRIMARY,
@@ -151,21 +151,23 @@ impl ButtonKind {
                 text_hover: TEXT,
                 border: Some(if selected { BORDER_STRONG } else { BORDER }),
             },
+            // Ghost rests transparent; its hover surface is painted as an alpha
+            // overlay in `build`, so it sits on any surface without a rectangle.
             Self::Ghost => Look {
-                base: if selected { SELECTED } else { on },
-                hover: HOVER,
-                active: HOVER_STRONG,
-                text: if selected { TEXT } else { TEXT_SECONDARY },
+                base: SELECTED,
+                hover: HOVER_STRONG,
+                active: ACTIVE,
+                text: TEXT,
                 text_hover: TEXT,
                 border: None,
             },
             Self::Destructive => Look {
-                base: DESTRUCTIVE,
+                base: SURFACE_ERROR,
                 hover: DESTRUCTIVE_HOVER,
                 active: DESTRUCTIVE_HOVER,
-                text: PRIMARY,
-                text_hover: PRIMARY,
-                border: None,
+                text: DESTRUCTIVE_TEXT,
+                text_hover: DESTRUCTIVE_TEXT,
+                border: Some(ERROR_BORDER),
             },
         }
     }
@@ -184,7 +186,6 @@ pub struct Button {
     full_width: bool,
     focus: Option<FocusHandle>,
     trailing: Option<AnyElement>,
-    surface: u32,
     align_start: bool,
     tint: Option<u32>,
 }
@@ -203,7 +204,6 @@ impl Button {
             full_width: false,
             focus: None,
             trailing: None,
-            surface: SURFACE,
             align_start: false,
             tint: None,
         }
@@ -276,11 +276,6 @@ impl Button {
         self.align_start = true;
         self
     }
-    /// The surface a ghost button rests on, so its hover fade starts from it.
-    pub fn on_surface(mut self, surface: u32) -> Self {
-        self.surface = surface;
-        self
-    }
 
     /// Builds the control. `hover` is the host view's fade state, read here so
     /// the surface can blend toward its hover look between frames.
@@ -302,11 +297,24 @@ impl Button {
             full_width,
             focus,
             trailing,
-            surface,
             align_start,
             tint,
         } = self;
-        let look = kind.look(selected, surface);
+        let mut look = kind.look(selected);
+        if !enabled && kind == ButtonKind::Primary {
+            // A disabled primary is an outline, not a gray slab.
+            look = Look {
+                base: SURFACE_CONTROL,
+                hover: SURFACE_CONTROL,
+                active: SURFACE_CONTROL,
+                text: TEXT_TERTIARY,
+                text_hover: TEXT_TERTIARY,
+                border: Some(BORDER),
+            };
+        }
+        if icon_only && kind == ButtonKind::Secondary && !selected {
+            look.base = SURFACE;
+        }
         let (progress, on_hover) = hover.track(&id, enabled, cx);
         let text_color = match tint {
             Some(color) => rgb(color),
@@ -335,11 +343,16 @@ impl Button {
                     .text_size(type_size(size.text()))
                     .when(filled, |s| s.font_weight(FontWeight::MEDIUM))
                     .text_color(text_color)
-                    .bg(blend(look.base, look.hover, progress))
+                    .bg(if kind == ButtonKind::Ghost && !selected {
+                        rgba((look.hover << 8) | (progress * 255.) as u32)
+                    } else {
+                        blend(look.base, look.hover, progress)
+                    })
                     .when_some(look.border, |s, border| {
                         s.border_1().border_color(rgb(border))
                     })
                     .when(enabled, |s| s.active(move |s| s.bg(rgb(look.active))))
+                    .when(!enabled && kind == ButtonKind::Primary, |s| s.opacity(1.))
                     .on_hover(on_hover)
                     .when_some(focus, |s, focus| s.track_focus(&focus))
                     .when_some(icon_name, |s, name| {

@@ -185,13 +185,12 @@ pub fn palette_header<V: HoverHost>(
         .child(div().flex_1().min_w_0().child(content))
         .child(
             Button::new("palette-close", "Close")
+                .icon("close")
+                .icon_only()
                 .ghost()
                 .small()
-                .on_surface(SURFACE_OVERLAY)
                 .track_focus(close_focus)
-                .trailing(kbd("esc"))
-                .build(hover, on_close, cx)
-                .px(px(SPACE_1)),
+                .build(hover, on_close, cx),
         )
 }
 
@@ -224,8 +223,12 @@ pub fn render_palette<V: HoverHost>(
         + STATUS_BAR_HEIGHT
         + PANEL_GAP
         + SPACE_4;
-    let results_height = (f32::from(window.viewport_size().height) - reserved)
+    // Whole rows only: the list never cuts a row in half at its bottom edge.
+    let available = (f32::from(window.viewport_size().height) - reserved)
         .clamp(PALETTE_ROW_HEIGHT * 3., PALETTE_RESULTS_MAX_HEIGHT);
+    let results_height = ((available - SPACE_2 * 2.) / PALETTE_ROW_HEIGHT).floor()
+        * PALETTE_ROW_HEIGHT
+        + SPACE_2 * 2.;
     let mut results = column()
         .id("palette-results")
         .track_scroll(scroll)
@@ -250,6 +253,7 @@ pub fn render_palette<V: HoverHost>(
         }
         results = results.child(
             div()
+                .flex_shrink_0()
                 .px(px(SPACE_2))
                 .pt(px(SPACE_2))
                 .pb(px(SPACE_1))

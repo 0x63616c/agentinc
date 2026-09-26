@@ -317,18 +317,21 @@ impl Render for TemporalPage {
                     .enabled(!self.loading)
                     .build(&self.hover, |this, _, cx| this.load(false, cx), cx),
             );
-        let mut content = column().w_full().gap(px(SPACE_5)).child(segmented(
-            "temporal.filter",
-            FILTERS.iter().map(|(_, label)| *label),
-            filter,
-            !self.loading,
-            &self.hover,
-            |this, index, _, cx| {
-                this.filter = FILTERS[index].0;
-                this.load(false, cx);
-            },
-            cx,
-        ));
+        let mut content = column()
+            .w_full()
+            .gap(px(SPACE_5))
+            .child(row().child(segmented(
+                "temporal.filter",
+                FILTERS.iter().map(|(_, label)| *label),
+                filter,
+                !self.loading,
+                &self.hover,
+                |this, index, _, cx| {
+                    this.filter = FILTERS[index].0;
+                    this.load(false, cx);
+                },
+                cx,
+            )));
         if !self.ui_available && self.loaded && self.error.is_none() {
             content = content.child(
                 banner(

@@ -29,7 +29,6 @@ pub fn segmented<V: HoverHost>(
             Button::new(ElementId::NamedInteger(name.clone(), index as u64), option)
                 .ghost()
                 .small()
-                .on_surface(SURFACE_CONTROL)
                 .selected(is_selected)
                 .enabled(enabled)
                 .build(
@@ -61,7 +60,7 @@ pub fn tabs<V: HoverHost>(
     let mut bar = row()
         .debug_selector(move || id.into())
         .w_full()
-        .gap(px(SPACE_1))
+        .gap(px(SPACE_5))
         .border_b_1()
         .border_color(rgb(BORDER));
     for (index, label) in labels.into_iter().enumerate() {
@@ -80,7 +79,8 @@ pub fn tabs<V: HoverHost>(
                         )
                         .role(accesskit::Role::Tab)
                         .aria_toggled(toggled(is_selected))
-                        .when(is_selected, |s| s.bg(rgb(SURFACE)))
+                        .px(px(0.))
+                        .when(!is_selected, |s| s.text_color(rgb(TEXT_SECONDARY)))
                         .mb(px(SPACE_1)),
                 )
                 .child(
@@ -88,7 +88,7 @@ pub fn tabs<V: HoverHost>(
                         .h(px(2.))
                         .mb(px(-1.))
                         .rounded_t(px(2.))
-                        .bg(rgb(if is_selected { PRIMARY } else { SURFACE }))
+                        .bg(rgb(PRIMARY))
                         .when(!is_selected, |s| s.opacity(0.)),
                 ),
         );

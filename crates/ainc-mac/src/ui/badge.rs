@@ -76,9 +76,9 @@ pub fn count_badge(count: usize) -> Div {
         .justify_center()
         .flex_shrink_0()
         .rounded_full()
-        .bg(rgb(PRIMARY))
+        .bg(rgb(SELECTED_STRONG))
         .text_size(type_size(MICRO_SIZE))
         .font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(TEXT_ON_PRIMARY))
+        .text_color(rgb(TEXT))
         .child(count.to_string())
 }

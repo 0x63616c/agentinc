@@ -17,7 +17,7 @@ impl Shell {
             .child(
                 MenuEntry::new("user-menu.support", "Support")
                     .icon("help")
-                    .trailing(icon("chevronRight", ICON_SIZE_SM))
+                    .trailing(icon("chevronRight", ICON_SIZE))
                     .selector("user-menu.support")
                     .build(&self.hover, Self::menu_action(Control::SupportMenu), cx)
                     .when(support, |s| s.bg(rgb(SELECTED))),
@@ -42,7 +42,7 @@ impl Shell {
                                 .build(&self.hover, Self::menu_action(Control::About), cx),
                         ),
                     Anchor::TopLeft,
-                    point(px(POPOVER_WIDTH - MENU_INSET), px(-MENU_INSET)),
+                    point(px(POPOVER_WIDTH - CHIP_GAP), px(-MENU_INSET)),
                 ))
             });
         let menu = popover_shell(POPOVER_WIDTH)
@@ -112,7 +112,7 @@ impl Shell {
             .child(menu_divider())
             .child(
                 MenuEntry::new("user-menu.updates", "Check for Updates")
-                    .icon("refresh")
+                    .icon("download")
                     .build(&self.hover, Self::menu_action(Control::CheckForUpdates), cx),
             )
             .child(
@@ -151,8 +151,8 @@ impl Shell {
             .count();
         popover_shell(350.)
             .absolute()
-            .top(px(TITLEBAR_HEIGHT + SPACE_2))
-            .right(px(SPACE_4))
+            .top(px(TITLEBAR_HEIGHT + SPACE_1))
+            .right(px(HEADER_EDGE_INSET))
             .debug_selector(|| "notifications.panel".into())
             .overflow_hidden()
             .child(
@@ -173,7 +173,6 @@ impl Shell {
                             Button::new("mark-all-read", "Mark all read")
                                 .ghost()
                                 .small()
-                                .on_surface(SURFACE_OVERLAY)
                                 .build(&self.hover, Self::menu_action(Control::MarkAllRead), cx),
                         )
                     })
@@ -183,7 +182,6 @@ impl Shell {
                             .icon_only()
                             .ghost()
                             .small()
-                            .on_surface(SURFACE_OVERLAY)
                             .build(&self.hover, Self::menu_action(Control::Dismiss), cx),
                     ),
             )

@@ -33,16 +33,18 @@ pub const ACTIVE: u32 = 0x2a2a2a;
 /// The selected row, tab or segment.
 pub const SELECTED: u32 = 0x1e1e1e;
 /// A stronger selected segment inside a control track.
-pub const SELECTED_STRONG: u32 = 0x2c2c2c;
+pub const SELECTED_STRONG: u32 = 0x323232;
 
 /// The default hairline between and around surfaces.
-pub const BORDER: u32 = 0x1f1f1f;
+pub const BORDER: u32 = 0x262626;
 /// Dividers inside a surface.
-pub const BORDER_SUBTLE: u32 = 0x171717;
+pub const BORDER_SUBTLE: u32 = 0x1e1e1e;
 /// Borders on raised overlays and selected chips.
-pub const BORDER_STRONG: u32 = 0x2e2e2e;
+pub const BORDER_STRONG: u32 = 0x333333;
 /// The keyboard focus ring.
 pub const FOCUS: u32 = 0xbdbdbd;
+/// The border of a text field or composer while it is being edited.
+pub const FOCUS_FIELD: u32 = 0x707070;
 /// Selected text inside inputs. Values that carry an alpha byte say so in a
 /// comment; every other color token is opaque RGB.
 pub const TEXT_SELECTION: u32 = 0x454545ff;
@@ -63,9 +65,9 @@ pub const PRIMARY: u32 = 0xffffff;
 pub const PRIMARY_HOVER: u32 = 0xe9e9e9;
 pub const PRIMARY_ACTIVE: u32 = 0xd9d9d9;
 
-/// Solid destructive action.
-pub const DESTRUCTIVE: u32 = 0xd9403f;
-pub const DESTRUCTIVE_HOVER: u32 = 0xc93938;
+/// The destructive action is an outlined red control, never a solid slab;
+/// this is its hover surface.
+pub const DESTRUCTIVE_HOVER: u32 = 0x321a1a;
 /// Destructive text on a neutral surface.
 pub const DESTRUCTIVE_TEXT: u32 = 0xf08c8b;
 /// Inline error text.
@@ -91,7 +93,7 @@ pub const ACCENT: u32 = 0xffffff;
 /// The resize grip tint before its opacity byte.
 pub const GRIP_TINT: u32 = 0x3a3a3a00;
 /// The dimming layer behind dialogs and the palette.
-pub const SCRIM: u32 = 0x000000b8;
+pub const SCRIM: u32 = 0x000000cc;
 /// Shadow ink before its opacity byte.
 pub const SHADOW_INK: u32 = 0x00000000;
 /// Skeleton placeholder surface.
@@ -123,7 +125,7 @@ pub const SPACE_10: f32 = 40.;
 pub const PAGE_X: f32 = SPACE_6;
 /// The optical lift that puts a page title's cap height, not its line box, at
 /// `PAGE_X` when the title's line box is `CONTROL_HEIGHT` tall.
-pub const TITLE_OPTICAL_LIFT: f32 = 8.;
+pub const TITLE_OPTICAL_LIFT: f32 = 6.;
 /// The gap between the sidebar and the content card.
 pub const PANEL_GAP: f32 = SPACE_2;
 /// The height of the title bar above the panels.
@@ -132,8 +134,13 @@ pub const TITLEBAR_HEIGHT: f32 = 48.;
 pub const STATUS_BAR_HEIGHT: f32 = 28.;
 /// The sidebar's own side inset.
 pub const SIDEBAR_INSET: f32 = SPACE_3;
+/// The gap between a navigation icon and its label, chosen so every sidebar
+/// text edge (search, navigation, workspace, user) lands on one line.
+pub const SIDEBAR_TEXT_GAP: f32 = 11.;
 
 pub const HEADER_CONTROL: f32 = 30.;
+/// The title bar's right inset, shared by the bell and the panel under it.
+pub const HEADER_EDGE_INSET: f32 = 9.;
 pub const HEADER_ICON_SIZE: f32 = 16.;
 pub const ICON_SIZE: f32 = 16.;
 pub const ICON_SIZE_SM: f32 = 14.;
@@ -141,7 +148,7 @@ pub const ICON_SIZE_LG: f32 = 18.;
 pub const CONTROL_HEIGHT: f32 = 32.;
 pub const CONTROL_HEIGHT_SM: f32 = 26.;
 pub const CONTROL_HEIGHT_LG: f32 = 40.;
-pub const FIELD_HEIGHT: f32 = 38.;
+pub const FIELD_HEIGHT: f32 = CONTROL_HEIGHT;
 pub const CONTROL_GAP: f32 = SPACE_2;
 /// The gap between chips in a wrapping group.
 pub const CHIP_GAP: f32 = 6.;
@@ -157,6 +164,8 @@ pub const LIST_ROW_HEIGHT: f32 = 44.;
 pub const TABLE_ROW_HEIGHT: f32 = 48.;
 pub const TABLE_HEADER_HEIGHT: f32 = 36.;
 pub const DIALOG_WIDTH: f32 = 440.;
+/// The widest an inline form grows; wider fields read as search bars.
+pub const FORM_WIDTH: f32 = 560.;
 pub const SHEET_WIDTH: f32 = 420.;
 pub const MENU_WIDTH: f32 = 220.;
 pub const MENU_INSET: f32 = SPACE_1;
@@ -178,12 +187,10 @@ pub const TOGGLE_WIDTH: f32 = 36.;
 pub const TOGGLE_HEIGHT: f32 = 20.;
 pub const CHECKBOX_SIZE: f32 = 16.;
 pub const DIALOG_PADDING: f32 = SPACE_6;
-// The search icon needs 9 px before it to align its visible edge with header text.
-pub const HEADER_SEARCH_LEFT_INSET: f32 = 9.;
 // The shortcut badge needs only 4 px after it to balance the search control.
 pub const HEADER_SEARCH_RIGHT_INSET: f32 = 4.;
 // The workspace mark's left edge uses a half pixel to balance its icon.
-pub const SIDEBAR_IDENTITY_LEFT_INSET: f32 = 6.5;
+pub const SIDEBAR_IDENTITY_LEFT_INSET: f32 = 6.;
 // The workspace label's right edge retains the measured 6 px optical inset.
 pub const SIDEBAR_IDENTITY_RIGHT_INSET: f32 = 6.;
 

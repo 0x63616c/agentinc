@@ -91,7 +91,6 @@ impl MenuEntry {
         } = self;
         let mut button = Button::new(id, label)
             .ghost()
-            .on_surface(SURFACE_OVERLAY)
             .full_width()
             .align_start()
             .enabled(enabled);

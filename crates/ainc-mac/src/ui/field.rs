@@ -66,7 +66,7 @@ impl Field {
         let border = if has_error {
             ERROR_BORDER
         } else if focused {
-            FOCUS
+            FOCUS_FIELD
         } else {
             BORDER
         };

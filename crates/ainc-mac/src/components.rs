@@ -132,7 +132,7 @@ impl ComponentsPage {
                 row().flex_wrap().gap(px(CONTROL_GAP))
                     .child(Button::new("components.primary", "Primary").primary().build(&self.hover, noop, cx))
                     .child(Button::new("components.secondary", "Secondary").secondary().build(&self.hover, noop, cx))
-                    .child(Button::new("components.ghost", "Ghost").ghost().on_surface(SURFACE_RAISED).build(&self.hover, noop, cx))
+                    .child(Button::new("components.ghost", "Ghost").ghost().build(&self.hover, noop, cx))
                     .child(Button::new("components.destructive", "Delete").destructive().build(&self.hover, noop, cx)),
             ))
             .child(specimen(
@@ -385,7 +385,7 @@ impl ComponentsPage {
                 "List rows",
                 "Title, subtitle and a trailing element. Rows fade to their hover surface.",
                 column().gap(px(SPACE_HALF))
-                    .child(ListRow::new("components.row.1", "Reconcile weekly budget and receipts").leading(status_dot(Tone::Info)).subtitle("Evee").trailing(badge("Running", Tone::Info)).on_surface(SURFACE_RAISED).build(&self.hover, |_, _, _| {}, cx))
+                    .child(ListRow::new("components.row.1", "Reconcile weekly budget and receipts").leading(status_dot(Tone::Info)).subtitle("Evee").trailing(badge("Running", Tone::Info)).build(&self.hover, |_, _, _| {}, cx))
                     .child(ListRow::new("components.row.2", "Plan the week").leading(status_dot(Tone::Neutral)).subtitle("Unassigned").trailing(icon("chevronRight", ICON_SIZE_SM)).selected(true).build(&self.hover, |_, _, _| {}, cx)),
             ))
             .child(specimen(

@@ -93,6 +93,7 @@ impl Select {
             .trailing(icon("chevronDown", ICON_SIZE_SM))
             .build(hover, on_toggle, cx)
             .debug_selector(move || trigger_selector.clone())
+            .when(!open, |s| s.bg(rgb(SURFACE_INPUT)))
             .when(value.is_none(), |s| s.text_color(rgb(TEXT_SECONDARY)));
         column()
             .relative()

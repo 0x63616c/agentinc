@@ -73,7 +73,7 @@ impl Shell {
             .h(px(TITLEBAR_HEIGHT))
             .flex_shrink_0()
             .items_end()
-            .pr(px(9.))
+            .pr(px(HEADER_EDGE_INSET))
             .child(
                 row()
                     .w(px(self.session.panes[pane::Side::Left.index()].width + 60.))
@@ -131,6 +131,7 @@ impl Shell {
                         .child(
                             row()
                                 .h_full()
+                                .pb(px(CHIP_GAP))
                                 .pl(px(14.))
                                 .gap(px(7.))
                                 .text_size(type_size(LABEL_SIZE))
