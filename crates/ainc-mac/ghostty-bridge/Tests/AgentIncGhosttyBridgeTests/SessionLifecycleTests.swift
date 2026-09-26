@@ -151,4 +151,69 @@ final class SessionLifecycleTests: XCTestCase {
         XCTAssertEqual(panes(in: parent).count, 2)
         XCTAssertEqual(try Data(contentsOf: layout), saved)
     }
+
+    func testDraggingBothDividersPersistsProportions() throws {
+        _ = NSApplication.shared
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build/drag-layout-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let layout = directory.appendingPathComponent("terminal-layout.json")
+        let ids = (0..<3).map { _ in UUID().uuidString }
+        let initial: [String: Any] = ["tree": [
+            "vertical": false,
+            "first": ["vertical": true, "first": ["id": ids[0]], "second": ["id": ids[1]]],
+            "second": ["id": ids[2]]
+        ]]
+        try JSONSerialization.data(withJSONObject: initial).write(to: layout)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        let parent = try XCTUnwrap(window.contentView)
+        func create() -> UnsafeMutableRawPointer? {
+            NSHomeDirectory().withCString { home in
+                layout.path.withCString { path in
+                    "background = #171717".withCString { colors in
+                        agentincGhosttyCreate(Unmanaged.passUnretained(parent).toOpaque(),
+                                               home, nil, path, colors, 0x1a1a1a, nil, nil)
+                    }
+                }
+            }
+        }
+        let host = try XCTUnwrap(create())
+        agentincGhosttySetFrame(host, 0, 0, 800, 500, true, false)
+        let container = try XCTUnwrap(parent.subviews.first)
+        func drag(from start: NSPoint, to end: NSPoint) throws {
+            func event(_ type: NSEvent.EventType, at point: NSPoint) throws -> NSEvent {
+                try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point,
+                    modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+            }
+            XCTAssertTrue(container.hitTest(start) === container)
+            container.mouseDown(with: try event(.leftMouseDown, at: start))
+            container.mouseDragged(with: try event(.leftMouseDragged, at: end))
+            container.mouseUp(with: try event(.leftMouseUp, at: end))
+        }
+        try drag(from: NSPoint(x: 400, y: 100), to: NSPoint(x: 790, y: 100))
+        XCTAssertGreaterThanOrEqual(panes(in: parent)[2].frame.width, 100)
+        try drag(from: NSPoint(x: 698, y: 100), to: NSPoint(x: 550, y: 100))
+        try drag(from: NSPoint(x: 100, y: 250), to: NSPoint(x: 100, y: 490))
+        XCTAssertGreaterThanOrEqual(panes(in: parent)[0].frame.height, 80)
+        try drag(from: NSPoint(x: 100, y: 419), to: NSPoint(x: 100, y: 320))
+        let moved = panes(in: parent).map(\.frame)
+        XCTAssertEqual(moved.count, 3)
+        XCTAssertGreaterThan(moved[0].width, 500)
+        XCTAssertLessThan(moved[0].height, 220)
+        let saved = try Data(contentsOf: layout)
+        let record = try XCTUnwrap(JSONSerialization.jsonObject(with: saved) as? [String: Any])
+        let root = try XCTUnwrap(record["tree"] as? [String: Any])
+        XCTAssertGreaterThan(try XCTUnwrap(root["ratio"] as? Double), 0.65)
+        let nested = try XCTUnwrap(root["first"] as? [String: Any])
+        XCTAssertLessThan(try XCTUnwrap(nested["ratio"] as? Double), 0.4)
+        agentincGhosttyDestroy(host)
+
+        let restored = try XCTUnwrap(create())
+        defer { agentincGhosttyDestroy(restored) }
+        agentincGhosttySetFrame(restored, 0, 0, 800, 500, true, false)
+        XCTAssertEqual(panes(in: parent).map(\.frame), moved)
+    }
 }

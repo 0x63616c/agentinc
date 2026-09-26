@@ -71,31 +71,32 @@ private final class ZoomIndicator: NSButton {
 @MainActor
 private indirect enum PaneNode {
     case pane(PaneView)
-    case split(vertical: Bool, PaneNode, PaneNode)
+    case split(vertical: Bool, ratio: CGFloat, PaneNode, PaneNode)
 
     var panes: [PaneView] {
         switch self {
         case .pane(let pane): [pane]
-        case .split(_, let first, let second): first.panes + second.panes
+        case .split(_, _, let first, let second): first.panes + second.panes
         }
     }
 
     var record: PaneRecord {
         switch self {
         case .pane(let pane): return PaneRecord(id: pane.sessionID)
-        case .split(let vertical, let first, let second):
-            return PaneRecord(vertical: vertical, first: first.record, second: second.record)
+        case .split(let vertical, let ratio, let first, let second):
+            return PaneRecord(vertical: vertical, ratio: Double(ratio),
+                              first: first.record, second: second.record)
         }
     }
 
     func inserting(_ newPane: PaneView, beside target: PaneView, vertical: Bool) -> PaneNode {
         switch self {
         case .pane(let pane) where pane === target:
-            return .split(vertical: vertical, .pane(pane), .pane(newPane))
+            return .split(vertical: vertical, ratio: 0.5, .pane(pane), .pane(newPane))
         case .pane:
             return self
-        case .split(let axis, let first, let second):
-            return .split(vertical: axis,
+        case .split(let axis, let ratio, let first, let second):
+            return .split(vertical: axis, ratio: ratio,
                           first.inserting(newPane, beside: target, vertical: vertical),
                           second.inserting(newPane, beside: target, vertical: vertical))
         }
@@ -104,35 +105,58 @@ private indirect enum PaneNode {
     func removing(_ target: PaneView) -> PaneNode? {
         switch self {
         case .pane(let pane): return pane === target ? nil : self
-        case .split(let axis, let first, let second):
+        case .split(let axis, let ratio, let first, let second):
             let left = first.removing(target)
             let right = second.removing(target)
             switch (left, right) {
-            case (let left?, let right?): return .split(vertical: axis, left, right)
+            case (let left?, let right?): return .split(vertical: axis, ratio: ratio, left, right)
             case (let left?, nil): return left
             case (nil, let right?): return right
             case (nil, nil): return nil
             }
         }
     }
+
+    var minimumSize: NSSize {
+        switch self {
+        case .pane: return NSSize(width: 100, height: 80)
+        case .split(let vertical, _, let first, let second):
+            let a = first.minimumSize, b = second.minimumSize
+            return vertical
+                ? NSSize(width: max(a.width, b.width), height: a.height + b.height + 2)
+                : NSSize(width: a.width + b.width + 2, height: max(a.height, b.height))
+        }
+    }
+
+    mutating func setRatio(_ ratio: CGFloat, at path: [Bool]) {
+        guard case .split(let vertical, let current, var first, var second) = self else { return }
+        if let branch = path.first {
+            if branch { second.setRatio(ratio, at: Array(path.dropFirst())) }
+            else { first.setRatio(ratio, at: Array(path.dropFirst())) }
+        }
+        self = .split(vertical: vertical, ratio: path.isEmpty ? ratio : current, first, second)
+    }
 }
 
 private final class PaneRecord: Codable {
     var id: String?
     var vertical: Bool?
+    var ratio: Double?
     var first: PaneRecord?
     var second: PaneRecord?
 
     init(id: String) { self.id = id }
-    init(vertical: Bool, first: PaneRecord, second: PaneRecord) {
+    init(vertical: Bool, ratio: Double, first: PaneRecord, second: PaneRecord) {
         self.vertical = vertical
+        self.ratio = ratio
         self.first = first
         self.second = second
     }
 
     var isValid: Bool {
         if let id { return UUID(uuidString: id) != nil }
-        return vertical != nil && first?.isValid == true && second?.isValid == true
+        return vertical != nil && (ratio.map { $0.isFinite && (0...1).contains($0) } ?? true)
+            && first?.isValid == true && second?.isValid == true
     }
 }
 
@@ -141,9 +165,51 @@ private struct TerminalLayout: Codable {
     var zoomed: String?
 }
 
+private struct SplitDivider {
+    let path: [Bool]
+    let hitFrame: NSRect
+    let parentFrame: NSRect
+    let vertical: Bool
+    let firstMinimum: CGFloat
+    let secondMinimum: CGFloat
+}
+
+@MainActor
+private final class SplitContainer: NSView {
+    weak var host: TerminalHost?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, let host else { return super.hitTest(point) }
+        let local = convert(point, from: superview)
+        if host.dividers.contains(where: { $0.hitFrame.contains(local) }) { return self }
+        return super.hitTest(point)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let host else { return }
+        for divider in host.dividers {
+            addCursorRect(divider.hitFrame,
+                          cursor: divider.vertical ? .resizeUpDown : .resizeLeftRight)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        host?.beginDrag(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        host?.drag(to: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        host?.endDrag()
+    }
+}
+
 @MainActor
 private final class TerminalHost: NSObject {
-    let container = NSView(frame: .zero)
+    let container = SplitContainer(frame: .zero)
     let zoomIndicator = ZoomIndicator(frame: .zero)
     let controller: TerminalController
     let home: String
@@ -155,6 +221,8 @@ private final class TerminalHost: NSObject {
     weak var focused: PaneView?
     weak var zoomed: PaneView?
     var shown = false
+    var dividers: [SplitDivider] = []
+    private var dragging: SplitDivider?
 
     init(parent: NSView, home: String, helper: String?, layoutPath: String?,
          colors: String, dividerColor: UInt32,
@@ -177,6 +245,7 @@ private final class TerminalHost: NSObject {
             fputs("AgentInc Ghostty configuration: \(issue)\n", stderr)
         }
         super.init()
+        container.host = self
         container.wantsLayer = true
         container.layer?.masksToBounds = true
         container.layer?.backgroundColor = NSColor(
@@ -214,7 +283,7 @@ private final class TerminalHost: NSObject {
         guard let vertical = record.vertical,
               let first = record.first.flatMap(restore),
               let second = record.second.flatMap(restore) else { return nil }
-        return .split(vertical: vertical, first, second)
+        return .split(vertical: vertical, ratio: CGFloat(record.ratio ?? 0.5), first, second)
     }
 
     private func saveLayout() {
@@ -336,6 +405,7 @@ private final class TerminalHost: NSObject {
     private func layoutPanes() {
         guard let tree else { return }
         let full = container.bounds
+        dividers.removeAll()
         if let zoomed {
             for pane in tree.panes {
                 let visible = shown && pane === zoomed
@@ -344,8 +414,9 @@ private final class TerminalHost: NSObject {
                 if pane === zoomed { pane.frame = full }
             }
         } else {
-            layout(tree, in: full)
+            layout(tree, in: full, path: [])
         }
+        container.window?.invalidateCursorRects(for: container)
         zoomIndicator.isHidden = zoomed == nil || tree.panes.count < 2 || !shown
         if !zoomIndicator.isHidden {
             zoomIndicator.frame = NSRect(x: full.maxX - 36, y: full.maxY - 36,
@@ -354,28 +425,79 @@ private final class TerminalHost: NSObject {
         }
     }
 
-    private func layout(_ node: PaneNode, in frame: NSRect) {
+    private func splitLength(_ ratio: CGFloat, available: CGFloat,
+                             firstMinimum: CGFloat, secondMinimum: CGFloat) -> CGFloat {
+        guard available > 0 else { return 0 }
+        guard firstMinimum + secondMinimum <= available else {
+            return available * firstMinimum / (firstMinimum + secondMinimum)
+        }
+        return min(max(ratio * available, firstMinimum), available - secondMinimum)
+    }
+
+    private func layout(_ node: PaneNode, in frame: NSRect, path: [Bool]) {
         switch node {
         case .pane(let pane):
             pane.frame = frame
             pane.isHidden = !shown
             pane.setSurfaceVisible(shown)
-        case .split(let vertical, let first, let second):
+        case .split(let vertical, let ratio, let first, let second):
             let gap: CGFloat = 2
+            let firstMinimum = vertical ? first.minimumSize.height : first.minimumSize.width
+            let secondMinimum = vertical ? second.minimumSize.height : second.minimumSize.width
             if vertical {
-                let half = max(0, (frame.height - gap) / 2)
-                layout(first, in: NSRect(x: frame.minX, y: frame.minY + half + gap,
-                                         width: frame.width, height: half))
+                let available = max(0, frame.height - gap)
+                let firstHeight = splitLength(ratio, available: available,
+                                              firstMinimum: firstMinimum, secondMinimum: secondMinimum)
+                let secondHeight = available - firstHeight
+                let line = NSRect(x: frame.minX, y: frame.minY + secondHeight,
+                                  width: frame.width, height: gap)
+                dividers.append(SplitDivider(path: path,
+                    hitFrame: line.insetBy(dx: 0, dy: -4), parentFrame: frame, vertical: true,
+                    firstMinimum: firstMinimum, secondMinimum: secondMinimum))
+                layout(first, in: NSRect(x: frame.minX, y: line.maxY,
+                                         width: frame.width, height: firstHeight), path: path + [false])
                 layout(second, in: NSRect(x: frame.minX, y: frame.minY,
-                                          width: frame.width, height: half))
+                                          width: frame.width, height: secondHeight), path: path + [true])
             } else {
-                let half = max(0, (frame.width - gap) / 2)
+                let available = max(0, frame.width - gap)
+                let firstWidth = splitLength(ratio, available: available,
+                                             firstMinimum: firstMinimum, secondMinimum: secondMinimum)
+                let line = NSRect(x: frame.minX + firstWidth, y: frame.minY,
+                                  width: gap, height: frame.height)
+                dividers.append(SplitDivider(path: path,
+                    hitFrame: line.insetBy(dx: -4, dy: 0), parentFrame: frame, vertical: false,
+                    firstMinimum: firstMinimum, secondMinimum: secondMinimum))
                 layout(first, in: NSRect(x: frame.minX, y: frame.minY,
-                                         width: half, height: frame.height))
-                layout(second, in: NSRect(x: frame.minX + half + gap, y: frame.minY,
-                                          width: half, height: frame.height))
+                                         width: firstWidth, height: frame.height), path: path + [false])
+                layout(second, in: NSRect(x: line.maxX, y: frame.minY,
+                                          width: available - firstWidth, height: frame.height), path: path + [true])
             }
         }
+    }
+
+    fileprivate func beginDrag(at point: NSPoint) {
+        dragging = dividers.reversed().first { $0.hitFrame.contains(point) }
+    }
+
+    fileprivate func drag(to point: NSPoint) {
+        guard let dragging else { return }
+        let available = max(0, (dragging.vertical
+            ? dragging.parentFrame.height : dragging.parentFrame.width) - 2)
+        guard available > 0 else { return }
+        let proposed = dragging.vertical
+            ? dragging.parentFrame.maxY - point.y - 1
+            : point.x - dragging.parentFrame.minX - 1
+        let length = splitLength(proposed / available, available: available,
+                                 firstMinimum: dragging.firstMinimum,
+                                 secondMinimum: dragging.secondMinimum)
+        tree.setRatio(length / available, at: dragging.path)
+        layoutPanes()
+    }
+
+    fileprivate func endDrag() {
+        guard dragging != nil else { return }
+        dragging = nil
+        saveLayout()
     }
 
     func dispose() {
