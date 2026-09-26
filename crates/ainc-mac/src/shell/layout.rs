@@ -28,15 +28,7 @@ impl Shell {
                     .min_w_0()
                     .h_full()
                     .gap(px(PANEL_GAP))
-                    .child(
-                        column()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .gap(px(6.))
-                            .child(center)
-                            .child(status_bar()),
-                    )
+                    .child(column().flex_1().min_w_0().h_full().child(center))
                     .when_some(right, |body, panel| body.child(panel)),
             )
             .when(

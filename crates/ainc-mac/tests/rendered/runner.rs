@@ -371,19 +371,19 @@ impl Suite {
         let status = self.bounds("status-bar")?;
         near(
             "status bar left edge",
-            f32::from(status.origin.x),
-            f32::from(main.origin.x),
+            f32::from(status.origin.x - main.origin.x),
+            1.,
         )?;
         near(
             "status bar width",
             f32::from(status.size.width),
-            f32::from(main.size.width),
+            f32::from(main.size.width) - 2.,
         )?;
-        near("status bar height", f32::from(status.size.height), 20.)?;
+        near("status bar height", f32::from(status.size.height), 28.)?;
         near(
-            "status bar gap",
-            f32::from(status.origin.y - main.origin.y - main.size.height),
-            6.,
+            "status bar bottom edge",
+            f32::from(main.origin.y + main.size.height - status.origin.y - status.size.height),
+            1.,
         )?;
         let content = self.bounds("main-content")?;
         near(
@@ -406,7 +406,12 @@ impl Suite {
     fn check_page_geometry(&mut self, route: Route) -> Result<()> {
         let main = self.bounds("main-pane")?;
         let frame = self.bounds("page-frame")?;
+        let status = self.bounds("status-bar")?;
         let terminal_inset = if route == Route::Terminal { 8. } else { 0. };
+        ensure!(
+            frame.origin.y + frame.size.height <= status.origin.y,
+            "{route:?} content overlaps status bar"
+        );
         near(
             "page frame left edge",
             f32::from(frame.origin.x - main.origin.x),
@@ -756,6 +761,10 @@ pub fn run() -> Result<()> {
                 None,
                 false,
             )?;
+        }
+        for (shortcut, route) in [(5, Route::Terminal), (6, Route::Temporal)] {
+            suite.keys(&format!("cmd-{shortcut}"));
+            suite.capture(&format!("route-{round}-{shortcut}"), route, None, false)?;
         }
     }
     suite.keys("cmd-1");
