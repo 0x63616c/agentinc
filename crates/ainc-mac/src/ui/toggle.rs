@@ -1,8 +1,9 @@
 //! Switches and checkboxes with a white on-state.
-use super::{button::*, display::icon, layout::*, tokens::*};
+use super::{button::*, display::icon, layout::*, motion::blend, tokens::*};
 use gpui::{prelude::*, *};
 
-/// Accessible switch with a GPUI spring that keeps its velocity when retargeted.
+/// Accessible switch. One GPUI spring drives the knob and the track color together, so the
+/// track changes color as the knob arrives, and the spring keeps its velocity when retargeted.
 pub fn toggle<V: 'static>(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -12,7 +13,7 @@ pub fn toggle<V: 'static>(
     cx: &mut Context<V>,
 ) -> Stateful<Div> {
     let id = id.into();
-    let knob_id = ElementId::NamedChild(std::sync::Arc::new(id.clone()), "knob".into());
+    let track_id = ElementId::NamedChild(std::sync::Arc::new(id.clone()), "track".into());
     let selector = format!("{id:?}");
     let knob = TOGGLE_HEIGHT - 4.;
     let travel = TOGGLE_WIDTH - TOGGLE_HEIGHT;
@@ -30,23 +31,19 @@ pub fn toggle<V: 'static>(
                 .rounded_full()
                 .w(px(TOGGLE_WIDTH))
                 .h(px(TOGGLE_HEIGHT))
-                .p(px(2.))
-                .bg(rgb(if on { PRIMARY } else { BORDER_STRONG }))
-                .child(
-                    div()
-                        .size(px(knob))
-                        .rounded_full()
-                        .bg(rgb(if on { TEXT_ON_PRIMARY } else { PRIMARY }))
-                        .with_spring(
-                            knob_id,
-                            SpringAnimation::new(SPRING_SNAPPY).to(px(if on {
-                                travel
-                            } else {
-                                0.
-                            })),
-                            |knob, offset| knob.ml(offset),
-                        ),
-                )
+                .child(div().size_full().rounded_full().p(px(2.)).with_spring(
+                    track_id,
+                    SpringAnimation::new(SPRING_SNAPPY).to(if on { 1f32 } else { 0f32 }),
+                    move |track, progress| {
+                        track.bg(blend(BORDER_STRONG, PRIMARY, progress)).child(
+                            div()
+                                .size(px(knob))
+                                .rounded_full()
+                                .bg(blend(PRIMARY, TEXT_ON_PRIMARY, progress))
+                                .ml(px(travel * progress)),
+                        )
+                    },
+                ))
         },
         action,
         cx,

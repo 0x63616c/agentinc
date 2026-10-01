@@ -20,7 +20,6 @@ use crate::{
     ui::*,
 };
 use gpui::{prelude::*, *};
-use sidebar::handle_for;
 use std::{cell::RefCell, path::PathBuf, rc::Rc, time::Instant};
 actions!(
     control,

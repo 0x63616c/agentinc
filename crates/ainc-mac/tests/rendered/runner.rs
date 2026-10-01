@@ -147,7 +147,6 @@ impl Suite {
         // Tertiary text is dim by design; under a scrim it still has to be there.
         let tertiary = if dimmed { 12 } else { 60 };
         for (name, selector, minimum) in [
-            ("profile handle", "sidebar-profile-handle", 20),
             ("status route", "status-bar.route", 30),
             ("status version", "sidebar-version", 12),
         ] {
@@ -285,20 +284,10 @@ impl Suite {
     fn check_profile_row_geometry(&mut self) -> Result<()> {
         let card = self.bounds("sidebar-profile")?;
         let name = self.bounds("sidebar-profile-name")?;
-        let handle = self.bounds("sidebar-profile-handle")?;
         near("compact profile height", f32::from(card.size.height), 44.)?;
         ensure!(
             name.origin.x + name.size.width <= card.origin.x + card.size.width,
             "profile name overflows its row"
-        );
-        near(
-            "profile name and handle left edges",
-            f32::from(name.origin.x),
-            f32::from(handle.origin.x),
-        )?;
-        ensure!(
-            name.origin.y + name.size.height <= handle.origin.y + px(GEOMETRY_TOLERANCE),
-            "profile handle overlaps its name"
         );
         let status = self.bounds("status-bar")?;
         let version = self.bounds("sidebar-version")?;

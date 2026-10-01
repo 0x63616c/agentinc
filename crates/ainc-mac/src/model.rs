@@ -93,7 +93,7 @@ pub const PAGES: &[PageSpec] = &[
     PageSpec {
         route: Route::Assistant,
         title: "Assistant",
-        icon: "spark",
+        icon: "evee-outline",
         in_sidebar: true,
     },
     PageSpec {

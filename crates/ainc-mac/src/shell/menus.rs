@@ -63,23 +63,13 @@ impl Shell {
                         AVATAR_SIZE_LG,
                     ))
                     .child(
-                        column()
-                            .flex_1()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_size(type_size(HEADING_SIZE))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(self.profile.name.clone()),
-                            )
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_size(type_size(CAPTION_SIZE))
-                                    .text_color(rgb(TEXT_SECONDARY))
-                                    .child(handle_for(&self.profile.name)),
-                            ),
+                        column().flex_1().min_w_0().child(
+                            div()
+                                .truncate()
+                                .text_size(type_size(HEADING_SIZE))
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(self.profile.name.clone()),
+                        ),
                     ),
             )
             .when(update_ready, |s| {

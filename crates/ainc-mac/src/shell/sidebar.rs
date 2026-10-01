@@ -1,15 +1,5 @@
 use super::*;
 
-/// The `@handle` shown under a display name until local accounts land.
-pub(crate) fn handle_for(name: &str) -> String {
-    let handle: String = name
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect();
-    format!("@{}", if handle.is_empty() { "you" } else { &handle })
-}
-
 impl Shell {
     fn sidebar_item(
         &self,
@@ -45,16 +35,7 @@ impl Shell {
         .when(selected, |s| {
             s.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM)
         })
-        .child(nav_icon(
-            if route == Route::Assistant {
-                "evee-outline"
-            } else {
-                route.icon()
-            },
-            selected,
-            tint,
-            hover_group,
-        ))
+        .child(nav_icon(route.icon(), selected, tint, hover_group))
         .child(
             div()
                 .flex_1()
@@ -228,42 +209,19 @@ impl Shell {
                                 AVATAR_SIZE,
                             ))
                             .child(
-                                column()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .child(
-                                        div()
-                                            .truncate()
-                                            .debug_selector(|| "sidebar-profile-name".into())
-                                            .text_size(type_size(LABEL_SIZE))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(rgb(TEXT))
-                                            .child(self.profile.name.clone()),
-                                    )
-                                    .child(
-                                        div()
-                                            .truncate()
-                                            .debug_selector(|| "sidebar-profile-handle".into())
-                                            .text_size(type_size(CAPTION_SIZE))
-                                            .text_color(rgb(TEXT_TERTIARY))
-                                            .child(handle_for(&self.profile.name)),
-                                    ),
+                                column().flex_1().min_w_0().child(
+                                    div()
+                                        .truncate()
+                                        .debug_selector(|| "sidebar-profile-name".into())
+                                        .text_size(type_size(LABEL_SIZE))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(rgb(TEXT))
+                                        .child(self.profile.name.clone()),
+                                ),
                             )
                             .child(icon("chevronUpDown", ICON_SIZE_SM)),
                     )
                     .when_some(user_menu, |s, support| s.child(self.user_menu(support, cx))),
             )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::handle_for;
-
-    #[test]
-    fn handles_are_lowercase_alphanumeric() {
-        assert_eq!(handle_for("Calum"), "@calum");
-        assert_eq!(handle_for("Calum Webb"), "@calumwebb");
-        assert_eq!(handle_for("  "), "@you");
     }
 }
