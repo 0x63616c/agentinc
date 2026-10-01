@@ -13,7 +13,7 @@ mod pane;
 #[path = "shell/sidebar.rs"]
 mod sidebar;
 
-use crate::storage::{Store, WorkspaceCommand};
+use crate::storage::Store;
 use crate::{
     input::TextInput,
     model::{FontChoice, FontSize, Overlay, PAGES, Route, Session},
@@ -49,10 +49,6 @@ pub(crate) enum Control {
     Back,
     Forward,
     Search,
-    WorkspacePicker,
-    SwitchWorkspace(String),
-    NewWorkspace,
-    CreateWorkspace,
     Sidebar,
     Notifications,
     MarkAllRead,
@@ -90,17 +86,8 @@ pub struct Shell {
     focus: FocusHandle,
     pane_focus: [FocusHandle; 1],
     input: Entity<TextInput>,
-    workspace_name: Entity<TextInput>,
-    workspace_icon: Entity<TextInput>,
-    workspace_color: Entity<TextInput>,
-    workspace_only: bool,
-    creating_workspace: bool,
-    workspace_pending: bool,
-    workspace_error: Option<String>,
     picker_result_focus: Vec<FocusHandle>,
     picker_close_focus: FocusHandle,
-    workspace_cancel_focus: FocusHandle,
-    workspace_create_focus: FocusHandle,
     palette_scroll: ScrollHandle,
     _input_subscription: Subscription,
     command_held: bool,
@@ -142,94 +129,14 @@ impl HoverHost for Shell {
     }
 }
 impl Shell {
+    /// The daemon's current workspace id; the app has one workspace and no switcher.
     #[cfg(target_os = "macos")]
-    fn reset_terminal_for_workspace(&mut self) {
-        // Recreate the view with this workspace's layout while its daemon PTY keeps running.
-        self.terminal.take();
-        self.terminal_error = None;
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    fn reset_terminal_for_workspace(&mut self) {}
-
-    fn workspace_state(&self) -> crate::storage::WorkspaceState {
+    fn workspace_id(&self) -> String {
         self.store
             .as_ref()
             .map(|store| store.workspaces())
             .unwrap_or_else(|| Store::new().workspaces())
-    }
-    /// Shows a transient notice above the status bar.
-    pub(crate) fn toast(
-        &mut self,
-        title: impl Into<SharedString>,
-        body: Option<String>,
-        tone: Tone,
-        cx: &mut Context<Self>,
-    ) {
-        let id = self.toasts.push(title, body.map(Into::into), tone);
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Toasts::LIFETIME).await;
-            let _ = this.update(cx, |this, cx| {
-                if this.toasts.dismiss(id) {
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-    fn change_workspace(
-        &mut self,
-        command: WorkspaceCommand,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.workspace_pending {
-            return;
-        }
-        let Some(store) = self.store.clone() else {
-            return;
-        };
-        self.workspace_pending = true;
-        self.workspace_error = None;
-        self.overlays.borrow_mut().dismiss(window, cx);
-        let request = cx
-            .background_executor()
-            .spawn(async move { store.workspace_command(command) });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.workspace_pending = false;
-                match result {
-                    Ok(_) => {
-                        this.reset_terminal_for_workspace();
-                        this.assistant.update(cx, |page, cx| {
-                            page.workspace_changed(cx);
-                            cx.notify();
-                        });
-                        this.tickets.update(cx, |page, cx| {
-                            page.workspace_changed(cx);
-                            cx.notify();
-                        });
-                        this.automations.update(cx, |page, cx| {
-                            page.workspace_changed(cx);
-                            cx.notify();
-                        });
-                    }
-                    Err(error) => {
-                        this.workspace_error = Some(format!("Workspace unavailable: {error}"));
-                        this.toast(
-                            "Workspace unavailable",
-                            Some(error.to_string()),
-                            Tone::Danger,
-                            cx,
-                        );
-                    }
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+            .current_id
     }
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let path = std::env::var_os("AGENTINC_SESSION_PATH")
@@ -351,16 +258,6 @@ impl Shell {
             ),
         ];
         let input = cx.new(TextInput::new);
-        let workspace_name = cx.new(|cx| {
-            TextInput::new(cx)
-                .identified("workspace.name")
-                .with_placeholder("Workspace name")
-        });
-        let workspace_icon = cx
-            .new(|cx| TextInput::field("Icon (optional)", false, cx).identified("workspace.icon"));
-        let workspace_color = cx.new(|cx| {
-            TextInput::field("Color #RRGGBB (optional)", false, cx).identified("workspace.color")
-        });
         let subscription = cx.observe(&input, |this, _, cx| {
             this.selected = 0;
             cx.notify();
@@ -412,17 +309,8 @@ impl Shell {
             focus,
             pane_focus: [cx.focus_handle()],
             input,
-            workspace_name,
-            workspace_icon,
-            workspace_color,
-            workspace_only: false,
-            creating_workspace: false,
-            workspace_pending: false,
-            workspace_error: None,
             picker_result_focus: (0..64).map(|_| cx.focus_handle()).collect(),
             picker_close_focus: cx.focus_handle(),
-            workspace_cancel_focus: cx.focus_handle(),
-            workspace_create_focus: cx.focus_handle(),
             palette_scroll: ScrollHandle::new(),
             _input_subscription: subscription,
             command_held: false,
@@ -511,8 +399,8 @@ impl Shell {
             Tone::Success,
         );
         self.toasts.push(
-            "Workspace unavailable",
-            Some("The daemon did not acknowledge the switch.".into()),
+            "Ticket update failed",
+            Some("The daemon did not acknowledge the change.".into()),
             Tone::Danger,
         );
         cx.notify();
@@ -696,8 +584,6 @@ impl Shell {
     }
     fn focus_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selected = 0;
-        self.creating_workspace = false;
-        self.workspace_error = None;
         self.input.update(cx, |input, _| input.reset());
         let initial_focus = self.input.focus_handle(cx);
         self.overlays
@@ -710,21 +596,6 @@ impl Shell {
             Some(Overlay::Search) => {
                 let mut handles =
                     vec![self.input.focus_handle(cx), self.picker_close_focus.clone()];
-                if self.creating_workspace {
-                    // Name → Icon → Color → Cancel → Create → Close, then round again.
-                    let handles = [
-                        self.workspace_name.read(cx).focus_handle(cx),
-                        self.workspace_icon.read(cx).focus_handle(cx),
-                        self.workspace_color.read(cx).focus_handle(cx),
-                        self.workspace_cancel_focus.clone(),
-                        self.workspace_create_focus.clone(),
-                        self.picker_close_focus.clone(),
-                    ];
-                    return self
-                        .overlays
-                        .borrow()
-                        .cycle_focus(&handles, backwards, window, cx);
-                }
                 let count = self.palette_results(&self.input.read(cx).content).len();
                 handles.extend(self.picker_result_focus.iter().take(count).cloned());
                 self.overlays
@@ -804,57 +675,8 @@ impl Shell {
                 window.focus(&self.focus, cx);
             }
             Control::Search => {
-                self.workspace_only = false;
                 self.palette_transition = Some(Instant::now());
                 self.focus_picker(window, cx);
-            }
-            Control::WorkspacePicker => {
-                self.workspace_only = true;
-                self.palette_transition = Some(Instant::now());
-                self.focus_picker(window, cx);
-            }
-            Control::SwitchWorkspace(id) => {
-                self.change_workspace(WorkspaceCommand::Switch { id }, window, cx)
-            }
-            Control::NewWorkspace => {
-                if self.overlays.borrow().active() != Some(Overlay::Search) {
-                    self.workspace_only = true;
-                    self.focus_picker(window, cx);
-                }
-                self.creating_workspace = true;
-                self.workspace_name.update(cx, |input, _| input.reset());
-                self.workspace_icon.update(cx, |input, _| input.reset());
-                self.workspace_color.update(cx, |input, _| input.reset());
-                self.selected = 0;
-                window.focus(&self.workspace_name.read(cx).focus_handle(cx), cx);
-            }
-            Control::CreateWorkspace => {
-                let name = self.workspace_name.read(cx).content.trim().to_owned();
-                let icon = self.workspace_icon.read(cx).content.trim().to_owned();
-                let color = self.workspace_color.read(cx).content.trim().to_owned();
-                if name.is_empty()
-                    || name.chars().count() > 120
-                    || icon.chars().count() > 4
-                    || (!color.is_empty()
-                        && (color.len() != 7
-                            || !color.starts_with('#')
-                            || !color[1..].bytes().all(|byte| byte.is_ascii_hexdigit())))
-                {
-                    self.workspace_error = Some(
-                        "Enter a name, up to four icon characters, and an optional #RRGGBB color."
-                            .into(),
-                    );
-                } else {
-                    self.change_workspace(
-                        WorkspaceCommand::Create {
-                            name,
-                            icon: (!icon.is_empty()).then_some(icon),
-                            color: (!color.is_empty()).then_some(color),
-                        },
-                        window,
-                        cx,
-                    );
-                }
             }
             Control::Sidebar => {
                 self.overlays.borrow_mut().dismiss(window, cx);
@@ -1045,23 +867,15 @@ impl Shell {
             let count = self.palette_results(&self.input.read(cx).content).len();
             match event.keystroke.key.as_str() {
                 "down" => {
-                    if !self.creating_workspace {
-                        self.selected = (self.selected + 1).min(count.saturating_sub(1));
-                    }
+                    self.selected = (self.selected + 1).min(count.saturating_sub(1));
                     cx.stop_propagation();
                 }
                 "up" => {
-                    if !self.creating_workspace {
-                        self.selected = self.selected.saturating_sub(1);
-                    }
+                    self.selected = self.selected.saturating_sub(1);
                     cx.stop_propagation();
                 }
                 "enter" => {
-                    if self.creating_workspace {
-                        self.dispatch(Control::CreateWorkspace, window, cx);
-                    } else {
-                        self.choose_palette(self.selected, window, cx);
-                    }
+                    self.choose_palette(self.selected, window, cx);
                     cx.stop_propagation();
                 }
                 _ => {}
@@ -1181,7 +995,7 @@ impl Render for Shell {
             && self.terminal.is_none()
             && self.terminal_error.is_none()
         {
-            let workspace_id = self.workspace_state().current_id;
+            let workspace_id = self.workspace_id();
             match crate::terminal::TerminalHost::new(
                 window,
                 cx.to_async(),
@@ -1443,7 +1257,7 @@ pub fn bind_keys(cx: &mut App) {
 
 #[cfg(test)]
 mod interaction_tests {
-    use super::{Shell, WorkspaceCommand, bind_keys};
+    use super::{Shell, bind_keys};
     use crate::{
         input,
         model::{Overlay, PANE_WIDTHS, Route, Session},
@@ -1567,11 +1381,6 @@ mod interaction_tests {
                 right(search) <= right(sidebar),
                 "search right edge at width {width}"
             );
-            let title = cx.debug_bounds("workspace-title").unwrap();
-            assert!(
-                right(title) <= right(sidebar) - 6.,
-                "title at width {width}"
-            );
             let mut badge_right: Option<f32> = None;
             for index in 1..=5 {
                 let badge = cx
@@ -1688,66 +1497,6 @@ mod interaction_tests {
     }
 
     #[gpui::test]
-    fn command_switcher_changes_workspace(cx: &mut TestAppContext) {
-        let dir = tempfile::tempdir().unwrap();
-        cx.update(|cx| {
-            bind_keys(cx);
-            input::bind_keys(cx);
-        });
-        let (shell, cx) = cx.add_window_view(|window, cx| {
-            Shell::fixture(dir.path().join("session.json"), window, cx)
-        });
-        let store = shell.read_with(cx, |shell, _| shell.store.clone().unwrap());
-        let personal = store
-            .workspace_command(WorkspaceCommand::Create {
-                name: "Personal".into(),
-                icon: Some("P".into()),
-                color: None,
-            })
-            .unwrap();
-        store
-            .workspace_command(WorkspaceCommand::Switch { id: "local".into() })
-            .unwrap();
-        cx.simulate_keystrokes("cmd-k");
-        cx.simulate_input("Personal");
-        shell.read_with(cx, |shell, cx| {
-            assert_eq!(
-                shell.palette_results(&shell.input.read(cx).content).len(),
-                1
-            );
-        });
-        cx.simulate_keystrokes("enter");
-        cx.run_until_parked();
-        assert_eq!(store.workspaces().current_id, personal);
-        shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.overlays.borrow().active(), None)
-        });
-        cx.simulate_keystrokes("cmd-k");
-        cx.simulate_input("create workspace");
-        cx.simulate_keystrokes("enter");
-        shell.read_with(cx, |shell, _| assert!(shell.creating_workspace));
-        cx.simulate_input("New Project");
-        shell.read_with(cx, |shell, cx| {
-            assert_eq!(
-                shell.workspace_name.read(cx).content.as_ref(),
-                "New Project"
-            )
-        });
-        cx.simulate_keystrokes("enter");
-        cx.run_until_parked();
-        let state = store.workspaces();
-        assert_eq!(
-            state
-                .workspaces
-                .iter()
-                .find(|workspace| workspace.id == state.current_id)
-                .unwrap()
-                .name,
-            "New Project"
-        );
-    }
-
-    #[gpui::test]
     fn shortcuts_survive_clicking_a_control_that_disappears(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().unwrap();
         cx.update(bind_keys);
@@ -1779,7 +1528,6 @@ mod interaction_tests {
             let all = shell.palette_results("");
             assert_eq!(all.groups[0].title.as_ref(), "Pages");
             assert!(all.groups.iter().any(|g| g.title.as_ref() == "Actions"));
-            assert!(all.groups.iter().any(|g| g.title.as_ref() == "Workspaces"));
             let ranked = shell.palette_results("te");
             let pages = &ranked.groups[0];
             assert_eq!(pages.title.as_ref(), "Pages");
@@ -1800,21 +1548,6 @@ mod interaction_tests {
             let recent = shell.palette_results("");
             assert_eq!(recent.groups[0].title.as_ref(), "Recent");
             assert_eq!(recent.choices[0].0.as_ref(), "page.agents");
-            shell.workspace_only = true;
-            let workspaces = shell.palette_results("");
-            assert!(
-                workspaces
-                    .groups
-                    .iter()
-                    .all(|g| g.title.as_ref() == "Workspaces")
-            );
-            assert!(
-                workspaces
-                    .choices
-                    .iter()
-                    .any(|(id, _)| id.as_ref() == "action.create-workspace")
-            );
-            shell.workspace_only = false;
             assert_eq!(shell.palette_results("zzzz").len(), 0);
         });
     }

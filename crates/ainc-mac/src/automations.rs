@@ -154,16 +154,6 @@ impl AutomationsPage {
             self.state = store.automations();
         }
     }
-    pub(crate) fn workspace_changed(&mut self, cx: &mut Context<Self>) {
-        self.editing = false;
-        self.selected = None;
-        self.editing_revision = None;
-        self.agent = None;
-        for input in [&self.name, &self.prompt, &self.minutes] {
-            input.update(cx, |input, _| input.reset());
-        }
-        self.reload();
-    }
     fn refresh(&mut self, cx: &mut Context<Self>) {
         if self.pending || self.refreshing {
             return;

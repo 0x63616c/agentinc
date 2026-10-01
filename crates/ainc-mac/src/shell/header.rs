@@ -129,14 +129,16 @@ impl Shell {
                         .rounded_t(px(10.))
                         .child(current_space_contour())
                         .child(
+                            // The tab's visible face is its top 38px; centre the label in it.
                             row()
                                 .h_full()
-                                .pb(px(SPACE_3))
+                                .items_center()
+                                .pb(px(2.))
                                 .pl(px(14.))
                                 .gap(px(7.))
                                 .text_size(type_size(LABEL_SIZE))
                                 .font_weight(FontWeight::MEDIUM)
-                                .child(div().mt(px(1.)).child(icon(route.icon(), 14.)))
+                                .child(icon(route.icon(), 14.))
                                 .child(route.label()),
                         ),
                 ),

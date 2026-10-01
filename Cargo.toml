@@ -39,5 +39,10 @@ gpui = { path = "vendor/gpui" }
 [profile.dev]
 debug = 0
 
+# Dependencies (GPUI, its layout and text engines) run optimized even in dev builds, so the
+# app stays smooth under `just dev`. Our own crates stay unoptimized for fast rebuilds.
+[profile.dev.package."*"]
+opt-level = 3
+
 [profile.release]
 strip = true

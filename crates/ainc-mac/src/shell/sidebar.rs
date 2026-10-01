@@ -56,30 +56,7 @@ impl Shell {
     }
 
     pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let workspace = self.workspace_state();
-        let current = workspace
-            .workspaces
-            .iter()
-            .find(|item| item.id == workspace.current_id);
-        let workspace_name = current
-            .map_or("World Wide Webb", |item| item.name.as_str())
-            .to_owned();
-        let workspace_icon = current
-            .and_then(|item| item.icon.as_deref())
-            .filter(|icon| !icon.is_empty())
-            .map(str::to_owned)
-            .unwrap_or_else(|| workspace_name.chars().next().unwrap_or('W').to_string());
-        let workspace_color = current
-            .and_then(|item| item.color.as_deref())
-            .and_then(|color| u32::from_str_radix(color.trim_start_matches('#'), 16).ok());
-        let workspace_ink = workspace_color.map_or(TEXT, |color| {
-            let brightness =
-                ((color >> 16) & 0xff) * 3 + ((color >> 8) & 0xff) * 6 + (color & 0xff);
-            if brightness > 1400 { SHELL } else { TEXT }
-        });
         let wide = self.session.panes[0].width >= 210.;
-        let picker: ElementId = "workspace-picker".into();
-        let picker_hover = self.hover.progress(&picker);
         let mut nav = column().gap(px(2.));
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             nav = nav.child(self.sidebar_item(page.route, Some(index + 1), cx));
@@ -99,68 +76,6 @@ impl Shell {
             .px(px(SIDEBAR_INSET))
             .pt(px(SPACE_4))
             .pb(px(SPACE_2))
-            .child(
-                // A bordered card: even insets, an eyebrow, the mark and the name.
-                self.button(
-                    picker.clone(),
-                    "Switch workspace",
-                    Control::WorkspacePicker,
-                    cx,
-                )
-                .w_full()
-                .min_w_0()
-                .p(px(SPACE_3))
-                // The eyebrow's caps sit `EYEBROW_OPTICAL_LIFT` below its tight line
-                // box, so the gap above them matches the side inset.
-                .pt(px(SPACE_3 - EYEBROW_OPTICAL_LIFT))
-                .mb(px(SPACE_3))
-                .rounded(px(RADIUS_LG))
-                .border_1()
-                .border_color(rgb(BORDER))
-                .bg(blend(SURFACE_RAISED, HOVER_STRONG, picker_hover))
-                .child(
-                    column()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(SPACE_2))
-                        .child(
-                            row()
-                                .justify_between()
-                                .line_height(relative(1.))
-                                .child(eyebrow("Workspace"))
-                                .child(icon("chevronUpDown", ICON_SIZE_SM)),
-                        )
-                        .child(
-                            row()
-                                .gap(px(SPACE_2 + 2.))
-                                .child(
-                                    row()
-                                        .size(px(WORKSPACE_MARK_SIZE))
-                                        .flex_shrink_0()
-                                        .justify_center()
-                                        .rounded(px(RADIUS_MD))
-                                        .border_1()
-                                        .border_color(rgb(BORDER_STRONG))
-                                        .bg(rgb(workspace_color.unwrap_or(SURFACE_CONTROL)))
-                                        .text_size(type_size(TITLE_SIZE))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(rgb(workspace_ink))
-                                        .child(workspace_icon),
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .truncate()
-                                        .debug_selector(|| "workspace-title".into())
-                                        .text_size(type_size(LABEL_SIZE))
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(rgb(TEXT))
-                                        .child(workspace_name),
-                                ),
-                        ),
-                ),
-            )
             .child(
                 self.button("shell.search", "Search · ⌘ K", Control::Search, cx)
                     .debug_selector(|| "shell.search".into())

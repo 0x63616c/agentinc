@@ -9,41 +9,59 @@ use std::sync::atomic::{AtomicU32, Ordering};
 // borders instead of heavy fills. Status colors stay muted so text leads.
 // ---------------------------------------------------------------------------
 
+/// The one neutral ramp. Every gray surface, hover, selection and border below
+/// is a step of this ramp, so shifting a step here re-tints the whole app.
+/// Lower the numbers to darken the app; keep the steps in ascending order.
+mod gray {
+    pub const N0: u32 = 0x000000;
+    pub const N1: u32 = 0x060606;
+    pub const N2: u32 = 0x0a0a0a;
+    pub const N3: u32 = 0x0d0d0d;
+    pub const N4: u32 = 0x101010;
+    pub const N5: u32 = 0x131313;
+    pub const N6: u32 = 0x181818;
+    pub const N7: u32 = 0x1d1d1d;
+    pub const N8: u32 = 0x222222;
+    pub const N9: u32 = 0x2a2a2a;
+    pub const N10: u32 = 0x303030;
+}
+use gray::*;
+
 /// The window canvas behind every panel.
-pub const SHELL: u32 = 0x000000;
+pub const SHELL: u32 = N0;
 /// The content card, sidebar-level surfaces and inputs.
-pub const SURFACE: u32 = 0x0a0a0a;
+pub const SURFACE: u32 = N2;
 /// Cards, grouped sections and list containers that sit on `SURFACE`.
-pub const SURFACE_RAISED: u32 = 0x111111;
+pub const SURFACE_RAISED: u32 = N4;
 /// Menus, dialogs, popovers and the command palette.
-pub const SURFACE_OVERLAY: u32 = 0x161616;
+pub const SURFACE_OVERLAY: u32 = N5;
 /// Text inputs, search fields and the composer.
-pub const SURFACE_INPUT: u32 = 0x0d0d0d;
+pub const SURFACE_INPUT: u32 = N3;
 /// Segmented-control tracks and secondary chips.
-pub const SURFACE_CONTROL: u32 = 0x171717;
+pub const SURFACE_CONTROL: u32 = N5;
 /// Error banners and failed rows.
 pub const SURFACE_ERROR: u32 = 0x231414;
 /// Wells recessed into the content card, such as board lanes, so the cards on
 /// them read as raised.
-pub const SURFACE_SUNKEN: u32 = 0x060606;
+pub const SURFACE_SUNKEN: u32 = N1;
 
 /// Quiet hover on rows and ghost buttons.
-pub const HOVER: u32 = 0x161616;
+pub const HOVER: u32 = N4;
 /// Hover on controls that already have a surface.
-pub const HOVER_STRONG: u32 = 0x212121;
+pub const HOVER_STRONG: u32 = N7;
 /// Pressed state on gray controls.
-pub const ACTIVE: u32 = 0x2a2a2a;
+pub const ACTIVE: u32 = N8;
 /// The selected row, tab or segment.
-pub const SELECTED: u32 = 0x1e1e1e;
+pub const SELECTED: u32 = N6;
 /// A stronger selected segment inside a control track.
-pub const SELECTED_STRONG: u32 = 0x323232;
+pub const SELECTED_STRONG: u32 = N9;
 
 /// The default hairline between and around surfaces.
-pub const BORDER: u32 = 0x262626;
+pub const BORDER: u32 = N8;
 /// Dividers inside a surface.
-pub const BORDER_SUBTLE: u32 = 0x1e1e1e;
+pub const BORDER_SUBTLE: u32 = N6;
 /// Borders on raised overlays and selected chips.
-pub const BORDER_STRONG: u32 = 0x333333;
+pub const BORDER_STRONG: u32 = N10;
 /// The keyboard focus ring.
 pub const FOCUS: u32 = 0xbdbdbd;
 /// The border of a text field or composer while it is being edited.
@@ -61,7 +79,7 @@ pub const TEXT_TERTIARY: u32 = 0x858585; // AA (4.5:1 or better) on every surfac
 /// Placeholder text inside inputs.
 pub const TEXT_PLACEHOLDER: u32 = 0x5a5a5a;
 /// Ink on white primary surfaces.
-pub const TEXT_ON_PRIMARY: u32 = 0x0a0a0a;
+pub const TEXT_ON_PRIMARY: u32 = N2;
 
 /// The white primary action.
 pub const PRIMARY: u32 = 0xffffff;
@@ -79,7 +97,7 @@ pub const ERROR_BORDER: u32 = 0x7a3736;
 
 /// Status palette: each tone has a foreground and a matching quiet surface.
 pub const STATUS_NEUTRAL: u32 = 0xa3a3a3;
-pub const STATUS_NEUTRAL_SURFACE: u32 = 0x1c1c1c;
+pub const STATUS_NEUTRAL_SURFACE: u32 = N6;
 pub const STATUS_GREEN: u32 = 0x8fd9a8;
 pub const STATUS_GREEN_SURFACE: u32 = 0x13231a;
 pub const STATUS_BLUE: u32 = 0x94bdf0;
@@ -112,7 +130,7 @@ pub const SCRIM: u32 = 0x000000cc;
 /// Shadow ink before its opacity byte.
 pub const SHADOW_INK: u32 = 0x00000000;
 /// Skeleton placeholder surface.
-pub const SKELETON: u32 = 0x161616;
+pub const SKELETON: u32 = N5;
 
 #[cfg(target_os = "macos")]
 pub const TERMINAL_ANSI: [u32; 16] = [
@@ -147,6 +165,8 @@ pub const PANEL_GAP: f32 = SPACE_2;
 pub const TITLEBAR_HEIGHT: f32 = 48.;
 /// The status bar inside the bottom of the content card.
 pub const STATUS_BAR_HEIGHT: f32 = 28.;
+/// Side inset of the status bar; the version sits this far from the card edge.
+pub const STATUS_BAR_X: f32 = SPACE_3;
 /// The sidebar's own side inset.
 pub const SIDEBAR_INSET: f32 = SPACE_3;
 /// The gap between a navigation icon and its label, chosen so every sidebar
@@ -245,10 +265,6 @@ pub const CHECKBOX_SIZE: f32 = 16.;
 pub const DIALOG_PADDING: f32 = SPACE_6;
 // The shortcut badge needs only 4 px after it to balance the search control.
 pub const HEADER_SEARCH_RIGHT_INSET: f32 = 4.;
-/// The workspace mark inside the sidebar card.
-pub const WORKSPACE_MARK_SIZE: f32 = 32.;
-/// How far an eyebrow's cap height sits below its tight (1.0) line box.
-pub const EYEBROW_OPTICAL_LIFT: f32 = 2.;
 
 // ---------------------------------------------------------------------------
 // Radius.

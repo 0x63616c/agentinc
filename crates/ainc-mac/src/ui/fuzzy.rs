@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn whitespace_in_the_query_is_ignored() {
-        assert!(fuzzy_match("new work", "New workspace").is_some());
+        assert!(fuzzy_match("new tic", "New Ticket").is_some());
         assert!(fuzzy_match("  ", "Anything").is_some());
     }
 

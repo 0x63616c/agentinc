@@ -314,21 +314,6 @@ impl TicketsPage {
             self.selected = None;
         }
     }
-    pub(crate) fn workspace_changed(&mut self, cx: &mut Context<Self>) {
-        self.selected = None;
-        self.filters = Filters::default();
-        self.menu = None;
-        self.draft = Draft::default();
-        self.editing_description = false;
-        self.link_target = None;
-        self.activity.clear();
-        self.activity_for = None;
-        for (_, input) in self.inputs() {
-            input.update(cx, |input, _| input.reset());
-        }
-        self.form_error = None;
-        self.reload();
-    }
     #[cfg_attr(test, allow(dead_code))]
     fn refresh(&mut self, cx: &mut Context<Self>) {
         if self.refreshing || self.pending {

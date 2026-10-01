@@ -1,4 +1,4 @@
-//! The shell's command palette items: pages, actions and workspaces, fuzzy
+//! The shell's command palette items: pages, actions and Tickets, fuzzy
 //! matched, grouped and remembered.
 use super::*;
 
@@ -24,79 +24,75 @@ impl PaletteResults {
 impl Shell {
     fn palette_candidates(&self) -> Vec<PaletteCandidate> {
         let mut items = Vec::new();
-        if !self.workspace_only {
-            for (index, page) in PAGES.iter().enumerate() {
-                let mut entry =
-                    PaletteEntry::new(format!("page.{}", page.title.to_lowercase()), page.title)
-                        .icon(page.icon);
-                if page.in_sidebar {
-                    entry = entry.shortcut(format!("⌘{}", index + 1));
-                } else if page.route == Route::Settings {
-                    entry = entry.shortcut("⌘,");
-                }
-                items.push(PaletteCandidate {
-                    group: "Pages",
-                    entry,
-                    control: Control::Open(page.route),
-                });
+        for (index, page) in PAGES.iter().enumerate() {
+            let mut entry =
+                PaletteEntry::new(format!("page.{}", page.title.to_lowercase()), page.title)
+                    .icon(page.icon);
+            if page.in_sidebar {
+                entry = entry.shortcut(format!("⌘{}", index + 1));
+            } else if page.route == Route::Settings {
+                entry = entry.shortcut("⌘,");
             }
-            let sidebar_open = self.session.panes[0].open;
             items.push(PaletteCandidate {
-                group: "Actions",
-                entry: PaletteEntry::new(
-                    "action.toggle-sidebar",
-                    if sidebar_open {
-                        "Hide sidebar"
-                    } else {
-                        "Show sidebar"
-                    },
-                )
-                .icon("panel")
-                .shortcut("⌘B"),
-                control: Control::Sidebar,
+                group: "Pages",
+                entry,
+                control: Control::Open(page.route),
             });
-            items.push(PaletteCandidate {
-                group: "Actions",
-                entry: PaletteEntry::new("action.new-ticket", "New Ticket").icon("plus"),
-                control: Control::NewTicket,
-            });
-            items.push(PaletteCandidate {
-                group: "Actions",
-                entry: PaletteEntry::new("action.notifications", "Show notifications").icon("bell"),
-                control: Control::Notifications,
-            });
-            items.push(PaletteCandidate {
-                group: "Actions",
-                entry: PaletteEntry::new("action.check-updates", "Check for Updates")
-                    .icon("download"),
-                control: Control::CheckForUpdates,
-            });
-            let current = FontSize::ALL
-                .iter()
-                .position(|(size, _)| *size == self.session.font_size)
-                .unwrap_or(1);
-            if let Some((size, label)) = FontSize::ALL.get(current + 1) {
-                items.push(PaletteCandidate {
-                    group: "Actions",
-                    entry: PaletteEntry::new("action.font-size.larger", "Increase font size")
-                        .icon("plus")
-                        .detail(*label),
-                    control: Control::FontSize(*size),
-                });
-            }
-            if let Some((size, label)) = current.checked_sub(1).and_then(|i| FontSize::ALL.get(i)) {
-                items.push(PaletteCandidate {
-                    group: "Actions",
-                    entry: PaletteEntry::new("action.font-size.smaller", "Decrease font size")
-                        .icon("settings")
-                        .detail(*label),
-                    control: Control::FontSize(*size),
-                });
-            }
         }
-        if !self.workspace_only
-            && let Some(store) = &self.store
-        {
+        let sidebar_open = self.session.panes[0].open;
+        items.push(PaletteCandidate {
+            group: "Actions",
+            entry: PaletteEntry::new(
+                "action.toggle-sidebar",
+                if sidebar_open {
+                    "Hide sidebar"
+                } else {
+                    "Show sidebar"
+                },
+            )
+            .icon("panel")
+            .shortcut("⌘B"),
+            control: Control::Sidebar,
+        });
+        items.push(PaletteCandidate {
+            group: "Actions",
+            entry: PaletteEntry::new("action.new-ticket", "New Ticket").icon("plus"),
+            control: Control::NewTicket,
+        });
+        items.push(PaletteCandidate {
+            group: "Actions",
+            entry: PaletteEntry::new("action.notifications", "Show notifications").icon("bell"),
+            control: Control::Notifications,
+        });
+        items.push(PaletteCandidate {
+            group: "Actions",
+            entry: PaletteEntry::new("action.check-updates", "Check for Updates").icon("download"),
+            control: Control::CheckForUpdates,
+        });
+        let current = FontSize::ALL
+            .iter()
+            .position(|(size, _)| *size == self.session.font_size)
+            .unwrap_or(1);
+        if let Some((size, label)) = FontSize::ALL.get(current + 1) {
+            items.push(PaletteCandidate {
+                group: "Actions",
+                entry: PaletteEntry::new("action.font-size.larger", "Increase font size")
+                    .icon("plus")
+                    .detail(*label),
+                control: Control::FontSize(*size),
+            });
+        }
+        if let Some((size, label)) = current.checked_sub(1).and_then(|i| FontSize::ALL.get(i)) {
+            items.push(PaletteCandidate {
+                group: "Actions",
+                entry: PaletteEntry::new("action.font-size.smaller", "Decrease font size")
+                    .icon("settings")
+                    .detail(*label),
+                control: Control::FontSize(*size),
+            });
+        }
+
+        if let Some(store) = &self.store {
             for ticket in store.tickets().tickets {
                 let status = ticket.status;
                 items.push(PaletteCandidate {
@@ -116,25 +112,6 @@ impl Shell {
                 });
             }
         }
-        let state = self.workspace_state();
-        for workspace in state.workspaces {
-            let current = workspace.id == state.current_id;
-            items.push(PaletteCandidate {
-                group: "Workspaces",
-                entry: PaletteEntry::new(
-                    format!("workspace.{}", workspace.id),
-                    format!("Switch to {}", workspace.name),
-                )
-                .icon("agents")
-                .detail(if current { "Current" } else { "" }),
-                control: Control::SwitchWorkspace(workspace.id),
-            });
-        }
-        items.push(PaletteCandidate {
-            group: "Workspaces",
-            entry: PaletteEntry::new("action.create-workspace", "Create workspace").icon("plus"),
-            control: Control::NewWorkspace,
-        });
         items
     }
 
@@ -144,7 +121,7 @@ impl Shell {
         let candidates = self.palette_candidates();
         let mut groups: Vec<PaletteGroup> = Vec::new();
         let mut choices = Vec::new();
-        if query.is_empty() && !self.workspace_only {
+        if query.is_empty() {
             let recent: Vec<&PaletteCandidate> = self
                 .session
                 .recent_commands
@@ -164,7 +141,6 @@ impl Shell {
             ("pages", "Pages"),
             ("actions", "Actions"),
             ("tickets", "Tickets"),
-            ("workspaces", "Workspaces"),
         ] {
             // Tickets are found by searching; an empty palette lists places and actions.
             if key == "tickets" && query.is_empty() {
@@ -213,18 +189,11 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if self.creating_workspace {
-            return self.create_workspace_form(window, cx);
-        }
         let results = self.palette_results(&self.input.read(cx).content);
         self.selected = self.selected.min(results.len().saturating_sub(1));
         self.palette_scroll
             .scroll_to_item(palette_child_index(&results.groups, self.selected));
-        let empty: SharedString = if self.workspace_only {
-            "Try another workspace name.".into()
-        } else {
-            "Try a page, an action, a Ticket or a workspace.".into()
-        };
+        let empty: SharedString = "Try a page, an action or a Ticket.".into();
         render_palette(
             PaletteView {
                 input: self.input.clone().into_any_element(),
@@ -235,11 +204,7 @@ impl Shell {
                 result_focus: &self.picker_result_focus,
                 close_focus: &self.picker_close_focus,
                 scroll: &self.palette_scroll,
-                aria_label: if self.workspace_only {
-                    "Switch workspace"
-                } else {
-                    "Go to pages, actions, Tickets and workspaces"
-                },
+                aria_label: "Go to pages, actions and Tickets",
             },
             &self.hover,
             |this: &mut Self, index, window, cx| this.choose_palette(index, window, cx),
@@ -247,87 +212,6 @@ impl Shell {
             |this: &mut Self, window, cx| this.dispatch(Control::Dismiss, window, cx),
             window,
             cx,
-        )
-        .into_any_element()
-    }
-
-    fn create_workspace_form(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let close = |this: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
-            this.dispatch(Control::Dismiss, window, cx)
-        };
-        palette_frame(
-            "Create workspace",
-            palette_header(
-                "plus",
-                div()
-                    .text_size(type_size(HEADING_SIZE))
-                    .font_weight(FontWeight::MEDIUM)
-                    .child("New workspace"),
-                &self.picker_close_focus,
-                &self.hover,
-                close,
-                cx,
-            ),
-            column()
-                .p(px(SPACE_4))
-                .gap(px(FORM_STACK_GAP))
-                .child(
-                    Field::new(self.workspace_name.clone())
-                        .label("Name")
-                        .selector("workspace.name")
-                        .build(window, cx),
-                )
-                .child(
-                    row()
-                        .gap(px(SPACE_3))
-                        .items_start()
-                        .child(
-                            div().w(px(140.)).child(
-                                Field::new(self.workspace_icon.clone())
-                                    .label("Icon")
-                                    .hint("Up to four characters.")
-                                    .selector("workspace.icon")
-                                    .build(window, cx),
-                            ),
-                        )
-                        .child(
-                            div().flex_1().child(
-                                Field::new(self.workspace_color.clone())
-                                    .label("Color")
-                                    .hint("Optional, as #RRGGBB.")
-                                    .selector("workspace.color")
-                                    .build(window, cx),
-                            ),
-                        ),
-                )
-                .when_some(self.workspace_error.as_ref(), |form, error| {
-                    form.child(error_text(error.clone()))
-                }),
-            row()
-                .flex_1()
-                .gap(px(CONTROL_GAP))
-                .justify_end()
-                .child(
-                    Button::new("create-workspace-cancel", "Cancel")
-                        .secondary()
-                        .small()
-                        .track_focus(&self.workspace_cancel_focus)
-                        .build(&self.hover, close, cx),
-                )
-                .child(
-                    Button::new("create-workspace", "Create workspace")
-                        .primary()
-                        .small()
-                        .enabled(!self.workspace_pending)
-                        .track_focus(&self.workspace_create_focus)
-                        .build(
-                            &self.hover,
-                            |this: &mut Self, window, cx| {
-                                this.dispatch(Control::CreateWorkspace, window, cx)
-                            },
-                            cx,
-                        ),
-                ),
         )
         .into_any_element()
     }

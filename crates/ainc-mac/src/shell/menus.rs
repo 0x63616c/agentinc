@@ -120,21 +120,7 @@ impl Shell {
                         cx,
                     ),
             )
-            .child(support)
-            .child(menu_divider())
-            .child(menu_label("Local users · coming soon"))
-            .child(
-                MenuEntry::new("user-menu.switch-user", "Switch user")
-                    .icon("users")
-                    .enabled(false)
-                    .build(&self.hover, |_, _, _| {}, cx),
-            )
-            .child(
-                MenuEntry::new("user-menu.add-user", "Add user")
-                    .icon("plus")
-                    .enabled(false)
-                    .build(&self.hover, |_, _, _| {}, cx),
-            );
+            .child(support);
         floating(menu, Anchor::BottomLeft, point(px(0.), px(-SPACE_2)))
     }
 

@@ -7,10 +7,20 @@ _default:
 dev:
     cargo xtask dev
 
-# Run every check CI runs.
+# Run every check CI runs. Starts a throwaway Postgres in Docker unless DATABASE_URL is set.
 test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${DATABASE_URL:-}" ]; then
+        container=$(docker run -d --rm -e POSTGRES_PASSWORD=test -p 127.0.0.1::5432 postgres:16-alpine)
+        trap 'docker stop "$container" >/dev/null' EXIT
+        until docker exec "$container" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+        port=$(docker port "$container" 5432/tcp | head -1 | sed 's/.*://')
+        export DATABASE_URL="postgres://postgres:test@127.0.0.1:$port/postgres"
+    fi
     cargo fmt --all -- --check
     python3 crates/ainc-mac/scripts/check-colors.py
+    python3 -m unittest discover -s crates/ainc-mac/scripts -p 'test_check_colors.py'
     python3 crates/ainc-mac/scripts/check-ui-spacing.py
     python3 crates/ainc-mac/scripts/check-ui-core.py
     python3 -m unittest discover -s scripts/release -p 'test_*.py'
@@ -18,8 +28,7 @@ test:
     cargo clippy --locked --workspace --all-targets -- -D warnings
     cargo test --locked --workspace
 
-# Bump to the next version and commit it. Pushing that commit to main ships the release.
-# Takes patch, minor or major, or an explicit version that must be one of those three next versions.
+# Bump to the next version (patch, minor, major, or an explicit one of those) and commit; pushing to main ships it.
 release bump:
     #!/usr/bin/env python3
     import re, subprocess, sys

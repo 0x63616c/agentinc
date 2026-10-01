@@ -1,7 +1,7 @@
 use crate::ui;
 use crate::ui::{
     CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, SETTINGS_INSET, SETTINGS_ROW_HEIGHT, SPACE_2, SPACE_3,
-    STATUS_BAR_HEIGHT, TITLE_OPTICAL_LIFT, type_size,
+    STATUS_BAR_HEIGHT, STATUS_BAR_X, TITLE_OPTICAL_LIFT, type_size,
 };
 use crate::{
     input,
@@ -138,20 +138,20 @@ impl Suite {
         let text = if dimmed { 25 } else { 90 };
         let border = if dimmed { 5 } else { 20 };
         let mut probes: Vec<Probe> = vec![("header".into(), [150, 10, width - 10, 40], text, 80)];
-        for (name, selector, minimum) in [
-            ("workspace", "workspace-title", 60),
-            ("profile name", "sidebar-profile-name", 30),
-        ] {
-            probes.push((name.into(), rect(self.bounds(selector)?), text, minimum));
-        }
+        probes.push((
+            "profile name".into(),
+            rect(self.bounds("sidebar-profile-name")?),
+            text,
+            30,
+        ));
         // Tertiary text is dim by design; under a scrim it still has to be there.
         let tertiary = if dimmed { 12 } else { 60 };
-        for (name, selector, minimum) in [
-            ("status route", "status-bar.route", 30),
-            ("status version", "sidebar-version", 12),
-        ] {
-            probes.push((name.into(), rect(self.bounds(selector)?), tertiary, minimum));
-        }
+        probes.push((
+            "status version".into(),
+            rect(self.bounds("sidebar-version")?),
+            tertiary,
+            12,
+        ));
         let profile = self.bounds("sidebar-profile")?;
         probes.push((
             "profile avatar".into(),
@@ -294,7 +294,7 @@ impl Suite {
         near(
             "version right inset in the status bar",
             f32::from(status.origin.x + status.size.width - version.origin.x - version.size.width),
-            PAGE_X,
+            STATUS_BAR_X,
         )?;
         near(
             "version centred in the status bar",
@@ -861,14 +861,6 @@ pub fn run() -> Result<()> {
         Modifiers::default(),
     );
     suite.capture("hover-tickets", Route::Assistant, None, false)?;
-    let workspace_card = suite.bounds("workspace-title")?.center();
-    suite.cx.simulate_mouse_move(
-        suite.window.into(),
-        workspace_card,
-        None::<MouseButton>,
-        Modifiers::default(),
-    );
-    suite.capture("hover-workspace", Route::Assistant, None, false)?;
     suite.cx.simulate_mouse_move(
         suite.window.into(),
         point(px(500.), px(500.)),

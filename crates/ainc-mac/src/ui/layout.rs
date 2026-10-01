@@ -262,10 +262,10 @@ pub fn divider() -> Div {
 pub fn status_bar() -> Div {
     row()
         .debug_selector(|| "status-bar".into())
-        .justify_between()
+        .justify_end()
         .h(px(STATUS_BAR_HEIGHT))
         .flex_shrink_0()
-        .px(px(PAGE_X))
+        .px(px(STATUS_BAR_X))
         .gap(px(SPACE_3))
         .border_t_1()
         .border_color(rgb(BORDER_SUBTLE))

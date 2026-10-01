@@ -1,7 +1,6 @@
 //! Transient notices stacked above the status bar.
 use super::{badge::Tone, button::*, display::icon, layout::*, motion::*, tokens::*};
 use gpui::{prelude::*, *};
-use std::time::Duration;
 
 pub struct Toast {
     pub id: u64,
@@ -17,8 +16,6 @@ pub struct Toasts {
 }
 
 impl Toasts {
-    pub const LIFETIME: Duration = Duration::from_secs(6);
-
     /// Adds a toast and returns its id. Toasts stay until dismissed; a host
     /// that wants a transient notice schedules the dismissal itself.
     pub fn push(

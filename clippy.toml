@@ -1,0 +1,14 @@
+# Colors are authored once, in crates/ainc-mac/src/ui/tokens.rs. Anywhere else, use a token
+# with `rgb(TOKEN)`. These gpui constructors invent colors outside the palette.
+disallowed-methods = [
+    { path = "gpui::hsla", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+    { path = "gpui::white", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+    { path = "gpui::black", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+    { path = "gpui::red", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+    { path = "gpui::green", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+    { path = "gpui::blue", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+    { path = "gpui::yellow", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+    { path = "gpui::opaque_grey", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+    { path = "gpui::transparent_black", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+    { path = "gpui::transparent_white", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+]

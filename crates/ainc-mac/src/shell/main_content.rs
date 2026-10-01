@@ -13,15 +13,6 @@ const SHORTCUTS: &[(&str, &str)] = &[
 impl Shell {
     pub(super) fn main_area(&self, content: AnyElement) -> Div {
         let terminal = self.session.current() == Route::Terminal;
-        let route = self.session.current();
-        let shortcut = PAGES
-            .iter()
-            .filter(|page| page.in_sidebar)
-            .position(|page| page.route == route)
-            .map_or_else(
-                || (route == Route::Settings).then(|| "⌘,".to_owned()),
-                |index| Some(format!("⌘{}", index + 1)),
-            );
         panel()
             .debug_selector(|| "main-pane".into())
             .flex_1()
@@ -38,25 +29,16 @@ impl Shell {
                     .child(content),
             )
             .child(
-                status_bar()
-                    .child(
-                        row()
-                            .gap(px(SPACE_2))
-                            .debug_selector(|| "status-bar.route".into())
-                            .child(icon(route.icon(), 12.))
-                            .child(route.label())
-                            .when_some(shortcut, |s, shortcut| s.child(kbd(shortcut))),
-                    )
-                    .child(
-                        div()
-                            .id("sidebar.version")
-                            .debug_selector(|| "sidebar-version".into())
-                            .accessibility_id("sidebar.version")
-                            .role(accesskit::Role::Label)
-                            .aria_label(ainc_release::identity::version())
-                            .text_color(rgb(TEXT_TERTIARY))
-                            .child(ainc_release::identity::version()),
-                    ),
+                status_bar().child(
+                    div()
+                        .id("sidebar.version")
+                        .debug_selector(|| "sidebar-version".into())
+                        .accessibility_id("sidebar.version")
+                        .role(accesskit::Role::Label)
+                        .aria_label(ainc_release::identity::version())
+                        .text_color(rgb(TEXT_TERTIARY))
+                        .child(ainc_release::identity::version()),
+                ),
             )
     }
 
