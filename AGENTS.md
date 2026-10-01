@@ -16,6 +16,13 @@ in agent vocabulary first: `Run`, `Event`, `Session`, `Tool`, `Model`.
 The test for this rule: `crates/turnkeel/src/engine/` is the only place `temporalio_*`
 is imported. Keep it that way.
 
+## Commands
+
+Three things, from the repo root (`just` lists them): `just dev` runs the whole app (Postgres,
+Temporal, daemon and Mac app under Tilt, rebuilding on change), `just test` runs every CI
+check, `just release patch|minor|major` bumps the version and commits. Everything else (`cargo xtask`,
+`bundle.sh`) is plumbing those use.
+
 ## How to build
 
 Tracer bullets. Build the thinnest real end-to-end path that meets the ask, then let the
@@ -36,8 +43,15 @@ For the accepted product plan, see [docs/architecture.md](docs/architecture.md) 
   `src/engine/`. Test helpers at `src/testing/`.
 - `crates/turnkeel-macros` — the `#[tool]` attribute. Re-exported from `turnkeel`; users
   never depend on it directly.
-- `crates/ainc-mac` — the imported native GPUI AgentInc app. Build its signed bundle
-  with `crates/ainc-mac/scripts/bundle.sh`; see its README for isolated validation.
+- `crates/ainc-mac` — the native GPUI AgentInc app. Its Cargo package and binary are named
+  `agentinc-os`. Build its bundle with `crates/ainc-mac/scripts/bundle.sh`; see its README.
+- `crates/ainc-daemon` — `aincd`, the daemon: HTTP API, Postgres state, agent execution.
+- `crates/ainc-client`, `crates/ainc-cli` — the API client generated from `api/` by
+  `cargo xtask generate`, and the `ainc` CLI built on it.
+- `crates/ainc-release` — release identity, version compatibility, signed update manifests
+  and the updater binaries.
+- `crates/ainc-xtask` — the dev tooling behind `just` (`cargo xtask dev|serve|doctor|down|
+  generate|release`).
 - `crates/gpui-pilot`, `crates/gpui-pilot-cli` — opt-in app automation. The GPUI
   patch and regeneration instructions are in `vendor/` and
   `crates/ainc-mac/scripts/vendor-pilot-gpui.py`. Pilot launches are hidden by
@@ -113,7 +127,7 @@ The production/development channel and isolation rule is also documented there;
 
 Stable runtime deployment and process-recovery checks: [docs/phase-3-runtime.md](docs/phase-3-runtime.md).
 
-Verify with `cargo test` and `cargo clippy --all-targets`. Both should be clean.
+Verify with `just test`, which runs every CI check and should be clean.
 
 ## Committing
 

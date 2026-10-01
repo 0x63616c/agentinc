@@ -21,7 +21,7 @@ both windows with the checked-in test manifest, without downloading or installin
 
 ```sh
 crates/ainc-mac/scripts/bundle.sh automation
-'crates/ainc-mac/dist/AgentInc.app/Contents/MacOS/agentinc-os' \
+'crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc' \
   --update-ui-smoke crates/ainc-mac/tests/fixtures/update-manifest.json \
   target/native-update-smoke
 ```
