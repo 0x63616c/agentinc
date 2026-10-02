@@ -251,6 +251,7 @@ impl Store {
             .expect("Automation snapshot")
             .clone()
     }
+    #[cfg(target_os = "macos")]
     pub fn workspaces(&self) -> WorkspaceState {
         self.workspaces.lock().expect("Workspace snapshot").clone()
     }
