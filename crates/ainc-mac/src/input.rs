@@ -290,7 +290,11 @@ impl TextInput {
                 .find(|(_, _, b)| position.y < b.bottom())
                 .or(self.multiline_layout.last())
             {
-                return offset + line.closest_index_for_x(position.x - bounds.left());
+                // Input events can arrive before the layout reflects an edit.
+                let index = offset + line.closest_index_for_x(position.x - bounds.left());
+                return self
+                    .content
+                    .floor_char_boundary(index.min(self.content.len()));
             }
             return 0;
         }
@@ -322,11 +326,11 @@ impl TextInput {
         cx.notify()
     }
 
-    fn offset_from_utf16(&self, offset: usize) -> usize {
+    fn offset_from_utf16(text: &str, offset: usize) -> usize {
         let mut utf8_offset = 0;
         let mut utf16_count = 0;
 
-        for ch in self.content.chars() {
+        for ch in text.chars() {
             if utf16_count >= offset {
                 break;
             }
@@ -357,7 +361,8 @@ impl TextInput {
     }
 
     fn range_from_utf16(&self, range_utf16: &Range<usize>) -> Range<usize> {
-        self.offset_from_utf16(range_utf16.start)..self.offset_from_utf16(range_utf16.end)
+        Self::offset_from_utf16(&self.content, range_utf16.start)
+            ..Self::offset_from_utf16(&self.content, range_utf16.end)
     }
 
     fn previous_boundary(&self, offset: usize) -> usize {
@@ -405,6 +410,7 @@ impl TextInput {
         self.marked_range = None;
         self.last_layout = None;
         self.last_bounds = None;
+        self.multiline_layout.clear();
         self.is_selecting = false;
         self.undo.clear();
         self.redo.clear();
@@ -521,8 +527,13 @@ impl EntityInputHandler for TextInput {
         }
         self.selected_range = new_selected_range_utf16
             .as_ref()
-            .map(|range_utf16| self.range_from_utf16(range_utf16))
-            .map(|new_range| new_range.start + range.start..new_range.end + range.start)
+            .map(|range_utf16| {
+                // The IME selection is relative to the marked text, not the
+                // surrounding content (whose UTF-16/UTF-8 lengths may differ).
+                let start = Self::offset_from_utf16(new_text, range_utf16.start);
+                let end = Self::offset_from_utf16(new_text, range_utf16.end);
+                range.start + start..range.start + end
+            })
             .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
 
         cx.notify();
@@ -1103,8 +1114,62 @@ mod tests {
 
 #[cfg(test)]
 mod interaction_tests {
-    use super::{TextInput, bind_keys};
-    use gpui::TestAppContext;
+    use super::{Home, TextInput, bind_keys};
+    use gpui::{EntityInputHandler, MouseDownEvent, TestAppContext, point, px};
+
+    #[gpui::test]
+    fn composition_selection_is_relative_to_the_inserted_text(cx: &mut TestAppContext) {
+        let (input, cx) = cx.add_window_view(|_, cx| TextInput::composer(cx));
+        for (prefix, marked, selected, expected) in [
+            ("a", "é", 1..1, 3..3),
+            ("👋", "a", 1..1, 5..5),
+            ("é", "👋z", 2..3, 6..7),
+        ] {
+            cx.update(|window, cx| {
+                input.update(cx, |input, cx| {
+                    input.set_text(prefix, cx);
+                    input.replace_and_mark_text_in_range(None, marked, Some(selected), window, cx);
+                    let selection = input.selected_range.clone();
+                    // Home slices the content at the cursor, as does composer rendering.
+                    input.home(&Home, window, cx);
+                    assert_eq!(selection, expected);
+                    assert_eq!(input.content.as_ref(), format!("{prefix}{marked}"));
+                });
+            });
+        }
+    }
+
+    #[gpui::test]
+    fn composer_click_before_repaint_uses_a_valid_cursor(cx: &mut TestAppContext) {
+        let (input, cx) = cx.add_window_view(|_, cx| TextInput::composer(cx));
+        for (before, old_cursor, expected) in [("one\ntwo\nthree", 13, 2), ("abc", 1, 0)] {
+            input.update(cx, |input, cx| input.set_text(before, cx));
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            cx.update(|window, cx| {
+                input.update(cx, |input, cx| {
+                    let (offset, line, bounds) = input.multiline_layout.last().unwrap();
+                    let position = point(
+                        bounds.left() + line.x_for_index(old_cursor - offset),
+                        bounds.bottom() - px(1.),
+                    );
+                    input.selected_range = 0..input.content.len();
+                    input.replace_text_in_range(None, "é", window, cx);
+                    input.on_mouse_down(
+                        &MouseDownEvent {
+                            position,
+                            ..Default::default()
+                        },
+                        window,
+                        cx,
+                    );
+                    let selection = input.selected_range.clone();
+                    input.home(&Home, window, cx);
+                    assert_eq!(selection, expected..expected);
+                });
+            });
+        }
+    }
+
     #[gpui::test]
     fn simulated_unicode_editing_and_undo(cx: &mut TestAppContext) {
         cx.update(bind_keys);
