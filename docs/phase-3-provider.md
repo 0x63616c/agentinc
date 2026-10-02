@@ -21,6 +21,11 @@ It is not display text or a Ticket Comment. `Run::events()` yields typed message
 and tool results while work runs, catches up new subscribers, and ends when the
 run closes. It does not expose raw provider events or token deltas.
 
+Completed `response.output_item.done` events supply the output items; the terminal
+`response.completed` event can have an empty or absent output array. Its snapshot
+is used only when no completed items were streamed, avoiding duplicate tool calls.
+No partial item is accepted without successful response completion.
+
 Pinned protocol references inspected at OpenAI Codex commit
 `e0ef5a1a0f6421601baaa679fb37eddaa4e9c8c1`:
 
@@ -33,7 +38,9 @@ The backend is subject to change; a source pin and fixtures do not prove live
 compatibility. No live provider smoke was run: this worktree has no isolated
 `auth.json`. Automated tests use a loopback Responses fixture and fake credentials,
 including a real Turnkeel tool round-trip, context retention, error redaction,
-redirect refusal and malformed/incomplete streams. Run
+redirect refusal and malformed/incomplete streams. The streaming regression covers
+empty/missing terminal output, snapshot deduplication and a two-turn SDK session
+that retains tool results and reasoning context. Run
 `cargo test --locked -p ainc-daemon --lib`.
 
 Activities now heartbeat while model/tool I/O is pending, so lost workers can be

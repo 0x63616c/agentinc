@@ -234,6 +234,7 @@ fn parse_stream(bytes: &[u8]) -> Result<ModelResponse, ModelError> {
     let body = std::str::from_utf8(bytes)
         .map_err(|_| ModelError::fatal("Model response was not UTF-8."))?;
     let normalized = body.replace("\r\n", "\n");
+    let mut output = Vec::new();
     for event in normalized.split("\n\n") {
         let data = event
             .lines()
@@ -246,7 +247,25 @@ fn parse_stream(bytes: &[u8]) -> Result<ModelResponse, ModelError> {
         let value: Value = serde_json::from_str(&data)
             .map_err(|_| ModelError::fatal("Model sent an invalid event."))?;
         match value["type"].as_str() {
-            Some("response.completed") => return parse_output(&value["response"]),
+            Some("response.output_item.done") => {
+                let item = value["item"]
+                    .as_object()
+                    .ok_or_else(|| ModelError::fatal("Model output item is missing."))?;
+                output.push(Value::Object(item.clone()));
+            }
+            Some("response.completed") => {
+                // Codex delivers content in output_item.done events; the terminal
+                // response may omit output or leave it empty. Do not append its
+                // snapshot as well, which would duplicate replies and tool calls.
+                let mut response = value["response"].clone();
+                if !output.is_empty() {
+                    let response = response
+                        .as_object_mut()
+                        .ok_or_else(|| ModelError::fatal("Model response is missing."))?;
+                    response.insert("output".into(), Value::Array(output));
+                }
+                return parse_output(&response);
+            }
             Some("response.failed" | "response.incomplete" | "error") => {
                 return Err(ModelError::fatal("Model could not finish the response."));
             }
@@ -331,7 +350,7 @@ mod tests {
         routing::post,
     };
     use std::sync::Mutex;
-    use turnkeel::{Agent, Message, Runtime, tool};
+    use turnkeel::{Agent, Event, Message, Runtime, tool};
 
     fn tokens() -> Tokens {
         Tokens {
@@ -354,6 +373,87 @@ mod tests {
     }
     fn text_output(text: &str) -> Value {
         json!([{"type":"message","content":[{"type":"output_text","text":text}]}])
+    }
+
+    fn streamed(output: Value, response: Value) -> String {
+        let mut stream = String::new();
+        for item in output.as_array().unwrap() {
+            stream.push_str(&format!(
+                "data: {}\n\n",
+                json!({"type":"response.output_item.done","item":item})
+            ));
+        }
+        stream.push_str(&format!(
+            "data: {}\n\n",
+            json!({"type":"response.completed","response":response})
+        ));
+        stream
+    }
+
+    #[test]
+    fn completed_stream_items_survive_an_empty_or_missing_terminal_output() {
+        let output = json!([
+            {"type":"reasoning","id":"r1","encrypted_content":"opaque-fixture","summary":[]},
+            {"type":"message","content":[{"type":"output_text","text":"Checking your Tickets"}]},
+            {"type":"function_call","call_id":"c1","name":"list_tickets","arguments":"{}"}
+        ]);
+        let expected = parse_output(&json!({"status":"completed","output":output})).unwrap();
+        for response in [
+            json!({"status":"completed","output":[]}),
+            json!({"status":"completed"}),
+            json!({"status":"completed","output":output}),
+        ] {
+            let actual = parse_stream(streamed(output.clone(), response).as_bytes()).unwrap();
+            assert_eq!(actual.content, expected.content);
+            assert_eq!(actual.stop_reason, StopReason::ToolUse);
+        }
+        let reply = parse_stream(
+            streamed(
+                text_output("héllo"),
+                json!({"status":"completed","output":[]}),
+            )
+            .replace('\n', "\r\n")
+            .as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            reply.content,
+            vec![Content::Text {
+                text: "héllo".into()
+            }]
+        );
+        assert_eq!(reply.stop_reason, StopReason::EndTurn);
+    }
+
+    #[test]
+    fn streamed_items_require_successful_completion() {
+        let item = format!(
+            "data: {}\n\n",
+            json!({"type":"response.output_item.done","item":text_output("partial")[0]})
+        );
+        assert!(parse_stream(item.as_bytes()).unwrap_err().retryable);
+        for kind in ["response.failed", "response.incomplete", "error"] {
+            let stream = format!(
+                "{item}data: {}\n\n",
+                json!({"type":kind,"error":"fixture-secret"})
+            );
+            let error = parse_stream(stream.as_bytes()).unwrap_err();
+            assert!(!error.retryable);
+            assert!(!error.message.contains("fixture-secret"));
+        }
+        assert!(
+            parse_stream(
+                streamed(text_output("partial"), json!({"status":"incomplete"})).as_bytes()
+            )
+            .is_err()
+        );
+        let added = format!(
+            "data: {}\n\n{}",
+            json!({"type":"response.output_item.added","item":text_output("partial")[0]}),
+            completed(json!([]))
+        );
+        assert!(parse_stream(added.as_bytes()).is_err());
+        assert!(parse_stream(b"data: {\"type\":\"response.output_item.done\"}\n\n").is_err());
     }
 
     #[test]
@@ -438,7 +538,7 @@ mod tests {
                 {"type":"reasoning","id":"r1","encrypted_content":"opaque-fixture","summary":[]},
                 {"type":"function_call","call_id":"c1","name":"fixture_echo","arguments":"{\"value\":\"tool evidence\"}"}
             ]) } else { text_output("Finished with tool evidence") };
-            ([("content-type", "text/event-stream")], completed(output))
+            ([("content-type", "text/event-stream")], streamed(output, json!({"status":"completed","output":[]})))
         })).with_state(seen.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let endpoint = format!("http://{}/responses", listener.local_addr()?);
@@ -453,12 +553,27 @@ mod tests {
             .tool(fixture_echo)
             .build();
         let runtime = Runtime::test().await?;
-        let run = runtime.start(&agent, "use the fixture").await?;
-        assert_eq!(run.result().await?, "Finished with tool evidence");
+        let session = runtime.session(&agent).await?;
+        let mut events = session.events();
+        for prompt in ["use the fixture", "follow up"] {
+            session.send(prompt).await?;
+            let mut reply = String::new();
+            loop {
+                match events.next().await.unwrap()? {
+                    Event::Message(message) if message.role == Role::Assistant => {
+                        reply.push_str(&message.text());
+                    }
+                    Event::TurnEnded => break,
+                    _ => {}
+                }
+            }
+            assert_eq!(reply, "Finished with tool evidence");
+        }
+        session.cancel().await?;
         runtime.shutdown().await?;
         server.abort();
         let seen = seen.lock().unwrap();
-        assert_eq!(seen.len(), 2);
+        assert_eq!(seen.len(), 3);
         assert_eq!(seen[0]["store"], false);
         assert_eq!(seen[0]["stream"], true);
         assert_eq!(seen[0]["tools"][0]["name"], "fixture_echo");
@@ -471,6 +586,11 @@ mod tests {
                 .unwrap()
                 .contains("tool evidence")
         );
+        assert_eq!(
+            seen[2]["input"][4]["content"][0]["text"],
+            "Finished with tool evidence"
+        );
+        assert_eq!(seen[2]["input"][5]["content"][0]["text"], "follow up");
         Ok(())
     }
 
