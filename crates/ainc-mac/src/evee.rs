@@ -972,9 +972,7 @@ impl AssistantPage {
                     break;
                 }
                 cx.background_executor()
-                    .spawn(async {
-                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                    })
+                    .timer(std::time::Duration::from_millis(250))
                     .await;
             }
             let _ = this.update(cx, |this, cx| {
@@ -1296,7 +1294,47 @@ impl Render for AssistantPage {
 
 #[cfg(test)]
 mod tests {
-    use super::conversation_date;
+    use super::{AssistantPage, Conversation, Store, Turn, conversation_date};
+    use gpui::{AppContext, TestAppContext};
+    use std::{cell::RefCell, rc::Rc, sync::Arc};
+
+    #[gpui::test]
+    fn pending_reply_yields_without_a_tokio_runtime(cx: &mut TestAppContext) {
+        assert!(tokio::runtime::Handle::try_current().is_err());
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(&dir.path().join("fixture")).unwrap());
+        let mut snapshot = store.snapshot();
+        snapshot.conversations.push(Conversation {
+            id: 1,
+            title: "Pending reply".into(),
+            snippet: String::new(),
+            updated: String::new(),
+            updated_at: 0,
+        });
+        snapshot.turns.push(Turn {
+            conversation_id: 1,
+            id: 1,
+            prompt: "Hello".into(),
+            response: None,
+            error: None,
+            state: "running".into(),
+        });
+        store.fixture_snapshot(snapshot);
+        let page =
+            cx.new(|cx| AssistantPage::new(Some(store), None, Rc::new(RefCell::default()), cx));
+        page.update(cx, |page, cx| page.watch_turn(1, cx));
+
+        // Drain runnable work without advancing time: the watcher must refresh
+        // the running turn and yield safely at its polling delay.
+        while cx.executor().tick() {}
+        page.read_with(cx, |page, _| {
+            assert_eq!(page.active, Some(1));
+            assert_eq!(page.turns.len(), 1);
+            assert_eq!(page.turns[0].state, "running");
+            assert!(page.appearance.is_none());
+            assert!(page.error.is_none());
+        });
+    }
 
     #[test]
     fn conversation_dates_keep_the_list_compact() {

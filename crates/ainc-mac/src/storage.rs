@@ -230,6 +230,11 @@ impl Store {
     pub fn snapshot(&self) -> Snapshot {
         self.snapshot.lock().expect("presentation snapshot").clone()
     }
+    #[cfg(test)]
+    pub fn fixture_snapshot(&self, snapshot: Snapshot) {
+        assert!(self.fixture);
+        *self.snapshot.lock().expect("presentation snapshot") = snapshot;
+    }
     pub fn tickets(&self) -> TicketSnapshot {
         self.tickets.lock().expect("Ticket snapshot").clone()
     }
