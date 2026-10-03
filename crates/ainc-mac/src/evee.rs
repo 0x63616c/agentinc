@@ -423,8 +423,7 @@ impl AssistantPage {
         self.conversation_open = false;
         cx.notify();
     }
-    #[cfg(test)]
-    #[allow(dead_code)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn fixture_conversation(&mut self, populated: bool, cx: &mut Context<Self>) {
         self.signed_in_as = Some("Fixture account".into());
         self.conversation = Some(1);
@@ -447,8 +446,7 @@ impl AssistantPage {
         cx.notify();
     }
     /// The Conversation view before anyone has signed in to ChatGPT.
-    #[cfg(test)]
-    #[allow(dead_code)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn fixture_signed_out(&mut self, cx: &mut Context<Self>) {
         self.signed_in_as = None;
         self.conversation_open = true;

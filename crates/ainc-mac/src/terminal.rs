@@ -64,9 +64,8 @@ impl TerminalPage {
             pending_focus: false,
         }
     }
-    #[cfg(all(test, feature = "rendered-tests"))]
-    #[allow(dead_code)]
-    pub(crate) fn fixture_unavailable(&mut self, cx: &mut Context<Self>) {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn fixture_unavailable(&mut self, cx: &mut Context<Self>) {
         #[cfg(target_os = "macos")]
         {
             self.host = None;

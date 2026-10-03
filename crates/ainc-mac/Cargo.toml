@@ -6,6 +6,9 @@ license.workspace = true
 rust-version = "1.98"
 publish = false
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "AgentInc"
 path = "src/main.rs"
@@ -51,6 +54,7 @@ tracing-oslog = "0.3"
 
 [features]
 automation = [
+    "fixtures",
     "dep:gpui-pilot",
     "dep:futures",
     "dep:tokio-tungstenite",
@@ -59,7 +63,8 @@ automation = [
     "gpui/test-support",
     "gpui_platform/test-support",
 ]
-rendered-tests = ["gpui/test-support", "gpui_platform/test-support"]
+fixtures = []
+rendered-tests = ["fixtures", "gpui/test-support", "gpui_platform/test-support"]
 
 [dev-dependencies]
 # Only tests/tls_provider.rs: the app reaches the daemon through ainc-client, which owns reqwest.

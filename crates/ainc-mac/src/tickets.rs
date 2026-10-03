@@ -6,7 +6,7 @@ mod board;
 mod detail;
 #[path = "tickets/dialogs.rs"]
 mod dialogs;
-#[cfg(all(test, feature = "rendered-tests"))]
+#[cfg(any(test, feature = "fixtures"))]
 #[path = "tickets/fixture.rs"]
 mod fixture;
 #[path = "tickets/labels.rs"]
@@ -14,7 +14,7 @@ mod labels;
 #[path = "tickets/list.rs"]
 mod list;
 #[path = "tickets/model.rs"]
-pub(crate) mod model;
+pub mod model;
 #[path = "tickets/parts.rs"]
 mod parts;
 

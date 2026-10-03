@@ -108,9 +108,8 @@ impl TemporalPage {
         }
     }
 
-    #[cfg(all(test, feature = "rendered-tests"))]
-    #[allow(dead_code)]
-    pub(crate) fn fixture(&mut self, page: ainc_client::types::WorkPage, cx: &mut Context<Self>) {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn fixture(&mut self, page: ainc_client::types::WorkPage, cx: &mut Context<Self>) {
         self.rows = page.work;
         self.next_page = page.next_page;
         self.loaded = true;
@@ -118,18 +117,16 @@ impl TemporalPage {
         cx.notify();
     }
 
-    #[cfg(all(test, feature = "rendered-tests"))]
-    #[allow(dead_code)]
-    pub(crate) fn fixture_error(&mut self, cx: &mut Context<Self>) {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn fixture_error(&mut self, cx: &mut Context<Self>) {
         self.rows.clear();
         self.loaded = true;
         self.error = Some(copy::unavailable("Temporal", "Try again"));
         cx.notify();
     }
 
-    #[cfg(all(test, feature = "rendered-tests"))]
-    #[allow(dead_code)]
-    pub(crate) fn fixture_loading(&mut self, cx: &mut Context<Self>) {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn fixture_loading(&mut self, cx: &mut Context<Self>) {
         self.rows.clear();
         self.next_page = None;
         self.loading.hold();

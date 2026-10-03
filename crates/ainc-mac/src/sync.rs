@@ -166,7 +166,7 @@ impl Sync {
         self.generation += 1;
         self.step(cx);
     }
-    #[cfg(all(test, feature = "rendered-tests"))]
+    #[cfg(any(test, feature = "fixtures"))]
     pub(crate) fn mark_loaded(&mut self, cx: &mut Context<Self>) {
         self.loaded = true;
         cx.notify();

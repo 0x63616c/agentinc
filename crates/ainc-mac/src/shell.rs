@@ -1,7 +1,7 @@
 //! The window: title bar, sidebar, the current page in the content card, and
 //! the overlays that float over them. Pages are held as [`PageHandle`]s and
 //! iterated; the shell never names one.
-#[cfg(test)]
+#[cfg(any(test, feature = "fixtures"))]
 #[path = "shell/fixture.rs"]
 mod fixture;
 #[path = "shell/header.rs"]
@@ -113,8 +113,6 @@ pub struct Shell {
     sidebar_visible: f32,
     sidebar_animation: Option<(Instant, f32, f32)>,
     toasts: Toasts,
-    #[cfg(test)]
-    titlebar_zoom_requests: usize,
 }
 /// A page emitted a destination; the shell takes it at the next render.
 fn queue(shell: &mut Shell, to: Destination, cx: &mut Context<Shell>) {
@@ -322,8 +320,6 @@ impl Shell {
             sidebar_visible,
             sidebar_animation: None,
             toasts: Toasts::default(),
-            #[cfg(test)]
-            titlebar_zoom_requests: 0,
             path,
             focus,
             sidebar_focus: cx.focus_handle(),

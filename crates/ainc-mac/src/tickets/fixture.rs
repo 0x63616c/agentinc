@@ -1,6 +1,5 @@
 //! A believable board for the rendered-shell captures: two agents, Tickets in
 //! every column, labels, priorities, relationships, Comments, runs and history.
-#![allow(dead_code)] // Driven by the rendered-shell harness only.
 use super::*;
 use ainc_client::types::WorkRun;
 use ainc_client::types::{ActivityKind, Comment, LinkKind};
@@ -17,7 +16,7 @@ type Row<'a> = (
 );
 
 impl TicketsPage {
-    pub(crate) fn fixture_board(&mut self, cx: &mut Context<Self>) -> i64 {
+    pub fn fixture_board(&mut self, cx: &mut Context<Self>) -> i64 {
         let daemon = self.daemon.clone();
         for (name, model) in [
             ("Evee", "connection-default"),
@@ -241,38 +240,38 @@ impl TicketsPage {
         cx.notify();
         budget
     }
-    pub(crate) fn fixture_view(&mut self, list: bool, cx: &mut Context<Self>) {
+    pub fn fixture_view(&mut self, list: bool, cx: &mut Context<Self>) {
         self.view = if list { View::List } else { View::Board };
         self.selected = None;
         cx.notify();
     }
-    pub(crate) fn fixture_menu(&mut self, menu: Option<&'static str>, cx: &mut Context<Self>) {
+    pub fn fixture_menu(&mut self, menu: Option<&'static str>, cx: &mut Context<Self>) {
         self.overlays.close_popover();
         if let Some(id) = menu {
             self.overlays.toggle_popover(id);
         }
         cx.notify();
     }
-    pub(crate) fn fixture_ticket_id(&self, title: &str) -> Option<i64> {
+    pub fn fixture_ticket_id(&self, title: &str) -> Option<i64> {
         self.state
             .tickets
             .iter()
             .find(|t| t.title == title)
             .map(|t| t.id)
     }
-    pub(crate) fn fixture_status(&self, id: i64) -> Option<TicketStatus> {
+    pub fn fixture_status(&self, id: i64) -> Option<TicketStatus> {
         self.ticket(id).map(|t| t.status)
     }
-    pub(crate) fn fixture_column(&self, status: TicketStatus) -> Vec<i64> {
+    pub fn fixture_column(&self, status: TicketStatus) -> Vec<i64> {
         in_column(&self.state.tickets, status)
             .iter()
             .map(|t| t.id)
             .collect()
     }
-    pub(crate) fn fixture_relations(&self, id: i64) -> Vec<(Relation, i64)> {
+    pub fn fixture_relations(&self, id: i64) -> Vec<(Relation, i64)> {
         relations(&self.state.links, id)
     }
-    pub(crate) fn fixture_filter_label(&mut self, label: &str, cx: &mut Context<Self>) {
+    pub fn fixture_filter_label(&mut self, label: &str, cx: &mut Context<Self>) {
         self.filters.toggle_label(label);
         cx.notify();
     }

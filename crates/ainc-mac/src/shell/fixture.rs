@@ -1,10 +1,9 @@
 //! Test fixtures: a shell over an in-memory daemon, and hooks that put pages
 //! into the states the rendered and interaction tests capture.
-#![allow(dead_code)]
 use super::*;
 
 impl Shell {
-    pub(crate) fn fixture(path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn fixture(path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let daemon = crate::daemon::Daemon::in_memory();
         let mut shell = Self::with_state(
             path,
@@ -20,49 +19,38 @@ impl Shell {
         shell.launch_started = Some(Instant::now() - std::time::Duration::from_secs(1));
         shell
     }
-    pub(crate) fn fixture_state(&self) -> (Route, Option<Overlay>, bool) {
+    pub fn fixture_state(&self) -> (Route, Option<Overlay>, bool) {
         (
             self.ui_state.current(),
             self.overlays.borrow().active(),
             false,
         )
     }
-    pub(crate) fn fixture_navigate(&mut self, route: Route, cx: &mut Context<Self>) {
+    pub fn fixture_navigate(&mut self, route: Route, cx: &mut Context<Self>) {
         self.ui_state.navigate(route);
         cx.notify();
     }
-    pub(crate) fn fixture_launch_elapsed(
-        &mut self,
-        elapsed: std::time::Duration,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn fixture_launch_elapsed(&mut self, elapsed: std::time::Duration, cx: &mut Context<Self>) {
         self.launch_started = Some(Instant::now() - elapsed);
         cx.notify();
     }
-    #[cfg(feature = "rendered-tests")]
-    pub(crate) fn fixture_temporal(
-        &mut self,
-        page: ainc_client::types::WorkPage,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn fixture_temporal(&mut self, page: ainc_client::types::WorkPage, cx: &mut Context<Self>) {
         self.page_entity::<crate::temporal::TemporalPage>()
             .update(cx, |view, cx| view.fixture(page, cx));
     }
-    #[cfg(feature = "rendered-tests")]
-    pub(crate) fn fixture_temporal_error(&mut self, cx: &mut Context<Self>) {
+    pub fn fixture_temporal_error(&mut self, cx: &mut Context<Self>) {
         self.page_entity::<crate::temporal::TemporalPage>()
             .update(cx, |view, cx| view.fixture_error(cx));
     }
-    #[cfg(feature = "rendered-tests")]
-    pub(crate) fn fixture_temporal_loading(&mut self, cx: &mut Context<Self>) {
+    pub fn fixture_temporal_loading(&mut self, cx: &mut Context<Self>) {
         self.page_entity::<crate::temporal::TemporalPage>()
             .update(cx, |view, cx| view.fixture_loading(cx));
     }
-    pub(crate) fn fixture_profile_name(&mut self, name: &str, cx: &mut Context<Self>) {
+    pub fn fixture_profile_name(&mut self, name: &str, cx: &mut Context<Self>) {
         self.profile.name = name.into();
         cx.notify();
     }
-    pub(crate) fn fixture_toast(&mut self, cx: &mut Context<Self>) {
+    pub fn fixture_toast(&mut self, cx: &mut Context<Self>) {
         self.toasts.push(
             "Ticket assigned to Evee",
             Some("Reconcile weekly budget and receipts".into()),
@@ -75,14 +63,13 @@ impl Shell {
         );
         cx.notify();
     }
-    pub(crate) fn fixture_signed_out(&mut self, cx: &mut Context<Self>) {
+    pub fn fixture_signed_out(&mut self, cx: &mut Context<Self>) {
         self.ui_state.navigate(Route::Assistant);
         self.page_entity::<crate::evee::AssistantPage>()
             .update(cx, |assistant, cx| assistant.fixture_signed_out(cx));
         cx.notify();
     }
-    #[cfg(feature = "rendered-tests")]
-    pub(crate) fn fixture_components(
+    pub fn fixture_components(
         &mut self,
         section: usize,
         select_open: bool,
@@ -96,10 +83,10 @@ impl Shell {
             });
         cx.notify();
     }
-    pub(crate) fn fixture_tickets_page(&self) -> Entity<crate::tickets::TicketsPage> {
+    pub fn fixture_tickets_page(&self) -> Entity<crate::tickets::TicketsPage> {
         self.page_entity()
     }
-    pub(crate) fn fixture_ticket_detail(&mut self, cx: &mut Context<Self>) {
+    pub fn fixture_ticket_detail(&mut self, cx: &mut Context<Self>) {
         use ainc_client::types::TicketCommand;
         let daemon = self.daemon.clone();
         daemon
@@ -129,20 +116,19 @@ impl Shell {
             });
         cx.notify();
     }
-    #[cfg(feature = "rendered-tests")]
-    pub(crate) fn fixture_terminal_unavailable(&mut self, cx: &mut Context<Self>) {
+    pub fn fixture_terminal_unavailable(&mut self, cx: &mut Context<Self>) {
         self.page_entity::<crate::terminal::TerminalPage>()
             .update(cx, |page, cx| page.fixture_unavailable(cx));
         self.ui_state.navigate(Route::Terminal);
         cx.notify();
     }
-    pub(crate) fn fixture_recent_commands(&mut self, ids: &[&str], cx: &mut Context<Self>) {
+    pub fn fixture_recent_commands(&mut self, ids: &[&str], cx: &mut Context<Self>) {
         for id in ids.iter().rev() {
             self.ui_state.remember_command(id);
         }
         cx.notify();
     }
-    pub(crate) fn fixture_conversation(&mut self, populated: bool, cx: &mut Context<Self>) {
+    pub fn fixture_conversation(&mut self, populated: bool, cx: &mut Context<Self>) {
         self.ui_state.navigate(Route::Assistant);
         self.page_entity::<crate::evee::AssistantPage>()
             .update(cx, |assistant, cx| {
@@ -150,12 +136,12 @@ impl Shell {
             });
         cx.notify();
     }
-    pub(crate) fn fixture_selected_model(&self, cx: &App) -> Option<String> {
+    pub fn fixture_selected_model(&self, cx: &App) -> Option<String> {
         self.page_entity::<crate::connections::ConnectionsPage>()
             .read(cx)
             .fixture_selected_model()
     }
-    pub(crate) fn fixture_models(&mut self, cx: &mut Context<Self>) {
+    pub fn fixture_models(&mut self, cx: &mut Context<Self>) {
         self.page_entity::<crate::connections::ConnectionsPage>()
             .update(cx, |page, cx| page.fixture_models(cx));
         cx.notify();

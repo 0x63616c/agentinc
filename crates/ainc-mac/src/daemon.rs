@@ -6,12 +6,12 @@
 //! id once on a transport failure, and lets go only when the daemon rejects it.
 //! While a family's slot is full, a *different* command in that family is
 //! refused until the pending one is retried.
-#[cfg(test)]
+#[cfg(any(test, feature = "fixtures"))]
 #[path = "daemon/board.rs"]
 mod board;
 #[path = "daemon/http.rs"]
 mod http;
-#[cfg(test)]
+#[cfg(any(test, feature = "fixtures"))]
 #[path = "daemon/memory.rs"]
 pub mod memory;
 #[path = "daemon/transport.rs"]
@@ -248,7 +248,7 @@ pub struct Daemon {
     tickets: Mutex<Arc<TicketSnapshot>>,
     automations: Mutex<AutomationSnapshot>,
     update_required: AtomicBool,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixtures"))]
     memory: Option<Arc<memory::MemoryTransport>>,
 }
 impl Daemon {
@@ -257,7 +257,7 @@ impl Daemon {
     pub fn connect() -> Self {
         Self::with_transport(Arc::new(http::HttpTransport::default()))
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn in_memory() -> Self {
         let memory = memory::MemoryTransport::new();
         Self {
@@ -279,12 +279,12 @@ impl Daemon {
                 history: vec![],
             }),
             update_required: AtomicBool::new(false),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "fixtures"))]
             memory: None,
         }
     }
     /// The in-memory daemon behind this instance, for editing and inspection.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn memory(&self) -> &memory::MemoryTransport {
         self.memory.as_deref().expect("an in-memory Daemon")
     }

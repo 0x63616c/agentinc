@@ -16,7 +16,7 @@ impl Pending {
         self.0.get()
     }
     /// Rendered fixtures: stay busy so a page keeps showing its in-flight state.
-    #[cfg(all(test, feature = "rendered-tests"))]
+    #[cfg(any(test, feature = "fixtures"))]
     pub(crate) fn hold(&self) {
         self.0.set(true);
     }

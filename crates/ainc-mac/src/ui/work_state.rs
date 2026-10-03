@@ -38,7 +38,7 @@ impl WorkState {
 
     /// The daemon's spelling for Ticket runs, turns and occurrences. Temporal-only
     /// states return Temporal's spelling. Fixtures use it; pages only parse.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::WaitingForWorker => "waiting_for_worker",

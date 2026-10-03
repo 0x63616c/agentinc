@@ -472,14 +472,12 @@ impl TicketsPage {
         );
     }
 
-    #[cfg(all(test, feature = "rendered-tests"))]
-    #[allow(dead_code)]
-    pub(crate) fn fixture_drop_target(&self) -> Option<(TicketStatus, Option<i64>)> {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn fixture_drop_target(&self) -> Option<(TicketStatus, Option<i64>)> {
         self.drag.target.map(|t| (t.status, t.after))
     }
-    #[cfg(all(test, feature = "rendered-tests"))]
-    #[allow(dead_code)]
-    pub(crate) fn fixture_card_width(&self, id: i64) -> Option<Pixels> {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn fixture_card_width(&self, id: i64) -> Option<Pixels> {
         card_width(&self.drag.geometry, id)
     }
 }

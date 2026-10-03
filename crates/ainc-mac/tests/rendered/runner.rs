@@ -1,15 +1,15 @@
-use crate::ui;
-use crate::ui::{
+use ainc_mac::ui;
+use ainc_mac::ui::{
     CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, SETTINGS_INSET, SETTINGS_ROW_HEIGHT, SPACE_2, SPACE_3,
-    STATUS_BAR_HEIGHT, STATUS_BAR_X, TITLE_OPTICAL_LIFT, type_size,
+    STATUS_BAR_HEIGHT, STATUS_BAR_X, TITLE_OPTICAL_LIFT,
 };
-use crate::{
+use ainc_mac::{
     input,
     overlay::Overlay,
     routes::Route,
     shell::{self, Shell},
     ui::Assets,
-    ui_state::{FontSize, SIDEBAR_DEFAULT, UiState},
+    ui_state::{FontSize, UiState},
 };
 use anyhow::{Result, ensure};
 use gpui::prelude::*;
@@ -851,7 +851,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.settle()?;
     let related = page.read_with(&suite.cx, |page, _| page.fixture_relations(budget));
     ensure!(
-        related.contains(&(crate::tickets::model::Relation::BlockedBy, dentist)),
+        related.contains(&(ainc_mac::tickets::model::Relation::BlockedBy, dentist)),
         "the chosen Ticket becomes a blocker, got {related:?}"
     );
     suite.click_selector("tickets.back")?;

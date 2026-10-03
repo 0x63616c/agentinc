@@ -100,17 +100,15 @@ impl ComponentsPage {
         }
     }
 
-    #[cfg(all(test, feature = "rendered-tests"))]
-    #[allow(dead_code)]
-    pub(crate) fn fixture_section(&mut self, section: usize, cx: &mut Context<Self>) {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn fixture_section(&mut self, section: usize, cx: &mut Context<Self>) {
         self.section = section.min(SECTIONS.len() - 1);
         self.overlays.close_popover();
         cx.notify();
     }
 
-    #[cfg(all(test, feature = "rendered-tests"))]
-    #[allow(dead_code)]
-    pub(crate) fn fixture_select_open(&mut self, open: bool, cx: &mut Context<Self>) {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn fixture_select_open(&mut self, open: bool, cx: &mut Context<Self>) {
         self.overlays.close_popover();
         if open {
             self.overlays.toggle_popover(SELECT_ID);

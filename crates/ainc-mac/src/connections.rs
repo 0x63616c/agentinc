@@ -143,13 +143,11 @@ impl ConnectionsPage {
             },
         );
     }
-    #[cfg(test)]
-    #[allow(dead_code)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn fixture_selected_model(&self) -> Option<String> {
         self.model.clone()
     }
-    #[cfg(test)]
-    #[allow(dead_code)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn fixture_models(&mut self, cx: &mut Context<Self>) {
         self.signed_in_as = Some("Fixture account".into());
         self.connection_error = None;

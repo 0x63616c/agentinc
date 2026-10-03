@@ -127,9 +127,7 @@ impl Shell {
             .on_click(ui.cx.listener(|_this, event: &ClickEvent, window, _| {
                 if event.click_count() == 2 {
                     #[cfg(test)]
-                    {
-                        _this.titlebar_zoom_requests += 1;
-                    }
+                    TITLEBAR_ZOOMS.with(|zooms| zooms.set(zooms.get() + 1));
                     window.titlebar_double_click();
                 }
             }))
@@ -218,4 +216,10 @@ impl Shell {
             )
             .child(self.titlebar_space("titlebar-center-space", ui).flex_1())
     }
+}
+
+// Zoom requests so far on this thread; the test platform cannot observe the real zoom.
+#[cfg(test)]
+thread_local! {
+    pub(super) static TITLEBAR_ZOOMS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }

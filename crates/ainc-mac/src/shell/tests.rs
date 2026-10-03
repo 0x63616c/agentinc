@@ -34,6 +34,10 @@ fn assert_sidebar_hints(cx: &mut VisualTestContext, visible: bool) {
     assert_eq!(cx.debug_bounds("sidebar-badge-1").is_some(), visible);
 }
 
+fn zoom_requests() -> usize {
+    super::header::TITLEBAR_ZOOMS.with(|zooms| zooms.get())
+}
+
 #[gpui::test]
 fn custom_header_owns_titlebar_gestures(_cx: &mut TestAppContext) {
     let bounds = gpui::Bounds::new(point(px(0.), px(0.)), gpui::size(px(1360.), px(828.)));
@@ -55,22 +59,22 @@ fn header_controls_do_not_zoom_but_empty_space_does(cx: &mut TestAppContext) {
     double_click(cx, back);
     shell.read_with(cx, |shell, _| {
         assert_eq!(shell.ui_state.current(), Route::Assistant);
-        assert_eq!(shell.titlebar_zoom_requests, 0);
+        assert_eq!(zoom_requests(), 0);
     });
     let forward = cx.debug_bounds("forward").unwrap().center();
     double_click(cx, forward);
     shell.read_with(cx, |shell, _| {
         assert_eq!(shell.ui_state.current(), Route::Agents);
-        assert_eq!(shell.titlebar_zoom_requests, 0);
+        assert_eq!(zoom_requests(), 0);
     });
     for id in ["sidebar", "shell.search"] {
         let position = cx.debug_bounds(id).unwrap().center();
         double_click(cx, position);
-        shell.read_with(cx, |shell, _| assert_eq!(shell.titlebar_zoom_requests, 0));
+        assert_eq!(zoom_requests(), 0);
     }
     let empty = cx.debug_bounds("titlebar-center-space").unwrap().center();
     double_click(cx, empty);
-    shell.read_with(cx, |shell, _| assert_eq!(shell.titlebar_zoom_requests, 1));
+    assert_eq!(zoom_requests(), 1);
 }
 
 #[gpui::test]

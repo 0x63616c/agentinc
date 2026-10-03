@@ -41,7 +41,7 @@ pub enum Envelope {
     Product(CommandRequest),
 }
 impl Envelope {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn operation_id(&self) -> &str {
         match self {
             Envelope::Workspace(request) => &request.operation_id,
