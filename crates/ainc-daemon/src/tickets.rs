@@ -5,6 +5,7 @@ mod activity;
 mod board;
 mod fence;
 mod links;
+mod transition;
 
 use crate::{
     product::{ApiError, ErrorBody, Product},
@@ -894,26 +895,29 @@ async fn change_status(
     ticket: &Ticket,
     status: TicketStatus,
 ) -> Result<(), ApiError> {
-    if ticket.status == status {
+    let Some(plan) = transition::plan(
+        actor.assignment.is_none(),
+        ticket.status,
+        status,
+        ticket.assignee_kind,
+    )
+    .map_err(|transition::Refused| denied())?
+    else {
         return Ok(());
-    }
-    let owner = actor.assignment.is_none();
-    if !owner && ticket.status != TicketStatus::InProgress {
-        return Err(denied());
-    }
-    if owner {
+    };
+    if plan.cancel {
         cancel_generation(tx, actor, ticket).await?;
     }
     sqlx::query("UPDATE tickets SET revision=revision+1,generation=generation+$2 WHERE id=$1")
         .bind(ticket.id)
-        .bind(i64::from(owner))
+        .bind(i64::from(plan.bump_generation))
         .execute(&mut **tx)
         .await?;
     board::enter_column(tx, ticket.id, status).await?;
     actor
         .log(tx, Entry::status(ticket.id, ticket.status, status))
         .await?;
-    if owner && status.actionable() && ticket.assignee_kind == AssigneeKind::Agent {
+    if plan.start {
         start_generation(tx, actor, ticket.id).await?;
     }
     Ok(())

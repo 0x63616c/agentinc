@@ -237,6 +237,44 @@ pub(crate) async fn execute(
     })
 }
 
+/// The saved rule as an Occurrence finds it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Rule {
+    revision: i64,
+    paused: bool,
+}
+/// Why an Occurrence creates no Ticket. Stored as the Occurrence's state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Refusal {
+    /// The rule changed after this Occurrence was scheduled.
+    Superseded,
+    /// The rule is paused; a manual run ignores that.
+    Paused,
+    /// A previous Occurrence of the rule still has live work.
+    Overlap,
+}
+impl Refusal {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Superseded => "superseded",
+            Self::Paused => "paused",
+            Self::Overlap => "overlap_skipped",
+        }
+    }
+}
+/// Whether an Occurrence scheduled at `revision` of `rule` may create its Ticket.
+fn admit(rule: Rule, revision: i64, manual: bool, overlap: bool) -> Result<(), Refusal> {
+    if rule.revision != revision {
+        Err(Refusal::Superseded)
+    } else if rule.paused && !manual {
+        Err(Refusal::Paused)
+    } else if overlap {
+        Err(Refusal::Overlap)
+    } else {
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 struct Action(PgPool);
 impl RecurringAction for Action {
@@ -267,19 +305,19 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
             .await?;
     if ticket.is_none() && state == "waiting_for_worker" {
         let overlap:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM occurrences o JOIN ticket_runs r ON r.ticket_id=o.ticket_id WHERE o.automation_id=$1 AND r.state IN ('queued','running'))").bind(id).fetch_one(&mut *tx).await?;
-        let reason = if rule.3 != revision {
-            Some("superseded")
-        } else if rule.4 && !manual {
-            Some("paused")
-        } else if overlap {
-            Some("overlap_skipped")
-        } else {
-            None
-        };
-        if let Some(reason) = reason {
+        let admission = admit(
+            Rule {
+                revision: rule.3,
+                paused: rule.4,
+            },
+            revision,
+            manual,
+            overlap,
+        );
+        if let Err(refusal) = admission {
             sqlx::query("UPDATE occurrences SET state=$2 WHERE id=$1")
                 .bind(&occurrence.id)
-                .bind(reason)
+                .bind(refusal.as_str())
                 .execute(&mut *tx)
                 .await?;
         } else {
@@ -469,6 +507,25 @@ impl Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn admission_refuses_in_order_superseded_paused_then_overlap() {
+        let live = Rule {
+            revision: 3,
+            paused: false,
+        };
+        let paused = Rule {
+            revision: 3,
+            paused: true,
+        };
+        assert_eq!(admit(live, 3, false, false), Ok(()));
+        assert_eq!(admit(live, 2, true, false), Err(Refusal::Superseded));
+        assert_eq!(admit(paused, 3, false, false), Err(Refusal::Paused));
+        assert_eq!(admit(paused, 3, true, false), Ok(()));
+        assert_eq!(admit(live, 3, false, true), Err(Refusal::Overlap));
+        assert_eq!(admit(paused, 3, false, true), Err(Refusal::Paused));
+        assert_eq!(admit(paused, 3, true, true), Err(Refusal::Overlap));
+        assert_eq!(Refusal::Overlap.as_str(), "overlap_skipped");
+    }
     async fn save(pool: &PgPool) -> String {
         tickets::execute(
             pool,
