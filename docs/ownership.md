@@ -28,7 +28,7 @@ The bundle includes and signs `Contents/MacOS/aincd`. The app checks the discove
 - `AINC_DISCOVERY_FILE`: URL discovery file; installed default is `…/Agentinc OS/daemon/api-url`.
 - `AINC_API_URL`: explicitly configured HTTP(S) URL; disables companion launch.
 - `AINC_TOKEN_FILE`: bearer credential file; defaults beside discovery.
-- `AINC_LEGACY_DIR`, `AGENTINC_CODEX_HOME`, `AGENTINC_CODEX_PATH`: daemon-side import/profile/provider overrides. The app does not access provider credentials.
+- `AINC_LEGACY_DIR`, `AINC_CODEX_HOME`, `AINC_CODEX_PATH`: daemon-side import/profile/provider overrides. The app does not access provider credentials.
 - `AINC_SESSION_PATH`: UI-only preferences; set it for every isolated app launch.
 
 Product endpoints require the owner bearer credential. The generated CLI reads `AINC_TOKEN_FILE` or `.local/dev/owner-token`, with its existing `AINC_API_URL` override. The daemon still binds only loopback; remote exposure requires the private TLS/Tailscale deployment configuration from the architecture plan. Multi-user identity is phase 5.

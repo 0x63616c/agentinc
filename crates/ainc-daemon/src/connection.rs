@@ -62,7 +62,14 @@ struct Inner {
 impl Connection {
     /// The user's Codex profile and the installed or bundled Codex CLI.
     pub fn local() -> Self {
-        Self::new(codex::home(), codex::executable())
+        Self::local_with(None, None)
+    }
+    /// [`Self::local`] with the daemon's configured overrides for either path.
+    pub fn local_with(home: Option<PathBuf>, executable: Option<PathBuf>) -> Self {
+        Self::new(
+            home.unwrap_or_else(codex::default_home),
+            executable.unwrap_or_else(codex::default_executable),
+        )
     }
     pub fn new(home: PathBuf, executable: PathBuf) -> Self {
         Self {

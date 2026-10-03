@@ -87,7 +87,7 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
                 .context("run against an isolated cargo xtask dev stack")?,
         )
         .env("AINC_LEGACY_DIR", state.join("legacy"))
-        .env("AGENTINC_CODEX_HOME", state.join("codex"))
+        .env("AINC_CODEX_HOME", state.join("codex"))
         .env("AINC_WINDOW_TITLE", TITLE)
         .stdout(log.try_clone()?)
         .stderr(log)

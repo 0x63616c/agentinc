@@ -4,8 +4,8 @@ use anyhow::{Result, bail};
 use regex::Regex;
 use std::path::Path;
 
-/// The daemon's Codex overrides still carry the old prefix; drop these as that lane renames them.
-const FOLLOW_UPS: [&str; 2] = ["AGENTINC_CODEX_HOME", "AGENTINC_CODEX_PATH"];
+/// Retired `AGENTINC_*` names still allowed while their lane renames them; none today.
+const FOLLOW_UPS: [&str; 0] = [];
 
 /// This file names the retired prefix in its own patterns.
 const SELF: &str = "crates/ainc-xtask/src/checks/env_names.rs";
@@ -71,7 +71,7 @@ mod tests {
         assert!(
             violations(
                 "crates/ainc-daemon/src/codex.rs",
-                "var(\"AGENTINC_CODEX_HOME\")"
+                "var(\"AINC_CODEX_HOME\")"
             )
             .is_empty()
         );

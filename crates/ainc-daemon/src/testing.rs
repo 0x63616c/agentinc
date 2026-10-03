@@ -6,7 +6,7 @@
 /// means signed in. Sign-in completes at once unless `fixture-login-pending`
 /// exists in the home, and every start appends a line to `fixture-spawns`.
 /// The `codex-fixture` binary serves it over stdin/stdout for
-/// `AGENTINC_CODEX_PATH`; `executable()` locates that binary.
+/// `AINC_CODEX_PATH`; `executable()` locates that binary.
 pub mod fake_codex {
     use serde_json::{Value, json};
     use std::{

@@ -317,7 +317,7 @@ pub fn cli(args: &[String]) -> Result<()> {
     let path = |name: &str| root.join(name).to_string_lossy().into_owned();
     env.insert("AINC_DISCOVERY_FILE".into(), path("api-url"));
     env.insert("AINC_LEGACY_DIR".into(), path("legacy"));
-    env.insert("AGENTINC_CODEX_HOME".into(), path("codex"));
+    env.insert("AINC_CODEX_HOME".into(), path("codex"));
     env.insert("RUST_LOG".into(), "info".into());
     for name in ["DATABASE_URL", "AINC_RUNTIME_CONFIG", "AINC_DATABASE_URL"] {
         env.remove(name);

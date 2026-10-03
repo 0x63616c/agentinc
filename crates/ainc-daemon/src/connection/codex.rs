@@ -14,16 +14,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub fn home() -> PathBuf {
-    if let Some(path) = std::env::var_os("AGENTINC_CODEX_HOME") {
-        return path.into();
-    }
+/// The user's Codex profile, unless the daemon's configuration overrides it.
+pub fn default_home() -> PathBuf {
     ainc_release::identity::support_dir().join("codex")
 }
-pub fn executable() -> PathBuf {
-    if let Some(path) = std::env::var_os("AGENTINC_CODEX_PATH") {
-        return path.into();
-    }
+/// The bundled or installed Codex CLI, unless the daemon's configuration overrides it.
+pub fn default_executable() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         let bundled = exe.with_file_name("../Resources/runtime/codex");
         if bundled.is_file() {

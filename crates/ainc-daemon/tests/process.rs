@@ -79,8 +79,8 @@ impl Stack {
                 "AINC_RUNTIME_CONFIG",
                 serde_json::to_string(&self.server.config()).unwrap(),
             )
-            .env("AGENTINC_CODEX_HOME", self.dir.path().join("codex-home"))
-            .env("AGENTINC_CODEX_PATH", env!("CARGO_BIN_EXE_codex-fixture"))
+            .env("AINC_CODEX_HOME", self.dir.path().join("codex-home"))
+            .env("AINC_CODEX_PATH", env!("CARGO_BIN_EXE_codex-fixture"))
             .env("AINC_TEST_RESPONSES_URL", &self.url)
             .env("RUST_LOG", "info")
             .stdout(Stdio::piped())

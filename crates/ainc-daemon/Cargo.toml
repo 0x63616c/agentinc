@@ -13,7 +13,7 @@ workspace = true
 name = "aincd"
 path = "src/main.rs"
 
-# Test fixture only: a fake Codex app-server for AGENTINC_CODEX_PATH.
+# Test fixture only: a fake Codex app-server for AINC_CODEX_PATH.
 [[bin]]
 name = "codex-fixture"
 path = "src/bin/codex_fixture.rs"

@@ -12,6 +12,6 @@ export AINC_SESSION_PATH="$state/session.json"
 export AINC_DISCOVERY_FILE="${AINC_DISCOVERY_FILE:-$PWD/.local/dev/api-url}"
 test -s "$AINC_DISCOVERY_FILE" || { echo "Start cargo xtask dev first" >&2; exit 1; }
 export AINC_LEGACY_DIR="$state/legacy"
-export AGENTINC_CODEX_HOME="$state/codex"
+export AINC_CODEX_HOME="$state/codex"
 export AINC_WINDOW_TITLE='AgentInc Pilot QA'
 exec target/debug/AgentInc --gpui-pilot-session "$state/s"

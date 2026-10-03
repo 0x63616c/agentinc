@@ -176,7 +176,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
                 .context("run against an isolated cargo xtask dev stack")?,
         )
         .env("AINC_LEGACY_DIR", directory.join("legacy"))
-        .env("AGENTINC_CODEX_HOME", directory.join("codex"))
+        .env("AINC_CODEX_HOME", directory.join("codex"))
         .env("AINC_WINDOW_TITLE", "AgentInc Pilot Acceptance")
         .stdout(Stdio::null())
         .stderr(log)

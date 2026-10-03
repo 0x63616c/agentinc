@@ -89,7 +89,7 @@ fn main() {
                 "AINC_SESSION_PATH",
                 "AINC_DISCOVERY_FILE",
                 "AINC_LEGACY_DIR",
-                "AGENTINC_CODEX_HOME",
+                "AINC_CODEX_HOME",
                 "AINC_WINDOW_TITLE",
             ] {
                 let value = std::env::var_os(name)

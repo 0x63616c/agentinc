@@ -293,7 +293,7 @@ fn capture(root: &Path, state: &Path, output: &Path) -> Result<()> {
         ("AINC_SESSION_PATH", state.join("session.json")),
         ("AINC_DISCOVERY_FILE", discovery),
         ("AINC_LEGACY_DIR", state.join("legacy")),
-        ("AGENTINC_CODEX_HOME", state.join("codex")),
+        ("AINC_CODEX_HOME", state.join("codex")),
     ]
     .map(|(key, path)| (key, path.display().to_string()))
     .into_iter()

@@ -173,11 +173,7 @@ mod acceptance {
             PathBuf::from(std::env::var_os("AINC_DISCOVERY_FILE").expect("isolated discovery"));
         assert!(discovery.starts_with(&root));
         assert!(!root.exists(), "use a fresh test profile");
-        for name in [
-            "AINC_SESSION_PATH",
-            "AINC_LEGACY_DIR",
-            "AGENTINC_CODEX_HOME",
-        ] {
+        for name in ["AINC_SESSION_PATH", "AINC_LEGACY_DIR", "AINC_CODEX_HOME"] {
             assert!(PathBuf::from(std::env::var_os(name).expect(name)).starts_with(&root));
         }
         fs::create_dir_all(&root).unwrap();

@@ -220,7 +220,7 @@ fn exercise(
         .env("AINC_SESSION_PATH", profile.join("session.json"))
         .env("AINC_DISCOVERY_FILE", profile.join("daemon/api-url"))
         .env("AINC_LEGACY_DIR", profile.join("legacy"))
-        .env("AGENTINC_CODEX_HOME", profile.join("codex"))
+        .env("AINC_CODEX_HOME", profile.join("codex"))
         .stdout(Stdio::null())
         .stderr(writer);
     let mut process = ManagedChild::spawn(command)?;

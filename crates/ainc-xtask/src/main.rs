@@ -286,7 +286,7 @@ fn daemon(instance: &Instance) -> Result<()> {
         )
         .env("AINC_DISCOVERY_FILE", discovery)
         .env("AINC_LEGACY_DIR", local(instance).join("legacy"))
-        .env("AGENTINC_CODEX_HOME", local(instance).join("codex"))
+        .env("AINC_CODEX_HOME", local(instance).join("codex"))
         .status()?;
     if !status.success() {
         bail!("aincd exited with {status}");
