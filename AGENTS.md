@@ -25,8 +25,10 @@ other CI check, `just release patch|minor|major` bumps the version and commits. 
 (`cargo xtask`, `bundle.sh`) is plumbing those use. Any `just` recipe points git at the tracked
 `.githooks/` first, so hooks install themselves; CI is the real gate.
 
-Languages: Rust by default. Swift and Objective-C only in `crates/ainc-mac/ghostty-bridge/`,
-`update_window.m` and the OS acceptance tests. Python is being retired into `ainc-xtask`; do not add new scripts.
+Languages: Rust, with no Python. Tooling, checks, release steps and CI helpers are `cargo xtask`
+subcommands (`cargo xtask` with no arguments lists them), not scripts. Shell is only for thin
+wrappers around OS tools (`bundle.sh`, `codesign`). Swift and Objective-C only in
+`crates/ainc-mac/ghostty-bridge/`, `update_window.m` and the OS acceptance tests.
 
 ## How to build
 
@@ -55,8 +57,8 @@ For the accepted product plan, see [docs/architecture.md](docs/architecture.md) 
   `cargo xtask generate`, and the `ainc` CLI built on it.
 - `crates/ainc-release` — release identity, version compatibility, signed update manifests
   and the updater binaries.
-- `crates/ainc-xtask` — the dev tooling behind `just` (`cargo xtask dev|serve|doctor|down|
-  generate|release`).
+- `crates/ainc-xtask` — all the repo tooling behind `just` and CI: dev stack, checks
+  (`src/checks/`), release steps (`src/release/`), README screenshots, GPUI vendoring.
 - `crates/gpui-pilot`, `crates/gpui-pilot-cli` — opt-in app automation. The GPUI
   patch and regeneration instructions are in `vendor/` and
   `cargo xtask vendor-pilot-gpui`. Pilot launches are hidden by
