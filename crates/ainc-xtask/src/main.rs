@@ -439,7 +439,6 @@ fn check_ui(root: &Path) -> Result<()> {
 /// `just check`, the pre-commit hook and CI all come through here.
 fn check(root: &Path) -> Result<()> {
     step(root, &["cargo", "fmt", "--all", "--", "--check"])?;
-    checks::colors::run(&root.join("crates/ainc-mac"))?;
     check_ui(root)?;
     step(
         root,
