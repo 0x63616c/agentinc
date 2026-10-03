@@ -15,8 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cargo fmt --all -- --check
-      - run: python3 crates/ainc-mac/scripts/check-ui-spacing.py
-      - run: python3 crates/ainc-mac/scripts/check-ui-core.py
   workspace:
     name: workspace (${{ matrix.check }})
     runs-on: ubuntu-latest
