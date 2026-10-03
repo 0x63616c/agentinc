@@ -1,5 +1,5 @@
 //! Buttons: one focus, disabled and keyboard contract behind four looks.
-use super::{display::icon, layout::row, motion::*, tokens::*};
+use super::{display::icon, icon::Icon, layout::row, motion::*, tokens::*};
 use gpui::{prelude::*, *};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -10,7 +10,7 @@ pub enum ButtonKind {
     Secondary,
     /// A text action that only shows its surface on hover.
     Ghost,
-    /// A solid red action that removes something.
+    /// An outlined red action that removes something, never a solid slab.
     Destructive,
 }
 
@@ -66,8 +66,9 @@ pub fn toggled(on: bool) -> accesskit::Toggled {
     }
 }
 
-fn author_id(id: &ElementId) -> Option<SharedString> {
-    // Only authored names/business keys become public IDs, never allocation IDs.
+/// The one selector rule: an authored name or business key becomes the
+/// control's accessibility id and test selector; allocation ids never do.
+pub fn author_id(id: &ElementId) -> Option<SharedString> {
     match id {
         ElementId::Name(name) => Some(name.clone()),
         ElementId::NamedInteger(name, key) => Some(format!("{name}.{key}").into()),
@@ -183,7 +184,7 @@ pub struct Button {
     label: SharedString,
     kind: ButtonKind,
     size: ButtonSize,
-    icon: Option<&'static str>,
+    icon: Option<Icon>,
     icon_only: bool,
     enabled: bool,
     selected: bool,
@@ -241,9 +242,9 @@ impl Button {
     pub fn destructive(self) -> Self {
         self.kind(ButtonKind::Destructive)
     }
-    /// Add/create actions put their + after the label; other icons lead it.
-    /// Icon-only controls remain centered squares.
-    pub fn icon(mut self, name: &'static str) -> Self {
+    /// Add/create actions (`Icon::Plus`, see `Icon::trails_label`) put their +
+    /// after the label; other icons lead it. Icon-only controls remain centered squares.
+    pub fn icon(mut self, name: Icon) -> Self {
         self.icon = Some(name);
         self
     }
@@ -290,13 +291,11 @@ impl Button {
         self
     }
 
-    /// Builds the control. `hover` is the host view's fade state, read here so
-    /// the surface can blend toward its hover look between frames.
-    pub fn build<V: HoverHost>(
+    /// Builds the control; its surface blends toward the hover look between frames.
+    pub fn build<V: 'static>(
         self,
-        hover: &HoverFade,
+        ui: &mut Ui<V>,
         action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-        cx: &mut Context<V>,
     ) -> Stateful<Div> {
         let Self {
             id,
@@ -329,7 +328,7 @@ impl Button {
         if icon_only && kind == ButtonKind::Secondary && !selected {
             look.base = SURFACE;
         }
-        let (progress, on_hover) = hover.track(&id, enabled, cx);
+        let (progress, on_hover) = ui.hover(&id, enabled);
         let text_color = match tint {
             Some(color) => rgb(color),
             None => blend(look.text, look.text_hover, progress),
@@ -343,11 +342,12 @@ impl Button {
                     s.debug_selector(move || format!("{selector}.icon"))
                 })
         });
-        let (leading_icon, trailing_icon) = if icon_name == Some("plus") && !icon_only {
-            (None, button_icon)
-        } else {
-            (button_icon, None)
-        };
+        let (leading_icon, trailing_icon) =
+            if icon_name.is_some_and(Icon::trails_label) && !icon_only {
+                (None, button_icon)
+            } else {
+                (button_icon, None)
+            };
         action_button(
             ButtonSpec {
                 id,
@@ -399,7 +399,7 @@ impl Button {
                     .when_some(trailing, |s, trailing| s.child(trailing))
             },
             action,
-            cx,
+            ui.cx,
         )
     }
 }

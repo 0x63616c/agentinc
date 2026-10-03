@@ -29,7 +29,7 @@ impl Tone {
 pub fn badge(label: impl Into<SharedString>, tone: Tone) -> Div {
     let (foreground, surface) = tone.colors();
     row()
-        .h(px(22.))
+        .h(px(PILL_HEIGHT))
         .px(px(SPACE_2))
         .flex_shrink_0()
         .rounded_full()
@@ -44,7 +44,7 @@ pub fn badge(label: impl Into<SharedString>, tone: Tone) -> Div {
 /// A small colored dot.
 pub fn status_dot(tone: Tone) -> Div {
     div()
-        .size(px(6.))
+        .size(px(STATUS_DOT_SIZE))
         .flex_shrink_0()
         .rounded_full()
         .bg(rgb(tone.colors().0))
@@ -53,9 +53,9 @@ pub fn status_dot(tone: Tone) -> Div {
 /// A bordered pill with a dot: the quieter status treatment for tables.
 pub fn status_pill(label: impl Into<SharedString>, tone: Tone) -> Div {
     row()
-        .h(px(22.))
+        .h(px(PILL_HEIGHT))
         .px(px(SPACE_2))
-        .gap(px(6.))
+        .gap(px(PILL_GAP))
         .flex_shrink_0()
         .rounded_full()
         .border_1()
@@ -72,7 +72,7 @@ pub fn tag(label: impl Into<SharedString>, color: u32) -> Div {
     row()
         .h(px(PILL_HEIGHT))
         .px(px(SPACE_2))
-        .gap(px(6.))
+        .gap(px(PILL_GAP))
         .flex_shrink_0()
         .rounded_full()
         .border_1()
@@ -82,7 +82,7 @@ pub fn tag(label: impl Into<SharedString>, color: u32) -> Div {
         .whitespace_nowrap()
         .child(
             div()
-                .size(px(6.))
+                .size(px(STATUS_DOT_SIZE))
                 .flex_shrink_0()
                 .rounded_full()
                 .bg(rgb(color)),
@@ -93,9 +93,9 @@ pub fn tag(label: impl Into<SharedString>, color: u32) -> Div {
 /// A white count bubble, for unread items.
 pub fn count_badge(count: usize) -> Div {
     row()
-        .h(px(18.))
-        .min_w(px(18.))
-        .px(px(5.))
+        .h(px(COUNT_BADGE_SIZE))
+        .min_w(px(COUNT_BADGE_SIZE))
+        .px(px(KBD_INSET_X))
         .justify_center()
         .flex_shrink_0()
         .rounded_full()

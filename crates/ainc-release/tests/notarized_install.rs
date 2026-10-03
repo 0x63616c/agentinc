@@ -1,4 +1,5 @@
 //! Real Mac acceptance using a signed, notarized draft feed downloaded from CI.
+#![allow(clippy::disallowed_macros)] // test output
 #[cfg(target_os = "macos")]
 #[test]
 #[ignore = "requires the real notarized draft artifact"]

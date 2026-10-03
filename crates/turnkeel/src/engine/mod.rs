@@ -2,29 +2,43 @@
 
 mod activities;
 mod conversation;
+mod handle;
+mod legacy;
 mod recurring;
 mod session;
 #[cfg(feature = "testing")]
 mod test_server;
 mod visibility;
 mod workflow;
+
+pub(crate) use handle::{RunHandle, SessionHandle};
 #[cfg(feature = "testing")]
 pub(crate) use test_server::TestServer;
-pub(crate) use visibility::list_workflows;
 
-use crate::{Agent, Error, Event, Message, RunId, RuntimeConfig, SessionId};
+#[allow(deprecated)]
+use crate::runtime::RunPage;
+use crate::{
+    Agent, AgentSource, Error, Message, RunId, RuntimeConfig, SessionId,
+    runtime::{RunStatus, WorkPage},
+};
 use activities::{AgentActivities, Registry};
-use std::sync::Arc;
-use std::thread::JoinHandle;
+use conversation::agent_spec;
+use session::{LegacySessionWorkflow, SessionInput, SessionWorkflow, SessionWorkflowType};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread::JoinHandle,
+};
 use temporalio_client::{
-    Client, ClientOptions, ConnectionOptions, WorkflowCancelOptions, WorkflowExecuteUpdateOptions,
-    WorkflowGetResultOptions, WorkflowHandle, WorkflowIdReusePolicy, WorkflowSignalOptions,
-    WorkflowStartOptions,
-    errors::{WorkflowGetResultError, WorkflowInteractionError, WorkflowStartError},
+    Client, ClientOptions, ConnectionOptions, WorkflowIdReusePolicy, WorkflowStartOptions,
+    errors::WorkflowStartError,
 };
 #[cfg(feature = "testing")]
 use temporalio_sdk::testing::{LocalServer, LocalWorkflowEnvironmentOptions, WorkflowEnvironment};
 use temporalio_sdk::{Runtime, Worker, WorkerOptions};
+use workflow::{AgentRunWorkflow, LegacyRunWorkflow, RunInput, RunWorkflowType};
 
 /// The local dev server an engine may own. Without `testing` nothing can construct one, so
 /// the field is always `None` and the shutdown path is unreachable.
@@ -39,6 +53,9 @@ impl LocalEnvironment {
     }
 }
 
+pub(crate) use session::SESSION_ID_PREFIX;
+pub(crate) use workflow::RUN_ID_PREFIX;
+
 type ShutdownFn = Box<dyn Fn() + Send + Sync>;
 
 /// Engine behaviour switches. Internal; surfaced through `Runtime::local()` / `Runtime::test()`.
@@ -46,19 +63,35 @@ type ShutdownFn = Box<dyn Fn() + Send + Sync>;
 pub(crate) struct EngineOptions {
     pub check_idempotency: bool,
 }
-use conversation::agent_spec;
-use session::{SessionInput, SessionWorkflow, SessionWorkflowType};
-use workflow::{AgentRunWorkflow, RunInput, RunOutput, RunWorkflowType};
 
-pub(crate) use session::SESSION_ID_PREFIX;
-pub(crate) use workflow::RUN_ID_PREFIX;
+/// Set once a `testing::Server` starts in this process: every runtime configured
+/// afterwards runs with the test-only checks on, as `Runtime::test()` does.
+static TESTING: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature = "testing")]
+pub(crate) fn enable_testing() {
+    TESTING.store(true, Ordering::Relaxed);
+}
+
+/// What a worker needs besides a connection. Absent: connect as an observer only.
+#[derive(Default)]
+struct WorkerSetup<'a> {
+    options: EngineOptions,
+    agents: &'a [Agent],
+    source: Option<Arc<dyn AgentSource>>,
+    action: Option<Arc<dyn crate::RecurringAction>>,
+}
+
+struct WorkerLink {
+    shutdown: ShutdownFn,
+    thread: Option<JoinHandle<()>>,
+}
 
 pub(crate) struct Engine {
     client: Client,
     task_queue: String,
     registry: Registry,
-    shutdown_worker: ShutdownFn,
-    worker_thread: Option<JoinHandle<()>>,
+    worker: Option<WorkerLink>,
     local: Option<LocalEnvironment>,
 }
 
@@ -70,13 +103,14 @@ impl Engine {
             .await
             .map_err(|e| Error::Connection(e.to_string()))?;
         let client = env.client().clone();
-        Self::with_client(
+        Self::build(
             client,
             Some(env),
-            options,
-            format!("agentinc-{}", uuid::Uuid::new_v4()),
-            &[],
-            None,
+            format!("turnkeel-{}", uuid::Uuid::new_v4()),
+            Some(WorkerSetup {
+                options,
+                ..Default::default()
+            }),
         )
         .await
     }
@@ -86,22 +120,66 @@ impl Engine {
             RuntimeConfig {
                 endpoint: url.into(),
                 scope: "default".into(),
-                worker_group: format!("agentinc-{}", uuid::Uuid::new_v4()),
+                worker_group: format!("turnkeel-{}", uuid::Uuid::new_v4()),
             },
             &[],
+            None,
         )
         .await
     }
 
-    pub(crate) async fn configured(config: RuntimeConfig, agents: &[Agent]) -> Result<Self, Error> {
-        Self::configured_recurring(config, agents, None).await
+    /// Connect a worker with a stable identity.
+    pub(crate) async fn configured(
+        config: RuntimeConfig,
+        agents: &[Agent],
+        source: Option<Arc<dyn AgentSource>>,
+    ) -> Result<Self, Error> {
+        let client = Self::client(&config).await?;
+        Self::build(
+            client,
+            None,
+            config.worker_group,
+            Some(WorkerSetup {
+                options: Self::configured_options(),
+                agents,
+                source,
+                action: None,
+            }),
+        )
+        .await
     }
 
     pub(crate) async fn configured_recurring(
         config: RuntimeConfig,
-        agents: &[Agent],
-        action: Option<Arc<dyn crate::RecurringAction>>,
+        action: Arc<dyn crate::RecurringAction>,
     ) -> Result<Self, Error> {
+        let client = Self::client(&config).await?;
+        Self::build(
+            client,
+            None,
+            config.worker_group,
+            Some(WorkerSetup {
+                options: Self::configured_options(),
+                action: Some(action),
+                ..Default::default()
+            }),
+        )
+        .await
+    }
+
+    /// Connect without accepting work: for reading history and attaching to runs.
+    pub(crate) async fn observer(config: RuntimeConfig) -> Result<Self, Error> {
+        let client = Self::client(&config).await?;
+        Self::build(client, None, config.worker_group, None).await
+    }
+
+    fn configured_options() -> EngineOptions {
+        EngineOptions {
+            check_idempotency: TESTING.load(Ordering::Relaxed),
+        }
+    }
+
+    async fn client(config: &RuntimeConfig) -> Result<Client, Error> {
         if config.scope.trim().is_empty() || config.worker_group.trim().is_empty() {
             return Err(Error::Connection(
                 "runtime scope and worker group must be nonempty".into(),
@@ -111,43 +189,40 @@ impl Engine {
             .endpoint
             .parse()
             .map_err(|e| Error::Connection(format!("invalid runtime endpoint: {e}")))?;
-        let client = Client::connect(
+        Client::connect(
             ConnectionOptions::new(target).identity("turnkeel").build(),
-            ClientOptions::new(config.scope).build(),
+            ClientOptions::new(config.scope.clone()).build(),
         )
         .await
-        .map_err(|e| Error::Connection(e.to_string()))?;
-        Self::with_client(
-            client,
-            None,
-            EngineOptions::default(),
-            config.worker_group,
-            agents,
-            action,
-        )
-        .await
+        .map_err(|e| Error::Connection(e.to_string()))
     }
 
-    async fn with_client(
+    async fn build(
         client: Client,
         local: Option<LocalEnvironment>,
-        options: EngineOptions,
         task_queue: String,
-        agents: &[Agent],
-        action: Option<Arc<dyn crate::RecurringAction>>,
+        worker: Option<WorkerSetup<'_>>,
     ) -> Result<Self, Error> {
-        let registry = Registry::default();
-        for agent in agents {
-            registry.register(agent);
-        }
+        let Some(setup) = worker else {
+            return Ok(Self {
+                client,
+                task_queue,
+                registry: Registry::default(),
+                worker: None,
+                local,
+            });
+        };
+        let registry = Registry::new(setup.agents, setup.source);
+        let options = setup.options;
+        let action = setup.action;
 
         // The worker future is !Send, so it gets its own thread and single-threaded runtime.
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let worker_client = client.clone();
         let worker_queue = task_queue.clone();
         let worker_registry = registry.clone();
-        let worker_thread = std::thread::Builder::new()
-            .name("agentinc-worker".into())
+        let thread = std::thread::Builder::new()
+            .name("turnkeel-worker".into())
             .spawn(move || {
                 let rt = match tokio::runtime::Builder::new_current_thread()
                     .enable_all()
@@ -177,12 +252,12 @@ impl Engine {
                     let shutdown = worker.shutdown_handle();
                     let _ = ready_tx.send(Ok(Box::new(shutdown) as ShutdownFn));
                     if let Err(e) = worker.run().await {
-                        tracing::error!("agentinc worker stopped: {e}");
+                        tracing::error!("turnkeel worker stopped: {e}");
                     }
                 });
             })
             .map_err(|e| Error::Connection(e.to_string()))?;
-        let shutdown_worker = ready_rx
+        let shutdown = ready_rx
             .await
             .map_err(|_| Error::Connection("worker thread died during startup".into()))?
             .map_err(Error::Connection)?;
@@ -191,10 +266,29 @@ impl Engine {
             client,
             task_queue,
             registry,
-            shutdown_worker,
-            worker_thread: Some(worker_thread),
+            worker: Some(WorkerLink {
+                shutdown,
+                thread: Some(thread),
+            }),
             local,
         })
+    }
+
+    pub(crate) async fn work_history(
+        &self,
+        status: Option<RunStatus>,
+        page: Option<&str>,
+    ) -> Result<WorkPage, Error> {
+        visibility::work_history(&self.client, status, page).await
+    }
+
+    #[allow(deprecated)]
+    pub(crate) async fn run_history(
+        &self,
+        status: Option<&str>,
+        page: Option<&str>,
+    ) -> Result<RunPage, Error> {
+        visibility::run_history(&self.client, status, page).await
     }
 
     pub(crate) async fn start(
@@ -228,21 +322,17 @@ impl Engine {
             )
             .await
         {
-            Ok(handle) => Ok(RunHandle {
-                inner: Arc::new(handle),
-            }),
+            Ok(handle) => Ok(RunHandle::new(handle)),
             Err(WorkflowStartError::AlreadyStarted { .. }) => Ok(self.run_handle(id)),
             Err(error) => Err(Error::Other(error.into())),
         }
     }
 
     pub(crate) fn run_handle(&self, id: &RunId) -> RunHandle {
-        RunHandle {
-            inner: Arc::new(
-                self.client
-                    .get_workflow_handle::<RunWorkflowType>(id.0.clone()),
-            ),
-        }
+        RunHandle::new(
+            self.client
+                .get_workflow_handle::<RunWorkflowType>(id.0.clone()),
+        )
     }
 
     pub(crate) async fn start_session(
@@ -275,24 +365,20 @@ impl Engine {
             )
             .await
         {
-            Ok(handle) => Ok(SessionHandle {
-                inner: Arc::new(handle),
-            }),
+            Ok(handle) => Ok(SessionHandle::new(handle)),
             Err(WorkflowStartError::AlreadyStarted { .. }) => Ok(self.session_handle(agent, id)),
             Err(error) => Err(Error::Other(error.into())),
         }
     }
 
-    /// Attach to an existing session. The agent must be registered here so its model and
+    /// Attach to an existing session. The agent is registered here so its model and
     /// tools can be resolved when a turn runs on this worker.
     pub(crate) fn session_handle(&self, agent: &Agent, id: &SessionId) -> SessionHandle {
         self.registry.register(agent);
-        SessionHandle {
-            inner: Arc::new(
-                self.client
-                    .get_workflow_handle::<SessionWorkflowType>(id.0.clone()),
-            ),
-        }
+        SessionHandle::new(
+            self.client
+                .get_workflow_handle::<SessionWorkflowType>(id.0.clone()),
+        )
     }
 
     pub(crate) async fn shutdown(mut self) -> Result<(), Error> {
@@ -306,9 +392,11 @@ impl Engine {
     }
 
     async fn stop_worker(&mut self) {
-        (self.shutdown_worker)();
-        if let Some(thread) = self.worker_thread.take() {
-            let _ = tokio::task::spawn_blocking(move || thread.join()).await;
+        if let Some(worker) = &mut self.worker {
+            (worker.shutdown)();
+            if let Some(thread) = worker.thread.take() {
+                let _ = tokio::task::spawn_blocking(move || thread.join()).await;
+            }
         }
     }
 }
@@ -316,7 +404,9 @@ impl Engine {
 impl Drop for Engine {
     fn drop(&mut self) {
         // Ask the worker to stop; the thread exits on its own once polling winds down.
-        (self.shutdown_worker)();
+        if let Some(worker) = &self.worker {
+            (worker.shutdown)();
+        }
     }
 }
 
@@ -327,11 +417,23 @@ fn build_worker(
     options: EngineOptions,
     action: Option<Arc<dyn crate::RecurringAction>>,
 ) -> Result<Worker, String> {
+    // Workflows schedule activities by name; the registered names must be those names.
+    debug_assert_eq!(AgentActivities::model_step.name(), activities::MODEL_STEP);
+    debug_assert_eq!(AgentActivities::call_tool.name(), activities::CALL_TOOL);
+    debug_assert_eq!(
+        AgentActivities::legacy_model_step.name(),
+        legacy::MODEL_STEP
+    );
+    debug_assert_eq!(AgentActivities::legacy_call_tool.name(), legacy::CALL_TOOL);
     let runtime = Runtime::from_current_tokio(Default::default()).map_err(|e| e.to_string())?;
     let options = WorkerOptions::new(task_queue)
         .register_workflow::<AgentRunWorkflow>()
         .map_err(|e| e.to_string())?
+        .register_workflow::<LegacyRunWorkflow>()
+        .map_err(|e| e.to_string())?
         .register_workflow::<SessionWorkflow>()
+        .map_err(|e| e.to_string())?
+        .register_workflow::<LegacySessionWorkflow>()
         .map_err(|e| e.to_string())?
         .register_workflow::<recurring::OccurrenceWorkflow>()
         .map_err(|e| e.to_string())?
@@ -342,146 +444,4 @@ fn build_worker(
         })
         .build();
     Worker::new(&runtime, client, options).map_err(|e| e.to_string())
-}
-
-type RunWorkflowHandle = WorkflowHandle<Client, RunWorkflowType>;
-
-/// Handle to one workflow execution. Cloneable, cheap.
-#[derive(Clone)]
-pub(crate) struct RunHandle {
-    inner: Arc<RunWorkflowHandle>,
-}
-
-impl RunHandle {
-    pub(crate) async fn events_after(&self, offset: usize) -> Result<(Vec<Event>, bool), Error> {
-        let completed = |output: RunOutput| {
-            // Old completed histories predate the event field.
-            let log = if output.events.is_empty() {
-                output
-                    .messages
-                    .into_iter()
-                    .map(Event::Message)
-                    .chain([Event::TurnEnded])
-                    .collect()
-            } else {
-                output.events
-            };
-            (log.get(offset..).unwrap_or_default().to_vec(), true)
-        };
-        tokio::select! {
-            output = self.output() => output.map(completed),
-            events = self.inner.execute_update(AgentRunWorkflow::events_after, offset, WorkflowExecuteUpdateOptions::default()) => {
-                match events {
-                    Ok(events) => Ok((events, false)),
-                    // An execution can close between starting the long poll and its acceptance.
-                    Err(_) => self.output().await.map(completed),
-                }
-            }
-        }
-    }
-
-    pub(crate) async fn cancel(&self) -> Result<(), Error> {
-        self.inner
-            .cancel(WorkflowCancelOptions::default())
-            .await
-            .map_err(|e| match e {
-                WorkflowInteractionError::NotFound(_) => Error::NotFound,
-                other => Error::Other(other.into()),
-            })
-    }
-
-    pub(crate) async fn output(&self) -> Result<RunOutput, Error> {
-        self.inner
-            .get_result(WorkflowGetResultOptions::default())
-            .await
-            .map_err(result_error)
-    }
-}
-
-type SessionWorkflowHandle = WorkflowHandle<Client, SessionWorkflowType>;
-
-/// Handle to one session workflow. Cloneable, cheap.
-#[derive(Clone)]
-pub(crate) struct SessionHandle {
-    inner: Arc<SessionWorkflowHandle>,
-}
-
-impl SessionHandle {
-    pub(crate) async fn send_once(&self, id: String, message: Message) -> Result<(), Error> {
-        self.inner
-            .signal(
-                SessionWorkflow::send_once,
-                session::Delivery { id, message },
-                WorkflowSignalOptions::default(),
-            )
-            .await
-            .map_err(|e| Error::Other(e.into()))
-    }
-
-    pub(crate) async fn cancel(&self) -> Result<(), Error> {
-        self.inner
-            .cancel(WorkflowCancelOptions::default())
-            .await
-            .map_err(|e| match e {
-                WorkflowInteractionError::NotFound(_) => Error::NotFound,
-                other => Error::Other(other.into()),
-            })
-    }
-
-    pub(crate) async fn send(&self, message: Message) -> Result<(), Error> {
-        self.inner
-            .signal(
-                SessionWorkflow::send,
-                message,
-                WorkflowSignalOptions::default(),
-            )
-            .await
-            .map_err(|e| Error::Other(e.into()))
-    }
-
-    pub(crate) async fn clear_pending(&self) -> Result<Vec<Message>, Error> {
-        self.inner
-            .execute_update(
-                SessionWorkflow::clear_pending,
-                (),
-                WorkflowExecuteUpdateOptions::default(),
-            )
-            .await
-            .map_err(|e| Error::Other(e.into()))
-    }
-
-    pub(crate) async fn events_after(&self, offset: usize) -> Result<Vec<Event>, Error> {
-        let closed = async {
-            self.inner
-                .get_result(WorkflowGetResultOptions::default())
-                .await
-                .map_err(result_error)?;
-            Ok(Vec::new())
-        };
-        tokio::pin!(closed);
-        tokio::select! {
-            result = &mut closed => result,
-            events = self.inner.execute_update(SessionWorkflow::events_after, offset, WorkflowExecuteUpdateOptions::default()) => {
-                match events { Ok(events) => Ok(events), Err(_) => closed.await }
-            }
-        }
-    }
-}
-
-/// Walks the error chain to the innermost message, which is the one the user wrote.
-fn root_message(err: &dyn std::error::Error) -> String {
-    let mut cur = err;
-    while let Some(next) = cur.source() {
-        cur = next;
-    }
-    cur.to_string()
-}
-
-fn result_error(error: WorkflowGetResultError) -> Error {
-    match error {
-        WorkflowGetResultError::Cancelled { .. } => Error::Cancelled,
-        WorkflowGetResultError::NotFound(_) => Error::NotFound,
-        other if other.is_workflow_outcome() => Error::RunFailed(root_message(&other)),
-        other => Error::Connection(root_message(&other)),
-    }
 }

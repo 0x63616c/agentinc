@@ -9,10 +9,6 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "gpui-pilot"
-path = "src/main.rs"
-
 [dependencies]
 gpui-pilot = { path = "../gpui-pilot" }
 serde_json = "1"

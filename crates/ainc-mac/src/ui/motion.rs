@@ -29,6 +29,17 @@ pub fn focus_visible() -> bool {
     FOCUS_VISIBLE.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Linear blend between two already-blended colors.
+pub fn mix(from: Rgba, to: Rgba, t: f32) -> Rgba {
+    let t = t.clamp(0., 1.);
+    Rgba {
+        r: from.r + (to.r - from.r) * t,
+        g: from.g + (to.g - from.g) * t,
+        b: from.b + (to.b - from.b) * t,
+        a: 1.,
+    }
+}
+
 /// Linear blend between two opaque colors, used to fade hover surfaces.
 pub fn blend(from: u32, to: u32, t: f32) -> Rgba {
     let t = t.clamp(0., 1.);
@@ -40,14 +51,36 @@ pub fn blend(from: u32, to: u32, t: f32) -> Rgba {
     rgb((channel(16) << 16) | (channel(8) << 8) | channel(0))
 }
 
-/// A view that owns hover fades for the buttons it renders.
-pub trait HoverHost: 'static {
-    fn hover_fade(&mut self) -> &mut HoverFade;
+/// What every component builder takes: the window, the view context and,
+/// behind them, the one hover store. Hosts build one per render and pass it
+/// down; nothing about hover reaches them.
+pub struct Ui<'a, 'b, V: 'static> {
+    pub window: &'a mut Window,
+    pub cx: &'a mut Context<'b, V>,
+}
+impl<'a, 'b, V: 'static> Ui<'a, 'b, V> {
+    pub fn new(window: &'a mut Window, cx: &'a mut Context<'b, V>) -> Self {
+        HoverFade::animate(window);
+        Self { window, cx }
+    }
+    /// The hover amount for `id` plus the listener that drives it: every
+    /// hover-faded control is built from this one pair.
+    pub fn hover(
+        &mut self,
+        id: &ElementId,
+        enabled: bool,
+    ) -> (f32, impl Fn(&bool, &mut Window, &mut App) + 'static) {
+        HoverFade::track(id, enabled, self.cx)
+    }
 }
 
 /// Small, interruptible hover fades shared by every control with a hover look.
+/// One store serves the single app window and every page entity rendered in it.
 #[derive(Default)]
 pub struct HoverFade(std::collections::HashMap<ElementId, (std::time::Instant, f32, f32)>);
+thread_local! {
+    static HOVER: std::cell::RefCell<HoverFade> = std::cell::RefCell::new(HoverFade::default());
+}
 impl HoverFade {
     fn value(entry: &(std::time::Instant, f32, f32)) -> f32 {
         let t = if reduced_motion() {
@@ -57,7 +90,7 @@ impl HoverFade {
         };
         entry.1 + (entry.2 - entry.1) * (1. - (1. - t).powi(3))
     }
-    pub fn set(&mut self, id: ElementId, hovered: bool) {
+    fn set(&mut self, id: ElementId, hovered: bool) {
         let from = self.0.get(&id).map(Self::value).unwrap_or(0.);
         self.0.insert(
             id,
@@ -69,28 +102,35 @@ impl HoverFade {
         );
     }
     /// The current hover amount for a control, from 0 (rest) to 1 (hovered).
-    pub fn progress(&self, id: &ElementId) -> f32 {
+    fn progress(&self, id: &ElementId) -> f32 {
         self.0.get(id).map(Self::value).unwrap_or(0.)
     }
-    /// The hover amount for `id` plus the listener that drives it. Every
-    /// hover-faded control is built from this one pair.
-    pub fn track<V: HoverHost>(
-        &self,
+    /// The one place hover is computed: the amount for `id` and the listener
+    /// that drives it, from the window's shared store.
+    fn track<V: 'static>(
         id: &ElementId,
         enabled: bool,
         cx: &mut Context<V>,
     ) -> (f32, impl Fn(&bool, &mut Window, &mut App) + 'static) {
-        let progress = if enabled { self.progress(id) } else { 0. };
+        let progress = if enabled {
+            HOVER.with(|fade| fade.borrow().progress(id))
+        } else {
+            0.
+        };
         let hover_id = id.clone();
-        let listener = cx.listener(move |view: &mut V, over: &bool, _, cx| {
+        let listener = cx.listener(move |_: &mut V, over: &bool, _, cx| {
             if enabled {
-                view.hover_fade().set(hover_id.clone(), *over);
+                HOVER.with(|fade| fade.borrow_mut().set(hover_id.clone(), *over));
                 cx.notify();
             }
         });
         (progress, listener)
     }
-    pub fn animate(&mut self, window: &mut Window) {
+    /// Drop finished fades and keep the frame clock running while any is live.
+    fn animate(window: &mut Window) {
+        HOVER.with(|fade| fade.borrow_mut().step(window));
+    }
+    fn step(&mut self, window: &mut Window) {
         self.0.retain(|_, entry| {
             entry.2 > 0. || entry.0.elapsed().as_secs_f32() < HOVER_MS as f32 / 1000.
         });

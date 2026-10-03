@@ -75,10 +75,11 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
             }
         };
         if !existing {
-            let response = reqwest::Client::new()
+            let response = ainc_daemon::http_client()
+                .build()?
                 .post(format!("{url}/v1/terminal/sessions"))
                 .header("authorization", format!("Bearer {token}"))
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .json(&serde_json::json!({"id": id.to_string()}))
                 .send()
                 .await;
@@ -108,7 +109,7 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
             HeaderValue::from_str(&format!("Bearer {token}"))?,
         );
         request.headers_mut().insert(
-            "agent-inc-client",
+            ainc_release::CLIENT_HEADER,
             HeaderValue::from_str(&ainc_release::client_header())?,
         );
         let socket = connect_async(request).await;
@@ -161,10 +162,11 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
 
 pub async fn close(id: Uuid) -> Result<()> {
     let (url, token) = connection()?;
-    reqwest::Client::new()
+    ainc_daemon::http_client()
+        .build()?
         .delete(format!("{url}/v1/terminal/sessions/{id}"))
         .header("authorization", format!("Bearer {token}"))
-        .header("agent-inc-client", ainc_release::client_header())
+        .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
         .send()
         .await?
         .error_for_status()?;

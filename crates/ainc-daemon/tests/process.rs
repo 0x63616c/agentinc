@@ -1,6 +1,6 @@
 //! Real ain cd processes, Postgres, SDK service and loopback Responses fixtures.
 //! No user's profile, repository or subscription is touched.
-use ainc_daemon::product::{Acknowledgement, Command, CommandRequest};
+use ainc_daemon::product::{Command, CommandReceipt, CommandRequest};
 use axum::{Json, Router, extract::State, routing::post};
 use serde_json::{Value, json};
 use sqlx::{ConnectOptions, PgPool, postgres::PgListener};
@@ -79,8 +79,8 @@ impl Stack {
                 "AINC_RUNTIME_CONFIG",
                 serde_json::to_string(&self.server.config()).unwrap(),
             )
-            .env("AGENTINC_CODEX_HOME", self.dir.path().join("codex-home"))
-            .env("AGENTINC_CODEX_PATH", env!("CARGO_BIN_EXE_codex-fixture"))
+            .env("AINC_CODEX_HOME", self.dir.path().join("codex-home"))
+            .env("AINC_CODEX_PATH", env!("CARGO_BIN_EXE_codex-fixture"))
             .env("AINC_TEST_RESPONSES_URL", &self.url)
             .env("RUST_LOG", "info")
             .stdout(Stdio::piped())
@@ -95,7 +95,7 @@ impl Stack {
                 .await
                 .unwrap()
                 .expect("daemon exited before ready");
-            if line.contains("AgentInc daemon ready") {
+            if line.contains(ainc_release::DAEMON_READY) {
                 break;
             }
         }
@@ -111,11 +111,11 @@ impl Stack {
             format!("Bearer {}", token.trim()).parse().unwrap(),
         );
         headers.insert(
-            "agent-inc-client",
+            ainc_release::CLIENT_HEADER,
             ainc_release::client_header().parse().unwrap(),
         );
         (
-            reqwest::Client::builder()
+            ainc_daemon::http_client()
                 .default_headers(headers)
                 .build()
                 .unwrap(),
@@ -130,7 +130,7 @@ impl Stack {
         self.server.shutdown().await.unwrap();
     }
 }
-async fn command(client: &reqwest::Client, url: &str, command: Command) -> Acknowledgement {
+async fn command(client: &reqwest::Client, url: &str, command: Command) -> CommandReceipt {
     client
         .post(format!("{url}/v1/commands"))
         .json(&CommandRequest {
@@ -157,7 +157,10 @@ async fn daemon_finishes_reply_after_http_client_exits(pool: PgPool) {
         .result_id
         .unwrap();
     let mut results = PgListener::connect_with(&pool).await.unwrap();
-    results.listen("agentinc_results").await.unwrap();
+    results
+        .listen(ainc_daemon::pg::coordination::RESULTS)
+        .await
+        .unwrap();
     let accepted = command(
         &client,
         &url,
@@ -216,7 +219,10 @@ async fn killed_daemon_recovers_accepted_conversation_in_a_new_process(pool: PgP
         .result_id
         .unwrap();
     let mut results = PgListener::connect_with(&pool).await.unwrap();
-    results.listen("agentinc_results").await.unwrap();
+    results
+        .listen(ainc_daemon::pg::coordination::RESULTS)
+        .await
+        .unwrap();
     let accepted = command(
         &client,
         &url,
@@ -313,7 +319,10 @@ async fn killed_ticket_worker_reconciles_dispatch_and_projects_one_result(pool: 
     .result_id
     .unwrap();
     let mut results = PgListener::connect_with(&pool).await.unwrap();
-    results.listen("agentinc_results").await.unwrap();
+    results
+        .listen(ainc_daemon::pg::coordination::RESULTS)
+        .await
+        .unwrap();
     apply(
         &client,
         &url,
@@ -394,6 +403,11 @@ async fn automation_schedule_survives_daemon_death_and_deduplicates_ticket(pool:
         .fetch_one(&pool)
         .await
         .unwrap();
+    let mut applied = PgListener::connect_with(&pool).await.unwrap();
+    applied
+        .listen(ainc_daemon::pg::coordination::AUTOMATIONS_APPLIED)
+        .await
+        .unwrap();
     let receipt: AutomationReceipt = client
         .post(format!("{url}/v1/automations/commands"))
         .json(&AutomationRequest {
@@ -418,16 +432,16 @@ async fn automation_schedule_survives_daemon_death_and_deduplicates_ticket(pool:
         .await
         .unwrap();
     loop {
-        let applied: bool =
+        let is_applied: bool =
             sqlx::query_scalar("SELECT revision=applied_revision FROM automations WHERE id=$1")
                 .bind(&receipt.result_id)
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        if applied {
+        if is_applied {
             break;
         }
-        tokio::task::yield_now().await;
+        applied.recv().await.unwrap();
     }
     daemon.kill().await.unwrap();
     daemon.wait().await.unwrap();
@@ -448,7 +462,10 @@ async fn automation_schedule_survives_daemon_death_and_deduplicates_ticket(pool:
         .unwrap();
     let _ = release.send(());
     let mut results = PgListener::connect_with(&pool).await.unwrap();
-    results.listen("agentinc_results").await.unwrap();
+    results
+        .listen(ainc_daemon::pg::coordination::RESULTS)
+        .await
+        .unwrap();
     let mut final_worker = stack.daemon(&pool).await;
     loop {
         let finished: bool =

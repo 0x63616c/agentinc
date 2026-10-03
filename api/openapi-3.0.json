@@ -1,22 +1,38 @@
 {
   "components": {
-    "schemas": {
-      "Acknowledgement": {
-        "properties": {
-          "operation_id": {
-            "type": "string"
-          },
-          "result_id": {
-            "format": "int64",
-            "nullable": true,
-            "type": "integer"
+    "responses": {
+      "Internal": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
           }
         },
-        "required": [
-          "operation_id"
-        ],
-        "type": "object"
+        "description": "The daemon failed; see its log."
       },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        },
+        "description": "Owner credential required."
+      },
+      "UpgradeRequired": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        },
+        "description": "Update to continue."
+      }
+    },
+    "schemas": {
       "ActivityKind": {
         "enum": [
           "created",
@@ -463,6 +479,22 @@
           }
         ]
       },
+      "CommandReceipt": {
+        "properties": {
+          "operation_id": {
+            "type": "string"
+          },
+          "result_id": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation_id"
+        ],
+        "type": "object"
+      },
       "CommandRequest": {
         "properties": {
           "command": {
@@ -551,9 +583,6 @@
           "title": {
             "type": "string"
           },
-          "updated": {
-            "type": "string"
-          },
           "updated_at": {
             "format": "int64",
             "type": "integer"
@@ -563,8 +592,202 @@
           "id",
           "title",
           "snippet",
-          "updated",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "ConversationCommand": {
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "create"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "rename"
+                ],
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "delete"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "select"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "conversation_id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "send"
+                ],
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "prompt",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "retry"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "select_model"
+                ],
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "model",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ConversationCommandRequest": {
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/ConversationCommand"
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "command"
+        ],
+        "type": "object"
+      },
+      "ConversationReceipt": {
+        "properties": {
+          "operation_id": {
+            "type": "string"
+          },
+          "result_id": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation_id"
+        ],
+        "type": "object"
+      },
+      "ConversationSnapshot": {
+        "properties": {
+          "conversations": {
+            "items": {
+              "$ref": "#/components/schemas/Conversation"
+            },
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversations",
+          "turns",
+          "settings"
         ],
         "type": "object"
       },
@@ -580,9 +803,10 @@
         "type": "object"
       },
       "ErrorBody": {
+        "description": "The one shape every non-2xx response has.",
         "properties": {
           "code": {
-            "type": "string"
+            "$ref": "#/components/schemas/ErrorCode"
           },
           "message": {
             "type": "string"
@@ -594,64 +818,19 @@
         ],
         "type": "object"
       },
-      "ExecutionPage": {
-        "properties": {
-          "executions": {
-            "items": {
-              "$ref": "#/components/schemas/ExecutionView"
-            },
-            "type": "array"
-          },
-          "next_page": {
-            "nullable": true,
-            "type": "string"
-          },
-          "ui_available": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "executions",
-          "ui_available"
+      "ErrorCode": {
+        "description": "The closed set of error codes a client can switch on.",
+        "enum": [
+          "invalid",
+          "conflict",
+          "unauthorized",
+          "forbidden",
+          "not_found",
+          "unavailable",
+          "internal",
+          "upgrade_required"
         ],
-        "type": "object"
-      },
-      "ExecutionView": {
-        "properties": {
-          "closed_at": {
-            "format": "int64",
-            "nullable": true,
-            "type": "integer"
-          },
-          "run_id": {
-            "type": "string"
-          },
-          "started_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          },
-          "url": {
-            "nullable": true,
-            "type": "string"
-          },
-          "workflow_id": {
-            "type": "string"
-          },
-          "workflow_type": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workflow_id",
-          "run_id",
-          "workflow_type",
-          "status",
-          "started_at"
-        ],
-        "type": "object"
+        "type": "string"
       },
       "Health": {
         "properties": {
@@ -1395,17 +1574,6 @@
         ],
         "type": "object"
       },
-      "TicketContract": {
-        "properties": {
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "type": "object"
-      },
       "TicketLink": {
         "properties": {
           "from_id": {
@@ -1598,6 +1766,32 @@
         ],
         "type": "object"
       },
+      "WorkKind": {
+        "enum": [
+          "run",
+          "session",
+          "occurrence"
+        ],
+        "type": "string"
+      },
+      "WorkPage": {
+        "properties": {
+          "next_page": {
+            "nullable": true,
+            "type": "string"
+          },
+          "work": {
+            "items": {
+              "$ref": "#/components/schemas/WorkView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "work"
+        ],
+        "type": "object"
+      },
       "WorkRun": {
         "properties": {
           "error": {
@@ -1624,6 +1818,46 @@
           "ticket_id",
           "generation",
           "state"
+        ],
+        "type": "object"
+      },
+      "WorkStatus": {
+        "enum": [
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
+      "WorkView": {
+        "properties": {
+          "closed_at": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "id": {
+            "description": "The run, session or occurrence ID.",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WorkKind"
+          },
+          "started_at": {
+            "description": "Milliseconds since the Unix epoch.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkStatus"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "started_at"
         ],
         "type": "object"
       },
@@ -1746,7 +1980,7 @@
         ],
         "type": "object"
       },
-      "WorkspaceState": {
+      "WorkspaceSnapshot": {
         "properties": {
           "current_id": {
             "type": "string"
@@ -1790,8 +2024,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/health/ready": {
@@ -1809,10 +2042,16 @@
             "description": ""
           },
           "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/automations": {
@@ -1830,29 +2069,15 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "automations"
-        ]
+        }
       }
     },
     "/v1/automations/commands": {
@@ -1890,6 +2115,19 @@
             "description": ""
           },
           "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1909,24 +2147,18 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "automations"
-        ]
+        }
       }
     },
     "/v1/commands": {
       "post": {
+        "deprecated": true,
         "operationId": "product_command",
         "requestBody": {
           "content": {
@@ -1943,7 +2175,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Acknowledgement"
+                  "$ref": "#/components/schemas/CommandReceipt"
                 }
               }
             },
@@ -1960,6 +2192,9 @@
             "description": ""
           },
           "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1979,20 +2214,14 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
         },
-        "tags": [
-          "product"
-        ]
+        "summary": "Deprecated: send Conversation commands to `/v1/conversations/commands` and Ticket\ncommands to `/v1/tickets/commands`. Removed in a later release."
       }
     },
     "/v1/connection": {
@@ -2010,14 +2239,13 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           },
           "503": {
             "content": {
@@ -2029,8 +2257,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/connection/cancel": {
@@ -2048,14 +2275,13 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           },
           "503": {
             "content": {
@@ -2067,8 +2293,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/connection/login": {
@@ -2086,14 +2311,13 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           },
           "503": {
             "content": {
@@ -2105,8 +2329,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/connection/logout": {
@@ -2124,6 +2347,101 @@
             "description": ""
           },
           "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/v1/conversations": {
+      "get": {
+        "operationId": "conversations_state",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSnapshot"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        }
+      }
+    },
+    "/v1/conversations/commands": {
+      "post": {
+        "operationId": "conversations_command",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationReceipt"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2143,22 +2461,18 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/state": {
       "get": {
+        "deprecated": true,
         "operationId": "product_state",
         "responses": {
           "200": {
@@ -2172,99 +2486,16 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
         },
-        "tags": [
-          "product"
-        ]
-      }
-    },
-    "/v1/temporal/executions": {
-      "get": {
-        "operationId": "temporal_executions",
-        "parameters": [
-          {
-            "description": "All, Running, Completed, Failed, Canceled, Terminated, TimedOut, ContinuedAsNew, or Paused",
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Opaque next-page token",
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExecutionPage"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": [
-          "temporal"
-        ]
+        "summary": "Deprecated: read `/v1/conversations` and `/v1/tickets`. Removed in a later release."
       }
     },
     "/v1/terminal/sessions": {
@@ -2285,19 +2516,15 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "terminal_sessions"
-        ]
+        }
       },
       "post": {
         "operationId": "terminal_sessions_create",
@@ -2323,14 +2550,13 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           },
           "503": {
             "content": {
@@ -2342,10 +2568,7 @@
             },
             "description": ""
           }
-        },
-        "tags": [
-          "terminal_sessions"
-        ]
+        }
       }
     },
     "/v1/terminal/sessions/{id}": {
@@ -2376,14 +2599,7 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
           },
           "404": {
             "content": {
@@ -2394,11 +2610,14 @@
               }
             },
             "description": ""
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "terminal_sessions"
-        ]
+        }
       }
     },
     "/v1/tickets": {
@@ -2415,6 +2634,9 @@
             },
             "description": ""
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "403": {
             "content": {
               "application/json": {
@@ -2425,20 +2647,13 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "tickets"
-        ]
+        }
       }
     },
     "/v1/tickets/commands": {
@@ -2475,7 +2690,20 @@
             },
             "description": ""
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2495,48 +2723,13 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": [
-          "tickets"
-        ]
-      }
-    },
-    "/v1/tickets/contract": {
-      "post": {
-        "operationId": "ticket_contract",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TicketContract"
-              }
-            }
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
           },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TicketContract"
-                }
-              }
-            },
-            "description": ""
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/tickets/{id}/activity": {
@@ -2568,6 +2761,9 @@
             },
             "description": ""
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "403": {
             "content": {
               "application/json": {
@@ -2578,6 +2774,69 @@
             },
             "description": ""
           },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "summary": "One Ticket's history, oldest first. Comments stay in the snapshot."
+      }
+    },
+    "/v1/work": {
+      "get": {
+        "operationId": "work_list",
+        "parameters": [
+          {
+            "description": "Only work in this status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/WorkStatus"
+            }
+          },
+          {
+            "description": "Opaque next-page token",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkPage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -2588,11 +2847,7 @@
             },
             "description": ""
           }
-        },
-        "summary": "One Ticket's history, oldest first. Comments stay in the snapshot.",
-        "tags": [
-          "tickets"
-        ]
+        }
       }
     },
     "/v1/workspaces": {
@@ -2603,36 +2858,22 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceState"
+                  "$ref": "#/components/schemas/WorkspaceSnapshot"
                 }
               }
             },
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "workspaces"
-        ]
+        }
       }
     },
     "/v1/workspaces/commands": {
@@ -2670,6 +2911,9 @@
             "description": ""
           },
           "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2689,25 +2933,18 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "workspaces"
-        ]
+        }
       }
     },
     "/version": {
       "get": {
-        "operationId": "get_version",
+        "operationId": "version_show",
         "responses": {
           "200": {
             "content": {
@@ -2719,8 +2956,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     }
   }

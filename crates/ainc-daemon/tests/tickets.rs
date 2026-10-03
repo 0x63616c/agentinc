@@ -30,7 +30,7 @@ async fn command(app: &Router, token: &str, request: &Request) -> (StatusCode, V
         .clone()
         .oneshot(
             HttpRequest::post("/v1/tickets/commands")
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .header("authorization", format!("Bearer {token}"))
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(request).unwrap()))
@@ -53,7 +53,7 @@ async fn snapshot(app: &Router, token: &str) -> (StatusCode, Value) {
         .clone()
         .oneshot(
             HttpRequest::get("/v1/tickets")
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
@@ -299,7 +299,7 @@ async fn owner_cannot_read_or_write_another_workspace(pool: PgPool) {
         )
         .await
         .0,
-        StatusCode::FORBIDDEN
+        StatusCode::NOT_FOUND
     );
     assert_eq!(
         command(
@@ -311,7 +311,7 @@ async fn owner_cannot_read_or_write_another_workspace(pool: PgPool) {
         )
         .await
         .0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
     assert_eq!(
         sqlx::query_scalar::<_, String>("SELECT title FROM tickets WHERE id=$1")
@@ -401,7 +401,7 @@ async fn deletion_uses_a_receipt_and_preserves_inspectable_run_history(pool: PgP
     });
     assert_eq!(
         command(&app, &token, &deletion).await.0,
-        StatusCode::FORBIDDEN
+        StatusCode::UNAUTHORIZED
     );
     assert_eq!(
         command(&app, "owner-fixture", &deletion).await.0,
@@ -439,7 +439,7 @@ async fn activity(app: &Router, token: &str, id: i64) -> (StatusCode, Value) {
         .clone()
         .oneshot(
             HttpRequest::get(format!("/v1/tickets/{id}/activity"))
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
@@ -902,7 +902,7 @@ async fn links_stay_inside_one_workspace(pool: PgPool) {
     });
     assert_eq!(
         command(&app, "owner-fixture", &escape).await.0,
-        StatusCode::FORBIDDEN
+        StatusCode::NOT_FOUND
     );
     assert_eq!(
         activity(&app, "owner-fixture", foreign).await.1,
@@ -1240,7 +1240,7 @@ async fn a_malformed_operation_id_is_refused_with_one_code(pool: PgPool) {
     };
     let (status, body) = command(&app, "owner-fixture", &bad).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert_eq!(body["code"], "invalid_operation");
+    assert_eq!(body["code"], "invalid");
     let (status, body) = snapshot(&app, "owner-fixture").await;
     assert_eq!(status, StatusCode::OK);
     assert!(body["tickets"].as_array().unwrap().is_empty());

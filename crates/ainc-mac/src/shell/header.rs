@@ -1,26 +1,31 @@
+//! The shell header: the current Page tab and its contour, with the header controls.
 use super::*;
 
 // One continuous contour avoids vertical border tails at the inverse shoulders.
-// The current space label is 142px wide; its shoulders meet the panel border.
-pub fn current_space_contour() -> impl IntoElement {
+// The current Page tab is `TAB_WIDTH` wide; its shoulders meet the panel border.
+pub fn current_page_contour() -> impl IntoElement {
     canvas(
         |_, _, _| (),
         move |bounds, _, window, _| {
             let p = |x: f32, y: f32| bounds.origin + point(px(x), px(y));
+            let (w, h) = (TAB_CONTOUR_WIDTH, TAB_FACE_HEIGHT);
+            let (s, r) = (TAB_CONTOUR_SHOULDER, TAB_RADIUS);
+            // Bezier handles: a third of a shoulder, and the circle constant on the corner.
+            let (third, k) = (s / 3., r * 0.4477);
             let contour = |path: &mut PathBuilder| {
-                path.move_to(p(0., 38.));
-                path.cubic_bezier_to(p(12., 26.), p(8., 38.), p(12., 34.));
-                path.line_to(p(12., 10.));
-                path.cubic_bezier_to(p(22., 0.), p(12., 4.477), p(16.477, 0.));
-                path.line_to(p(144., 0.));
-                path.cubic_bezier_to(p(154., 10.), p(149.523, 0.), p(154., 4.477));
-                path.line_to(p(154., 26.));
-                path.cubic_bezier_to(p(166., 38.), p(154., 34.), p(158., 38.));
+                path.move_to(p(0., h));
+                path.cubic_bezier_to(p(s, h - s), p(s - third, h), p(s, h - third));
+                path.line_to(p(s, r));
+                path.cubic_bezier_to(p(s + r, 0.), p(s, k), p(s + k, 0.));
+                path.line_to(p(w - s - r, 0.));
+                path.cubic_bezier_to(p(w - s, r), p(w - s - k, 0.), p(w - s, k));
+                path.line_to(p(w - s, h - s));
+                path.cubic_bezier_to(p(w, h), p(w - s, h - third), p(w - s + third, h));
             };
             let mut fill = PathBuilder::fill();
             contour(&mut fill);
-            fill.line_to(p(166., 40.));
-            fill.line_to(p(0., 40.));
+            fill.line_to(p(w, TAB_HEIGHT));
+            fill.line_to(p(0., TAB_HEIGHT));
             fill.close();
             if let Ok(path) = fill.build() {
                 window.paint_path(path, rgb(SURFACE));
@@ -34,13 +39,81 @@ pub fn current_space_contour() -> impl IntoElement {
     )
     .absolute()
     .top_0()
-    .left(px(-12.))
-    .w(px(166.))
-    .h(px(40.))
+    .left(px(-TAB_CONTOUR_SHOULDER))
+    .w(px(TAB_CONTOUR_WIDTH))
+    .h(px(TAB_HEIGHT))
 }
 
 impl Shell {
-    fn titlebar_space(&self, id: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
+    /// A bare ghost control with the shared contract and hover fade; callers
+    /// compose its children. Labeled buttons use `ui::Button`.
+    pub(super) fn button(
+        &self,
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        control: Control,
+        ui: &mut Ui<Self>,
+    ) -> Stateful<Div> {
+        let id = id.into();
+        let label: SharedString = label.into();
+        let spoken: SharedString = label
+            .split(" · ")
+            .next()
+            .unwrap_or(&label)
+            .to_owned()
+            .into();
+        let click_control = control.clone();
+        let (progress, on_hover) = ui.hover(&id, true);
+        let button = action_button(
+            ButtonSpec {
+                id,
+                label: spoken,
+                enabled: true,
+            },
+            |button| {
+                button
+                    .gap(px(CONTROL_GAP))
+                    .bg(blend(SHELL, HOVER, progress))
+                    .on_hover(on_hover)
+                    .hover(|s| s.text_color(rgb(TEXT)))
+            },
+            move |this: &mut Self, window, cx| this.dispatch(click_control.clone(), window, cx),
+            ui.cx,
+        );
+        match &control {
+            Control::Sidebar => {
+                button
+                    .role(accesskit::Role::Switch)
+                    .aria_toggled(if self.ui_state.sidebar.open {
+                        accesskit::Toggled::True
+                    } else {
+                        accesskit::Toggled::False
+                    })
+            }
+            _ => button,
+        }
+    }
+    pub(super) fn icon_button(
+        &self,
+        id: &'static str,
+        label: impl Into<SharedString>,
+        name: Icon,
+        control: Control,
+        ui: &mut Ui<Self>,
+    ) -> Stateful<Div> {
+        self.button(id, label, control, ui)
+            .debug_selector(move || id.into())
+            .size(px(HEADER_CONTROL))
+            .justify_center()
+            .child(
+                row()
+                    .size(px(HEADER_ICON_SIZE))
+                    .justify_center()
+                    .debug_selector(move || format!("{id}.glyph"))
+                    .child(icon(name, HEADER_ICON_SIZE)),
+            )
+    }
+    fn titlebar_space(&self, id: &'static str, ui: &mut Ui<Self>) -> Stateful<Div> {
         div()
             .id(id)
             .debug_selector(move || id.into())
@@ -51,24 +124,17 @@ impl Shell {
                     window.start_window_move();
                 }
             })
-            .on_click(cx.listener(|_this, event: &ClickEvent, window, _| {
+            .on_click(ui.cx.listener(|_this, event: &ClickEvent, window, _| {
                 if event.click_count() == 2 {
                     #[cfg(test)]
-                    {
-                        _this.titlebar_zoom_requests += 1;
-                    }
+                    TITLEBAR_ZOOMS.with(|zooms| zooms.set(zooms.get() + 1));
                     window.titlebar_double_click();
                 }
             }))
     }
 
-    pub(super) fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let route = self.session.current();
-        let unread = self
-            .notification_items
-            .iter()
-            .filter(|item| item.unread)
-            .count();
+    pub(super) fn header(&self, ui: &mut Ui<Self>) -> impl IntoElement {
+        let route = self.ui_state.current();
         row()
             .h(px(TITLEBAR_HEIGHT))
             .flex_shrink_0()
@@ -76,36 +142,36 @@ impl Shell {
             .pr(px(HEADER_EDGE_INSET))
             .child(
                 row()
-                    .w(px(self.session.panes[pane::Side::Left.index()].width + 60.))
+                    .w(px(self.ui_state.sidebar.width + HEADER_LEFT_EXTRA))
                     .h_full()
                     .flex_shrink_0()
                     .justify_end()
-                    .pr(px(9.))
-                    .child(self.titlebar_space("titlebar-left-space", cx).flex_1())
+                    .pr(px(HEADER_CONTROLS_INSET))
+                    .child(self.titlebar_space("titlebar-left-space", ui).flex_1())
                     .child(self.icon_button(
                         "sidebar",
                         shortcuts::TOGGLE_SIDEBAR.labelled("Toggle sidebar"),
-                        "panel",
+                        Icon::Panel,
                         Control::Sidebar,
-                        cx,
+                        ui,
                     ))
                     .children([false, true].map(|forward| {
                         let name = if forward {
-                            "chevronRight"
+                            Icon::ChevronRight
                         } else {
-                            "chevronLeft"
+                            Icon::ChevronLeft
                         };
-                        if self.session.can_go(forward) {
+                        if self.ui_state.can_go(forward) {
                             self.icon_button(
                                 if forward { "forward" } else { "back" },
-                                name,
+                                if forward { "Forward" } else { "Back" },
                                 name,
                                 if forward {
                                     Control::Forward
                                 } else {
                                     Control::Back
                                 },
-                                cx,
+                                ui,
                             )
                             .into_any_element()
                         } else {
@@ -119,57 +185,41 @@ impl Shell {
                     })),
             )
             .child(
-                row().relative().mb(px(-2.)).w(px(170.)).h(px(42.)).child(
-                    row()
-                        .absolute()
-                        .left(px(14.))
-                        .bottom_0()
-                        .w(px(142.))
-                        .h(px(40.))
-                        .rounded_t(px(10.))
-                        .child(current_space_contour())
-                        .child(
-                            // The tab's visible face is its top 38px; centre the label in it.
-                            row()
-                                .h_full()
-                                .items_center()
-                                .pb(px(2.))
-                                .pl(px(14.))
-                                .gap(px(7.))
-                                .text_size(type_size(LABEL_SIZE))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(icon(route.icon(), 14.))
-                                .child(route.label()),
-                        ),
-                ),
-            )
-            .child(self.titlebar_space("titlebar-center-space", cx).flex_1())
-            .child(
-                div()
+                row()
                     .relative()
-                    .flex_shrink_0()
-                    .ml(px(CONTROL_GAP))
-                    .mb(px(9.))
-                    .child(self.icon_button(
-                        "notifications",
-                        "Notifications",
-                        "bell",
-                        Control::Notifications,
-                        cx,
-                    ))
-                    .when(unread > 0, |s| {
-                        s.child(
-                            div()
-                                .absolute()
-                                .top(px(4.))
-                                .right(px(4.))
-                                .size(px(7.))
-                                .rounded_full()
-                                .border_1()
-                                .border_color(rgb(SHELL))
-                                .bg(rgb(ACCENT)),
-                        )
-                    }),
+                    .mb(px(-TAB_SLOT_SINK))
+                    .w(px(TAB_SLOT_WIDTH))
+                    .h(px(TAB_SLOT_HEIGHT))
+                    .child(
+                        row()
+                            .absolute()
+                            .left(px(TAB_LABEL_INSET))
+                            .bottom_0()
+                            .w(px(TAB_WIDTH))
+                            .h(px(TAB_HEIGHT))
+                            .rounded_t(px(TAB_RADIUS))
+                            .child(current_page_contour())
+                            .child(
+                                // The tab's visible face is its top `TAB_FACE_HEIGHT`; centre the label in it.
+                                row()
+                                    .h_full()
+                                    .items_center()
+                                    .pb(px(TAB_LABEL_LIFT))
+                                    .pl(px(TAB_LABEL_INSET))
+                                    .gap(px(TAB_LABEL_GAP))
+                                    .text_size(type_size(LABEL_SIZE))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(icon(route.icon(), TAB_ICON_SIZE))
+                                    .child(route.label()),
+                            ),
+                    ),
             )
+            .child(self.titlebar_space("titlebar-center-space", ui).flex_1())
     }
+}
+
+// Zoom requests so far on this thread; the test platform cannot observe the real zoom.
+#[cfg(test)]
+thread_local! {
+    pub(super) static TITLEBAR_ZOOMS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }

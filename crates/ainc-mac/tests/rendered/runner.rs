@@ -1,13 +1,15 @@
-use crate::ui;
-use crate::ui::{
+use ainc_mac::ui;
+use ainc_mac::ui::{
     CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, SETTINGS_INSET, SETTINGS_ROW_HEIGHT, SPACE_2, SPACE_3,
-    STATUS_BAR_HEIGHT, STATUS_BAR_X, TITLE_OPTICAL_LIFT, type_size,
+    STATUS_BAR_HEIGHT, STATUS_BAR_X, TITLE_OPTICAL_LIFT,
 };
-use crate::{
+use ainc_mac::{
     input,
-    model::{FontSize, Overlay, PANE_WIDTHS, Route, Session},
+    overlay::Overlay,
+    routes::Route,
     shell::{self, Shell},
     ui::Assets,
+    ui_state::{FontSize, UiState},
 };
 use anyhow::{Result, ensure};
 use gpui::prelude::*;
@@ -282,7 +284,7 @@ impl Suite {
         );
         let probes = self.probes(
             width,
-            overlay.is_some_and(|o| o == Overlay::Search || o.is_dialog()),
+            overlay.is_some_and(|o| o == Overlay::GoTo || o.is_dialog()),
         )?;
         check_pixels(image.as_raw(), image.width(), scale, &probes)
             .map_err(|e| anyhow::anyhow!("{name}: {e}"))?;
@@ -322,7 +324,7 @@ impl Suite {
             self.check_button_icon_order("automations.create.empty", true)?;
         }
         if name == "assistant-conversation-list" {
-            self.check_button_icon_order("new-chat", true)?;
+            self.check_button_icon_order("new-conversation", true)?;
         }
         if name == "ticket-create-dialog" {
             self.check_button_icon_order("tickets.labels.open", true)?;
@@ -657,7 +659,6 @@ fn release(suite: &mut Suite, position: Point<Pixels>) {
 /// The board, a real pointer drag between and within lanes, filters, the
 /// list, a rich detail, its menus and dialogs, and ⌘K Tickets.
 fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
-    use crate::tickets::Menu;
     use ainc_client::types::TicketStatus;
     let page = suite
         .window
@@ -784,7 +785,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     );
     // Filters, then the list over the same Tickets.
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::FilterPriority), cx)
+        page.fixture_menu(Some("tickets.filter.priority"), cx)
     });
     suite.capture("tickets-filter-menu", Route::Tickets, None, false)?;
     suite.bounds("tickets.filter.priority.menu")?;
@@ -814,17 +815,17 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.bounds("tickets.timeline")?;
     suite.bounds("tickets.description.text")?;
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::Assignee), cx)
+        page.fixture_menu(Some("tickets.detail.assignee"), cx)
     });
     suite.capture("ticket-assignee-photo-menu", Route::Tickets, None, false)?;
     suite.check_assignee_photo("tickets.detail.assignee.option.0", true)?;
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::Status), cx)
+        page.fixture_menu(Some("tickets.detail.status"), cx)
     });
     suite.capture("ticket-status-menu", Route::Tickets, None, false)?;
     suite.bounds("tickets.detail.status.menu")?;
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::Labels), cx)
+        page.fixture_menu(Some("tickets.labels"), cx)
     });
     suite.capture("ticket-labels-menu", Route::Tickets, None, false)?;
     suite.bounds("tickets.labels.menu")?;
@@ -834,7 +835,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-link-dialog-empty",
         Route::Tickets,
-        Some(Overlay::LinkTicket(budget)),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.cx.simulate_input(window.into(), "dentist");
@@ -842,7 +843,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-link-dialog",
         Route::Tickets,
-        Some(Overlay::LinkTicket(budget)),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.bounds("tickets.link.candidates")?;
@@ -850,7 +851,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.settle()?;
     let related = page.read_with(&suite.cx, |page, _| page.fixture_relations(budget));
     ensure!(
-        related.contains(&(crate::tickets::model::Relation::BlockedBy, dentist)),
+        related.contains(&(ainc_mac::tickets::model::Relation::BlockedBy, dentist)),
         "the chosen Ticket becomes a blocker, got {related:?}"
     );
     suite.click_selector("tickets.back")?;
@@ -865,7 +866,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-create-dialog",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.check_assignee_photo("tickets.draft.assignee", true)?;
@@ -877,7 +878,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-create-label-menu",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.check_label_menu_anchor()?;
@@ -898,7 +899,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-create-assignee-fallback",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.bounds("tickets.draft.assignee.option.0")?;
@@ -907,12 +908,12 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     page.update(&mut suite.cx, |page, cx| page.fixture_menu(None, cx));
     suite.click_selector("Title.input")?;
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::DraftStatus), cx)
+        page.fixture_menu(Some("tickets.draft.status"), cx)
     });
     suite.capture(
         "ticket-create-status-menu",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.bounds("tickets.draft.status.option.3")?;
@@ -934,7 +935,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "palette-ticket-search",
         Route::Tickets,
-        Some(Overlay::Search),
+        Some(Overlay::GoTo),
         false,
     )?;
     suite.bounds(&format!("palette.result.tickets.goto-ticket.{dentist}"))?;
@@ -947,7 +948,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "palette-new-ticket",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.keys("escape");
@@ -960,13 +961,13 @@ pub fn run() -> Result<()> {
     let temporary = tempfile::tempdir()?;
     let session_path = temporary.path().join("session.json");
     let small_session_path = temporary.path().join("small-session.json");
-    if std::env::var_os("AGENTINC_RENDER_LARGER").is_some() {
-        let mut session = Session::default();
-        session.font_size = FontSize::Larger;
-        session.save(&session_path)?;
-        session.save(&small_session_path)?;
+    if std::env::var_os("AINC_RENDER_LARGER").is_some() {
+        let mut ui_state = UiState::default();
+        ui_state.font_size = FontSize::Larger;
+        ui_state.save(&session_path)?;
+        ui_state.save(&small_session_path)?;
     }
-    let output = std::env::var_os("AGENTINC_RENDER_OUTPUT")
+    let output = std::env::var_os("AINC_RENDER_OUTPUT")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("target/rendered-shell"));
     std::fs::create_dir_all(&output)?;
@@ -1033,7 +1034,7 @@ pub fn run() -> Result<()> {
         None::<MouseButton>,
         Modifiers::default(),
     );
-    // The user menu, its Support submenu, notifications and toasts.
+    // The user menu, its Support submenu, the signed-out Assistant and toasts.
     suite.click_selector("sidebar-profile")?;
     suite.capture(
         "user-menu",
@@ -1100,18 +1101,13 @@ pub fn run() -> Result<()> {
     }
     suite.keys("escape");
     suite.capture("user-menu-closed", Route::Assistant, None, false)?;
+    // The Conversation view before ChatGPT is connected: one empty state, one action.
     suite.window.update(&mut suite.cx, |shell, _, cx| {
-        shell.fixture_notifications(cx);
+        shell.fixture_signed_out(cx);
     })?;
-    suite.click_selector("notifications")?;
-    suite.capture(
-        "notifications",
-        Route::Assistant,
-        Some(Overlay::Notifications),
-        false,
-    )?;
-    suite.bounds("notifications.panel")?;
-    suite.keys("escape");
+    suite.capture("assistant-signed-out", Route::Assistant, None, false)?;
+    suite.bounds("assistant.signed-out")?;
+    suite.click_selector("back-to-conversations")?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_toast(cx);
     })?;
@@ -1130,80 +1126,70 @@ pub fn run() -> Result<()> {
         "dismissed toasts must leave the shell"
     );
     let now = chrono::Utc::now().timestamp_millis();
-    let execution = |workflow_type: &str,
-                     workflow_id: &str,
-                     run_id: &str,
-                     status: &str,
+    use ainc_client::types::{WorkKind, WorkStatus};
+    let execution = |kind: WorkKind,
+                     id: &str,
+                     status: WorkStatus,
                      minutes_ago: i64,
                      closed_after: Option<i64>| {
         let started_at = now - minutes_ago * 60_000;
-        ainc_client::types::ExecutionView {
-            workflow_id: workflow_id.into(),
-            run_id: run_id.into(),
-            workflow_type: workflow_type.into(),
-            status: status.into(),
+        ainc_client::types::WorkView {
+            id: id.into(),
+            kind,
+            status,
             started_at,
             closed_at: closed_after.map(|seconds| started_at + seconds * 1000),
-            url: Some(format!(
-                "http://127.0.0.1:8080/namespaces/agentinc/workflows/{workflow_id}/{run_id}/history"
-            )),
         }
     };
     let executions = vec![
         execution(
-            "agentinc.run",
+            WorkKind::Run,
             "ticket/4821:reconcile-weekly-budget-and-receipts",
-            "8a37e3d2-6a42-4918-a5d2-98fc38ea2274",
-            "Running",
+            WorkStatus::Running,
             3,
             None,
         ),
         execution(
-            "turnkeel.occurrence",
+            WorkKind::Occurrence,
             "automation/weekday-morning-review-for-the-family-and-household",
-            "175f70bd-ffb3-4c3a-9aad-90c8c979ecb1",
-            "Completed",
+            WorkStatus::Completed,
             18,
             Some(42),
         ),
         execution(
-            "agentinc.session",
+            WorkKind::Session,
             "conversation/9332",
-            "c8915b43-b5b4-4acf-8d7c-1bd9d7a5ca74",
-            "Failed",
+            WorkStatus::Failed,
             64,
             Some(14),
         ),
         execution(
-            "agentinc.run",
+            WorkKind::Run,
             "ticket/4790",
-            "264d4aaa-20ae-4050-9ff5-5822f4125c6e",
-            "Canceled",
+            WorkStatus::Cancelled,
             170,
             Some(65),
         ),
         execution(
-            "turnkeel.occurrence",
+            WorkKind::Occurrence,
             "automation/house-check",
-            "74e812df-2eac-4eea-920d-876633bef27a",
-            "TimedOut",
+            WorkStatus::Failed,
             1_460,
             Some(3_600),
         ),
     ];
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal(
-            ainc_client::types::ExecutionPage {
-                executions: executions.clone(),
+            ainc_client::types::WorkPage {
+                work: executions.clone(),
                 next_page: Some("next".into()),
-                ui_available: true,
             },
             cx,
         );
     })?;
     suite.keys("cmd-6");
     suite.capture("temporal-populated", Route::Temporal, None, false)?;
-    suite.bounds("temporal.row.8a37e3d2-6a42-4918-a5d2-98fc38ea2274")?;
+    suite.bounds("temporal.row.ticket/4821:reconcile-weekly-budget-and-receipts")?;
     let table = suite.bounds("temporal.table")?;
     let status = suite.bounds("status-bar")?;
     ensure!(
@@ -1217,10 +1203,9 @@ pub fn run() -> Result<()> {
     suite.bounds("temporal.loading")?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal(
-            ainc_client::types::ExecutionPage {
-                executions: Vec::new(),
+            ainc_client::types::WorkPage {
+                work: Vec::new(),
                 next_page: None,
-                ui_available: true,
             },
             cx,
         );
@@ -1234,10 +1219,9 @@ pub fn run() -> Result<()> {
     suite.bounds("temporal.error")?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal(
-            ainc_client::types::ExecutionPage {
-                executions: executions.clone(),
+            ainc_client::types::WorkPage {
+                work: executions.clone(),
                 next_page: Some("next".into()),
-                ui_available: true,
             },
             cx,
         );
@@ -1278,24 +1262,21 @@ pub fn run() -> Result<()> {
             );
             suite.window.update(&mut suite.cx, |shell, _, cx| {
                 shell.fixture_temporal(
-                    ainc_client::types::ExecutionPage {
-                        executions: vec![execution(
-                            "agentinc.run",
+                    ainc_client::types::WorkPage {
+                        work: vec![execution(
+                            WorkKind::Run,
                             "ticket/4821:reconcile-weekly-budget-and-receipts",
-                            "8a37e3d2-6a42-4918-a5d2-98fc38ea2274",
-                            "Running",
+                            WorkStatus::Running,
                             3,
                             None,
                         )],
                         next_page: None,
-                        ui_available: false,
                     },
                     cx,
                 );
             })?;
             suite.keys("cmd-6");
-            suite.capture("temporal-small-no-ui", Route::Temporal, None, false)?;
-            suite.bounds("temporal.no-ui")?;
+            suite.capture("temporal-small", Route::Temporal, None, false)?;
         }
         for (index, route) in [
             Route::Tickets,
@@ -1313,7 +1294,7 @@ pub fn run() -> Result<()> {
                 suite.capture(
                     &format!("ticket-field-{round}"),
                     route,
-                    Some(Overlay::AddTicket),
+                    Some(Overlay::Dialog(Route::Tickets)),
                     false,
                 )?;
                 suite.keys("escape");
@@ -1331,7 +1312,7 @@ pub fn run() -> Result<()> {
             suite.capture(
                 "search-empty",
                 Route::Automations,
-                Some(Overlay::Search),
+                Some(Overlay::GoTo),
                 false,
             )?;
             suite.bounds("palette.result.recent.page.tickets")?;
@@ -1341,7 +1322,7 @@ pub fn run() -> Result<()> {
             suite.capture(
                 "search-keyboard",
                 Route::Automations,
-                Some(Overlay::Search),
+                Some(Overlay::GoTo),
                 false,
             )?;
         }
@@ -1349,7 +1330,7 @@ pub fn run() -> Result<()> {
         suite.capture(
             &format!("search-{round}"),
             Route::Automations,
-            Some(Overlay::Search),
+            Some(Overlay::GoTo),
             false,
         )?;
         suite.keys("enter");
@@ -1366,9 +1347,10 @@ pub fn run() -> Result<()> {
             suite.capture(
                 &format!("automation-fields-{round}"),
                 Route::Automations,
-                None,
+                Some(Overlay::Dialog(Route::Automations)),
                 false,
             )?;
+            suite.keys("escape");
         }
         for (shortcut, route) in [(5, Route::Terminal), (6, Route::Temporal)] {
             suite.keys(&format!("cmd-{shortcut}"));
@@ -1381,15 +1363,20 @@ pub fn run() -> Result<()> {
     suite.capture(
         "add-dialog",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.cx.simulate_input(window.into(), "Rendered café 👋");
-    suite.capture("add-typed", Route::Tickets, Some(Overlay::AddTicket), false)?;
+    suite.capture(
+        "add-typed",
+        Route::Tickets,
+        Some(Overlay::Dialog(Route::Tickets)),
+        false,
+    )?;
     suite.keys("escape");
     suite.capture("dialog-dismissed", Route::Tickets, None, false)?;
     suite.keys("cmd-k");
-    suite.capture("search-open", Route::Tickets, Some(Overlay::Search), false)?;
+    suite.capture("search-open", Route::Tickets, Some(Overlay::GoTo), false)?;
     let palette = suite.bounds("search.dialog")?;
     let status = suite.bounds("status-bar")?;
     ensure!(
@@ -1400,7 +1387,7 @@ pub fn run() -> Result<()> {
     suite.capture(
         "search-no-matches",
         Route::Tickets,
-        Some(Overlay::Search),
+        Some(Overlay::GoTo),
         false,
     )?;
     suite.bounds("palette.empty")?;
@@ -1431,24 +1418,24 @@ pub fn run() -> Result<()> {
     suite.window = previous;
     suite.keys("cmd-3");
     suite.capture("agents-list", Route::Agents, None, false)?;
-    suite
-        .window
-        .update(&mut suite.cx, |shell, _, cx| shell.fixture_chat(false, cx))?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_conversation(false, cx)
+    })?;
     suite.capture("assistant-new-conversation", Route::Assistant, None, false)?;
-    suite
-        .window
-        .update(&mut suite.cx, |shell, _, cx| shell.fixture_chat(true, cx))?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_conversation(true, cx)
+    })?;
     suite.capture("assistant-conversation", Route::Assistant, None, false)?;
     suite.click_selector("back-to-conversations")?;
     suite.capture("assistant-conversation-list", Route::Assistant, None, false)?;
-    suite.keys("cmd-,");
-    suite
-        .window
-        .update(&mut suite.cx, |shell, _, cx| shell.fixture_models(cx))?;
-    suite.capture("settings-model-closed", Route::Settings, None, false)?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_navigate(Route::Connections, cx);
+        shell.fixture_models(cx);
+    })?;
+    suite.capture("settings-model-closed", Route::Connections, None, false)?;
     let closed = suite.bounds("settings.row.Model")?;
     suite.click_selector("codex-model-select")?;
-    suite.capture("model-dropdown-open", Route::Settings, None, false)?;
+    suite.capture("model-dropdown-open", Route::Connections, None, false)?;
     suite.bounds("codex-model-select.menu")?;
     let open = suite.bounds("settings.row.Model")?;
     near(
@@ -1457,7 +1444,7 @@ pub fn run() -> Result<()> {
         f32::from(closed.size.height),
     )?;
     suite.keys("escape");
-    suite.capture("model-dropdown-closed", Route::Settings, None, false)?;
+    suite.capture("model-dropdown-closed", Route::Connections, None, false)?;
     ensure!(
         suite.bounds("codex-model-select.menu").is_err(),
         "escape must close the model select"
@@ -1466,7 +1453,7 @@ pub fn run() -> Result<()> {
     // row's height.
     suite.click_selector("codex-model-select")?;
     suite.click_selector("codex-model-select.option.1")?;
-    suite.capture("model-dropdown-selected", Route::Settings, None, false)?;
+    suite.capture("model-dropdown-selected", Route::Connections, None, false)?;
     ensure!(
         suite.bounds("codex-model-select.menu").is_err(),
         "choosing an option must close the model select"

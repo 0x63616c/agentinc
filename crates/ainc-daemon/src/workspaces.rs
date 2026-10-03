@@ -1,17 +1,13 @@
 //! Owner-managed workspaces. The legacy `local` identity remains stable.
 use crate::{
-    product::{ApiError, ErrorBody, Product},
+    api::{AppState, CommandError, ErrorBody, Owner, Product},
     receipts::{self, OperationId, Scope},
 };
-use axum::{
-    Json, Router,
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    routing::{get, post},
-};
+use axum::{Json, extract::State};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema, FromRow)]
 pub struct Workspace {
@@ -22,7 +18,7 @@ pub struct Workspace {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
-pub struct WorkspaceState {
+pub struct WorkspaceSnapshot {
     pub current_id: String,
     pub workspaces: Vec<Workspace>,
 }
@@ -55,19 +51,17 @@ pub struct WorkspaceReceipt {
     pub result_id: String,
 }
 
-pub fn router(product: Product) -> Router {
-    Router::new()
-        .route("/v1/workspaces", get(state))
-        .route("/v1/workspaces/commands", post(command))
-        .with_state(product)
+pub(crate) fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(state))
+        .routes(routes!(command))
 }
 
-#[utoipa::path(get, path="/v1/workspaces", operation_id="workspaces_state", responses((status=200, body=WorkspaceState), (status=401, body=ErrorBody), (status=503, body=ErrorBody)))]
-pub async fn state(
+#[utoipa::path(get, path="/v1/workspaces", operation_id="workspaces_state", responses((status=200, body=WorkspaceSnapshot)))]
+async fn state(
     State(product): State<Product>,
-    headers: HeaderMap,
-) -> Result<Json<WorkspaceState>, ApiError> {
-    product.authorize(&headers)?;
+    _owner: Owner,
+) -> Result<Json<WorkspaceSnapshot>, CommandError> {
     Ok(Json(snapshot(&product.pool).await?))
 }
 
@@ -77,7 +71,7 @@ pub async fn current(pool: &PgPool) -> Result<String, sqlx::Error> {
         .await
 }
 
-pub async fn snapshot(pool: &PgPool) -> Result<WorkspaceState, sqlx::Error> {
+pub async fn snapshot(pool: &PgPool) -> Result<WorkspaceSnapshot, sqlx::Error> {
     let mut tx = crate::pg::snapshot_tx(pool).await?;
     let current_id =
         sqlx::query_scalar("SELECT workspace_id FROM selected_workspace WHERE owner_id='owner'")
@@ -86,26 +80,25 @@ pub async fn snapshot(pool: &PgPool) -> Result<WorkspaceState, sqlx::Error> {
     let workspaces = sqlx::query_as("SELECT id,name,icon,color FROM workspaces ORDER BY CASE WHEN id='local' THEN 0 ELSE 1 END,name,id")
         .fetch_all(&mut *tx).await?;
     tx.commit().await?;
-    Ok(WorkspaceState {
+    Ok(WorkspaceSnapshot {
         current_id,
         workspaces,
     })
 }
 
-#[utoipa::path(post, path="/v1/workspaces/commands", operation_id="workspaces_command", request_body=WorkspaceRequest, responses((status=200, body=WorkspaceReceipt), (status=400, body=ErrorBody), (status=401, body=ErrorBody), (status=409, body=ErrorBody), (status=503, body=ErrorBody)))]
-pub async fn command(
+#[utoipa::path(post, path="/v1/workspaces/commands", operation_id="workspaces_command", request_body=WorkspaceRequest, responses((status=200, body=WorkspaceReceipt), (status=400, body=ErrorBody), (status=404, body=ErrorBody), (status=409, body=ErrorBody)))]
+async fn command(
     State(product): State<Product>,
-    headers: HeaderMap,
+    _owner: Owner,
     Json(request): Json<WorkspaceRequest>,
-) -> Result<Json<WorkspaceReceipt>, ApiError> {
-    product.authorize(&headers)?;
+) -> Result<Json<WorkspaceReceipt>, CommandError> {
     Ok(Json(execute(&product.pool, request).await?))
 }
 
 pub async fn execute(
     pool: &PgPool,
     request: WorkspaceRequest,
-) -> Result<WorkspaceReceipt, ApiError> {
+) -> Result<WorkspaceReceipt, CommandError> {
     let operation_id = OperationId::parse(&request.operation_id)?;
     let WorkspaceRequest { command, .. } = request;
     let payload = serde_json::to_value(&command).expect("serializable command");
@@ -147,7 +140,7 @@ pub async fn execute(
                         .await?
                         .rows_affected();
                     if changed == 0 {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::NotFound);
                     }
                     id
                 }
@@ -155,7 +148,7 @@ pub async fn execute(
                     let changed = sqlx::query("UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner' AND EXISTS(SELECT 1 FROM workspaces WHERE id=$1)")
                         .bind(&id).execute(&mut **tx).await?.rows_affected();
                     if changed == 0 {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::NotFound);
                     }
                     id
                 }
@@ -170,14 +163,13 @@ pub async fn execute(
     })
 }
 
-fn invalid() -> ApiError {
-    ApiError::new(
-        StatusCode::BAD_REQUEST,
-        "invalid",
-        "Use a name of 1 to 120 characters, up to four icon characters, and a #RRGGBB color.",
+fn invalid() -> CommandError {
+    CommandError::Invalid(
+        "Use a name of 1 to 120 characters, up to four icon characters, and a #RRGGBB color."
+            .into(),
     )
 }
-fn validate_name(name: &str) -> Result<(), ApiError> {
+fn validate_name(name: &str) -> Result<(), CommandError> {
     if name.trim().is_empty() || name.chars().count() > 120 {
         Err(invalid())
     } else {
@@ -209,8 +201,9 @@ mod tests {
         assert_eq!(initial.workspaces[0].name, "World Wide Webb");
 
         let conversation_operation = uuid::Uuid::new_v4().to_string();
-        let conversation = product::execute(
+        let conversation = product::execute_in(
             &pool,
+            "local",
             product::CommandRequest {
                 operation_id: conversation_operation.clone(),
                 command: product::Command::CreateConversation,
@@ -220,8 +213,9 @@ mod tests {
         .unwrap()
         .result_id
         .unwrap();
-        product::execute(
+        product::execute_in(
             &pool,
+            "local",
             product::CommandRequest {
                 operation_id: uuid::Uuid::new_v4().to_string(),
                 command: product::Command::SelectModel {

@@ -16,7 +16,7 @@ impl Pending {
         self.0.get()
     }
     /// Rendered fixtures: stay busy so a page keeps showing its in-flight state.
-    #[cfg(all(test, feature = "rendered-tests"))]
+    #[cfg(any(test, feature = "fixtures"))]
     pub(crate) fn hold(&self) {
         self.0.set(true);
     }
@@ -51,7 +51,9 @@ impl From<anyhow::Error> for Failure {
     fn from(error: anyhow::Error) -> Self {
         let recovery = match error.downcast_ref::<DaemonError>() {
             Some(DaemonError::UpdateRequired) => "Update AgentInc.",
-            Some(DaemonError::Rejected(body)) if body.code == "pending" => {
+            Some(DaemonError::Rejected(body))
+                if body.code == ainc_client::types::ErrorCode::Conflict =>
+            {
                 "Retry the unacknowledged change first."
             }
             Some(DaemonError::Rejected(_)) => "Check the change and try again.",

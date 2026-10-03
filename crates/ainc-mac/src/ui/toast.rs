@@ -1,5 +1,5 @@
 //! Transient notices stacked above the status bar.
-use super::{badge::Tone, button::*, display::icon, layout::*, motion::*, tokens::*};
+use super::{badge::Tone, button::*, display::icon, icon::Icon, layout::*, motion::*, tokens::*};
 use gpui::{prelude::*, *};
 
 pub struct Toast {
@@ -17,7 +17,7 @@ pub struct Toasts {
 
 impl Toasts {
     /// Adds a toast and returns its id. Toasts stay until dismissed; a host
-    /// that wants a transient notice schedules the dismissal itself.
+    /// that wants a transient notice follows with [`Toasts::dismiss_later`].
     pub fn push(
         &mut self,
         title: impl Into<SharedString>,
@@ -34,6 +34,24 @@ impl Toasts {
         });
         id
     }
+    /// Dismiss `id` after [`TOAST_MS`]: the one way a transient toast leaves.
+    pub fn dismiss_later<V: 'static>(
+        id: u64,
+        toasts: impl Fn(&mut V) -> &mut Toasts + 'static,
+        cx: &mut Context<V>,
+    ) {
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(TOAST_MS))
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if toasts(this).dismiss(id) {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
     pub fn dismiss(&mut self, id: u64) -> bool {
         let before = self.items.len();
         self.items.retain(|toast| toast.id != id);
@@ -43,16 +61,35 @@ impl Toasts {
         self.items.is_empty()
     }
 
-    /// Renders the stack anchored `right` and `bottom` pixels from the host's
+    /// The stack anchored `right` and `bottom` pixels from the host's
     /// bottom-right corner, so the host can put it on its own content rail.
-    pub fn render<V: HoverHost>(
-        &self,
-        hover: &HoverFade,
-        right: f32,
-        bottom: f32,
+    pub fn stack(&self, right: f32, bottom: f32) -> ToastStack<'_> {
+        ToastStack {
+            toasts: self,
+            right,
+            bottom,
+        }
+    }
+}
+
+/// The rendered toasts; `build` takes the host's dismiss action.
+pub struct ToastStack<'a> {
+    toasts: &'a Toasts,
+    right: f32,
+    bottom: f32,
+}
+
+impl ToastStack<'_> {
+    pub fn build<V: 'static>(
+        self,
+        ui: &mut Ui<V>,
         on_dismiss: impl Fn(&mut V, u64, &mut Window, &mut Context<V>) + Clone + 'static,
-        cx: &mut Context<V>,
     ) -> Div {
+        let Self {
+            toasts,
+            right,
+            bottom,
+        } = self;
         column()
             .absolute()
             .right(px(right))
@@ -60,15 +97,14 @@ impl Toasts {
             .gap(px(SPACE_2))
             .items_end()
             .debug_selector(|| "toasts".into())
-            .children(self.items.iter().map(|toast| {
+            .children(toasts.items.iter().map(|toast| {
                 let id = toast.id;
                 let on_dismiss = on_dismiss.clone();
                 let (foreground, _) = toast.tone.colors();
                 let glyph = match toast.tone {
-                    Tone::Success => "check",
-                    Tone::Warning => "warning",
-                    Tone::Danger => "warning",
-                    _ => "info",
+                    Tone::Success => Icon::Check,
+                    Tone::Warning | Tone::Danger => Icon::Warning,
+                    _ => Icon::Info,
                 };
                 row()
                     .id(("toast", id))
@@ -108,16 +144,11 @@ impl Toasts {
                     )
                     .child(
                         Button::new(("toast.close", id), "Dismiss")
-                            .icon("close")
+                            .icon(Icon::Close)
                             .icon_only()
                             .ghost()
                             .small()
-                            .build(
-                                hover,
-                                move |view, window, cx| on_dismiss(view, id, window, cx),
-                                cx,
-                            )
-                            .debug_selector(move || format!("toast.close.{id}")),
+                            .build(ui, move |view, window, cx| on_dismiss(view, id, window, cx)),
                     )
                     .with_spring(
                         ("toast.enter", id),

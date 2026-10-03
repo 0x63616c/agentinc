@@ -36,8 +36,8 @@ pushed revision remain verified on the PR, not inferred from these captures.
 
 ```sh
 DATABASE_URL=... cargo test --locked --workspace
-cargo clippy --locked --workspace --all-targets --features agentinc-os/automation -- -D warnings
+cargo clippy --locked --workspace --all-targets --features ainc-mac/automation -- -D warnings
 cargo xtask generate --check
-cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
-AINC_DISCOVERY_FILE=... cargo test --locked -p agentinc-os --features automation --test pilot_acceptance -- --test-threads=1 --nocapture
+cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell
+AINC_DISCOVERY_FILE=... cargo test --locked -p ainc-mac --features automation --test pilot_acceptance -- --test-threads=1 --nocapture
 ```

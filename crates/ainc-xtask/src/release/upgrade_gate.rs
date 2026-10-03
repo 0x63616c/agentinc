@@ -328,6 +328,9 @@ fn exercise(
     let preparation = root.join("preparation.txt");
     let stderr_path = root.join("app.stderr.log");
     let mut command = Command::new(app.join("Contents/MacOS/AgentInc"));
+    // Published pre-0.6 binaries only understand the retired profile variable.
+    // Set both so the old host and the replacement stay in this isolated profile.
+    command.env("AGENTINC_SESSION_PATH", profile.join("session.json"));
     command
         .env(
             "AINC_UPGRADE_TEST_FEED_URL",
@@ -342,10 +345,10 @@ fn exercise(
         .env("AINC_UPGRADE_TEST_SUCCESS_FILE", &marker)
         .env("AINC_UPGRADE_TEST_DOWNLOADED_FILE", &downloaded)
         .env("AINC_UPGRADE_TEST_PREPARATION_FILE", &preparation)
-        .env("AGENTINC_SESSION_PATH", profile.join("sessions.json"))
+        .env("AINC_SESSION_PATH", profile.join("session.json"))
         .env("AINC_DISCOVERY_FILE", profile.join("daemon/api-url"))
         .env("AINC_LEGACY_DIR", profile.join("legacy"))
-        .env("AGENTINC_CODEX_HOME", profile.join("codex"))
+        .env("AINC_CODEX_HOME", profile.join("codex"))
         .stdout(Stdio::null())
         .stderr(fs::File::create(&stderr_path)?);
     let mut process = ManagedChild::spawn(command)?;

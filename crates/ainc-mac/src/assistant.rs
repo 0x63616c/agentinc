@@ -8,23 +8,15 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-fn present(daemon: Option<&Daemon>) -> Result<&Daemon> {
-    daemon.ok_or_else(|| anyhow::anyhow!("Daemon unavailable"))
-}
-pub fn status(daemon: Option<&Daemon>) -> Result<(Option<String>, Vec<Model>)> {
-    let status = present(daemon)?.connection_status()?;
+pub fn status(daemon: &Daemon) -> Result<(Option<String>, Vec<Model>)> {
+    let status = daemon.connection_status()?;
     if let Some(error) = status.error {
         bail!("{error}");
     }
     Ok((status.signed_in_as, status.models))
 }
 /// Blocks until sign-in finishes or is cancelled; run it on the background executor.
-pub fn login(
-    daemon: Option<&Daemon>,
-    cancel: Arc<AtomicBool>,
-    open: impl FnOnce(String),
-) -> Result<()> {
-    let daemon = present(daemon)?;
+pub fn login(daemon: &Daemon, cancel: Arc<AtomicBool>, open: impl FnOnce(String)) -> Result<()> {
     daemon.connection(ConnectionAction::Login)?;
     let mut open = Some(open);
     loop {
@@ -46,6 +38,6 @@ pub fn login(
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
 }
-pub fn logout(daemon: Option<&Daemon>) -> Result<()> {
-    Ok(present(daemon)?.connection(ConnectionAction::Logout)?)
+pub fn logout(daemon: &Daemon) -> Result<()> {
+    Ok(daemon.connection(ConnectionAction::Logout)?)
 }

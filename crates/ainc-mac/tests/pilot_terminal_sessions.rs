@@ -35,11 +35,11 @@ fn launch(root: &Path, discovery: &Path, run: &str) -> Result<(App, Client)> {
         command.arg("--gpui-pilot-visible");
     }
     let mut app = App(command
-        .env("AGENTINC_SESSION_PATH", root.join("session.json"))
+        .env("AINC_SESSION_PATH", root.join("session.json"))
         .env("AINC_DISCOVERY_FILE", discovery)
         .env("AINC_LEGACY_DIR", root.join("legacy"))
-        .env("AGENTINC_CODEX_HOME", root.join("codex"))
-        .env("AGENTINC_WINDOW_TITLE", WINDOW_TITLE)
+        .env("AINC_CODEX_HOME", root.join("codex"))
+        .env("AINC_WINDOW_TITLE", WINDOW_TITLE)
         .stdout(Stdio::null())
         .stderr(log)
         .spawn()?);
@@ -171,9 +171,10 @@ fn split_session_survives_app_quit_and_relaunch() -> Result<()> {
             request
                 .headers_mut()
                 .insert("authorization", format!("Bearer {token}").parse()?);
-            request
-                .headers_mut()
-                .insert("agent-inc-client", ainc_release::client_header().parse()?);
+            request.headers_mut().insert(
+                ainc_identity::CLIENT_HEADER,
+                ainc_identity::client_header().parse()?,
+            );
             let (mut viewer, _) = connect_async(request.clone()).await?;
             let command = format!(
                 "IFS= read -r line < {}; printf '__PERSISTED__:%s\\n' \"$line\"\n",

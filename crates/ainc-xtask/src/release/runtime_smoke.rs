@@ -137,7 +137,7 @@ impl Smoke {
                 .append(true)
                 .open(self.root.join("daemon.log"))?
                 .write_all(line.as_bytes())?;
-            if line.contains("AgentInc daemon ready") {
+            if line.contains(ainc_release::DAEMON_READY) {
                 if self.blocked_signals {
                     let ps = super::output("ps", &["-axo", "pid=,ppid=,stat=,command="])?;
                     check_reaped(&ps, child.id())?;
@@ -233,11 +233,11 @@ impl Smoke {
                     "build",
                     "--locked",
                     "-p",
-                    "agentinc-os",
+                    "ainc-mac",
                     "-p",
                     "gpui-pilot-cli",
                     "--features",
-                    "agentinc-os/automation",
+                    "ainc-mac/automation",
                 ],
             )?;
             self.cargo(
@@ -247,7 +247,7 @@ impl Smoke {
                     "test",
                     "--locked",
                     "-p",
-                    "agentinc-os",
+                    "ainc-mac",
                     "--features",
                     "automation",
                     "--test",
@@ -317,7 +317,7 @@ pub fn cli(args: &[String]) -> Result<()> {
     let path = |name: &str| root.join(name).to_string_lossy().into_owned();
     env.insert("AINC_DISCOVERY_FILE".into(), path("api-url"));
     env.insert("AINC_LEGACY_DIR".into(), path("legacy"));
-    env.insert("AGENTINC_CODEX_HOME".into(), path("codex"));
+    env.insert("AINC_CODEX_HOME".into(), path("codex"));
     env.insert("RUST_LOG".into(), "info".into());
     for name in ["DATABASE_URL", "AINC_RUNTIME_CONFIG", "AINC_DATABASE_URL"] {
         env.remove(name);

@@ -91,9 +91,17 @@ pub const REPOSITORY: &str = "https://github.com/0x63616c/agentinc";
 pub const CLIENT_HEADER: &str = "agent-inc-client";
 /// Response header carrying [`server_header`].
 pub const SERVER_HEADER: &str = "agent-inc-server";
+/// The log line `aincd` prints once it is serving. Launchers wait for it; sharing the
+/// constant means a reworded log line cannot leave them waiting forever.
+pub const DAEMON_READY: &str = "daemon ready";
 
+/// The header the Mac app sends.
 pub fn client_header() -> String {
-    format!("mac/{VERSION} (build {BUILD}; api {API})")
+    client_header_as("mac")
+}
+/// The header a client of the given kind sends: `mac` for the app, `cli` for `ainc`.
+pub fn client_header_as(kind: &str) -> String {
+    format!("{kind}/{VERSION} (build {BUILD}; api {API})")
 }
 pub fn server_header() -> String {
     format!("aincd/{VERSION} (build {BUILD}; api {API})")

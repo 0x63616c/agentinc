@@ -1,5 +1,5 @@
 //! Dropdown and context menus: floating placement, rows, labels and dividers.
-use super::{button::*, display::*, layout::*, motion::*, tokens::*};
+use super::{button::*, display::*, icon::Icon, layout::*, motion::*, tokens::*};
 use gpui::{prelude::*, *};
 
 /// Floats `content` above everything else, anchored to where it is placed.
@@ -14,15 +14,14 @@ pub fn floating(content: impl IntoElement, anchor: Anchor, offset: Point<Pixels>
 pub struct MenuEntry {
     id: ElementId,
     label: SharedString,
-    icon: Option<&'static str>,
-    glyph: Option<(&'static str, u32)>,
+    icon: Option<Icon>,
+    glyph: Option<(Icon, u32)>,
     leading: Option<AnyElement>,
     shortcut: Option<SharedString>,
     trailing: Option<AnyElement>,
     checked: bool,
     destructive: bool,
     enabled: bool,
-    selector: Option<String>,
 }
 
 impl MenuEntry {
@@ -38,15 +37,14 @@ impl MenuEntry {
             checked: false,
             destructive: false,
             enabled: true,
-            selector: None,
         }
     }
-    pub fn icon(mut self, icon: &'static str) -> Self {
+    pub fn icon(mut self, icon: Icon) -> Self {
         self.icon = Some(icon);
         self
     }
     /// A colored leading icon, such as a Ticket status.
-    pub fn glyph(mut self, name: &'static str, color: u32) -> Self {
+    pub fn glyph(mut self, name: Icon, color: u32) -> Self {
         self.glyph = Some((name, color));
         self
     }
@@ -76,15 +74,10 @@ impl MenuEntry {
         self.enabled = enabled;
         self
     }
-    pub fn selector(mut self, selector: impl Into<String>) -> Self {
-        self.selector = Some(selector.into());
-        self
-    }
-    pub fn build<V: HoverHost>(
+    pub fn build<V: 'static>(
         self,
-        hover: &HoverFade,
+        ui: &mut Ui<V>,
         action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-        cx: &mut Context<V>,
     ) -> Stateful<Div> {
         let Self {
             id,
@@ -97,7 +90,6 @@ impl MenuEntry {
             checked,
             destructive,
             enabled,
-            selector,
         } = self;
         let mut button = Button::new(id, label)
             .ghost()
@@ -120,18 +112,15 @@ impl MenuEntry {
             trail = trail.child(kbd(shortcut));
         }
         if checked {
-            trail = trail.child(icon("check", ICON_SIZE_SM).text_color(rgb(TEXT)));
+            trail = trail.child(icon(Icon::Check, ICON_SIZE_SM).text_color(rgb(TEXT)));
         }
         if let Some(trailing) = trailing {
             trail = trail.child(trailing);
         }
         button
             .trailing(trail)
-            .build(hover, action, cx)
+            .build(ui, action)
             .h(px(MENU_ITEM_HEIGHT))
-            .when_some(selector, |s, selector| {
-                s.debug_selector(move || selector.clone())
-            })
     }
 }
 
@@ -140,7 +129,7 @@ impl MenuEntry {
 pub struct MenuButton {
     id: &'static str,
     label: SharedString,
-    icon: Option<&'static str>,
+    icon: Option<Icon>,
     active: bool,
     open: bool,
     width: f32,
@@ -157,7 +146,7 @@ impl MenuButton {
             width: MENU_WIDTH,
         }
     }
-    pub fn icon(mut self, icon: &'static str) -> Self {
+    pub fn icon(mut self, icon: Icon) -> Self {
         self.icon = Some(icon);
         self
     }
@@ -175,12 +164,11 @@ impl MenuButton {
         self
     }
     /// `items` are the menu's rows; the menu carries the `{id}.menu` selector.
-    pub fn build<V: HoverHost>(
+    pub fn build<V: 'static>(
         self,
-        hover: &HoverFade,
+        ui: &mut Ui<V>,
         items: Vec<AnyElement>,
         on_toggle: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-        cx: &mut Context<V>,
     ) -> Div {
         let Self {
             id,
@@ -193,13 +181,13 @@ impl MenuButton {
         let mut button = Button::new(id, label)
             .secondary()
             .selected(open || active)
-            .trailing(icon("chevronDown", ICON_SIZE_SM));
+            .trailing(icon(Icon::ChevronDown, ICON_SIZE_SM));
         if let Some(name) = icon_name {
             button = button.icon(name);
         }
         super::layout::column()
             .relative()
-            .child(button.build(hover, on_toggle, cx))
+            .child(button.build(ui, on_toggle))
             .when(open, |s| {
                 s.child(floating(
                     super::overlay::menu_shell(width)

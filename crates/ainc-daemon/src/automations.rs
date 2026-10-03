@@ -1,15 +1,13 @@
 //! Saved Ticket proposals, recurring authorization, and idempotent occurrence commits.
+use crate::api::Product;
 use crate::{
-    product::{ApiError, ErrorBody, Product},
+    api::{AppState, CommandError, ErrorBody, Owner},
+    pg::coordination,
     receipts::{self, OperationId, Scope},
     tickets::{self, Actor, TicketCommand, TicketCommandRequest, TicketProposal},
+    worker::{Leased, Reconcile, Tasks},
 };
-use axum::{
-    Json, Router,
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    routing::{get, post},
-};
+use axum::{Json, extract::State};
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -17,6 +15,7 @@ use sqlx::{FromRow, PgPool, postgres::PgListener};
 use std::{sync::Arc, time::Duration};
 use turnkeel::{Occurrence, RecurringAction, RecurringRule, Runtime, RuntimeConfig};
 use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema, FromRow)]
 pub struct Automation {
@@ -84,35 +83,33 @@ pub struct AutomationRequest {
 pub struct AutomationReceipt {
     pub result_id: String,
 }
-fn invalid(message: &str) -> ApiError {
-    ApiError::new(StatusCode::BAD_REQUEST, "invalid", message)
+fn invalid(message: &str) -> CommandError {
+    CommandError::Invalid(message.into())
 }
-pub fn router(product: Product) -> Router {
-    Router::new()
-        .route("/v1/automations", get(state))
-        .route("/v1/automations/commands", post(command))
-        .with_state(product)
+pub(crate) fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(state))
+        .routes(routes!(command))
 }
-#[utoipa::path(get,path="/v1/automations",operation_id="automations_state",responses((status=200,body=AutomationSnapshot),(status=401,body=ErrorBody),(status=503,body=ErrorBody)))]
-pub async fn state(
+#[utoipa::path(get,path="/v1/automations",operation_id="automations_state",responses((status=200,body=AutomationSnapshot)))]
+async fn state(
     State(product): State<Product>,
-    headers: HeaderMap,
-) -> Result<Json<AutomationSnapshot>, ApiError> {
-    product.authorize(&headers)?;
-    let actor = Actor::owner_in(crate::workspaces::current(&product.pool).await?);
-    Ok(Json(snapshot(&product.pool, &actor).await?))
+    owner: Owner,
+) -> Result<Json<AutomationSnapshot>, CommandError> {
+    Ok(Json(snapshot(&product.pool, &owner.actor()).await?))
 }
-#[utoipa::path(post,path="/v1/automations/commands",operation_id="automations_command",request_body=AutomationRequest,responses((status=200,body=AutomationReceipt),(status=400,body=ErrorBody),(status=401,body=ErrorBody),(status=409,body=ErrorBody),(status=503,body=ErrorBody)))]
-pub async fn command(
+#[utoipa::path(post,path="/v1/automations/commands",operation_id="automations_command",request_body=AutomationRequest,responses((status=200,body=AutomationReceipt),(status=400,body=ErrorBody),(status=403,body=ErrorBody),(status=404,body=ErrorBody),(status=409,body=ErrorBody)))]
+async fn command(
     State(product): State<Product>,
-    headers: HeaderMap,
+    owner: Owner,
     Json(request): Json<AutomationRequest>,
-) -> Result<Json<AutomationReceipt>, ApiError> {
-    product.authorize(&headers)?;
-    let actor = Actor::owner_in(crate::workspaces::current(&product.pool).await?);
-    Ok(Json(execute(&product.pool, &actor, request).await?))
+) -> Result<Json<AutomationReceipt>, CommandError> {
+    Ok(Json(execute(&product.pool, &owner.actor(), request).await?))
 }
-pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<AutomationSnapshot, ApiError> {
+pub(crate) async fn snapshot(
+    pool: &PgPool,
+    actor: &Actor,
+) -> Result<AutomationSnapshot, CommandError> {
     let mut tx = crate::pg::snapshot_tx(pool).await?;
     let rules = sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id").bind(&actor.workspace).fetch_all(&mut *tx).await?;
     // An Occurrence shows the run of its Ticket's current generation, whichever that is.
@@ -129,13 +126,9 @@ pub(crate) async fn execute(
     pool: &PgPool,
     actor: &Actor,
     request: AutomationRequest,
-) -> Result<AutomationReceipt, ApiError> {
+) -> Result<AutomationReceipt, CommandError> {
     if actor.assignment.is_some() {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "forbidden",
-            "Assigned agents cannot grant recurring work.",
-        ));
+        return Err(CommandError::Forbidden);
     }
     let operation_id = OperationId::parse(&request.operation_id)?;
     let mut tx = pool.begin().await?;
@@ -178,7 +171,7 @@ pub(crate) async fn execute(
                     if let Some(id) = id {
                         let changed=sqlx::query("UPDATE automations SET name=$4,prompt=$5,agent_id=$6,every_minutes=$7,revision=revision+1,error=NULL WHERE id=$1 AND workspace_id=$2 AND revision=$3").bind(&id).bind(&actor.workspace).bind(revision).bind(name.trim()).bind(proposal.title.trim()).bind(proposal.agent_id).bind(every_minutes).execute(&mut **tx).await?.rows_affected();
                         if changed == 0 {
-                            return Err(ApiError::conflict());
+                            return Err(CommandError::conflict());
                         }
                         id
                     } else {
@@ -197,7 +190,7 @@ pub(crate) async fn execute(
                 } => {
                     let changed=sqlx::query("UPDATE automations SET paused=$4,revision=revision+1,error=NULL WHERE id=$1 AND workspace_id=$2 AND revision=$3").bind(&id).bind(&actor.workspace).bind(revision).bind(paused).execute(&mut **tx).await?.rows_affected();
                     if changed == 0 {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::conflict());
                     }
                     id
                 }
@@ -209,8 +202,11 @@ pub(crate) async fn execute(
                     .bind(&actor.workspace)
                     .fetch_optional(&mut **tx)
                     .await?;
+                    if current.is_none() {
+                        return Err(CommandError::NotFound);
+                    }
                     if current != Some(revision) {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::conflict());
                     }
                     let occurrence = format!("manual-{operation_id}");
                     sqlx::query(
@@ -224,7 +220,8 @@ pub(crate) async fn execute(
                     occurrence
                 }
             };
-            sqlx::query("SELECT pg_notify('agentinc_automations','')")
+            sqlx::query("SELECT pg_notify($1,'')")
+                .bind(coordination::AUTOMATIONS)
                 .execute(&mut **tx)
                 .await?;
             Ok(result_id)
@@ -337,7 +334,7 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
                 },
             )
             .await
-            .map_err(|e| anyhow::anyhow!("Ticket proposal refused: {e:?}"))?
+            .map_err(|e| anyhow::anyhow!("Ticket proposal refused: {e}"))?
             .result_id;
             sqlx::query("UPDATE occurrences SET ticket_id=$2,state='queued' WHERE id=$1")
                 .bind(&occurrence.id)
@@ -350,8 +347,8 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
     // Subscribe before checking state: a completion between the two cannot be lost.
     if let Some(ticket) = ticket {
         let mut listener = PgListener::connect_with(pool).await?;
-        listener.listen("agentinc_results").await?;
-        listener.listen("agentinc_dispatch").await?;
+        listener.listen(coordination::RESULTS).await?;
+        listener.listen(coordination::DISPATCH).await?;
         loop {
             // Work is live while the Ticket's current generation, whichever it is, has a run.
             let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id AND t.generation=r.generation WHERE t.id=$1 AND r.state IN ('queued','running'))").bind(ticket).fetch_one(pool).await?;
@@ -365,46 +362,46 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
 }
 
 pub struct Runner {
+    lease: Leased,
+    rules: Rules,
+}
+struct Rules {
     pool: PgPool,
     runtime: Runtime,
-    listener: PgListener,
-    owner: sqlx::PgConnection,
 }
 impl Runner {
     pub async fn start(pool: PgPool, mut config: RuntimeConfig) -> anyhow::Result<Self> {
-        let mut owner = pool.acquire().await?.detach();
-        let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock(7358710404)")
-            .fetch_one(&mut owner)
-            .await?;
-        anyhow::ensure!(locked, "another daemon owns Automations");
-        let mut listener = PgListener::connect_with(&pool).await?;
-        listener.listen("agentinc_automations").await?;
+        let lease = Leased::acquire(
+            &pool,
+            coordination::AUTOMATION_LOCK,
+            &[coordination::AUTOMATIONS],
+            Duration::from_secs(2),
+            "another daemon owns Automations",
+        )
+        .await?;
         config.worker_group.push_str("-automations");
         let runtime = Runtime::recurring(config, Arc::new(Action(pool.clone()))).await?;
         Ok(Self {
-            pool,
-            runtime,
-            listener,
-            owner,
+            lease,
+            rules: Rules { pool, runtime },
         })
     }
     pub async fn run(self) -> anyhow::Result<()> {
         self.run_until(std::future::pending()).await
     }
     pub async fn run_until(
-        mut self,
+        self,
         shutdown: impl std::future::Future<Output = ()>,
     ) -> anyhow::Result<()> {
-        tokio::pin!(shutdown);
-        loop {
-            sqlx::query("SELECT 1").execute(&mut self.owner).await?;
-            self.reconcile().await?;
-            tokio::select! {
-                           _ = &mut shutdown => { self.runtime.shutdown().await?; return Ok(()); }
-            result=self.listener.recv()=> { result?; }, _=tokio::time::sleep(Duration::from_secs(2))=>{} }
-        }
+        self.lease.run_until(self.rules, shutdown).await
     }
-    async fn reconcile(&self) -> anyhow::Result<()> {
+}
+impl Reconcile for Rules {
+    async fn drain(self) -> anyhow::Result<()> {
+        self.runtime.shutdown().await?;
+        Ok(())
+    }
+    async fn reconcile(&mut self, _tasks: &mut Tasks) -> anyhow::Result<()> {
         let rules:Vec<Automation>=sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations ORDER BY id").fetch_all(&self.pool).await?;
         for rule in rules {
             if let Err(error) = self.reconcile_rule(&rule).await {
@@ -446,6 +443,8 @@ impl Runner {
         }
         Ok(())
     }
+}
+impl Rules {
     async fn reconcile_rule(&self, rule: &Automation) -> anyhow::Result<()> {
         if rule.revision != rule.applied_revision {
             self.runtime
@@ -463,6 +462,10 @@ impl Runner {
             .bind(rule.revision)
             .execute(&self.pool)
             .await?;
+            sqlx::query("SELECT pg_notify($1,'')")
+                .bind(coordination::AUTOMATIONS_APPLIED)
+                .execute(&self.pool)
+                .await?;
         }
         let observed = self.runtime.recurring_state(&rule.id).await?;
         let mut tx = self.pool.begin().await?;
@@ -566,7 +569,9 @@ mod tests {
         .unwrap()
         .result_id
     }
-    async fn occurrence(pool: &PgPool, id: &str) -> OccurrenceView {
+    /// Wait for the Automation to create its first Ticket. `dispatch` listens before the
+    /// firing, so the Ticket's dispatch notice cannot be missed.
+    async fn occurrence(pool: &PgPool, id: &str, dispatch: &mut PgListener) -> OccurrenceView {
         loop {
             let snapshot = snapshot(pool, &Actor::owner()).await.unwrap();
             if let Some(o) = snapshot
@@ -576,8 +581,16 @@ mod tests {
             {
                 return o;
             }
-            tokio::task::yield_now().await;
+            dispatch.recv().await.unwrap();
         }
+    }
+    async fn listen_dispatch(pool: &PgPool) -> PgListener {
+        let mut dispatch = PgListener::connect_with(pool).await.unwrap();
+        dispatch.listen(coordination::DISPATCH).await.unwrap();
+        dispatch
+    }
+    async fn reconcile(runner: &mut Runner) {
+        runner.rules.reconcile(&mut Tasks::default()).await.unwrap();
     }
     #[sqlx::test]
     async fn receipts_scope_revisions_and_bounded_authorization(pool: PgPool) {
@@ -647,24 +660,25 @@ mod tests {
     ) {
         let id = save(&pool).await;
         let server = turnkeel::testing::Server::start().await.unwrap();
-        let runner = Runner::start(pool.clone(), server.config()).await.unwrap();
-        runner.reconcile().await.unwrap();
+        let mut runner = Runner::start(pool.clone(), server.config()).await.unwrap();
+        reconcile(&mut runner).await;
         assert_eq!(
             snapshot(&pool, &Actor::owner()).await.unwrap().rules[0].applied_revision,
             0
         );
-        runner.runtime.shutdown().await.unwrap();
-        drop(runner.owner);
+        runner.rules.runtime.shutdown().await.unwrap();
+        drop(runner.lease);
+        let mut dispatch = listen_dispatch(&pool).await;
         // This is a real retained Schedule, fired with its worker unavailable.
         server.fire_rule(&id).await.unwrap();
-        let runner = Runner::start(pool.clone(), server.config()).await.unwrap();
-        runner.reconcile().await.unwrap();
-        let first = occurrence(&pool, &id).await;
+        let mut runner = Runner::start(pool.clone(), server.config()).await.unwrap();
+        reconcile(&mut runner).await;
+        let first = occurrence(&pool, &id, &mut dispatch).await;
         assert_eq!(first.state, "worker_unavailable");
         let ticket = first.ticket_id.unwrap();
         server.fire_rule(&id).await.unwrap();
         loop {
-            runner.reconcile().await.unwrap();
+            reconcile(&mut runner).await;
             let history = snapshot(&pool, &Actor::owner()).await.unwrap();
             if history.rules[0].overlap_skipped > 0 {
                 assert!(
@@ -675,7 +689,6 @@ mod tests {
                 );
                 break;
             }
-            tokio::task::yield_now().await;
         }
         // Retry the same invocation while its work is still open.
         let duplicate = tokio::spawn({
@@ -742,7 +755,8 @@ mod tests {
             .execute(&mut *tx)
             .await
             .unwrap();
-        sqlx::query("SELECT pg_notify('agentinc_results','')")
+        sqlx::query("SELECT pg_notify($1,'')")
+            .bind(coordination::RESULTS)
             .execute(&mut *tx)
             .await
             .unwrap();
@@ -762,7 +776,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 1);
-        runner.runtime.shutdown().await.unwrap();
+        runner.rules.runtime.shutdown().await.unwrap();
         server.shutdown().await.unwrap();
     }
     #[sqlx::test]
@@ -783,8 +797,8 @@ mod tests {
         }
         let id = save(&pool).await;
         let server = turnkeel::testing::Server::start().await.unwrap();
-        let runner = Runner::start(pool.clone(), server.config()).await.unwrap();
-        runner.reconcile().await.unwrap();
+        let mut runner = Runner::start(pool.clone(), server.config()).await.unwrap();
+        reconcile(&mut runner).await;
         let model = ScriptedModel::new()
             .on_user(
                 "One scheduled Ticket",
@@ -801,11 +815,11 @@ mod tests {
         .await
         .unwrap();
         let mut results = PgListener::connect_with(&pool).await.unwrap();
-        results.listen("agentinc_results").await.unwrap();
+        results.listen(coordination::RESULTS).await.unwrap();
         let worker = tokio::spawn(tickets.run());
         server.fire_rule(&id).await.unwrap();
         results.recv().await.unwrap();
-        let first = occurrence(&pool, &id).await;
+        let first = occurrence(&pool, &id, &mut results).await;
         assert_eq!(first.state, "completed");
         apply_occurrence(
             &pool,
@@ -831,7 +845,7 @@ mod tests {
         assert_eq!(count, 1);
         worker.abort();
         let _ = worker.await;
-        runner.runtime.shutdown().await.unwrap();
+        runner.rules.runtime.shutdown().await.unwrap();
         server.shutdown().await.unwrap();
     }
 }

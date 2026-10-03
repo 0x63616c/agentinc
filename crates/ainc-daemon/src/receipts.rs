@@ -4,13 +4,12 @@
 //! request is a conflict. One table, one lock-key rule, one hash rule.
 use std::fmt;
 
-use axum::http::StatusCode;
 use futures::future::BoxFuture;
 use serde::{Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Transaction};
 
-use crate::product::ApiError;
+use crate::api::CommandError;
 
 /// A client-chosen UUID naming one attempt at a command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -45,13 +44,9 @@ impl Serialize for OperationId {
         serializer.collect_str(self)
     }
 }
-impl From<InvalidOperationId> for ApiError {
+impl From<InvalidOperationId> for CommandError {
     fn from(_: InvalidOperationId) -> Self {
-        ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_operation",
-            "Use a UUID operation ID.",
-        )
+        CommandError::Invalid("Use a UUID operation ID.".into())
     }
 }
 
@@ -96,13 +91,13 @@ pub(crate) async fn execute<'t, R, F>(
     operation_id: OperationId,
     request: &impl Serialize,
     apply: F,
-) -> Result<Receipt<R>, ApiError>
+) -> Result<Receipt<R>, CommandError>
 where
     R: Serialize + DeserializeOwned,
-    F: for<'c> FnOnce(&'c mut Transaction<'t, Postgres>) -> BoxFuture<'c, Result<R, ApiError>>,
+    F: for<'c> FnOnce(&'c mut Transaction<'t, Postgres>) -> BoxFuture<'c, Result<R, CommandError>>,
 {
     let request = serde_json::to_value(request)
-        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "invalid", "Invalid command."))?;
+        .map_err(|_| CommandError::Invalid("Invalid command.".into()))?;
     let scope = scope.to_string();
     let operation = operation_id.to_string();
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
@@ -120,13 +115,13 @@ where
     let result = match prior {
         Some((true, result)) => serde_json::from_value(result).map_err(|error| {
             tracing::error!(%error, scope, operation, "stored receipt result does not match its command");
-            ApiError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "unavailable",
-                "Data is unavailable. Try again.",
-            )
+            CommandError::Internal
         })?,
-        Some((false, _)) => return Err(ApiError::conflict()),
+        Some((false, _)) => {
+            return Err(CommandError::Conflict(
+                "This operation ID was already used for a different command.".into(),
+            ));
+        }
         None => {
             let result = apply(tx).await?;
             sqlx::query(
@@ -240,7 +235,7 @@ mod tests {
         })
         .await
         .unwrap_err();
-        assert_eq!(conflict.status(), StatusCode::CONFLICT);
+        assert_eq!(conflict.status(), axum::http::StatusCode::CONFLICT);
 
         // Another scope is another ID space.
         let mut tx = pool.begin().await.unwrap();

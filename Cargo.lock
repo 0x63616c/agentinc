@@ -110,40 +110,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agentinc-os"
-version = "0.6.0"
-dependencies = [
- "accesskit",
- "ainc-client",
- "ainc-release",
- "anyhow",
- "cc",
- "chrono",
- "futures",
- "gpui",
- "gpui-pilot",
- "gpui_platform",
- "image",
- "libc",
- "libloading",
- "log",
- "objc2 0.6.4",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
- "pulldown-cmark",
- "raw-window-handle",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-tungstenite",
- "unicode-segmentation",
- "uuid",
-]
-
-[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -195,6 +161,7 @@ dependencies = [
  "axum",
  "progenitor-client",
  "reqwest",
+ "rustls",
  "schemars 0.8.22",
  "serde",
  "sqlx",
@@ -222,10 +189,12 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tower",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "turnkeel",
  "utoipa",
+ "utoipa-axum",
  "uuid",
 ]
 
@@ -249,6 +218,44 @@ dependencies = [
  "libc",
  "semver",
  "serde",
+]
+
+[[package]]
+name = "ainc-mac"
+version = "0.6.0"
+dependencies = [
+ "accesskit",
+ "ainc-client",
+ "ainc-identity",
+ "ainc-release",
+ "anyhow",
+ "cc",
+ "chrono",
+ "futures",
+ "gpui",
+ "gpui-pilot",
+ "gpui_platform",
+ "image",
+ "libc",
+ "libloading",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "pulldown-cmark",
+ "raw-window-handle",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-log",
+ "tracing-oslog",
+ "tracing-subscriber",
+ "unicode-segmentation",
+ "uuid",
 ]
 
 [[package]]
@@ -8223,6 +8230,7 @@ dependencies = [
  "tower",
  "tower-layer",
  "tower-service",
+ "tracing",
  "url",
 ]
 
@@ -8280,6 +8288,18 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-oslog"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d76902d2a8d5f9f55a81155c08971734071968c90f2d9bfe645fe700579b2950"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -8653,6 +8673,19 @@ dependencies = [
  "serde",
  "serde_json",
  "utoipa-gen",
+]
+
+[[package]]
+name = "utoipa-axum"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c25bae5bccc842449ec0c5ddc5cbb6a3a1eaeac4503895dc105a1138f8234a0"
+dependencies = [
+ "axum",
+ "paste",
+ "tower-layer",
+ "tower-service",
+ "utoipa",
 ]
 
 [[package]]

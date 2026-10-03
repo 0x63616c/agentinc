@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // user-facing output
 mod checks;
 mod readme;
 mod release;
@@ -285,7 +286,7 @@ fn daemon(instance: &Instance) -> Result<()> {
         )
         .env("AINC_DISCOVERY_FILE", discovery)
         .env("AINC_LEGACY_DIR", local(instance).join("legacy"))
-        .env("AGENTINC_CODEX_HOME", local(instance).join("codex"))
+        .env("AINC_CODEX_HOME", local(instance).join("codex"))
         .status()?;
     if !status.success() {
         bail!("aincd exited with {status}");
@@ -324,7 +325,19 @@ fn check_ui(root: &Path) -> Result<()> {
     checks::colors::run(&app)?;
     checks::ui_spacing::run(&app)?;
     checks::ui_core::run(&app)?;
-    checks::ui_vocabulary::run(&app)
+    checks::ui_vocabulary::run(&app)?;
+    checks::copy::run(&app)
+}
+
+/// Repository-wide name rules: product spellings and environment variable families.
+fn check_names(root: &Path) -> Result<()> {
+    checks::naming::run(root)?;
+    checks::env_names::run(root)
+}
+
+/// Source layout: `foo.rs` beside `foo/`, and a `//!` line on every Mac app file.
+fn check_layout(root: &Path) -> Result<()> {
+    checks::layout::run(root)
 }
 
 /// `--profile NAME` from the argument list, if present: CI passes `ci`, local runs use `dev`.
@@ -341,6 +354,10 @@ fn profile(args: &[String]) -> Result<Option<String>> {
 fn check(root: &Path, profile: Option<&str>) -> Result<()> {
     step(root, &["cargo", "fmt", "--all", "--", "--check"])?;
     check_ui(root)?;
+    check_names(root)?;
+    check_layout(root)?;
+    checks::sdk_vocabulary::run(root)?;
+    checks::openapi::run(root)?;
     let mut clippy = vec![
         "cargo",
         "clippy",
@@ -499,7 +516,7 @@ fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args.next().ok_or_else(|| {
         anyhow!(
-            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
+            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-ui|check-names|check-layout|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
             release::NAMES,
             readme::NAMES
         )
@@ -513,6 +530,9 @@ fn main() -> Result<()> {
         "test" => test(&root, profile(&args.collect::<Vec<_>>())?.as_deref()),
         "clean-incremental" => clean_incremental(&root),
         "check-ui" => check_ui(&root),
+        "check-copy" => checks::copy::run(&root.join("crates/ainc-mac")),
+        "check-names" => check_names(&root),
+        "check-layout" => check_layout(&root),
         "check-commit-msg" => checks::commit_msg::run(&args.collect::<Vec<_>>()),
         "vendor-pilot-gpui" => vendor_pilot_gpui::cli(&args.collect::<Vec<_>>(), &root),
         "generate" => generate(&root, args.collect()),

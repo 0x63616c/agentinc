@@ -1,14 +1,14 @@
 //! Inline notices: a toned banner with an icon, and plain error text.
-use super::{badge::Tone, display::icon, layout::row, tokens::*};
+use super::{badge::Tone, display::icon, icon::Icon, layout::row, tokens::*};
 use gpui::{prelude::*, *};
 
 /// A full-width notice inside a page. Danger banners report failures; info
 /// and warning banners explain a limitation the user can do nothing about.
 pub fn banner(tone: Tone, text: impl Into<SharedString>) -> Div {
     let (foreground, border, surface, glyph) = match tone {
-        Tone::Danger => (DESTRUCTIVE_TEXT, ERROR_BORDER, SURFACE_ERROR, "warning"),
-        Tone::Warning => (STATUS_AMBER, BORDER, SURFACE_RAISED, "warning"),
-        _ => (TEXT, BORDER, SURFACE_RAISED, "info"),
+        Tone::Danger => (DESTRUCTIVE_TEXT, ERROR_BORDER, SURFACE_ERROR, Icon::Warning),
+        Tone::Warning => (STATUS_AMBER, BORDER, SURFACE_RAISED, Icon::Warning),
+        _ => (TEXT, BORDER, SURFACE_RAISED, Icon::Info),
     };
     row()
         .w_full()
@@ -31,6 +31,6 @@ pub fn error_text(text: impl Into<SharedString>) -> Div {
         .gap(px(SPACE_2))
         .text_size(type_size(CAPTION_SIZE))
         .text_color(rgb(ERROR))
-        .child(icon("warning", ICON_SIZE_SM).text_color(rgb(ERROR)))
+        .child(icon(Icon::Warning, ICON_SIZE_SM).text_color(rgb(ERROR)))
         .child(text.into())
 }

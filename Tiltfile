@@ -32,9 +32,9 @@ local_resource(
     serve_cmd='exec "crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc"',
     serve_env={
         'AINC_DISCOVERY_FILE': os.getcwd() + '/.local/dev/api-url',
-        'AGENTINC_SESSION_PATH': os.getcwd() + '/.local/dev/session.json',
+        'AINC_SESSION_PATH': os.getcwd() + '/.local/dev/session.json',
     },
-    deps=watch('agentinc-os'),
+    deps=watch('ainc-mac'),
     ignore=['crates/ainc-mac/dist', 'crates/ainc-mac/ghostty-bridge/.build'],
     resource_deps=['aincd'],
 )

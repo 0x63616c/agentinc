@@ -1,4 +1,5 @@
 //! Fake Codex app-server for tests; see `ainc_daemon::testing::fake_codex`.
+#![allow(clippy::disallowed_macros)] // user-facing output
 use std::path::PathBuf;
 fn main() -> std::io::Result<()> {
     let home = std::env::var_os("CODEX_HOME")

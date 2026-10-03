@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // test output
 use futures::StreamExt;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

@@ -1,48 +1,54 @@
+//! The sidebar: Route navigation items, the Go to… shortcut and the profile row.
 use super::*;
 
 impl Shell {
-    fn sidebar_item(&self, route: Route, index: usize, cx: &mut Context<Self>) -> Stateful<Div> {
-        let selected = self.session.current() == route;
+    fn sidebar_item(&self, route: Route, index: usize, ui: &mut Ui<Self>) -> Stateful<Div> {
+        let selected = self.ui_state.current() == route;
         let tint = if selected { TEXT } else { TEXT_SECONDARY };
         let hover_group = format!("sidebar-item-{index}");
-        self.button(("nav", index), route.label(), Control::Navigate(route), cx)
-            .group(hover_group.clone())
-            .accessibility_id(format!(
-                "nav.{}",
-                route.label().to_lowercase().replace(' ', "-")
-            ))
-            .h(px(CONTROL_HEIGHT))
-            .when(route == Route::Agents, |s| s.mt(px(SPACE_6)))
-            .px(px(SPACE_2))
-            .gap(px(SIDEBAR_TEXT_GAP))
-            .rounded(px(RADIUS_MD))
-            .debug_selector(move || format!("sidebar-nav-{index}"))
-            .text_size(type_size(LABEL_SIZE))
-            .text_color(rgb(tint))
-            .when(selected, |s| {
-                s.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM)
-            })
-            .child(nav_icon(route.icon(), selected, tint, hover_group))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .debug_selector(move || format!("sidebar-label-{index}"))
-                    .child(route.label()),
+        self.button(
+            ("nav", index),
+            route.label(),
+            Control::Go(Destination::Page(route)),
+            ui,
+        )
+        .group(hover_group.clone())
+        .accessibility_id(format!(
+            "nav.{}",
+            route.label().to_lowercase().replace(' ', "-")
+        ))
+        .h(px(CONTROL_HEIGHT))
+        .when(route == Route::Agents, |s| s.mt(px(SPACE_6)))
+        .px(px(SPACE_2))
+        .gap(px(SIDEBAR_TEXT_GAP))
+        .rounded(px(RADIUS_MD))
+        .debug_selector(move || format!("sidebar-nav-{index}"))
+        .text_size(type_size(LABEL_SIZE))
+        .text_color(rgb(tint))
+        .when(selected, |s| {
+            s.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM)
+        })
+        .child(nav_icon(route.icon(), selected, tint, hover_group))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .debug_selector(move || format!("sidebar-label-{index}"))
+                .child(route.label()),
+        )
+        .when(self.command_held, |s| {
+            s.child(
+                kbd(shortcuts::route(index).1)
+                    .debug_selector(move || format!("sidebar-badge-{index}")),
             )
-            .when(self.command_held, |s| {
-                s.child(
-                    kbd(shortcuts::route(index).1)
-                        .debug_selector(move || format!("sidebar-badge-{index}")),
-                )
-            })
+        })
     }
 
-    pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn sidebar(&self, ui: &mut Ui<Self>) -> impl IntoElement {
         let mut nav = column().gap(px(2.));
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
-            nav = nav.child(self.sidebar_item(page.route, index + 1, cx));
+            nav = nav.child(self.sidebar_item(page.route, index + 1, ui));
         }
         let user_menu = match self.overlays.borrow().active() {
             Some(Overlay::UserMenu { support }) => Some(support),
@@ -59,9 +65,9 @@ impl Shell {
             .child(
                 self.button(
                     "shell.search",
-                    shortcuts::SEARCH.labelled("Search"),
-                    Control::Search,
-                    cx,
+                    shortcuts::GO_TO.labelled("Go to…"),
+                    Control::GoTo,
+                    ui,
                 )
                 .debug_selector(|| "shell.search".into())
                 .w_full()
@@ -80,11 +86,10 @@ impl Shell {
                 .border_color(rgb(BORDER))
                 .text_color(rgb(TEXT_SECONDARY))
                 .text_size(type_size(LABEL_SIZE))
-                .child(icon("search", ICON_SIZE_SM))
+                .child(icon(Icon::Search, ICON_SIZE_SM))
                 .child(div().flex_1().min_w_0().truncate().child("Go to…"))
                 .child(
-                    kbd(shortcuts::SEARCH.glyph)
-                        .debug_selector(|| "sidebar-search-shortcut".into()),
+                    kbd(shortcuts::GO_TO.glyph).debug_selector(|| "sidebar-search-shortcut".into()),
                 ),
             )
             .child(nav)
@@ -95,7 +100,7 @@ impl Shell {
                     .relative()
                     .w_full()
                     .child(
-                        self.button("profile", "Account menu", Control::UserMenu, cx)
+                        self.button("profile", "Profile menu", Control::UserMenu, ui)
                             .h(px(44.))
                             .flex_shrink_0()
                             .w_full()
@@ -131,11 +136,11 @@ impl Shell {
                                 ),
                             )
                             .child(
-                                icon("chevronUpDown", ICON_SIZE_SM)
+                                icon(Icon::ChevronUpDown, ICON_SIZE_SM)
                                     .debug_selector(|| "sidebar-profile-chevron".into()),
                             ),
                     )
-                    .when_some(user_menu, |s, support| s.child(self.user_menu(support, cx))),
+                    .when_some(user_menu, |s, support| s.child(self.user_menu(support, ui))),
             )
     }
 }
@@ -144,16 +149,17 @@ impl Shell {
 mod tests {
     use super::{Shell, bind_keys};
     use crate::{
-        model::{Overlay, PANE_WIDTHS},
+        overlay::Overlay,
         ui::SPACE_2,
+        ui_state::{SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN},
     };
     use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext, px};
 
     fn draw_sidebar(shell: &Entity<Shell>, width: f32, cx: &mut VisualTestContext) {
         cx.update(|window, cx| {
             shell.update(cx, |shell, cx| {
-                shell.session.panes[0].width = width;
-                shell.pane_visible[0] = width;
+                shell.ui_state.sidebar.width = width;
+                shell.sidebar_visible = width;
                 cx.notify();
             });
             window.draw(cx).clear(cx);
@@ -169,13 +175,7 @@ mod tests {
         });
         for command_held in [false, true] {
             shell.update(cx, |shell, _| shell.command_held = command_held);
-            for width in [
-                PANE_WIDTHS[0].0,
-                209.,
-                210.,
-                PANE_WIDTHS[0].2,
-                PANE_WIDTHS[0].1,
-            ] {
+            for width in [SIDEBAR_MIN, 209., 210., SIDEBAR_DEFAULT, SIDEBAR_MAX] {
                 draw_sidebar(&shell, width, cx);
                 let search = cx.debug_bounds("shell.search").unwrap();
                 let shortcut = cx.debug_bounds("sidebar-search-shortcut").unwrap();
@@ -185,11 +185,11 @@ mod tests {
                 assert!(search.contains(&shortcut.bottom_right()));
             }
         }
-        draw_sidebar(&shell, PANE_WIDTHS[0].0, cx);
+        draw_sidebar(&shell, SIDEBAR_MIN, cx);
         let shortcut_center = cx.debug_bounds("sidebar-search-shortcut").unwrap().center();
         cx.simulate_click(shortcut_center, Modifiers::default());
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::GoTo));
         });
         cx.simulate_keystrokes("escape");
         shell.read_with(cx, |shell, _| {
@@ -197,7 +197,7 @@ mod tests {
         });
         cx.simulate_keystrokes("cmd-k");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::GoTo));
         });
     }
 
@@ -212,7 +212,7 @@ mod tests {
                 let profile = cx.debug_bounds("sidebar-profile").unwrap().center();
                 cx.simulate_click(profile, Modifiers::default());
             }
-            for width in [PANE_WIDTHS[0].0, PANE_WIDTHS[0].2, PANE_WIDTHS[0].1] {
+            for width in [SIDEBAR_MIN, SIDEBAR_DEFAULT, SIDEBAR_MAX] {
                 draw_sidebar(&shell, width, cx);
                 let profile = cx.debug_bounds("sidebar-profile").unwrap();
                 let content = cx.debug_bounds("main-pane").unwrap();
@@ -235,7 +235,7 @@ mod tests {
         shell.update(cx, |shell, _| {
             shell.profile.name = "A deliberately long profile display name".into();
         });
-        for width in [PANE_WIDTHS[0].0, PANE_WIDTHS[0].2, PANE_WIDTHS[0].1] {
+        for width in [SIDEBAR_MIN, SIDEBAR_DEFAULT, SIDEBAR_MAX] {
             draw_sidebar(&shell, width, cx);
             let profile = cx.debug_bounds("sidebar-profile").unwrap();
             let avatar = cx.debug_bounds("sidebar-profile-avatar").unwrap();

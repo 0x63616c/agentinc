@@ -47,7 +47,7 @@ impl CodexModels {
         Ok(Self {
             connection,
             endpoint,
-            http: reqwest::Client::builder()
+            http: crate::http_client()
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .map_err(|_| ModelError::fatal("Could not create model transport."))?,

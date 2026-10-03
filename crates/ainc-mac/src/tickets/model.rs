@@ -2,7 +2,9 @@
 //! and priority presentation, filters, relationship readings and the optimistic
 //! move that mirrors the daemon's column ordering.
 use crate::ui::*;
-use ainc_client::types::{LinkKind, Ticket, TicketLink, TicketPriority, TicketStatus};
+use ainc_client::types::{
+    ActivityKind, LinkKind, Ticket, TicketActivity, TicketLink, TicketPriority, TicketStatus,
+};
 
 /// Board order, left to right.
 pub const STATUSES: [TicketStatus; 6] = [
@@ -43,14 +45,14 @@ pub fn status_key(status: TicketStatus) -> &'static str {
         TicketStatus::Cancelled => "cancelled",
     }
 }
-pub fn status_icon(status: TicketStatus) -> &'static str {
+pub fn status_icon(status: TicketStatus) -> Icon {
     match status {
-        TicketStatus::Backlog => "status-backlog",
-        TicketStatus::ToDo => "status-todo",
-        TicketStatus::InProgress => "status-progress",
-        TicketStatus::Blocked => "status-blocked",
-        TicketStatus::Done => "status-done",
-        TicketStatus::Cancelled => "status-cancelled",
+        TicketStatus::Backlog => Icon::StatusBacklog,
+        TicketStatus::ToDo => Icon::StatusTodo,
+        TicketStatus::InProgress => Icon::StatusProgress,
+        TicketStatus::Blocked => Icon::StatusBlocked,
+        TicketStatus::Done => Icon::StatusDone,
+        TicketStatus::Cancelled => Icon::StatusCancelled,
     }
 }
 /// Status glyphs stay gray until work is moving, stuck or finished.
@@ -91,13 +93,13 @@ pub fn priority_key(priority: TicketPriority) -> &'static str {
         TicketPriority::None => "none",
     }
 }
-pub fn priority_icon(priority: TicketPriority) -> &'static str {
+pub fn priority_icon(priority: TicketPriority) -> Icon {
     match priority {
-        TicketPriority::Urgent => "priority-urgent",
-        TicketPriority::High => "priority-high",
-        TicketPriority::Medium => "priority-medium",
-        TicketPriority::Low => "priority-low",
-        TicketPriority::None => "priority-none",
+        TicketPriority::Urgent => Icon::PriorityUrgent,
+        TicketPriority::High => Icon::PriorityHigh,
+        TicketPriority::Medium => Icon::PriorityMedium,
+        TicketPriority::Low => Icon::PriorityLow,
+        TicketPriority::None => Icon::PriorityNone,
     }
 }
 /// Only urgent work takes a color; the bars carry the rest.
@@ -215,14 +217,14 @@ pub enum Relation {
     DuplicatedBy,
     /// The other Ticket is this one's parent.
     Parent,
-    /// The other Ticket is a sub-issue of this one.
-    SubIssue,
+    /// The other Ticket is a Sub-Ticket of this one.
+    SubTicket,
 }
 impl Relation {
     /// The order relationships are listed and offered in.
     pub const ALL: [Self; 7] = [
         Self::Parent,
-        Self::SubIssue,
+        Self::SubTicket,
         Self::BlockedBy,
         Self::Blocks,
         Self::RelatesTo,
@@ -237,7 +239,7 @@ impl Relation {
             Self::Duplicates => "Duplicates",
             Self::DuplicatedBy => "Duplicated by",
             Self::Parent => "Parent",
-            Self::SubIssue => "Sub-Ticket",
+            Self::SubTicket => "Sub-Ticket",
         }
     }
     /// The stored link that says `this` has this relation to `other`.
@@ -249,7 +251,7 @@ impl Relation {
             Self::Duplicates => (this, other, LinkKind::Duplicates),
             Self::DuplicatedBy => (other, this, LinkKind::Duplicates),
             Self::Parent => (other, this, LinkKind::ParentOf),
-            Self::SubIssue => (this, other, LinkKind::ParentOf),
+            Self::SubTicket => (this, other, LinkKind::ParentOf),
         }
     }
     /// How a history entry names this relation (the daemon's side names).
@@ -269,7 +271,7 @@ impl Relation {
             (LinkKind::RelatesTo, _) => Self::RelatesTo,
             (LinkKind::Duplicates, true) => Self::Duplicates,
             (LinkKind::Duplicates, false) => Self::DuplicatedBy,
-            (LinkKind::ParentOf, true) => Self::SubIssue,
+            (LinkKind::ParentOf, true) => Self::SubTicket,
             (LinkKind::ParentOf, false) => Self::Parent,
         }
     }
@@ -371,6 +373,104 @@ pub fn apply_move(
         }
     }
     true
+}
+
+/// A glyph and the rest of the sentence after the actor's name.
+pub fn describe(entry: &TicketActivity, name: impl Fn(&str) -> String) -> (Icon, String) {
+    let from = entry.from_value.as_deref().unwrap_or_default();
+    let to = entry.to_value.as_deref().unwrap_or_default();
+    let other = |value: &str| {
+        value
+            .parse::<i64>()
+            .map(ticket_key)
+            .unwrap_or_else(|_| value.to_owned())
+    };
+    match entry.kind {
+        ActivityKind::Created => (Icon::Plus, "created the Ticket".into()),
+        ActivityKind::Renamed => (Icon::Edit, format!("renamed it from “{from}”")),
+        ActivityKind::Described => (Icon::Edit, "updated the description".into()),
+        ActivityKind::Status => match (status_from_key(from), status_from_key(to)) {
+            (Some(from), Some(to)) => (
+                status_icon(to),
+                format!("moved it from {} to {}", status_name(from), status_name(to)),
+            ),
+            _ => (Icon::History, "changed the status".into()),
+        },
+        ActivityKind::Priority => match priority_from_key(to) {
+            Some(TicketPriority::None) => (Icon::PriorityNone, "removed the priority".into()),
+            Some(priority) => (
+                priority_icon(priority),
+                format!("set priority to {}", priority_name(priority)),
+            ),
+            None => (Icon::History, "changed the priority".into()),
+        },
+        ActivityKind::Assigned => (Icon::User, format!("assigned it to {}", name(to))),
+        ActivityKind::Labels => {
+            let split = |value: &str| -> Vec<String> {
+                value
+                    .split(',')
+                    .filter(|label| !label.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            };
+            let (before, after) = (split(from), split(to));
+            let added: Vec<_> = after
+                .iter()
+                .filter(|l| !before.contains(l))
+                .cloned()
+                .collect();
+            let removed: Vec<_> = before
+                .iter()
+                .filter(|l| !after.contains(l))
+                .cloned()
+                .collect();
+            let sentence = match (added.is_empty(), removed.is_empty()) {
+                (false, true) => format!("added {}", added.join(", ")),
+                (true, false) => format!("removed {}", removed.join(", ")),
+                _ => "changed the labels".to_owned(),
+            };
+            (Icon::Tag, sentence)
+        }
+        ActivityKind::Linked | ActivityKind::Unlinked => {
+            let key = other(to);
+            let sentence = match (entry.kind, Relation::from_history(from)) {
+                (ActivityKind::Linked, Some(Relation::Blocks)) => {
+                    format!("marked it as blocking {key}")
+                }
+                (ActivityKind::Linked, Some(Relation::BlockedBy)) => {
+                    format!("marked it as blocked by {key}")
+                }
+                (ActivityKind::Linked, Some(Relation::Duplicates)) => {
+                    format!("marked it as a duplicate of {key}")
+                }
+                (ActivityKind::Linked, Some(Relation::DuplicatedBy)) => {
+                    format!("marked {key} as a duplicate of it")
+                }
+                (ActivityKind::Linked, Some(Relation::Parent)) => {
+                    format!("made it a Sub-Ticket of {key}")
+                }
+                (ActivityKind::Linked, Some(Relation::SubTicket)) => {
+                    format!("added {key} as a Sub-Ticket")
+                }
+                (ActivityKind::Linked, _) => format!("related it to {key}"),
+                (_, relation) => format!(
+                    "removed its link to {key}{}",
+                    relation.map_or(String::new(), |r| format!(" ({})", r.name().to_lowercase()))
+                ),
+            };
+            (Icon::Link, sentence)
+        }
+        ActivityKind::Work => (
+            Icon::Play,
+            match WorkState::parse(to) {
+                Some(WorkState::Queued) => "started work".into(),
+                Some(WorkState::Done) => "finished the work".into(),
+                Some(WorkState::Failed) => "stopped: the work failed".into(),
+                Some(WorkState::Cancelled) => "cancelled the work".into(),
+                _ => format!("work is {}", state_label(to).to_lowercase()),
+            },
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -488,7 +588,7 @@ mod tests {
             ]
         );
         assert_eq!(relations(&links, 2), [(Relation::BlockedBy, 1)]);
-        assert_eq!(relations(&links, 3), [(Relation::SubIssue, 1)]);
+        assert_eq!(relations(&links, 3), [(Relation::SubTicket, 1)]);
         for relation in Relation::ALL {
             let (from, to, kind) = relation.link(7, 8);
             let stored = [TicketLink {
@@ -521,5 +621,78 @@ mod tests {
         }
         assert_eq!(label_color("Home"), label_color("home"));
         assert_eq!(ticket_key(42), "T-42");
+    }
+
+    fn entry(kind: ActivityKind, from: Option<&str>, to: Option<&str>) -> TicketActivity {
+        TicketActivity {
+            actor_id: "owner".into(),
+            conversation_id: None,
+            created_at: 0,
+            from_value: from.map(str::to_owned),
+            id: 1,
+            kind,
+            run_id: None,
+            ticket_id: 1,
+            to_value: to.map(str::to_owned),
+        }
+    }
+    fn sentence(kind: ActivityKind, from: Option<&str>, to: Option<&str>) -> String {
+        describe(&entry(kind, from, to), |id| format!("<{id}>")).1
+    }
+
+    #[test]
+    fn describe_reads_each_kind_of_change_as_a_sentence() {
+        use ActivityKind::*;
+        assert_eq!(sentence(Created, None, None), "created the Ticket");
+        assert_eq!(
+            sentence(Renamed, Some("Old"), Some("New")),
+            "renamed it from “Old”"
+        );
+        assert_eq!(
+            sentence(Status, Some("to_do"), Some("done")),
+            format!(
+                "moved it from {} to {}",
+                status_name(TicketStatus::ToDo),
+                status_name(TicketStatus::Done)
+            )
+        );
+        assert_eq!(
+            sentence(Status, Some("nonsense"), Some("done")),
+            "changed the status"
+        );
+        assert_eq!(
+            sentence(Assigned, Some("owner"), Some("agent-7")),
+            "assigned it to <agent-7>"
+        );
+        assert_eq!(sentence(Labels, Some("a,b"), Some("a,b,c")), "added c");
+        assert_eq!(sentence(Labels, Some("a,b"), Some("a")), "removed b");
+        assert_eq!(sentence(Labels, Some("a"), Some("a")), "changed the labels");
+    }
+
+    #[test]
+    fn describe_names_the_other_ticket_in_links_and_work_states() {
+        use ActivityKind::*;
+        let key = ticket_key(5);
+        let (source, target) = history_sides(LinkKind::Blocks);
+        assert_eq!(
+            sentence(Linked, Some(source), Some("5")),
+            format!("marked it as blocking {key}")
+        );
+        assert_eq!(
+            sentence(Linked, Some(target), Some("5")),
+            format!("marked it as blocked by {key}")
+        );
+        assert_eq!(
+            sentence(Linked, None, Some("5")),
+            format!("related it to {key}")
+        );
+        assert!(
+            sentence(Unlinked, None, Some("5")).starts_with(&format!("removed its link to {key}"))
+        );
+        assert_eq!(sentence(Work, None, Some("done")), "finished the work");
+        assert_eq!(
+            sentence(Work, None, Some("cancelled")),
+            "cancelled the work"
+        );
     }
 }

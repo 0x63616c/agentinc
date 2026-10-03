@@ -70,3 +70,22 @@ async fn three_tool_calls_run_in_the_order_the_model_asked() -> anyhow::Result<(
     turnkeel.shutdown().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn retryable_model_failure_repeats_the_same_step() -> anyhow::Result<()> {
+    let script = Script::new();
+    let agent = Agent::builder("retry-v1").model(script.model()).build();
+    let runtime = Runtime::test().await?;
+    let run = runtime.start(&agent, "hello").await?;
+    let first = script.next_model_call().await;
+    assert_eq!(first.request().messages.len(), 1);
+    first.reply_retryable("rate limited");
+    // The engine retries the step; the model sees the same request again.
+    let second = script.next_model_call().await;
+    assert_eq!(second.request().messages.len(), 1);
+    second.reply(text("recovered"));
+    assert_eq!(run.result().await?, "recovered");
+    assert_eq!(run.transcript().await?.len(), 2);
+    runtime.shutdown().await?;
+    Ok(())
+}

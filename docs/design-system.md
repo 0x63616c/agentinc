@@ -26,7 +26,7 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 | Borders | `BORDER`, `BORDER_SUBTLE`, `BORDER_STRONG`, `ERROR_BORDER` | Around surfaces, inside them, on overlays, on invalid fields. |
 | Text | `TEXT`, `TEXT_SECONDARY`, `TEXT_TERTIARY`, `TEXT_PLACEHOLDER`, `TEXT_ON_PRIMARY` | Body, descriptions, eyebrows and hints, placeholders, ink on white. |
 | Actions | `PRIMARY`, `PRIMARY_HOVER`, `PRIMARY_ACTIVE`, `DESTRUCTIVE`, `DESTRUCTIVE_HOVER`, `DESTRUCTIVE_TEXT`, `ERROR` | The white button, the red button, red text. |
-| Status | `STATUS_{NEUTRAL,GREEN,BLUE,AMBER,RED,PURPLE}` and `_SURFACE` pairs, `ACCENT`, `LABEL_COLORS` | Badge and pill tones; the unread dot; eight muted label hues. |
+| Status | `STATUS_{NEUTRAL,GREEN,BLUE,AMBER,RED,PURPLE}` and `_SURFACE` pairs, `LABEL_COLORS` | Badge and pill tones; eight muted label hues. |
 | Spacing | `SPACE_HALF`, `SPACE_1` … `SPACE_10`, `PAGE_X`, `PANEL_GAP`, `SIDEBAR_INSET`, `SECTION_GAP`, control and row sizes | Every gap, inset and control dimension. |
 | Radius | `RADIUS_XS` … `RADIUS_XL`, `PANEL_RADIUS`, `CONTROL_RADIUS`, `FIELD_RADIUS` | Chips and hints, controls, cards, panels. |
 | Type | `DISPLAY_SIZE`, `TITLE_SIZE`, `HEADING_SIZE`, `BODY_SIZE`, `LABEL_SIZE`, `CAPTION_SIZE`, `MICRO_SIZE`; `type_size()` | Page titles, dialog titles, section headings, body, labels, captions, hints. |
@@ -34,8 +34,8 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 | Motion | `HOVER_MS`, `PANEL_MS`, `MESSAGE_MS`, `SKELETON_MS`, `SPRING_SNAPPY`, `SPRING_GENTLE` | Fades, panel reveal, message arrival, skeleton pulse, springs. |
 
 `cargo xtask check-ui` (`crates/ainc-xtask/src/checks/colors.rs`) fails the build when a color literal appears anywhere
-else; `checks/ui_spacing.rs` warns on raw spacing literals in migrated
-files.
+else; `checks/ui_spacing.rs` fails on new raw spacing literals in the files listed in
+`crates/ainc-mac/scripts/ui-spacing-baseline.json`.
 
 ## Components
 
@@ -53,17 +53,18 @@ providers) and are exercised only on the Components page today.
 | Component | File | Use it for |
 | --- | --- | --- |
 | `Button` (primary, secondary, ghost, destructive; small, regular, large; `.icon_only()`, `.tint()`, `.leading()`) | `button.rs` | Every labeled action. One white primary per surface (the header's, never also the empty state's); secondary is outlined; ghost is transparent at rest and paints its hover as an overlay, so it sits on any surface; destructive is an outlined red control, never a solid slab; a disabled primary is an outline, not a gray block. |
-| `Field` / `text_field` / `field_label` | `field.rs` | Labeled single-line inputs and `.multiline()` text areas, with hint, error and a quiet `FOCUS_FIELD` border while editing. Fields, selects and buttons share `CONTROL_HEIGHT`; inline forms cap at `FORM_WIDTH` and end with a `dialog_footer`. |
+| `Field` / `text_field` / `field_label` | `field.rs` | Labeled single-line inputs and `.multiline()` text areas, with hint, error and a quiet `FOCUS_FIELD` border while editing. Fields, selects and buttons share `CONTROL_HEIGHT`; forms are dialogs that end with a `DialogFooter`. |
 | `Select` | `select.rs` | Choosing one option from a short list. The menu floats over the trigger like a macOS pop-up button, with the current option on the trigger's line, so the row never resizes and the menu never has to choose a side. `.below()` drops it under the trigger instead (dialogs, where a menu over the trigger would cover the fields above); `.quiet()` is a surfaceless trigger for property rows whose menu drops below, right edges aligned. Options can carry a colored `.glyph()` or an `.avatar()`, shown on the trigger and in the menu. |
 | `MenuEntry` (`.glyph()` for a colored leading icon, `.leading()` for an avatar), `MenuButton`, `menu_label`, `menu_divider`, `floating` | `menu.rs` | Dropdown and context menu rows and the deferred, anchored placement they share with popovers. `menu_shell` and `popover_shell` in `overlay.rs` are their surfaces. A `MenuButton` is a toolbar button, such as a filter, whose menu drops below it, left edges aligned. |
 | `banner`, `error_text` | `banner.rs` | A toned full-width notice inside a page; short red copy under a field or inside a dialog. |
 | `toggle`, `checkbox` | `toggle.rs` | Boolean settings. Toggles for immediate effect, checkboxes inside forms. |
 | `segmented`, `tabs`, `chip` | `segmented.rs` | One of a few options (segments hug their content), switching views inside a page (tabs underline their label), picking a value in a form (chips: the chosen one is filled with full-strength text, the rest are outlined). |
-| `badge`, `status_pill`, `status_dot`, `count_badge`, `tag`, `Tone` | `badge.rs` | States and counts. Badges in lists and headers, pills in tables. A `tag` is a label: a bordered pill with a dot in one of the `LABEL_COLORS`, never red, which stays for status. |
-| `avatar`, `agent_avatar` | `avatar.rs` | People are round, with a photo or initials; agents are rounded squares with initials, so the two read apart wherever they appear together. |
-| `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `property_row`, `Page`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. A detail page makes its record the one H1 and puts the way back in `PageHeader::leading`; rows live in a `card` with hairlines between them. `Page::fill` is a document page whose content fills the height under its header and scrolls its own parts (the Tickets board). `property_row` is a record's labeled value, the label kept beside a wrapping value's first line. |
+| `badge`, `status_pill`, `status_dot`, `count_badge`, `tag`, `Tone` | `badge.rs` | States and counts. Use `badge` in lists and headers, `status_pill` in tables and property rows, `tag` for labels and `chip` for form picks; never mix them on one surface. A `tag` is a label: a bordered pill with a dot in one of the `LABEL_COLORS`, never red, which stays for status. |
+| `avatar`, `agent_avatar`, `AssigneeFace`, `assignee_avatar` | `avatar.rs` | Show an assignee with `assignee_avatar(&AssigneeFace, size)` everywhere (cards, rows, selects, the Agents page). People are round, with a photo or initials; agents are rounded squares with initials, so the two read apart wherever they appear together. |
+| `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `property_row`, `PageFrame`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. A detail page makes its record the one H1 and puts the way back in `PageHeader::leading`; rows live in a `card` with hairlines between them. `PageFrame::fill` is a document page whose content fills the height under its header and scrolls its own parts (the Tickets board). `property_row` is a record's labeled value, the label kept beside a wrapping value's first line. |
+| `LoadState`, `page_frame`, `skeleton_rows`, `LoadingFrame` | `loading.rs` | Every data page's loading frame: `page_frame(id, &state, rows, ui, body)` gives the `{id}.error` banner, the reconnecting hint, `{id}.loading` skeleton rows until the first load, then the page's body. Pages never hand-assemble these. |
 | `table_container`, `table_header`, `table_cells`, `table_row`, `TableColumn` | `table.rs` | Columnar data with an eyebrow header and clickable rows. |
-| `dialog_shell`, `dialog_footer`, `sheet_shell`, `popover_shell`, `menu_shell`, `OverlayHost<O>` | `overlay.rs` | Modal confirmations and forms with a Cancel / confirm footer, side panels, floating surfaces; one active overlay per window with focus return. The overlay vocabulary itself (`model::Overlay`) belongs to the shell. |
+| `dialog_shell`, `DialogFooter`, `Verb`, `sheet_shell`, `popover_shell`, `menu_shell`, `OverlayHost<O>` | `overlay.rs` | Modal confirmations and forms with a Cancel / confirm footer whose confirm label and pending label ("Creating…", "Deleting…") follow a `Verb`, side panels, floating surfaces; one active overlay per window with focus return. The overlay vocabulary itself (`overlay::Overlay`) belongs to the shell; a page registers its own dialogs under its route through `page::PageOverlays`. |
 | `Toasts` | `toast.rs` | Transient notices; the host anchors the stack on its content rail and schedules dismissal for transient ones (the shell keeps a sticky one while the session cannot be saved). |
 | `EmptyState` | `empty.rs` | A page or section with nothing in it: icon, title, one line, one action. |
 | `skeleton`, `skeleton_rows`, `LoadingFrame` | `loading.rs` | Placeholders while data loads; the Evee mark for longer waits. |
@@ -74,11 +75,11 @@ providers) and are exercised only on the Components page today.
 ## Shell
 
 The shell (`src/shell.rs` and `src/shell/`) composes the sidebar (workspace card,
-⌘K search, navigation, user row), the title bar with the current tab contour,
-the content card with its status bar, the command palette, the user
-menu popover, the notification panel and toasts. Pages receive the content card and
-render inside `Page::document` (header plus scrolling content) or `Page::canvas`
-(the Conversation view, the Terminal).
+⌘K Go to…, navigation, user row), the title bar with the current Page tab contour,
+the content card with its status bar, the Go to… palette, the user menu popover and
+toasts. Pages receive the content card and render inside `PageFrame::document` (header
+plus scrolling content), `PageFrame::fill` (header plus content that fills the height: the
+board, the Conversation view) or `PageFrame::canvas` (the Terminal).
 
 ## Copy
 
@@ -104,11 +105,36 @@ Every string a person reads in the app follows these rules. Constructs are the n
    never interpolated. Validation errors go to `Field::error`, load errors to `banner`.
 10. Empty states read `No {things} yet.` plus one action, always through `EmptyState`.
 11. British spelling: Cancelled.
-12. People are round avatars; agents are rounded squares. Everywhere.
+12. People are round avatars (`avatar`); agents are rounded squares (`agent_avatar`). Everywhere.
 
-Planned: `cargo xtask check-copy` will enforce these over the string literals passed to
-`Button::new`, `MenuEntry::new`, `PageHeader::new`, `EmptyState` and `dialog_shell`
-(`...`, straight apostrophes, "Canceled", avoid-words, case).
+The decisions the rules leave open, settled once:
+
+- Placeholders name the value as a sentence-case noun phrase ("Ticket title", "Name",
+  "Automation name", "Minutes", "Comment"); search fields read "Search {Things}"; the
+  composer reads "Message Evee".
+- An empty state reads `No {things} yet.` when nothing exists and `No matching {things}.`
+  when a filter hides everything. The title keeps its period; it is a sentence.
+- A detail page is a `PageHeader` whose `leading` is a small ghost back control (the parent
+  page's name with `chevronLeft`), on Tickets, Automations and the Conversation view alike.
+- Every page that polls the daemon through `Sync` has an icon-only secondary Refresh as the
+  first header action and shows `banner` + "Reconnecting…" the same way; Temporal, which
+  loads on demand, has the same icon-only Refresh. Nothing else offers a refresh.
+- Loading lists show `SKELETON_ROWS` skeleton rows, never a page-specific count.
+- A toast stays until dismissed; a transient one follows `Toasts::push` with
+  `Toasts::dismiss_later`, which removes it after `TOAST_MS`.
+- A disabled destructive control stays visible and the nearest section says why ("A Ticket
+  with Work cannot be deleted.").
+
+`cargo xtask check-copy` (`crates/ainc-xtask/src/checks/copy.rs`) enforces the mechanical
+rules over the string literals passed to `Button::new`, `MenuEntry::new`, `PaletteEntry::new`,
+`PageHeader::new`, `EmptyState::new`, `dialog_shell`, `DialogFooter::label` and
+`TextInput::field`: no `...`, no straight apostrophe in prose, no "Canceled", none of
+CONTEXT.md's avoid-words, Title Case for buttons, menu and palette entries and dialog titles,
+and a period on every `EmptyState` title. The case heuristic is deliberately simple: every
+word longer than three letters is capitalized unless it is in the small-word list (a, an, and,
+as, at, by, for, from, in, of, on, or, the, to, with); a literal that is not a title (an
+accessible label with a `·`, an interpolated `format!`) is skipped. Add a construct or a
+brand name that the heuristic misjudges to the allow-list in that file.
 
 ## Adding a component
 

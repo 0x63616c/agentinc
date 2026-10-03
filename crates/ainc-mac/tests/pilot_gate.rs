@@ -4,7 +4,7 @@
 fn default_build_has_no_driver_endpoint() {
     let temp = tempfile::tempdir().unwrap();
     let session = temp.path().join("must-not-exist");
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_agentinc-os"))
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_AgentInc"))
         .arg("--gpui-pilot-session")
         .arg(&session)
         .output()

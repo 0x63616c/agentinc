@@ -22,16 +22,16 @@ work package has landed. Vocabulary is [CONTEXT.md](../CONTEXT.md).
 5. Add a round trip to `crates/ainc-client/tests/round_trip.rs` using the generated client against
    `ainc_daemon::product_router` under `#[sqlx::test(migrations = "../ainc-daemon/migrations")]`.
 6. Tool parity: anything a person can do in the UI an agent must be able to do. A new `TicketCommand`
-   variant reaches Evee automatically, because `conversation_tools.rs` derives the `ticket_command`
-   schema from the OpenAPI `TicketCommand` schema; a new resource needs its own `turnkeel::Tool`
-   impl there, and a CLI group (see "Add a CLI command").
+   variant reaches Evee automatically, because `conversations/tools.rs` derives the `ticket_command`
+   schema from the OpenAPI `TicketCommand` schema; a new resource needs its own `CommandFamily` impl there (the
+   `CommandTool` and `ReadTool` come with it), and a CLI group (see "Add a CLI command").
 
-Planned: one endpoint registry and one `app()` (D2), `CommandError` with a code enum (S4),
-resource paths instead of `/v1/state` and `/v1/commands` (S11).
+`/v1/state` and `/v1/commands` are deprecated for `/v1/conversations` and `/v1/tickets`; the Mac app still
+uses them and they go in a later release.
 
 ## Add a page
 
-1. Add the variant to `Route` in `crates/ainc-mac/src/model.rs` and a `PageSpec` (route, title,
+1. Add the variant to `Route` in `crates/ainc-mac/src/routes.rs` and a `PageSpec` (route, title,
    icon, `in_sidebar`) to `PAGES` in the same file. Sidebar order, `⌘1…` numbering and the ⌘K
    palette all read `PAGES`; bump the `PAGES.len()` assertion in its tests.
 2. Build the page as its own view in `crates/ainc-mac/src/<page>.rs` from `ui::` components
@@ -39,7 +39,7 @@ resource paths instead of `/v1/state` and `/v1/commands` (S11).
 3. Wire it in `shell.rs`: hold the view on `Shell`, construct it in `Shell::new`, and add the
    `Route::<Page> => ...` arm to the content `match` in `render`.
 4. Add a `suite.capture("<page>", Route::<Page>, ...)` frame to `crates/ainc-mac/tests/rendered/runner.rs`
-   and run `cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell`
+   and run `cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell`
    on macOS; `routes_and_history_use_shell_actions` in `shell.rs` covers navigation.
 
 Planned: a `Page` trait with `Page::title()` from `PAGES` (M3, S20); page dialogs leave the shell.
@@ -60,7 +60,7 @@ rejects color literals outside `ui/tokens.rs`.
    idempotent tool twice and fails the run if results differ.
 2. In the daemon, Ticket agents get `CodingTool` per `coding::Permission` (`ReadFile`, `WriteFile`,
    `Shell`, `Git`) plus `CommentTool`, assembled in `execution.rs`; Evee gets `list_tickets` and
-   `ticket_command` from `conversation_tools.rs`. A new coding capability is a `Permission`
+   `ticket_command` from `conversations/tools.rs`. A new coding capability is a `Permission`
    variant and a `CodingTool` arm; a new Evee capability is a `Tool` impl calling the same
    command handler the UI uses.
 3. Policy: `WorkspacePolicy` confines effects to `AINC_WORKSPACE_DIR`; `AINC_TOOL_ALLOW` lists the

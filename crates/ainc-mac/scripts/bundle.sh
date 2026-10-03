@@ -4,17 +4,17 @@ cd "$(dirname "$0")/../../.."
 # Debug is sufficient for a local, inspectable first increment. Pass release for optimization.
 profile=${1:-debug}
 case "$profile" in
-  debug) cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release -p ainc-cli --bins ;;
-  release) cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release -p ainc-cli --bins --release ;;
+  debug) cargo build --locked -p ainc-mac -p ainc-daemon -p ainc-release -p ainc-cli --bins ;;
+  release) cargo build --locked -p ainc-mac -p ainc-daemon -p ainc-release -p ainc-cli --bins --release ;;
   automation)
-    cargo build --locked -p agentinc-os -p ainc-daemon -p ainc-release -p ainc-cli --bins -p gpui-pilot-cli --features agentinc-os/automation
+    cargo build --locked -p ainc-mac -p ainc-daemon -p ainc-release -p ainc-cli --bins -p gpui-pilot-cli --features ainc-mac/automation
     profile=debug
     ;;
   *) echo 'usage: crates/ainc-mac/scripts/bundle.sh [debug|release|automation]' >&2; exit 2 ;;
 esac
 bundle='crates/ainc-mac/dist/AgentInc Dev.app'
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
-cp "target/$profile/agentinc-os" "$bundle/Contents/MacOS/AgentInc"
+cp "target/$profile/AgentInc" "$bundle/Contents/MacOS/AgentInc"
 cp "target/$profile/aincd" "$bundle/Contents/MacOS/aincd"
 cp "target/$profile/ainc-update" "$bundle/Contents/MacOS/ainc-update"
 cp "target/$profile/ainc" "$bundle/Contents/MacOS/ainc"

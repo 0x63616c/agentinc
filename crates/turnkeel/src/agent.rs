@@ -1,4 +1,4 @@
-use crate::{Model, Tool, ToolSet};
+use crate::{Error, Model, Tool, ToolSet};
 use std::sync::Arc;
 
 /// An agent definition: a model, instructions, and tools. Cheap to clone.
@@ -74,5 +74,27 @@ impl AgentBuilder {
             instructions: self.instructions,
             tools: self.tools,
         }
+    }
+}
+
+/// Where a runtime finds agent definitions it was not given up front.
+///
+/// Consulted on the worker the first time a run or session names an agent this runtime
+/// does not hold, and cached afterwards. Return `Ok(None)` when no such definition
+/// exists: the run fails with a clear error. Return `Err` for a transient failure such as
+/// an unreachable database: the step retries.
+pub trait AgentSource: Send + Sync + 'static {
+    fn resolve(
+        &self,
+        name: &str,
+    ) -> futures::future::BoxFuture<'static, Result<Option<Agent>, Error>>;
+}
+
+impl<S: AgentSource + ?Sized> AgentSource for Arc<S> {
+    fn resolve(
+        &self,
+        name: &str,
+    ) -> futures::future::BoxFuture<'static, Result<Option<Agent>, Error>> {
+        (**self).resolve(name)
     }
 }

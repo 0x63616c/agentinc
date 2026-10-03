@@ -2,10 +2,10 @@
 //! history and Comments with the composer, and a properties column for status,
 //! priority, assignee, labels, relationships, work and where it came from.
 use super::*;
-use ainc_client::types::{ActivityKind, Comment};
+use ainc_client::types::Comment;
 
-/// Attempts listed under Work, newest first.
-const RECENT_RUNS: usize = 3;
+/// Work listed under the Work heading, newest first.
+const RECENT_WORK: usize = 3;
 
 /// One timeline row, in time order.
 enum Moment<'a> {
@@ -22,14 +22,9 @@ impl Moment<'_> {
 }
 
 impl TicketsPage {
-    pub(super) fn detail(
-        &mut self,
-        ticket: &Ticket,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let beside = window.viewport_size().width >= px(PROPERTIES_BESIDE_MIN_WIDTH);
-        let header = self.detail_header(ticket, cx);
+    pub(super) fn detail(&mut self, ticket: &Ticket, ui: &mut Ui<Self>) -> Stateful<Div> {
+        let beside = ui.window.viewport_size().width >= px(PROPERTIES_BESIDE_MIN_WIDTH);
+        let header = self.detail_header(ticket, ui);
         // Lower the main column so its first heading shares a line with the first
         // property label inside the card beside it.
         let main = column()
@@ -37,9 +32,9 @@ impl TicketsPage {
             .min_w_0()
             .pt(px(SPACE_2))
             .gap(px(SECTION_GAP))
-            .child(self.description_section(ticket, window, cx))
-            .child(self.timeline(ticket, window, cx));
-        let properties = self.properties(ticket, window, cx);
+            .child(self.description_section(ticket, ui))
+            .child(self.timeline(ticket, ui));
+        let properties = self.properties(ticket, ui);
         let body = if beside {
             row()
                 .items_start()
@@ -52,19 +47,19 @@ impl TicketsPage {
                 .child(properties.w_full())
                 .child(main)
         };
-        Page::document(header)
+        PageFrame::document(header)
             .child(
                 column()
                     .id("tickets-page")
                     .track_focus(&self.page_focus)
                     .gap(px(SPACE_4))
-                    .when_some(self.sync.read(cx).message(), |s, error| {
+                    .when_some(self.sync.read(ui.cx).message(), |s, error| {
                         s.child(banner(Tone::Danger, error))
                     })
                     .when_some(
                         self.form_error
                             .clone()
-                            .filter(|_| self.overlays.borrow().active().is_none()),
+                            .filter(|_| self.overlays.active().is_none()),
                         |s, error| s.child(banner(Tone::Danger, error)),
                     )
                     .child(body),
@@ -74,7 +69,7 @@ impl TicketsPage {
 
     /// A way back, the title as the page's one heading, a meta line and the
     /// actions that apply to this Ticket.
-    fn detail_header(&self, ticket: &Ticket, cx: &mut Context<Self>) -> PageHeader {
+    fn detail_header(&self, ticket: &Ticket, ui: &mut Ui<Self>) -> PageHeader {
         let id = ticket.id;
         let revision = ticket.revision;
         let running = self.running(ticket);
@@ -92,9 +87,9 @@ impl TicketsPage {
                 Button::new("tickets.back", "Tickets")
                     .ghost()
                     .small()
-                    .icon("chevronLeft")
+                    .icon(Icon::ChevronLeft)
                     .tint(TEXT_SECONDARY)
-                    .build(&self.hover, |this, _, cx| this.close_detail(cx), cx)
+                    .build(ui, |this, _, cx| this.close_detail(cx))
                     .ml(px(-CONTROL_INSET_X_SM)),
             )
             .description(meta)
@@ -105,71 +100,55 @@ impl TicketsPage {
                     .mr(px(-CONTROL_INSET_X))
                     .when(running, |s| {
                         s.child(
-                            Button::new("tickets.stop", "Stop work")
+                            Button::new("tickets.stop", "Stop Work")
                                 .secondary()
-                                .icon("stop")
+                                .icon(Icon::Stop)
                                 .enabled(enabled)
-                                .build(
-                                    &self.hover,
-                                    move |this, _, cx| {
-                                        this.command(TicketCommand::Cancel { id, revision }, cx)
-                                    },
-                                    cx,
-                                ),
+                                .build(ui, move |this, _, cx| {
+                                    this.command(TicketCommand::Cancel { id, revision }, cx)
+                                }),
                         )
                     })
-                    .when(!has_runs, |s| {
-                        s.child(
-                            Button::new("tickets.delete", "Delete")
-                                .ghost()
-                                .icon("trash")
-                                .tint(TEXT_SECONDARY)
-                                .enabled(enabled)
-                                .build(
-                                    &self.hover,
-                                    move |this, window, cx| {
-                                        this.overlays.borrow_mut().open(
-                                            Overlay::DeleteTicket(id),
-                                            window,
-                                            cx,
-                                            Some(this.cancel_focus.clone()),
-                                        );
-                                        cx.notify();
-                                    },
+                    .child({
+                        // Deleting stays visible once Work exists, disabled; the Work
+                        // section says why.
+                        Button::new("tickets.delete", "Delete")
+                            .ghost()
+                            .icon(Icon::Trash)
+                            .tint(TEXT_SECONDARY)
+                            .enabled(enabled && !has_runs)
+                            .build(ui, move |this, window, cx| {
+                                this.overlays.open_dialog(
+                                    Dialog::Delete(id),
+                                    this.cancel_focus.clone(),
+                                    window,
                                     cx,
-                                ),
-                        )
+                                );
+                                cx.notify();
+                            })
                     })
                     .child(
                         Button::new("tickets.rename", "Rename")
                             .ghost()
-                            .icon("edit")
+                            .icon(Icon::Edit)
                             .tint(TEXT_SECONDARY)
                             .enabled(enabled)
-                            .build(
-                                &self.hover,
-                                move |this: &mut Self, window, cx| {
-                                    let title = this.ticket(id).map(|t| t.title.clone());
-                                    this.rename.update(cx, |input, cx| {
-                                        input.set_text(&title.unwrap_or_default(), cx)
-                                    });
-                                    let focus = this.rename.focus_handle(cx);
-                                    this.form_error = None;
-                                    this.overlays.borrow_mut().open(
-                                        Overlay::RenameTicket(id),
-                                        window,
-                                        cx,
-                                        Some(focus),
-                                    );
-                                    cx.notify();
-                                },
-                                cx,
-                            ),
+                            .build(ui, move |this: &mut Self, window, cx| {
+                                let title = this.ticket(id).map(|t| t.title.clone());
+                                this.rename.update(cx, |input, cx| {
+                                    input.set_text(&title.unwrap_or_default(), cx)
+                                });
+                                let focus = this.rename.focus_handle(cx);
+                                this.form_error = None;
+                                this.overlays
+                                    .open_dialog(Dialog::Rename(id), focus, window, cx);
+                                cx.notify();
+                            }),
                     ),
             )
     }
 
-    fn description_section(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> Div {
+    fn description_section(&self, ticket: &Ticket, ui: &mut Ui<Self>) -> Div {
         let id = ticket.id;
         let revision = ticket.revision;
         let body: AnyElement = if self.editing_description {
@@ -179,7 +158,7 @@ impl TicketsPage {
                     Field::new(self.description.clone())
                         .multiline()
                         .selector("tickets.description")
-                        .build(window, cx),
+                        .build(ui),
                 )
                 .child(
                     row()
@@ -189,36 +168,28 @@ impl TicketsPage {
                             Button::new("tickets.description.cancel", "Cancel")
                                 .secondary()
                                 .small()
-                                .build(
-                                    &self.hover,
-                                    |this: &mut Self, _, cx| {
-                                        this.editing_description = false;
-                                        cx.notify();
-                                    },
-                                    cx,
-                                ),
+                                .build(ui, |this: &mut Self, _, cx| {
+                                    this.editing_description = false;
+                                    cx.notify();
+                                }),
                         )
                         .child(
                             Button::new("tickets.description.save", "Save")
                                 .primary()
                                 .small()
                                 .enabled(!self.pending.busy())
-                                .build(
-                                    &self.hover,
-                                    move |this: &mut Self, _, cx| {
-                                        let description =
-                                            this.description.read(cx).content.trim().to_owned();
-                                        this.command(
-                                            TicketCommand::Describe {
-                                                id,
-                                                revision,
-                                                description,
-                                            },
-                                            cx,
-                                        );
-                                    },
-                                    cx,
-                                ),
+                                .build(ui, move |this: &mut Self, _, cx| {
+                                    let description =
+                                        this.description.read(cx).content.trim().to_owned();
+                                    this.command(
+                                        TicketCommand::Describe {
+                                            id,
+                                            revision,
+                                            description,
+                                        },
+                                        cx,
+                                    );
+                                }),
                         ),
                 )
                 .into_any_element()
@@ -254,17 +225,13 @@ impl TicketsPage {
                                 .small()
                                 .tint(TEXT_SECONDARY)
                                 .enabled(!self.pending.busy())
-                                .build(
-                                    &self.hover,
-                                    move |this: &mut Self, window, cx| {
-                                        this.description
-                                            .update(cx, |input, cx| input.set_text(&text, cx));
-                                        this.editing_description = true;
-                                        window.focus(&this.description.focus_handle(cx), cx);
-                                        cx.notify();
-                                    },
-                                    cx,
-                                )
+                                .build(ui, move |this: &mut Self, window, cx| {
+                                    this.description
+                                        .update(cx, |input, cx| input.set_text(&text, cx));
+                                    this.editing_description = true;
+                                    window.focus(&this.description.focus_handle(cx), cx);
+                                    cx.notify();
+                                })
                                 .mr(px(-CONTROL_INSET_X_SM)),
                         )
                     }),
@@ -272,7 +239,7 @@ impl TicketsPage {
             .child(body)
     }
 
-    fn timeline(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> Div {
+    fn timeline(&self, ticket: &Ticket, ui: &mut Ui<Self>) -> Div {
         let now = time::now();
         let history: &[TicketActivity] =
             if self.activity_for.as_ref().map(|s| s.0) == Some(ticket.id) {
@@ -323,12 +290,12 @@ impl TicketsPage {
                 row()
                     .mt(px(SPACE_2))
                     .gap(px(SPACE_3))
-                    .child(self.assignee_avatar("owner", AVATAR_SIZE))
+                    .child(assignee_avatar(&self.assignee_face("owner"), AVATAR_SIZE))
                     .child(
                         div().flex_1().min_w_0().child(
                             Field::new(self.comment.clone())
-                                .selector("Add a Comment")
-                                .build(window, cx),
+                                .selector("Comment")
+                                .build(ui),
                         ),
                     )
                     .child(
@@ -336,9 +303,9 @@ impl TicketsPage {
                             .primary()
                             .enabled(
                                 !self.pending.busy()
-                                    && !self.comment.read(cx).content.trim().is_empty(),
+                                    && !self.comment.read(ui.cx).content.trim().is_empty(),
                             )
-                            .build(&self.hover, |this, _, cx| this.add_comment(cx), cx),
+                            .build(ui, |this, _, cx| this.add_comment(cx)),
                     ),
             )
     }
@@ -354,7 +321,7 @@ impl TicketsPage {
 
     fn change_row(&self, entry: &TicketActivity, now: i64) -> Div {
         let actor = self.actor(entry);
-        let (glyph, action) = self.describe(entry);
+        let (glyph, action) = describe(entry, |id| self.assignee_name(id).to_string());
         let text = format!("{actor} {action}");
         let emphasis = HighlightStyle {
             color: Some(rgb(TEXT).into()),
@@ -387,114 +354,16 @@ impl TicketsPage {
             )
     }
 
-    /// A glyph and the rest of the sentence after the actor's name.
-    fn describe(&self, entry: &TicketActivity) -> (&'static str, String) {
-        let from = entry.from_value.as_deref().unwrap_or_default();
-        let to = entry.to_value.as_deref().unwrap_or_default();
-        let other = |value: &str| {
-            value
-                .parse::<i64>()
-                .map(ticket_key)
-                .unwrap_or_else(|_| value.to_owned())
-        };
-        match entry.kind {
-            ActivityKind::Created => ("plus", "created the Ticket".into()),
-            ActivityKind::Renamed => ("edit", format!("renamed it from “{from}”")),
-            ActivityKind::Described => ("edit", "updated the description".into()),
-            ActivityKind::Status => match (status_from_key(from), status_from_key(to)) {
-                (Some(from), Some(to)) => (
-                    status_icon(to),
-                    format!("moved it from {} to {}", status_name(from), status_name(to)),
-                ),
-                _ => ("history", "changed the status".into()),
-            },
-            ActivityKind::Priority => match priority_from_key(to) {
-                Some(TicketPriority::None) => ("priority-none", "removed the priority".into()),
-                Some(priority) => (
-                    priority_icon(priority),
-                    format!("set priority to {}", priority_name(priority)),
-                ),
-                None => ("history", "changed the priority".into()),
-            },
-            ActivityKind::Assigned => {
-                ("user", format!("assigned it to {}", self.assignee_name(to)))
-            }
-            ActivityKind::Labels => {
-                let split = |value: &str| -> Vec<String> {
-                    value
-                        .split(',')
-                        .filter(|label| !label.is_empty())
-                        .map(str::to_owned)
-                        .collect()
-                };
-                let (before, after) = (split(from), split(to));
-                let added: Vec<_> = after
-                    .iter()
-                    .filter(|l| !before.contains(l))
-                    .cloned()
-                    .collect();
-                let removed: Vec<_> = before
-                    .iter()
-                    .filter(|l| !after.contains(l))
-                    .cloned()
-                    .collect();
-                let sentence = match (added.is_empty(), removed.is_empty()) {
-                    (false, true) => format!("added {}", added.join(", ")),
-                    (true, false) => format!("removed {}", removed.join(", ")),
-                    _ => "changed the labels".to_owned(),
-                };
-                ("tag", sentence)
-            }
-            ActivityKind::Linked | ActivityKind::Unlinked => {
-                let key = other(to);
-                let sentence = match (entry.kind, Relation::from_history(from)) {
-                    (ActivityKind::Linked, Some(Relation::Blocks)) => {
-                        format!("marked it as blocking {key}")
-                    }
-                    (ActivityKind::Linked, Some(Relation::BlockedBy)) => {
-                        format!("marked it as blocked by {key}")
-                    }
-                    (ActivityKind::Linked, Some(Relation::Duplicates)) => {
-                        format!("marked it as a duplicate of {key}")
-                    }
-                    (ActivityKind::Linked, Some(Relation::DuplicatedBy)) => {
-                        format!("marked {key} as a duplicate of it")
-                    }
-                    (ActivityKind::Linked, Some(Relation::Parent)) => {
-                        format!("made it a Sub-Ticket of {key}")
-                    }
-                    (ActivityKind::Linked, Some(Relation::SubIssue)) => {
-                        format!("added {key} as a Sub-Ticket")
-                    }
-                    (ActivityKind::Linked, _) => format!("related it to {key}"),
-                    (_, relation) => format!(
-                        "removed its link to {key}{}",
-                        relation
-                            .map_or(String::new(), |r| format!(" ({})", r.name().to_lowercase()))
-                    ),
-                };
-                ("link", sentence)
-            }
-            ActivityKind::Work => (
-                "play",
-                match WorkState::parse(to) {
-                    Some(WorkState::Queued) => "started work".into(),
-                    Some(WorkState::Done) => "finished the work".into(),
-                    Some(WorkState::Failed) => "stopped: the work failed".into(),
-                    Some(WorkState::Cancelled) => "cancelled the work".into(),
-                    _ => format!("work is {}", state_label(to).to_lowercase()),
-                },
-            ),
-        }
-    }
-
     fn comment_row(&self, comment: &Comment, now: i64) -> Stateful<Div> {
         let author = self.assignee_name(&comment.author_id);
         list_item(("comment", comment.id as u64), comment.body.clone())
             .items_start()
             .accessibility_id(format!("comment.{}", comment.id))
             .gap(px(SPACE_3))
-            .child(self.assignee_avatar(&comment.author_id, AVATAR_SIZE))
+            .child(assignee_avatar(
+                &self.assignee_face(&comment.author_id),
+                AVATAR_SIZE,
+            ))
             .child(
                 column()
                     .flex_1()
@@ -526,7 +395,7 @@ impl TicketsPage {
             )
     }
 
-    fn properties(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> Div {
+    fn properties(&self, ticket: &Ticket, ui: &mut Ui<Self>) -> Div {
         let id = ticket.id;
         let revision = ticket.revision;
         let enabled = !self.pending.busy();
@@ -544,15 +413,15 @@ impl TicketsPage {
                 .into(),
         )
         .value(STATUSES.iter().position(|s| *s == ticket.status))
-        .open(self.menu == Some(Menu::Status))
+        .open(self.overlays.popover_open("tickets.detail.status"))
         .enabled(enabled)
         .quiet()
         .width(width)
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::Status, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.detail.status", cx),
             move |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 if let Some(status) = STATUSES
                     .get(index)
                     .copied()
@@ -568,7 +437,6 @@ impl TicketsPage {
                     );
                 }
             },
-            cx,
         );
         let priority = Select::new(
             "tickets.detail.priority",
@@ -579,15 +447,15 @@ impl TicketsPage {
                 .into(),
         )
         .value(PRIORITIES.iter().position(|p| *p == ticket.priority))
-        .open(self.menu == Some(Menu::Priority))
+        .open(self.overlays.popover_open("tickets.detail.priority"))
         .enabled(enabled)
         .quiet()
         .width(width)
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::Priority, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.detail.priority", cx),
             move |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 if let Some(priority) = PRIORITIES
                     .get(index)
                     .copied()
@@ -603,7 +471,6 @@ impl TicketsPage {
                     );
                 }
             },
-            cx,
         );
         let assignees = self.state.assignees.clone();
         let assignee = Select::new(
@@ -614,15 +481,15 @@ impl TicketsPage {
                 .collect(),
         )
         .value(assignees.iter().position(|a| a.id == ticket.assignee_id))
-        .open(self.menu == Some(Menu::Assignee))
+        .open(self.overlays.popover_open("tickets.detail.assignee"))
         .enabled(enabled)
         .quiet()
         .width(width)
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::Assignee, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.detail.assignee", cx),
             move |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 // Choosing the current assignee again would restart their work.
                 if let Some(chosen) = assignees.get(index).filter(|a| a.id != current_assignee) {
                     this.command(
@@ -636,7 +503,6 @@ impl TicketsPage {
                     );
                 }
             },
-            cx,
         );
         let bleed = |select: Div| select.ml(px(-CONTROL_INSET_X)).flex_shrink_0();
         card()
@@ -649,12 +515,12 @@ impl TicketsPage {
             .child(property_row("Assignee", bleed(assignee)))
             .child(property_row(
                 "Labels",
-                self.label_picker(&ticket.labels, Menu::Labels, window, cx),
+                self.label_picker(&ticket.labels, "tickets.labels", ui),
             ))
             .child(divider().my(px(SPACE_3)))
-            .child(self.relationships(ticket, cx))
+            .child(self.relationships(ticket, ui))
             .child(divider().my(px(SPACE_3)))
-            .child(self.work(ticket, cx))
+            .child(self.work(ticket, ui))
             .child(divider().my(px(SPACE_3)))
             .child(property_row(
                 "Created",
@@ -666,7 +532,7 @@ impl TicketsPage {
             ))
     }
 
-    fn relationships(&self, ticket: &Ticket, cx: &mut Context<Self>) -> Div {
+    fn relationships(&self, ticket: &Ticket, ui: &mut Ui<Self>) -> Div {
         let id = ticket.id;
         let found = relations(&self.state.links, id);
         column()
@@ -677,31 +543,23 @@ impl TicketsPage {
                     .justify_between()
                     .child(eyebrow("Relationships"))
                     .child(
-                        Button::new("tickets.link", "Add relationship")
+                        Button::new("tickets.link", "Add Relationship")
                             .ghost()
                             .small()
-                            .icon("plus")
+                            .icon(Icon::Plus)
                             .icon_only()
                             .tint(TEXT_SECONDARY)
                             .enabled(!self.pending.busy() && self.state.tickets.len() > 1)
-                            .build(
-                                &self.hover,
-                                move |this: &mut Self, window, cx| {
-                                    this.link_relation = Relation::BlockedBy;
-                                    this.link_target = None;
-                                    this.form_error = None;
-                                    this.link_search.update(cx, |input, _| input.reset());
-                                    let focus = this.link_search.focus_handle(cx);
-                                    this.overlays.borrow_mut().open(
-                                        Overlay::LinkTicket(id),
-                                        window,
-                                        cx,
-                                        Some(focus),
-                                    );
-                                    cx.notify();
-                                },
-                                cx,
-                            )
+                            .build(ui, move |this: &mut Self, window, cx| {
+                                this.link_relation = Relation::BlockedBy;
+                                this.link_target = None;
+                                this.form_error = None;
+                                this.link_search.update(cx, |input, _| input.reset());
+                                let focus = this.link_search.focus_handle(cx);
+                                this.overlays
+                                    .open_dialog(Dialog::Link(id), focus, window, cx);
+                                cx.notify();
+                            })
                             .mr(px(-TRAILING_ICON_BLEED)),
                     ),
             )
@@ -735,14 +593,14 @@ impl TicketsPage {
                                 .into_any_element(),
                         );
                     }
-                    rows.push(self.related_row(id, relation, other, cx).into_any_element());
+                    rows.push(self.related_row(id, relation, other, ui).into_any_element());
                 }
                 rows
             })
     }
 
     /// One related Ticket: open it, or remove the relationship.
-    fn related_row(&self, id: i64, relation: Relation, other: i64, cx: &mut Context<Self>) -> Div {
+    fn related_row(&self, id: i64, relation: Relation, other: i64, ui: &mut Ui<Self>) -> Div {
         let title = self
             .ticket(other)
             .map_or_else(String::new, |t| t.title.clone());
@@ -767,11 +625,7 @@ impl TicketsPage {
             .child(
                 div().flex_1().min_w_0().child(
                     related
-                        .build(
-                            &self.hover,
-                            move |this: &mut Self, _, cx| this.select(other, cx),
-                            cx,
-                        )
+                        .build(ui, move |this: &mut Self, _, cx| this.select(other, cx))
                         .ml(px(-CONTROL_INSET_X_SM)),
                 ),
             )
@@ -782,30 +636,26 @@ impl TicketsPage {
                 )
                 .ghost()
                 .small()
-                .icon("close")
+                .icon(Icon::Close)
                 .icon_only()
                 .tint(TEXT_TERTIARY)
                 .enabled(!self.pending.busy())
-                .build(
-                    &self.hover,
-                    move |this: &mut Self, _, cx| {
-                        this.command(
-                            TicketCommand::Unlink {
-                                from_id: from,
-                                to_id: to,
-                                link,
-                            },
-                            cx,
-                        )
-                    },
-                    cx,
-                )
+                .build(ui, move |this: &mut Self, _, cx| {
+                    this.command(
+                        TicketCommand::Unlink {
+                            from_id: from,
+                            to_id: to,
+                            link,
+                        },
+                        cx,
+                    )
+                })
                 .mr(px(-TRAILING_ICON_BLEED)),
             )
     }
 
-    /// The agent runs behind this Ticket and the Conversation it came from.
-    fn work(&self, ticket: &Ticket, cx: &mut Context<Self>) -> Div {
+    /// The Work behind this Ticket and the Conversation it came from.
+    fn work(&self, ticket: &Ticket, ui: &mut Ui<Self>) -> Div {
         let mut runs: Vec<_> = self
             .state
             .runs
@@ -815,17 +665,10 @@ impl TicketsPage {
         runs.sort_by_key(|r| std::cmp::Reverse(r.generation));
         let conversation = ticket.conversation_id.map(|id| {
             let title = self
-                .daemon
-                .as_ref()
-                .and_then(|daemon| {
-                    daemon
-                        .product()
-                        .conversations
-                        .into_iter()
-                        .find(|c| c.id == id)
-                        .map(|c| c.title)
-                })
-                .unwrap_or_else(|| "Conversation".into());
+                .conversation_titles
+                .iter()
+                .find(|(other, _)| *other == id)
+                .map_or_else(|| "Conversation".to_owned(), |(_, title)| title.clone());
             (id, title)
         });
         column()
@@ -837,16 +680,14 @@ impl TicketsPage {
                     .child(eyebrow("Work"))
                     .when(!runs.is_empty(), |s| {
                         s.child(
-                            Button::new("tickets.runs", "Runs")
+                            Button::new("tickets.runs", "All Work")
                                 .ghost()
                                 .small()
                                 .tint(TEXT_SECONDARY)
-                                .trailing(icon("arrowUpRight", ICON_SIZE_SM))
-                                .build(
-                                    &self.hover,
-                                    |_: &mut Self, _, cx| cx.emit(TicketsEvent::OpenRuns),
-                                    cx,
-                                )
+                                .trailing(icon(Icon::ArrowUpRight, ICON_SIZE_SM))
+                                .build(ui, |_: &mut Self, _, cx| {
+                                    cx.emit(Destination::Page(Route::Temporal))
+                                })
                                 .mr(px(-CONTROL_INSET_X_SM)),
                         )
                     }),
@@ -858,7 +699,10 @@ impl TicketsPage {
                     "Assign an agent to start work."
                 }))
             })
-            .children(runs.into_iter().take(RECENT_RUNS).map(|run| {
+            .when(!runs.is_empty(), |s| {
+                s.child(hint("A Ticket with Work cannot be deleted."))
+            })
+            .children(runs.into_iter().take(RECENT_WORK).map(|run| {
                 let tone = state_tone(&run.state);
                 let label = state_label(&run.state);
                 row()
@@ -872,7 +716,7 @@ impl TicketsPage {
                         div()
                             .w(px(PROPERTY_LABEL_WIDTH))
                             .flex_shrink_0()
-                            .child(caption(format!("Attempt {}", run.generation))),
+                            .child(caption(format!("Work {}", run.generation))),
                     )
                     .child(status_pill(label.to_owned(), tone))
                     .when_some(run.error.clone(), |s, error| {
@@ -887,14 +731,10 @@ impl TicketsPage {
                         .small()
                         .full_width()
                         .align_start()
-                        .icon("spark")
-                        .build(
-                            &self.hover,
-                            move |_: &mut Self, _, cx| {
-                                cx.emit(TicketsEvent::OpenConversation(conversation))
-                            },
-                            cx,
-                        )
+                        .icon(Icon::Spark)
+                        .build(ui, move |_: &mut Self, _, cx| {
+                            cx.emit(Destination::Conversation(conversation))
+                        })
                         .ml(px(-CONTROL_INSET_X_SM)),
                 ))
             })

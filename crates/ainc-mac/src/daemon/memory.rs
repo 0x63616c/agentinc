@@ -3,8 +3,8 @@
 use super::board;
 use super::transport::{DaemonError, Envelope, Reply, Request, Slice, Transport};
 use ainc_client::types::{
-    AutomationSnapshot, ErrorBody, Snapshot, TicketActivity, TicketSnapshot, Workspace,
-    WorkspaceCommand, WorkspaceState,
+    AutomationSnapshot, ErrorBody, ErrorCode, Snapshot, TicketActivity, TicketSnapshot, Workspace,
+    WorkspaceCommand, WorkspaceSnapshot,
 };
 use std::{
     collections::VecDeque,
@@ -13,7 +13,7 @@ use std::{
 
 /// Everything the in-memory daemon knows.
 pub struct State {
-    pub workspaces: WorkspaceState,
+    pub workspaces: WorkspaceSnapshot,
     pub product: Snapshot,
     pub tickets: TicketSnapshot,
     pub automations: AutomationSnapshot,
@@ -66,7 +66,7 @@ impl MemoryTransport {
 }
 fn unsupported(what: &str) -> DaemonError {
     DaemonError::Rejected(ErrorBody {
-        code: "unsupported".into(),
+        code: ErrorCode::Unavailable,
         message: format!("{what} require the daemon"),
     })
 }

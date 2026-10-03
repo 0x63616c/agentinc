@@ -7,7 +7,7 @@ Tickets and crash recovery are documented in [execution.md](execution.md).
 
 ## Acknowledgement and execution
 
-`GET /v1/state` returns Conversations, ordered turns, Tasks and typed connection preferences. `POST /v1/commands` accepts a UUID operation ID and a closed command enum. A transaction commits the product change and receipt before returning its acknowledgement. Repeating an operation ID returns the same record; changing its payload returns a conflict. The app retains an uncertain operation ID for reconciliation instead of silently issuing another mutation. Pending UI changes are disabled and labelled; a failed refresh cannot be mistaken for an empty successful read.
+`GET /v1/conversations` (and the deprecated `GET /v1/state`) returns Conversations, ordered turns, Tasks and typed connection preferences. `POST /v1/conversations/commands` (and the deprecated `POST /v1/commands`) accepts a UUID operation ID and a closed command enum. A transaction commits the product change and receipt before returning its acknowledgement. Repeating an operation ID returns the same record; changing its payload returns a conflict. The app retains an uncertain operation ID for reconciliation instead of silently issuing another mutation. Pending UI changes are disabled and labelled; a failed refresh cannot be mistaken for an empty successful read.
 
 Queued turns are Postgres records. The daemon claims and executes them independently of HTTP connections and native windows. One pending turn per Conversation is enforced in Postgres; different Conversations can progress concurrently. A session advisory lock prevents a second daemon from recovering a live runner's work. Completed results are retained and saved again on database failure without calling Codex again. Deleting a Conversation with accepted work is refused.
 
@@ -19,6 +19,8 @@ Before publishing readiness, the daemon runs the SQLx migrations and imports `as
 
 SQLite is opened read-only and read inside a consistent transaction, including committed WAL content. The destination transaction imports schema 0/1 single-chat history or schema 2 Conversations, turn IDs/order, the legacy `todos` table (imported as Tickets), assistant settings and the original session JSON. Interrupted turns become failed/retryable; import never dispatches a model call. A committed source receipt prevents reimport, including resurrection of later-deleted records. Future SQLite schemas, invalid session JSON and a populated destination without an import receipt are refused. Failure rolls back destination rows; source data is not migrated in place or deleted. Tests use disposable synthetic copies of the original schemas, never the regular Application Support directory.
 
+The import is the `legacy-import` cargo feature (on by default) and runs on the first start only: a `<done>` row in `legacy_imports` stops later starts from looking at the legacy directory. Remove the feature, `legacy.rs` and the `rusqlite` dependency after 2027-01-01.
+
 Only shell layout, navigation and font remain app-local. Their versioned UI-preference DTO preserves the saved `tasks`/`evee` route aliases (today's Tickets and Assistant) and older tab histories. An unreadable or future-version file is displayed as unavailable and is not overwritten. Product preferences (selected model and Conversation) are daemon-owned.
 
 ## Local companion and remote configuration
@@ -26,10 +28,10 @@ Only shell layout, navigation and font remain app-local. Their versioned UI-pref
 The bundle includes and signs `Contents/MacOS/aincd`. The app checks the discovered daemon on a background executor. If it is unavailable, the app starts that companion using `AINC_DATABASE_URL` (a Postgres URL); the child survives app quit. The daemon locks its discovery file, binds an ephemeral loopback port and atomically publishes the URL. It creates an owner-only `owner-token` next to that file. Postgres remains an independently managed dependency; this phase does not bundle a database server.
 
 - `AINC_DISCOVERY_FILE`: URL discovery file; installed default is `…/Agentinc OS/daemon/api-url`.
-- `AINC_DAEMON_URL`: explicitly configured HTTP(S) URL; disables companion launch.
+- `AINC_API_URL`: explicitly configured HTTP(S) URL; disables companion launch.
 - `AINC_TOKEN_FILE`: bearer credential file; defaults beside discovery.
-- `AINC_LEGACY_DIR`, `AGENTINC_CODEX_HOME`, `AGENTINC_CODEX_PATH`: daemon-side import/profile/provider overrides. The app does not access provider credentials.
-- `AGENTINC_SESSION_PATH`: UI-only preferences; set it for every isolated app launch.
+- `AINC_LEGACY_DIR`, `AINC_CODEX_HOME`, `AINC_CODEX_PATH`: daemon-side import/profile/provider overrides. The app does not access provider credentials.
+- `AINC_SESSION_PATH`: UI-only preferences; set it for every isolated app launch.
 
 Product endpoints require the owner bearer credential. The generated CLI reads `AINC_TOKEN_FILE` or `.local/dev/owner-token`, with its existing `AINC_API_URL` override. The daemon still binds only loopback; remote exposure requires the private TLS/Tailscale deployment configuration from the architecture plan. Multi-user identity is phase 5.
 
@@ -54,9 +56,9 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 # DATABASE_URL must point to a disposable Postgres admin database (SQLx creates test databases).
 cargo test --locked --workspace
 cargo xtask generate --check
-cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
+cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell
 AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" \
-  cargo test --locked -p agentinc-os --features automation --test pilot_acceptance -- --nocapture
+  cargo test --locked -p ainc-mac --features automation --test pilot_acceptance -- --nocapture
 ```
 
 Native acceptance is recorded in `crates/ainc-mac/docs/verification/OWNERSHIP.md`. Live subscription calls are opt-in; the default tests never use a real account or paid model.

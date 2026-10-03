@@ -11,6 +11,10 @@ use std::{
     process::Command,
 };
 
+/// The executable name the bundle shipped before the package was renamed. The already-installed
+/// 0.1.0 updater launches this path after replacement, so the bundle keeps it as a symlink.
+pub const LEGACY_EXECUTABLE: &str = "agentinc-os";
+
 const PG_VERSION: &str = "16.15.0";
 const PG_SHA256: &str = "46f6382024d9b633d1f4b4903ffef8c2404e00ae83098d628c00591048cb0512";
 
@@ -202,7 +206,7 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
             "build",
             "--locked",
             "-p",
-            "agentinc-os",
+            "ainc-mac",
             "-p",
             "ainc-daemon",
             "-p",
@@ -236,16 +240,10 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
             .context("target_directory")?,
     )
     .join(profile);
-    for binary in ["agentinc-os", "aincd", "ainc-update", "ainc"] {
-        let name = if binary == "agentinc-os" {
-            "AgentInc"
-        } else {
-            binary
-        };
-        fs::copy(target.join(binary), macos.join(name))?;
+    for binary in ["AgentInc", "aincd", "ainc-update", "ainc"] {
+        fs::copy(target.join(binary), macos.join(binary))?;
     }
-    // The already-installed 0.1.0 updater launches this old path after replacement.
-    symlink("AgentInc", macos.join("agentinc-os"))?;
+    symlink("AgentInc", macos.join(LEGACY_EXECUTABLE))?;
     fs::copy(
         root.join("crates/ainc-mac/assets/AppIcon.icns"),
         resources.join("AppIcon.icns"),

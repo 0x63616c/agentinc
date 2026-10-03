@@ -1,4 +1,4 @@
-//! The user menu popover and the notification panel.
+//! The user menu popover.
 use super::*;
 
 impl Shell {
@@ -8,24 +8,24 @@ impl Shell {
         move |this, window, cx| this.dispatch(control.clone(), window, cx)
     }
 
-    pub(super) fn user_menu(&self, support: bool, cx: &mut Context<Self>) -> Deferred {
-        let update_ready = cx
+    pub(super) fn user_menu(&self, support: bool, ui: &mut Ui<Self>) -> Deferred {
+        let update_ready = ui
+            .cx
             .try_global::<crate::updates::Updates>()
-            .is_some_and(|updates| updates.0.read(cx).is_ready());
+            .is_some_and(|updates| updates.0.read(ui.cx).is_ready());
         let support = column()
             .relative()
             .child(
                 MenuEntry::new("user-menu.support", "Support")
-                    .icon("help")
+                    .icon(Icon::Help)
                     .trailing(
                         row()
                             .debug_selector(|| "user-menu.support.chevron".into())
                             .w(px(ICON_SIZE))
                             .flex_none()
-                            .child(icon("chevronRight", ICON_SIZE)),
+                            .child(icon(Icon::ChevronRight, ICON_SIZE)),
                     )
-                    .selector("user-menu.support")
-                    .build(&self.hover, Self::menu_action(Control::SupportMenu), cx)
+                    .build(ui, Self::menu_action(Control::SupportMenu))
                     .when(support, |s| s.bg(rgb(SELECTED))),
             )
             .when(support, |s| {
@@ -35,21 +35,18 @@ impl Shell {
                         .gap(px(MENU_INSET))
                         .child(
                             MenuEntry::new("user-menu.help", "Help Center")
-                                .selector("user-menu.help")
-                                .icon("arrowUpRight")
-                                .build(&self.hover, Self::menu_action(Control::HelpCenter), cx),
+                                .icon(Icon::ArrowUpRight)
+                                .build(ui, Self::menu_action(Control::HelpCenter)),
                         )
                         .child(
                             MenuEntry::new("user-menu.feedback", "Send Feedback")
-                                .selector("user-menu.feedback")
-                                .icon("feedback")
-                                .build(&self.hover, Self::menu_action(Control::SendFeedback), cx),
+                                .icon(Icon::Feedback)
+                                .build(ui, Self::menu_action(Control::SendFeedback)),
                         )
                         .child(
                             MenuEntry::new("user-menu.about", "About AgentInc")
-                                .selector("user-menu.about")
-                                .icon("info")
-                                .build(&self.hover, Self::menu_action(Control::About), cx),
+                                .icon(Icon::Info)
+                                .build(ui, Self::menu_action(Control::About)),
                         ),
                     Anchor::TopLeft,
                     point(px(POPOVER_WIDTH - CHIP_GAP), px(-MENU_INSET)),
@@ -92,7 +89,7 @@ impl Shell {
                         .child(
                             row()
                                 .gap(px(SPACE_2))
-                                .child(icon("download", ICON_SIZE_SM).text_color(rgb(TEXT)))
+                                .child(icon(Icon::Download, ICON_SIZE_SM).text_color(rgb(TEXT)))
                                 .child(
                                     div()
                                         .text_size(type_size(LABEL_SIZE))
@@ -105,7 +102,7 @@ impl Shell {
                                 .primary()
                                 .small()
                                 .full_width()
-                                .build(&self.hover, Self::menu_action(Control::InstallUpdate), cx),
+                                .build(ui, Self::menu_action(Control::InstallUpdate)),
                         ),
                 )
             })
@@ -115,135 +112,20 @@ impl Shell {
                     .gap(px(MENU_INSET))
                     .child(
                         MenuEntry::new("user-menu.updates", "Check for Updates")
-                            .selector("user-menu.updates")
-                            .icon("download")
-                            .build(&self.hover, Self::menu_action(Control::CheckForUpdates), cx),
+                            .icon(Icon::Download)
+                            .build(ui, Self::menu_action(Control::CheckForUpdates)),
                     )
                     .child(
                         MenuEntry::new("user-menu.settings", "Settings")
-                            .selector("user-menu.settings")
-                            .icon("settings")
+                            .icon(Icon::Settings)
                             .shortcut(shortcuts::SETTINGS.glyph)
                             .build(
-                                &self.hover,
-                                Self::menu_action(Control::Navigate(Route::Settings)),
-                                cx,
+                                ui,
+                                Self::menu_action(Control::Go(Destination::Page(Route::Settings))),
                             ),
                     )
                     .child(support),
             );
         floating(menu, Anchor::BottomLeft, point(px(0.), px(-SPACE_2)))
-    }
-
-    pub(super) fn notification_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let unread = self
-            .notification_items
-            .iter()
-            .filter(|item| item.unread)
-            .count();
-        popover_shell(350.)
-            .absolute()
-            .top(px(TITLEBAR_HEIGHT + SPACE_1))
-            .right(px(HEADER_EDGE_INSET))
-            .debug_selector(|| "notifications.panel".into())
-            .overflow_hidden()
-            .child(
-                row()
-                    .h(px(44.))
-                    .px(px(SPACE_2))
-                    .gap(px(SPACE_2))
-                    .child(
-                        div()
-                            .px(px(SPACE_1))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Notifications"),
-                    )
-                    .when(unread > 0, |s| s.child(count_badge(unread)))
-                    .child(div().flex_1())
-                    .when(unread > 0, |s| {
-                        s.child(
-                            Button::new("mark-all-read", "Mark all read")
-                                .ghost()
-                                .small()
-                                .build(&self.hover, Self::menu_action(Control::MarkAllRead), cx),
-                        )
-                    })
-                    .child(
-                        Button::new("dismiss-notifications", "Close notifications")
-                            .icon("close")
-                            .icon_only()
-                            .ghost()
-                            .small()
-                            .build(&self.hover, Self::menu_action(Control::Dismiss), cx),
-                    ),
-            )
-            .child(menu_divider())
-            .when(self.notification_items.is_empty(), |s| {
-                s.child(
-                    column()
-                        .py(px(SPACE_6))
-                        .px(px(SPACE_4))
-                        .items_center()
-                        .gap(px(SPACE_2))
-                        .child(icon("inbox", ICON_SIZE_LG))
-                        .child(
-                            div()
-                                .text_size(type_size(LABEL_SIZE))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child("You're all caught up"),
-                        )
-                        .child(caption(
-                            "Activity from agents, tickets and runs lands here.",
-                        )),
-                )
-            })
-            .children(
-                self.notification_items
-                    .iter()
-                    .enumerate()
-                    .map(|(index, item)| {
-                        list_item(("notification", index), item.title.clone())
-                            .items_start()
-                            .gap(px(SPACE_3))
-                            .px(px(SPACE_3))
-                            .py(px(SPACE_3))
-                            .rounded(px(RADIUS_MD))
-                            .child(div().mt(px(2.)).child(icon(item.icon, ICON_SIZE)))
-                            .child(
-                                column()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .gap(px(SPACE_HALF))
-                                    .child(
-                                        row()
-                                            .gap(px(SPACE_2))
-                                            .child(
-                                                div()
-                                                    .flex_1()
-                                                    .min_w_0()
-                                                    .truncate()
-                                                    .text_size(type_size(LABEL_SIZE))
-                                                    .font_weight(FontWeight::MEDIUM)
-                                                    .child(item.title.clone()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(type_size(CAPTION_SIZE))
-                                                    .text_color(rgb(TEXT_TERTIARY))
-                                                    .child(item.relative_time.clone()),
-                                            ),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(type_size(CAPTION_SIZE))
-                                            .text_color(rgb(TEXT_SECONDARY))
-                                            .child(item.body.clone()),
-                                    ),
-                            )
-                            .when(item.unread, |s| {
-                                s.child(div().mt(px(6.)).child(status_dot(Tone::Accent)))
-                            })
-                    }),
-            )
     }
 }

@@ -4,7 +4,7 @@ Verified on 23 September 2026 on Apple M2 Pro, macOS 27.0 (26A428), with `rustc 
 
 ## Dependency provenance
 
-Agentinc OS now uses Zed git commit **`4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`**, the inspected upstream main revision, instead of the crates.io GPUI 0.2.2 release. Both direct GPUI dependencies have an exact `rev` and version requirement; `Cargo.lock` records their shared source. Zed still calls its core crate `gpui 0.2.2` internally: that metadata does **not** mean Cargo uses the old published release.
+AgentInc now uses Zed git commit **`4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`**, the inspected upstream main revision, instead of the crates.io GPUI 0.2.2 release. Both direct GPUI dependencies have an exact `rev` and version requirement; `Cargo.lock` records their shared source. Zed still calls its core crate `gpui 0.2.2` internally: that metadata does **not** mean Cargo uses the old published release.
 
 | Resolved package | Version | Source revision |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ The nonvisual tests exercise Unicode typing/backspace/undo/replacement through G
 
 `tests/rendered_shell.rs` is a custom main-thread harness because AppKit cannot run on a normal Rust test worker. It uses the real product modules, `VisualTestAppContext`, real assets, macOS text and Metal `Window::render_to_image`. It navigates all nine destinations over three rounds, opens/dismisses Search and Add task, types Unicode, and hides/restores Evee. Every frame checks header, workspace, each sidebar row, profile and panel border; visible Evee adds header, composer and border checks. Removing each region from the first frame independently fails its assertion. This detects absent regions; it is not a golden-pixel typography comparison.
 
-The harness verifies two real offscreen window sizes: 1360×828 and 1160×728 logical pixels (2720×1656 and 2320×1456 captured pixels). AppKit resize is asynchronous without the native event loop, so the smaller size uses a second offscreen window. **Actual same-window resize/navigation was tested natively below.** No forced `refresh()` workaround is used by the regression. Artifacts default to `target/rendered-shell/`; `AGENTINC_RENDER_OUTPUT` can change the output directory.
+The harness verifies two real offscreen window sizes: 1360×828 and 1160×728 logical pixels (2720×1656 and 2320×1456 captured pixels). AppKit resize is asynchronous without the native event loop, so the smaller size uses a second offscreen window. **Actual same-window resize/navigation was tested natively below.** No forced `refresh()` workaround is used by the regression. Artifacts default to `target/rendered-shell/`; `AINC_RENDER_OUTPUT` can change the output directory.
 
 The rendered target requires `--features rendered-tests`; its macOS runner is cfg-gated and prints a skip on other platforms. Linux CI continues to run the nonvisual tests. Local checks above do not claim Linux execution or hosted CI success. Cargo also emits the existing `block 0.1.6` future-compatibility notice.
 

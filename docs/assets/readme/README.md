@@ -10,4 +10,4 @@ On an Apple Silicon Mac, from a fresh disposable worktree:
 4. Run `cargo xtask readme-compose .local/readme-native.png docs/assets/readme/hero.png`. It checks the retina frame dimensions, native-control background match and 1 MB limit.
 5. Inspect the PNG for identity leaks, matching colors, native control placement, corners and shadow. The raw capture and isolated session stay under ignored `.local/`.
 
-The two `AGENTINC_CAPTURE_*` identity overrides work only in the opt-in automation build. A normal bundle ignores them. After capture, run `crates/ainc-mac/scripts/bundle.sh` to restore the ordinary bundle before default-build tests.
+The two `AINC_CAPTURE_*` identity overrides work only in the opt-in automation build. A normal bundle ignores them. After capture, run `crates/ainc-mac/scripts/bundle.sh` to restore the ordinary bundle before default-build tests.

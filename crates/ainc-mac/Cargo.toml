@@ -1,15 +1,23 @@
 [package]
-name = "agentinc-os"
+name = "ainc-mac"
 version.workspace = true
 edition = "2024"
 license.workspace = true
 rust-version = "1.98"
 publish = false
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "AgentInc"
+path = "src/main.rs"
+
 [lints]
 workspace = true
 
 [dependencies]
+ainc-identity = { path = "../ainc-identity" }
 ainc-release = { path = "../ainc-release" }
 gpui-pilot = { path = "../gpui-pilot", optional = true, features = ["host"] }
 accesskit = "0.24.0"
@@ -17,7 +25,9 @@ gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev 
 gpui_platform = { version = "=0.1.0", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit", "runtime_shaders"] }
 anyhow = "1"
 chrono = "0.4"
-log = "0.4"
+tracing.workspace = true
+tracing-log = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-segmentation = "1"
@@ -42,9 +52,11 @@ objc2-app-kit = { version = "0.3.2", features = ["NSApplication"] }
 objc2-foundation = { version = "0.3.2", features = ["NSDictionary", "NSString"] }
 libloading = "0.8"
 raw-window-handle = "0.6"
+tracing-oslog = "0.3"
 
 [features]
 automation = [
+    "fixtures",
     "dep:gpui-pilot",
     "dep:futures",
     "dep:tokio-tungstenite",
@@ -53,7 +65,8 @@ automation = [
     "gpui/test-support",
     "gpui_platform/test-support",
 ]
-rendered-tests = ["gpui/test-support", "gpui_platform/test-support"]
+fixtures = []
+rendered-tests = ["fixtures", "gpui/test-support", "gpui_platform/test-support"]
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }

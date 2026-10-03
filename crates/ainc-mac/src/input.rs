@@ -1,3 +1,4 @@
+//! A single-line text input adapted from the GPUI example: selection, undo and word boundaries.
 // Adapted from GPUI 0.2.2 examples/input.rs (Apache-2.0). See THIRD_PARTY.md.
 use std::ops::Range;
 
@@ -392,7 +393,7 @@ impl TextInput {
         input
     }
     pub fn composer(cx: &mut Context<Self>) -> Self {
-        let mut input = Self::field("Ask Evee…", false, cx);
+        let mut input = Self::field("Message Evee", false, cx);
         input.multiline = true;
         input
     }

@@ -51,7 +51,7 @@ Saved at 1360 × 828 logical pixels from gpui-pilot's real Metal window capture:
 Commands from the repository root:
 
 ```sh
-cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
-AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" cargo test --locked -p agentinc-os --features automation --test pilot_acceptance -- --test-threads=1 --nocapture
-cargo clippy --locked -p agentinc-os --features automation --all-targets -- -D warnings
+cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell
+AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" cargo test --locked -p ainc-mac --features automation --test pilot_acceptance -- --test-threads=1 --nocapture
+cargo clippy --locked -p ainc-mac --features automation --all-targets -- -D warnings
 ```

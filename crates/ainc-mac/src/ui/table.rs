@@ -79,39 +79,59 @@ pub fn table_cells(columns: &[TableColumn], cells: Vec<AnyElement>) -> Div {
 }
 
 /// A clickable row with the shared button contract and hover fade.
-#[allow(clippy::too_many_arguments)]
-pub fn table_row<V: super::motion::HoverHost>(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    columns: &[TableColumn],
+pub struct TableRow<'a> {
+    id: ElementId,
+    label: SharedString,
+    columns: &'a [TableColumn],
     cells: Vec<AnyElement>,
     enabled: bool,
-    hover: &super::motion::HoverFade,
-    action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-    cx: &mut Context<V>,
-) -> Stateful<Div> {
-    use super::{button::*, motion::blend};
-    let id = id.into();
-    let (progress, on_hover) = hover.track(&id, enabled, cx);
-    action_button(
-        ButtonSpec {
-            id,
+}
+
+impl<'a> TableRow<'a> {
+    pub fn new(
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        columns: &'a [TableColumn],
+        cells: Vec<AnyElement>,
+    ) -> Self {
+        Self {
+            id: id.into(),
             label: label.into(),
+            columns,
+            cells,
+            enabled: true,
+        }
+    }
+    pub fn build<V: 'static>(
+        self,
+        ui: &mut super::motion::Ui<V>,
+        action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
+    ) -> Stateful<Div> {
+        use super::{button::*, motion::blend};
+        let Self {
+            id,
+            label,
+            columns,
+            cells,
             enabled,
-        },
-        |button| {
-            button
-                .w_full()
-                .h_auto()
-                .rounded(px(0.))
-                .opacity(1.)
-                .bg(blend(SURFACE_RAISED, HOVER_STRONG, progress))
-                .border_b_1()
-                .border_color(rgb(BORDER_SUBTLE))
-                .on_hover(on_hover)
-                .child(table_cells(columns, cells))
-        },
-        action,
-        cx,
-    )
+        } = self;
+        let (progress, on_hover) = ui.hover(&id, enabled);
+        action_button(
+            ButtonSpec { id, label, enabled },
+            |button| {
+                button
+                    .w_full()
+                    .h_auto()
+                    .rounded(px(0.))
+                    .opacity(1.)
+                    .bg(blend(SURFACE_RAISED, HOVER_STRONG, progress))
+                    .border_b_1()
+                    .border_color(rgb(BORDER_SUBTLE))
+                    .on_hover(on_hover)
+                    .child(table_cells(columns, cells))
+            },
+            action,
+            ui.cx,
+        )
+    }
 }

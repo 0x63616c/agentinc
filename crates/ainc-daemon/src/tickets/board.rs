@@ -1,7 +1,7 @@
 //! Order inside a status column. Positions are renumbered 0..n on every move,
 //! so a column never runs out of room between two neighbours.
 use super::{TicketStatus, invalid};
-use crate::product::ApiError;
+use crate::api::CommandError;
 use sqlx::{Postgres, Transaction};
 
 /// Serialize every writer of one workspace's board: statuses, order and
@@ -78,7 +78,7 @@ pub(super) async fn place(
     id: i64,
     status: TicketStatus,
     after: Option<i64>,
-) -> Result<(), ApiError> {
+) -> Result<(), CommandError> {
     if after == Some(id) {
         return Err(invalid("A Ticket cannot follow itself."));
     }
@@ -90,7 +90,7 @@ pub(super) async fn place(
     .fetch_all(&mut **tx)
     .await?;
     // A neighbour that moved away since the client read the board is a stale view.
-    let order = insert_after(&column, id, after).ok_or_else(ApiError::conflict)?;
+    let order = insert_after(&column, id, after).ok_or_else(CommandError::conflict)?;
     let positions: Vec<i64> = (0..order.len() as i64).collect();
     sqlx::query("UPDATE tickets t SET position=v.position FROM unnest($1::bigint[],$2::bigint[]) AS v(id,position) WHERE t.id=v.id AND t.position<>v.position")
         .bind(&order)

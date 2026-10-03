@@ -1,5 +1,5 @@
-//! The Tickets page's dialogs: create, rename, relate, delete and register an
-//! agent. Each ends with the shared Cancel / confirm footer.
+//! The Tickets page's dialogs: create, rename, relate and delete. Each ends
+//! with the shared Cancel / confirm footer.
 use super::*;
 
 /// Candidates shown in the relationship picker.
@@ -16,59 +16,37 @@ fn dialog_content_width() -> f32 {
 }
 
 impl TicketsPage {
-    pub fn overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let active = self.overlays.borrow().active()?;
-        let (title, body, enabled, submit): (String, AnyElement, bool, &str) = match active {
-            Overlay::AddTicket => (
+    pub(super) fn dialog(&self, ui: &mut Ui<Self>) -> Option<AnyElement> {
+        let active = self.overlays.active()?;
+        let (title, body, enabled, footer): (String, AnyElement, bool, DialogFooter) = match active
+        {
+            Dialog::Add => (
                 "New Ticket".into(),
-                self.create_form(window, cx).into_any_element(),
-                !self.input.read(cx).content.trim().is_empty()
-                    && Self::title_error(&self.input.read(cx).content).is_none(),
-                "Create",
+                self.create_form(ui).into_any_element(),
+                !self.input.read(ui.cx).content.trim().is_empty()
+                    && Self::title_error(&self.input.read(ui.cx).content).is_none(),
+                DialogFooter::new(Verb::Create),
             ),
-            Overlay::AddAgent => (
-                "New Agent".into(),
-                column_gap(FORM_STACK_GAP)
-                    .child(text_field("Name", self.agent_name.clone(), window, cx))
-                    .child(
-                        Field::new(self.agent_instructions.clone())
-                            .label("Instructions")
-                            .multiline()
-                            .build(window, cx),
-                    )
-                    .child(
-                        Field::new(self.agent_model.clone())
-                            .label("Model")
-                            .hint("Leave empty to use the connection default.")
-                            .build(window, cx),
-                    )
-                    .when_some(self.form_error.clone(), |s, error| {
-                        s.child(error_text(error))
-                    })
-                    .into_any_element(),
-                !self.agent_name.read(cx).content.trim().is_empty(),
-                "Create",
-            ),
-            Overlay::RenameTicket(_) => (
+            Dialog::Rename(_) => (
                 "Rename Ticket".into(),
                 Field::new(self.rename.clone())
                     .label("Title")
                     .error(self.form_error.clone())
-                    .build(window, cx)
+                    .build(ui)
                     .into_any_element(),
-                !self.rename.read(cx).content.trim().is_empty()
-                    && Self::title_error(&self.rename.read(cx).content).is_none(),
-                "Save",
+                !self.rename.read(ui.cx).content.trim().is_empty()
+                    && Self::title_error(&self.rename.read(ui.cx).content).is_none(),
+                DialogFooter::new(Verb::Save),
             ),
-            Overlay::LinkTicket(id) => (
+            Dialog::Link(id) => (
                 format!("Relate {}", ticket_key(id)),
-                self.link_form(id, window, cx).into_any_element(),
+                self.link_form(id, ui).into_any_element(),
                 self.link_target.is_some(),
-                "Add relationship",
+                DialogFooter::new(Verb::Add).label("Add Relationship"),
             ),
-            Overlay::DeleteTicket(id) => {
+            Dialog::Delete(id) => {
                 let ticket = self.ticket(id)?;
-                let (title, body, button) = copy::confirm_delete(
+                let (title, body, _) = copy::confirm_delete(
                     &ticket.title,
                     "This Ticket, its Comments and its relationships",
                 );
@@ -82,70 +60,48 @@ impl TicketsPage {
                         })
                         .into_any_element(),
                     true,
-                    button,
+                    DialogFooter::new(Verb::Delete),
                 )
             }
-            _ => return None,
         };
-        let deleting = matches!(active, Overlay::DeleteTicket(_));
-        let submit_label = if self.pending.busy() {
-            "Saving…"
-        } else {
-            submit
-        };
-        let footer = dialog_footer(
-            Button::new("tickets.cancel", "Cancel")
-                .secondary()
-                .track_focus(&self.cancel_focus)
-                .build(
-                    &self.hover,
-                    |this: &mut Self, window, cx| {
-                        this.menu = None;
-                        this.overlays.borrow_mut().dismiss(window, cx);
-                        cx.notify();
-                    },
-                    cx,
-                ),
-            Button::new("tickets.submit", submit_label)
-                .kind(if deleting {
-                    ButtonKind::Destructive
-                } else {
-                    ButtonKind::Primary
-                })
-                .enabled(enabled && !self.pending.busy())
-                .track_focus(&self.submit_focus)
-                .build(
-                    &self.hover,
-                    move |this: &mut Self, _, cx| this.submit(active, cx),
-                    cx,
-                ),
-        );
+        let footer = footer
+            .ids("tickets.cancel", "tickets.submit")
+            .enabled(enabled)
+            .pending(self.pending.busy())
+            .focus(&self.cancel_focus, &self.submit_focus)
+            .build(
+                ui,
+                |this: &mut Self, window, cx| {
+                    this.overlays.close_popover();
+                    this.overlays.dismiss(window, cx);
+                    cx.notify();
+                },
+                move |this: &mut Self, _, cx| this.submit(active, cx),
+            );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
 
-    fn submit(&mut self, active: Overlay, cx: &mut Context<Self>) {
-        self.menu = None;
+    /// The dialog's Tab ring: its inputs, then Cancel and confirm.
+    pub(super) fn dialog_focus(&self, cx: &App) -> Vec<FocusHandle> {
+        let mut handles = match self.overlays.active() {
+            Some(Dialog::Add) => vec![
+                self.input.focus_handle(cx),
+                self.draft_description.focus_handle(cx),
+            ],
+            Some(Dialog::Rename(_)) => vec![self.rename.focus_handle(cx)],
+            Some(Dialog::Link(_)) => vec![self.link_search.focus_handle(cx)],
+            Some(Dialog::Delete(_)) | None => vec![],
+        };
+        handles.extend([self.cancel_focus.clone(), self.submit_focus.clone()]);
+        handles
+    }
+
+    fn submit(&mut self, active: Dialog, cx: &mut Context<Self>) {
+        self.overlays.close_popover();
         match active {
-            Overlay::AddTicket => self.create(cx),
-            Overlay::AddAgent => {
-                let name = self.agent_name.read(cx).content.trim().to_owned();
-                let instructions = self.agent_instructions.read(cx).content.trim().to_owned();
-                let model = self.agent_model.read(cx).content.trim().to_owned();
-                self.command(
-                    TicketCommand::RegisterAgent {
-                        name,
-                        instructions,
-                        model: if model.is_empty() {
-                            "connection-default".into()
-                        } else {
-                            model
-                        },
-                    },
-                    cx,
-                );
-            }
-            Overlay::RenameTicket(_) => self.rename_ticket(cx),
-            Overlay::LinkTicket(id) => {
+            Dialog::Add => self.create(cx),
+            Dialog::Rename(_) => self.rename_ticket(cx),
+            Dialog::Link(id) => {
                 if let Some(target) = self.link_target {
                     let (from_id, to_id, link) = self.link_relation.link(id, target);
                     self.command(
@@ -158,17 +114,15 @@ impl TicketsPage {
                     );
                 }
             }
-            Overlay::DeleteTicket(id) => {
+            Dialog::Delete(id) => {
                 if let Some(ticket) = self.ticket(id) {
                     let revision = ticket.revision;
                     self.command(TicketCommand::Delete { id, revision }, cx);
                 }
             }
-            _ => {}
         }
     }
-
-    fn create_form(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn create_form(&self, ui: &mut Ui<Self>) -> Div {
         let full = dialog_content_width();
         let half = (full - SPACE_3) / 2.;
         let status = Select::new(
@@ -178,20 +132,19 @@ impl TicketsPage {
                 .into(),
         )
         .value(STATUSES.iter().position(|s| *s == self.draft.status))
-        .open(self.menu == Some(Menu::DraftStatus))
+        .open(self.overlays.popover_open("tickets.draft.status"))
         .width(half)
         .below()
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::DraftStatus, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.draft.status", cx),
             |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 if let Some(status) = STATUSES.get(index) {
                     this.draft.status = *status;
                 }
                 cx.notify();
             },
-            cx,
         );
         let priority = Select::new(
             "tickets.draft.priority",
@@ -202,20 +155,19 @@ impl TicketsPage {
                 .into(),
         )
         .value(PRIORITIES.iter().position(|p| *p == self.draft.priority))
-        .open(self.menu == Some(Menu::DraftPriority))
+        .open(self.overlays.popover_open("tickets.draft.priority"))
         .width(half)
         .below()
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::DraftPriority, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.draft.priority", cx),
             |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 if let Some(priority) = PRIORITIES.get(index) {
                     this.draft.priority = *priority;
                 }
                 cx.notify();
             },
-            cx,
         );
         let assignees = self.state.assignees.clone();
         let chosen = self.draft.assignee.as_deref().unwrap_or("owner");
@@ -227,18 +179,17 @@ impl TicketsPage {
                 .collect(),
         )
         .value(assignees.iter().position(|a| a.id == chosen))
-        .open(self.menu == Some(Menu::DraftAssignee))
+        .open(self.overlays.popover_open("tickets.draft.assignee"))
         .width(full)
         .below()
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::DraftAssignee, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.draft.assignee", cx),
             move |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 this.draft.assignee = assignees.get(index).map(|a| a.id.clone());
                 cx.notify();
             },
-            cx,
         );
         let starts_work = actionable(self.draft.status)
             && self
@@ -251,13 +202,13 @@ impl TicketsPage {
                 Field::new(self.input.clone())
                     .label("Title")
                     .error(self.form_error.clone())
-                    .build(window, cx),
+                    .build(ui),
             )
             .child(
                 Field::new(self.draft_description.clone())
                     .label("Description")
                     .multiline()
-                    .build(window, cx),
+                    .build(ui),
             )
             .child(
                 row()
@@ -285,7 +236,7 @@ impl TicketsPage {
             .child(
                 column_gap(FIELD_LABEL_GAP)
                     .child(field_label("Labels"))
-                    .child(self.label_picker(&self.draft.labels, Menu::DraftLabels, window, cx)),
+                    .child(self.label_picker(&self.draft.labels, "tickets.draft.labels", ui)),
             )
     }
 
@@ -318,30 +269,29 @@ impl TicketsPage {
         candidates
     }
 
-    fn link_form(&self, id: i64, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn link_form(&self, id: i64, ui: &mut Ui<Self>) -> Div {
         let full = dialog_content_width();
         let relation = Select::new(
             "tickets.link.relation",
             Relation::ALL.map(|r| SelectOption::new(r.name())).into(),
         )
         .value(Relation::ALL.iter().position(|r| *r == self.link_relation))
-        .open(self.menu == Some(Menu::Relation))
+        .open(self.overlays.popover_open("tickets.link.relation"))
         .width(full)
         .below()
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::Relation, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.link.relation", cx),
             |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 if let Some(relation) = Relation::ALL.get(index) {
                     this.link_relation = *relation;
                     this.link_target = None;
                 }
                 cx.notify();
             },
-            cx,
         );
-        let candidates = self.link_candidates(id, cx);
+        let candidates = self.link_candidates(id, ui.cx);
         let count = candidates.len();
         column_gap(FORM_STACK_GAP)
             .child(
@@ -352,8 +302,8 @@ impl TicketsPage {
             .child(
                 Field::new(self.link_search.clone())
                     .label("Ticket")
-                    .leading_icon("search")
-                    .build(window, cx),
+                    .leading_icon(Icon::Search)
+                    .build(ui),
             )
             // The list keeps room for every candidate, so the dialog does not
             // jump as a search narrows it.
@@ -361,7 +311,7 @@ impl TicketsPage {
                 row()
                     .h(px(LINK_LIST_HEIGHT))
                     .justify_center()
-                    .child(hint("No other Tickets match."))
+                    .child(hint("No matching Tickets."))
                     .into_any_element()
             } else {
                 card()
@@ -398,17 +348,16 @@ impl TicketsPage {
                                 ))
                                 .selected(self.link_target == Some(other))
                                 .trailing(
-                                    icon("check", ICON_SIZE_SM)
+                                    icon(Icon::Check, ICON_SIZE_SM)
                                         .text_color(rgb(TEXT))
                                         .when(self.link_target != Some(other), |s| s.opacity(0.)),
                                 )
                                 .build(
-                                    &self.hover,
+                                    ui,
                                     move |this: &mut Self, _, cx| {
                                         this.link_target = Some(other);
                                         cx.notify();
                                     },
-                                    cx,
                                 ),
                             )
                     }))

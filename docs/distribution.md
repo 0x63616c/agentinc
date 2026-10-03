@@ -86,7 +86,7 @@ development headers and test executables are excluded. Every Mach-O is audited w
 `otool -L` before packaging: only system paths, `@loader_path` and `@rpath` are allowed.
 A fresh Mac does not need Homebrew, Docker, Tilt or a manual database setup.
 
-The daemon discovery lock owns startup. Without a configured `DATABASE_URL`, `aincd`
+The daemon discovery lock owns startup. Without a configured `AINC_DATABASE_URL`, `aincd`
 initializes its private runtime directory beside discovery, protected mode 0700.
 Postgres uses a random persisted password, SCRAM authentication and loopback only;
 Temporal uses a persistent SQLite file, a stable namespace/queue and no web UI.

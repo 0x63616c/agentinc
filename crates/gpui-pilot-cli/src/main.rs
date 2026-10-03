@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // user-facing output
 use anyhow::{Context, Result, bail, ensure};
 use gpui_pilot::{
     protocol::{Command, Condition, Reply},

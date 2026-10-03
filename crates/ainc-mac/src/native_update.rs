@@ -7,7 +7,46 @@ use pulldown_cmark::{Event, Options, Parser, html};
 use std::ffi::{CStr, CString};
 use std::{collections::VecDeque, sync::Mutex};
 
-static ACTIONS: Mutex<VecDeque<(i32, bool)>> = Mutex::new(VecDeque::new());
+static ACTIONS: Mutex<VecDeque<(NativeAction, bool)>> = Mutex::new(VecDeque::new());
+
+/// Native callback codes shared with the custom Sparkle user driver.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeAction {
+    Skip = 1,
+    Later = 2,
+    Install = 3,
+    CancelDownload = 4,
+    AutomaticChanged = 5,
+    Retry = 6,
+    Dismiss = 7,
+    PrepareInstall = 8,
+    ReleaseInstall = 9,
+    Downloaded = 10,
+}
+impl NativeAction {
+    pub fn from_code(code: i32) -> Option<Self> {
+        Some(match code {
+            1 => Self::Skip,
+            2 => Self::Later,
+            3 => Self::Install,
+            4 => Self::CancelDownload,
+            5 => Self::AutomaticChanged,
+            6 => Self::Retry,
+            7 => Self::Dismiss,
+            8 => Self::PrepareInstall,
+            9 => Self::ReleaseInstall,
+            10 => Self::Downloaded,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Setting {
+    AutomaticChecks = 0,
+    AutomaticDownload = 1,
+    Weekly = 2,
+}
 
 #[derive(Clone, Default, PartialEq)]
 pub struct State {
@@ -120,10 +159,10 @@ pub fn changelog() {
     };
 }
 
-pub fn setting(setting: i32, enabled: bool) {
+pub fn setting(setting: Setting, enabled: bool) {
     #[cfg(target_os = "macos")]
     unsafe {
-        ainc_sparkle_setting(setting, enabled)
+        ainc_sparkle_setting(setting as i32, enabled)
     };
     #[cfg(not(target_os = "macos"))]
     let _ = (setting, enabled);
@@ -141,13 +180,15 @@ pub fn prepared(error: Option<&str>) {
 
 #[unsafe(no_mangle)]
 extern "C" fn ainc_update_action(action: i32, automatic: bool) {
-    ACTIONS
-        .lock()
-        .expect("native update actions")
-        .push_back((action, automatic));
+    if let Some(action) = NativeAction::from_code(action) {
+        ACTIONS
+            .lock()
+            .expect("native update actions")
+            .push_back((action, automatic));
+    }
 }
 
-pub fn take_action() -> Option<(i32, bool)> {
+pub fn take_action() -> Option<(NativeAction, bool)> {
     ACTIONS.lock().expect("native update actions").pop_front()
 }
 

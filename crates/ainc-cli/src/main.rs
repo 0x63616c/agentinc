@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // user-facing output
 #[allow(unused_variables, dead_code, clippy::clone_on_copy)] // Progenitor output.
 mod generated;
 
@@ -120,8 +121,6 @@ fn operation_group(id: &str) -> (&str, &str) {
     match id {
         "health_live" => ("health", "live"),
         "health_ready" => ("health", "ready"),
-        "get_version" => ("version", "show"),
-        "ticket_contract" => ("tickets", "contract"),
         _ => {
             let (group, action) = id.split_once('_').unwrap_or(("api", id));
             (
@@ -144,6 +143,7 @@ fn variants(spec: &Value, group: &str) -> Vec<Variant> {
     let request = match group {
         "tickets" => "TicketCommand",
         "automations" => "AutomationCommand",
+        "conversations" => "ConversationCommand",
         "product" => "Command",
         _ => return vec![],
     };
@@ -217,7 +217,7 @@ fn command_tree(spec: &Value) -> Command {
             .or_insert_with(|| Command::new(group).subcommand_required(true));
         *entry = entry.clone().subcommand(command);
     }
-    for group in ["tickets", "automations", "product"] {
+    for group in ["tickets", "automations", "conversations", "product"] {
         if let Some(entry) = groups.get_mut(group) {
             for (kind, fields) in variants(spec, group) {
                 let mut command =
@@ -306,6 +306,7 @@ fn install_cli() -> Result<()> {
 async fn main() -> Result<()> {
     // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
     let _ = rustls::crypto::ring::default_provider().install_default();
+    ainc_client::identify_as("cli");
     let spec = schema();
     let mut tree = command_tree(&spec);
     let matches = tree.clone().get_matches();
@@ -362,8 +363,8 @@ async fn main() -> Result<()> {
     if group == "version" {
         return execute(
             &client,
-            operation("get_version"),
-            &generated_matches(operation("get_version"), None)?,
+            operation("version_show"),
+            &generated_matches(operation("version_show"), None)?,
         )
         .await;
     }
@@ -382,6 +383,7 @@ async fn main() -> Result<()> {
     let op = operation(match group {
         "tickets" => "tickets_command",
         "automations" => "automations_command",
+        "conversations" => "conversations_command",
         "product" => "product_command",
         _ => bail!("unsupported command"),
     });
@@ -478,7 +480,7 @@ mod tests {
                     tree.find_subcommand(group)
                         .and_then(|g| g.find_subcommand(action))
                         .is_some()
-                        || id == "get_version",
+                        || id == "version_show",
                     "{id}"
                 );
             }

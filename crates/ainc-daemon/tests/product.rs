@@ -1,9 +1,18 @@
 #![allow(deprecated)] // The Todo commands stay callable until the release after their deprecation.
-use ainc_daemon::{
-    legacy,
-    product::{self, Command, CommandRequest, Product},
-};
+#[cfg(feature = "legacy-import")]
+use ainc_daemon::legacy;
+use ainc_daemon::product::{self, Command, CommandRequest, Product};
 use sqlx::PgPool;
+
+async fn execute(
+    pool: &PgPool,
+    request: CommandRequest,
+) -> Result<product::CommandReceipt, ainc_daemon::api::CommandError> {
+    product::execute_in(pool, "local", request).await
+}
+async fn snapshot(pool: &PgPool) -> Result<product::Snapshot, sqlx::Error> {
+    product::snapshot_in(pool, "local").await
+}
 
 fn request(command: Command) -> CommandRequest {
     CommandRequest {
@@ -12,7 +21,7 @@ fn request(command: Command) -> CommandRequest {
     }
 }
 async fn apply(pool: &PgPool, command: Command) -> i64 {
-    product::execute(pool, request(command))
+    execute(pool, request(command))
         .await
         .unwrap()
         .result_id
@@ -24,25 +33,22 @@ async fn commands_are_durable_repeat_safe_and_validate_conflicts(pool: PgPool) {
     let command = request(Command::CreateTodo {
         title: "Café 👋".into(),
     });
-    let ack = product::execute(&pool, command.clone()).await.unwrap();
+    let ack = execute(&pool, command.clone()).await.unwrap();
     assert_eq!(
-        product::execute(&pool, command.clone())
-            .await
-            .unwrap()
-            .result_id,
+        execute(&pool, command.clone()).await.unwrap().result_id,
         ack.result_id
     );
     let mut conflicting = command;
     conflicting.command = Command::CreateTodo {
         title: "different".into(),
     };
-    assert!(product::execute(&pool, conflicting).await.is_err());
+    assert!(execute(&pool, conflicting).await.is_err());
     assert!(
-        product::execute(&pool, request(Command::CreateTodo { title: "  ".into() }))
+        execute(&pool, request(Command::CreateTodo { title: "  ".into() }))
             .await
             .is_err()
     );
-    let state = product::snapshot(&pool).await.unwrap();
+    let state = snapshot(&pool).await.unwrap();
     assert_eq!(state.todos.len(), 1);
     assert_eq!(state.todos[0].title, "Café 👋");
     apply(
@@ -53,7 +59,7 @@ async fn commands_are_durable_repeat_safe_and_validate_conflicts(pool: PgPool) {
         },
     )
     .await;
-    assert!(product::snapshot(&pool).await.unwrap().todos[0].completed);
+    assert!(snapshot(&pool).await.unwrap().todos[0].completed);
 }
 
 #[sqlx::test]
@@ -70,7 +76,7 @@ async fn closing_client_does_not_drop_acknowledged_turn_or_completed_reply(pool:
         .clone()
         .oneshot(
             Request::post("/v1/commands")
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .header("authorization", "Bearer fixture")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&command).unwrap()))
@@ -81,7 +87,7 @@ async fn closing_client_does_not_drop_acknowledged_turn_or_completed_reply(pool:
     assert_eq!(response.status(), 200);
     drop(response);
     drop(app); // All HTTP/window ownership is gone; the daemon keeps the record.
-    let state = product::snapshot(&pool).await.unwrap();
+    let state = snapshot(&pool).await.unwrap();
     assert_eq!(state.turns[0].state, "queued");
     let id = state.turns[0].id;
     sqlx::query("UPDATE turns SET state='running' WHERE id=$1")
@@ -89,20 +95,19 @@ async fn closing_client_does_not_drop_acknowledged_turn_or_completed_reply(pool:
         .execute(&pool)
         .await
         .unwrap();
-    ainc_daemon::conversations::save_result(&pool, id, Ok("Saved without a window".into()))
+    sqlx::query("UPDATE turns SET state='completed',response='Saved without a window' WHERE id=$1")
+        .bind(id)
+        .execute(&pool)
         .await
         .unwrap();
-    let state = product::snapshot(&pool).await.unwrap();
+    let state = snapshot(&pool).await.unwrap();
     assert_eq!(
         state.turns[0].response.as_deref(),
         Some("Saved without a window")
     );
     assert_eq!(state.turns[0].state, "completed");
-    assert_eq!(
-        product::execute(&pool, command).await.unwrap().result_id,
-        Some(id)
-    );
-    assert_eq!(product::snapshot(&pool).await.unwrap().turns.len(), 1);
+    assert_eq!(execute(&pool, command).await.unwrap().result_id, Some(id));
+    assert_eq!(snapshot(&pool).await.unwrap().turns.len(), 1);
 }
 
 #[sqlx::test]
@@ -118,7 +123,7 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
     )
     .await;
     assert!(
-        product::execute(
+        execute(
             &pool,
             request(Command::Send {
                 conversation_id: first,
@@ -129,7 +134,7 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
         .is_err()
     );
     assert!(
-        product::execute(&pool, request(Command::DeleteConversation { id: first }))
+        execute(&pool, request(Command::DeleteConversation { id: first }))
             .await
             .is_err()
     );
@@ -143,7 +148,7 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
     .await;
     apply(&pool, Command::SelectConversation { id: second }).await;
     assert_eq!(
-        product::snapshot(&pool)
+        snapshot(&pool)
             .await
             .unwrap()
             .settings
@@ -160,7 +165,7 @@ async fn owner_credential_required_for_reads_and_writes(pool: PgPool) {
     let response = app
         .oneshot(
             Request::get("/v1/state")
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -169,6 +174,7 @@ async fn owner_credential_required_for_reads_and_writes(pool: PgPool) {
     assert_eq!(response.status(), 401);
 }
 
+#[cfg(feature = "legacy-import")]
 fn legacy_fixture(path: &std::path::Path) {
     let db = rusqlite::Connection::open(path.join("assistant.sqlite3")).unwrap();
     db.execute_batch("CREATE TABLE todos(id INTEGER PRIMARY KEY,title TEXT,completed INTEGER); INSERT INTO todos VALUES(9,'legacy task',1); CREATE TABLE conversations(id INTEGER PRIMARY KEY,title TEXT,updated_at INTEGER); INSERT INTO conversations VALUES(8,'Old conversation',1700000000); CREATE TABLE turns(id INTEGER PRIMARY KEY,conversation_id INTEGER,prompt TEXT,response TEXT,error TEXT); INSERT INTO turns VALUES(4,8,'hello','world',NULL),(5,8,'unfinished',NULL,NULL); CREATE TABLE assistant_settings(key TEXT PRIMARY KEY,value TEXT); INSERT INTO assistant_settings VALUES('model','example'); PRAGMA user_version=2;").unwrap();
@@ -179,6 +185,7 @@ fn legacy_fixture(path: &std::path::Path) {
     .unwrap();
 }
 
+#[cfg(feature = "legacy-import")]
 #[sqlx::test]
 async fn import_preserves_order_preferences_and_sources_without_replaying(pool: PgPool) {
     // Synthetic fixture only. No test resolves the user's Application Support.
@@ -196,7 +203,7 @@ async fn import_preserves_order_preferences_and_sources_without_replaying(pool: 
         std::fs::read(directory.path().join("session.json")).unwrap(),
         session
     );
-    let state = product::snapshot(&pool).await.unwrap();
+    let state = snapshot(&pool).await.unwrap();
     assert_eq!(state.todos[0].id, 9);
     assert!(state.todos[0].completed);
     assert_eq!(state.conversations[0].updated_at, 1700000000);
@@ -209,12 +216,10 @@ async fn import_preserves_order_preferences_and_sources_without_replaying(pool: 
     assert!(new > 8);
     apply(&pool, Command::DeleteConversation { id: 8 }).await;
     assert!(!legacy::import(&pool, directory.path()).await.unwrap());
-    assert_eq!(
-        product::snapshot(&pool).await.unwrap().conversations.len(),
-        1
-    );
+    assert_eq!(snapshot(&pool).await.unwrap().conversations.len(), 1);
 }
 
+#[cfg(feature = "legacy-import")]
 #[sqlx::test]
 async fn failed_import_rolls_back_and_future_schema_is_untouched(pool: PgPool) {
     let directory = tempfile::tempdir().unwrap();
@@ -222,13 +227,7 @@ async fn failed_import_rolls_back_and_future_schema_is_untouched(pool: PgPool) {
     let db = rusqlite::Connection::open(directory.path().join("assistant.sqlite3")).unwrap();
     db.execute("UPDATE todos SET title=''", []).unwrap();
     assert!(legacy::import(&pool, directory.path()).await.is_err());
-    assert!(
-        product::snapshot(&pool)
-            .await
-            .unwrap()
-            .conversations
-            .is_empty()
-    );
+    assert!(snapshot(&pool).await.unwrap().conversations.is_empty());
     db.execute("UPDATE todos SET title='fixed fixture'", [])
         .unwrap();
     db.execute_batch("PRAGMA user_version=3;").unwrap();
@@ -266,7 +265,7 @@ mod todo_adapter {
             .clone()
             .oneshot(
                 HttpRequest::post("/v1/tickets/commands")
-                    .header("agent-inc-client", ainc_release::client_header())
+                    .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                     .header("authorization", "Bearer owner-fixture")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&request).unwrap()))
@@ -296,7 +295,7 @@ mod todo_adapter {
             .clone()
             .oneshot(
                 HttpRequest::get(format!("/v1/tickets/{id}/activity"))
-                    .header("agent-inc-client", ainc_release::client_header())
+                    .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                     .header("authorization", "Bearer owner-fixture")
                     .body(Body::empty())
                     .unwrap(),
@@ -370,7 +369,7 @@ mod todo_adapter {
         );
         // A stale or missing Todo is a conflict, as it was before.
         assert!(
-            product::execute(
+            execute(
                 &pool,
                 request(Command::CompleteTodo {
                     id: todo + 100,
@@ -409,7 +408,7 @@ mod todo_adapter {
         )
         .await;
         apply(&pool, Command::DeleteTodo { id: gone }).await;
-        assert_eq!(product::snapshot(&pool).await.unwrap().todos.len(), 1);
+        assert_eq!(snapshot(&pool).await.unwrap().todos.len(), 1);
         let last = history(&app, kept).await.pop().unwrap();
         assert_eq!(
             last,
@@ -420,4 +419,80 @@ mod todo_adapter {
             )
         );
     }
+}
+
+#[sqlx::test]
+async fn conversation_resource_endpoints_share_state_with_the_deprecated_ones(pool: PgPool) {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let app = ainc_daemon::product_router(Product::new(pool.clone(), "fixture".into()).unwrap());
+    let send = |request: Request<Body>| {
+        let app = app.clone();
+        async move {
+            let response = app.oneshot(request).await.unwrap();
+            let status = response.status();
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            (
+                status,
+                serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            )
+        }
+    };
+    let authorized = |builder: axum::http::request::Builder| {
+        builder
+            .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
+            .header("authorization", "Bearer fixture")
+            .header("content-type", "application/json")
+    };
+    let (status, receipt) = send(
+        authorized(Request::post("/v1/conversations/commands"))
+            .body(Body::from(
+                serde_json::json!({
+                    "operation_id": uuid::Uuid::new_v4().to_string(),
+                    "command": {"kind": "create"},
+                })
+                .to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let id = receipt["result_id"].as_i64().unwrap();
+    let (status, snapshot) = send(
+        authorized(Request::get("/v1/conversations"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(snapshot["conversations"][0]["id"], id);
+    assert!(snapshot["conversations"][0].get("updated").is_none());
+    // The deprecated snapshot shows the same Conversation.
+    assert_eq!(snapshot_of_state(&pool).await, vec![id]);
+    let api = ainc_daemon::openapi();
+    assert_eq!(api["paths"]["/v1/state"]["get"]["deprecated"], true);
+    assert_eq!(api["paths"]["/v1/commands"]["post"]["deprecated"], true);
+    assert!(api["paths"]["/v1/conversations"]["get"]["deprecated"].is_null());
+}
+async fn snapshot_of_state(pool: &PgPool) -> Vec<i64> {
+    snapshot(pool)
+        .await
+        .unwrap()
+        .conversations
+        .iter()
+        .map(|c| c.id)
+        .collect()
+}
+
+#[cfg(feature = "legacy-import")]
+#[sqlx::test]
+async fn import_once_settles_on_the_first_start(pool: PgPool) {
+    let directory = tempfile::tempdir().unwrap();
+    // Nothing to import on the first start settles the import for good.
+    assert!(!legacy::import_once(&pool, directory.path()).await.unwrap());
+    legacy_fixture(directory.path());
+    assert!(!legacy::import_once(&pool, directory.path()).await.unwrap());
+    assert!(snapshot(&pool).await.unwrap().conversations.is_empty());
 }

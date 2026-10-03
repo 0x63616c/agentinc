@@ -514,7 +514,7 @@ split across `lib.rs:110–143`, `temporal.rs:44–54`, `main.rs:138–162`; mid
 three places so base routes get the compatibility check and version header twice
 (`lib.rs:117–118` and `141–142`). Dead `/v1/tickets/contract` phase-1 echo (`lib.rs:26–29,
 70–74`) still in client and CLI (`ainc-cli/src/main.rs:124`). ~9 env vars read ad hoc in
-`main.rs` and `codex.rs`; `AGENTINC_CODEX_HOME`/`AGENTINC_CODEX_PATH` (`codex.rs:17,23`) break
+`main.rs` and `codex.rs`; `AINC_CODEX_HOME`/`AINC_CODEX_PATH` (`codex.rs:17,23`) break
 the `AINC_*` scheme.
 
 Target shape. `crates/ainc-daemon/src/api.rs`:
@@ -704,7 +704,7 @@ list per row struct (extend `TICKET_COLUMNS`).
 | S6 | seven time formatters, four `now()`s in the app | `ui::time` only | xtask check bans `.format("%` elsewhere (M4) |
 | S7 | four shortcut notations, README wrong | one shortcuts table, glyph-only `⌘K`, generated README | shared table (M4) |
 | S8 | `agentinc.*` and `turnkeel.*` names inside the SDK | `turnkeel.*`, old names aliased | xtask check (D5) |
-| S9 | `AINC_*`, `AGENTINC_*` (`AGENTINC_SESSION_PATH`, `AGENTINC_CODEX_HOME`, `AGENTINC_WINDOW_TITLE`, `AGENTINC_CAPTURE_*`, `AGENTINC_PILOT_NARROW`), `TURNKEEL_*`; `AINC_DAEMON_URL` vs `AINC_API_URL`; `upgrade_gate.rs:220` writes `sessions.json` vs `session.json` | `AINC_*` product, `TURNKEEL_*` SDK; one `Config`; one `discovery()`; `AINC_API_URL` | xtask check on env names (D2, M1) |
+| S9 | `AINC_*`, `AGENTINC_*` (`AGENTINC_SESSION_PATH`, `AINC_CODEX_HOME`, `AGENTINC_WINDOW_TITLE`, `AGENTINC_CAPTURE_*`, `AGENTINC_PILOT_NARROW`), `TURNKEEL_*`; `AINC_DAEMON_URL` vs `AINC_API_URL`; `upgrade_gate.rs:220` writes `sessions.json` vs `session.json` | `AINC_*` product, `TURNKEEL_*` SDK; one `Config`; one `discovery()`; `AINC_API_URL` | xtask check on env names (D2, M1) |
 | S10 | package `agentinc-os` in `ainc-mac`; `gpui-pilot-cli` binary named `gpui-pilot`; `agent-inc-*` header literal ×15; spellings AgentInc / `Agentinc OS` / `AgentInc Development` / `co.worldwidewebb.agentinc`; default workspace `'World Wide Webb'` hard-coded in a migration and `storage.rs` | package `ainc-mac`, binary `AgentInc`; headers as consts in identity; `Agentinc OS` only as the documented legacy data dir | AGENTS.md naming rule; grep check |
 | S11 | `/v1/state`, `/v1/commands`, `Snapshot.todos`, `AutomationSnapshot.rules`, `WorkspaceState`, `Acknowledgement`, `/v1/tickets/contract` | resource paths; `XSnapshot`/`XReceipt`/`XCommandRequest`; Todo deprecated then deleted; stub deleted | OpenAPI lint (D2, D6) |
 | S12 | ~100 runtime SQL strings, `Definition` SELECT ×4 | `query_as!` + offline data, or one column list per row struct | `cargo sqlx prepare --check` |

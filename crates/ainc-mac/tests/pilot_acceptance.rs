@@ -1,4 +1,5 @@
 //! Actual isolated app + authenticated socket + real Metal. Never runs on Linux.
+#![allow(clippy::disallowed_macros)] // test output
 #![cfg(target_os = "macos")]
 use anyhow::{Context, Result, bail, ensure};
 use gpui_pilot::{protocol::*, transport::Client};
@@ -166,17 +167,17 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     let output = PathBuf::from("target/pilot-acceptance");
     fs::create_dir_all(&output)?;
     let log = fs::File::create(output.join("app.log"))?;
-    let mut app = App(Process::new(env!("CARGO_BIN_EXE_agentinc-os"))
+    let mut app = App(Process::new(env!("CARGO_BIN_EXE_AgentInc"))
         .args(["--gpui-pilot-session", pilot.to_str().unwrap()])
-        .env("AGENTINC_SESSION_PATH", directory.join("session.json"))
+        .env("AINC_SESSION_PATH", directory.join("session.json"))
         .env(
             "AINC_DISCOVERY_FILE",
             std::env::var_os("AINC_DISCOVERY_FILE")
                 .context("run against an isolated cargo xtask dev stack")?,
         )
         .env("AINC_LEGACY_DIR", directory.join("legacy"))
-        .env("AGENTINC_CODEX_HOME", directory.join("codex"))
-        .env("AGENTINC_WINDOW_TITLE", "Agentinc Pilot Acceptance")
+        .env("AINC_CODEX_HOME", directory.join("codex"))
+        .env("AINC_WINDOW_TITLE", "AgentInc Pilot Acceptance")
         .stdout(Stdio::null())
         .stderr(log)
         .spawn()?);
@@ -193,7 +194,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     let mut client = Client::connect(&manifest)?;
     client.call(Command::Hello)?;
     let initial = snap(&mut client)?;
-    ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Search"));
+    ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Go to…"));
     ensure!(
         initial.by_id("sidebar.version")?.name.as_deref()
             == Some(ainc_release::identity::version().as_str())
@@ -514,7 +515,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     screenshot(&mut client, "update-settings", &output)?;
     act(&mut client, "nav.assistant", None)?;
     screenshot(&mut client, "assistant-conversations", &output)?;
-    act(&mut client, "new-chat", None)?;
+    act(&mut client, "new-conversation", None)?;
     wait(
         &mut client,
         Condition::Present {
@@ -526,7 +527,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     wait(
         &mut client,
         Condition::Present {
-            author_id: "new-chat".into(),
+            author_id: "new-conversation".into(),
         },
     )?;
     let metrics = serde_json::json!({

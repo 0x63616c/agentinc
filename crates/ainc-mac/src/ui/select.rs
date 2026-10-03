@@ -1,15 +1,17 @@
 //! The select control. Its menu floats over the page, so opening it never
 //! changes the size of the row that owns it.
-use super::{button::*, display::*, layout::*, menu::*, motion::*, overlay::menu_shell, tokens::*};
+use super::{
+    avatar::*, button::*, display::*, icon::Icon, layout::*, menu::*, motion::*,
+    overlay::menu_shell, tokens::*,
+};
 use gpui::{prelude::*, *};
-use std::sync::Arc;
 
 pub struct SelectOption {
     pub label: SharedString,
     pub description: Option<SharedString>,
-    pub glyph: Option<(&'static str, u32)>,
+    pub glyph: Option<(Icon, u32)>,
     /// A person or agent shown by their avatar: name, local photo and kind.
-    pub avatar: Option<(SharedString, Option<Arc<Image>>, bool)>,
+    pub avatar: Option<AssigneeFace>,
 }
 
 impl SelectOption {
@@ -21,18 +23,13 @@ impl SelectOption {
             avatar: None,
         }
     }
-    /// Lead with a person's round avatar or an agent's square one.
-    pub fn avatar(
-        mut self,
-        name: impl Into<SharedString>,
-        photo: Option<Arc<Image>>,
-        agent: bool,
-    ) -> Self {
-        self.avatar = Some((name.into(), photo, agent));
+    /// Lead with an assignee's avatar: a person's round one or an agent's square one.
+    pub fn avatar(mut self, face: AssigneeFace) -> Self {
+        self.avatar = Some(face);
         self
     }
     /// A colored leading icon shown on the trigger and in the menu.
-    pub fn glyph(mut self, name: &'static str, color: u32) -> Self {
+    pub fn glyph(mut self, name: Icon, color: u32) -> Self {
         self.glyph = Some((name, color));
         self
     }
@@ -103,12 +100,11 @@ impl Select {
         self
     }
 
-    pub fn build<V: HoverHost>(
+    pub fn build<V: 'static>(
         self,
-        hover: &HoverFade,
+        ui: &mut Ui<V>,
         on_toggle: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
         on_select: impl Fn(&mut V, usize, &mut Window, &mut Context<V>) + Clone + 'static,
-        cx: &mut Context<V>,
     ) -> Div {
         let Self {
             id,
@@ -124,17 +120,16 @@ impl Select {
         let current = value.and_then(|index| options.get(index));
         let label = current.map_or(placeholder, |option| option.label.clone());
         let glyph = current.and_then(|option| option.glyph);
-        let person = current.and_then(|option| option.avatar.clone());
-        let trigger_selector = id.to_string();
+        let face = current.and_then(|option| option.avatar.clone());
         let mut trigger = Button::new(ElementId::Name(id.clone()), label);
         if let Some((name, color)) = glyph {
             trigger = trigger.leading(icon(name, ICON_SIZE_SM).text_color(rgb(color)));
-        } else if let Some((name, photo, agent)) = person {
-            trigger = trigger.leading(option_avatar(&name, photo, agent));
+        } else if let Some(face) = face {
+            trigger = trigger.leading(assignee_avatar(&face, ICON_SIZE));
         }
         // A quiet select reads as its value; the row itself is the affordance.
         if !quiet {
-            trigger = trigger.trailing(icon("chevronDown", ICON_SIZE_SM));
+            trigger = trigger.trailing(icon(Icon::ChevronDown, ICON_SIZE_SM));
         }
         let trigger = trigger
             .kind(if quiet {
@@ -146,8 +141,7 @@ impl Select {
             .align_start()
             .enabled(enabled)
             .selected(open)
-            .build(hover, on_toggle, cx)
-            .debug_selector(move || trigger_selector.clone())
+            .build(ui, on_toggle)
             .when(!open && !quiet, |s| s.bg(rgb(SURFACE_INPUT)))
             .when(value.is_none(), |s| s.text_color(rgb(TEXT_SECONDARY)));
         column()
@@ -170,17 +164,15 @@ impl Select {
                     .enabled(enabled);
                     if let Some((name, color)) = option.glyph {
                         item = item.glyph(name, color);
-                    } else if let Some((name, photo, agent)) = &option.avatar {
-                        item = item.leading(option_avatar(name, photo.clone(), *agent));
+                    } else if let Some(face) = &option.avatar {
+                        item = item.leading(assignee_avatar(face, ICON_SIZE));
                     }
                     if let Some(description) = option.description {
                         item = item.trailing(caption(description));
                     }
-                    menu = menu.child(item.build(
-                        hover,
-                        move |view, window, cx| on_select(view, index, window, cx),
-                        cx,
-                    ));
+                    menu = menu.child(item.build(ui, move |view, window, cx| {
+                        on_select(view, index, window, cx)
+                    }));
                 }
                 // Like a macOS pop-up button: the menu opens over the trigger with
                 // the current option on the trigger's own line, so it never has to
@@ -208,13 +200,5 @@ impl Select {
                     point(px(0.), px(-(MENU_INSET + current * MENU_ITEM_HEIGHT))),
                 ))
             })
-    }
-}
-
-fn option_avatar(name: &str, photo: Option<Arc<Image>>, agent: bool) -> AnyElement {
-    if agent {
-        super::avatar::agent_avatar(name, ICON_SIZE)
-    } else {
-        super::avatar::avatar(name, photo, ICON_SIZE)
     }
 }

@@ -135,7 +135,7 @@ fn check_pane(app: &Path, discovery: &Path, existing: bool) -> Result<()> {
             |data| find(data, b"\x1bc").is_some_and(|at| data.len() > at + 2),
             "initial terminal output",
         )?;
-        let marker = format!("__AGENTINC_TERMINAL_{}__", session_id.replace('-', ""));
+        let marker = format!("__AINC_TERMINAL_{}__", session_id.replace('-', ""));
         let typed = format!("printf '{marker}\\n'\n");
         if unsafe { libc::write(master.as_raw_fd(), typed.as_ptr().cast(), typed.len()) } < 0 {
             return Err(std::io::Error::last_os_error().into());

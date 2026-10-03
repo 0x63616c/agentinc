@@ -1,13 +1,11 @@
 //! The ChatGPT Connection. Codex owns credentials; the daemon owns one Codex
 //! process for its whole lifetime, the sign-in state machine and the HTTP routes.
 mod codex;
-use crate::product::{ApiError, ErrorBody, Product};
+use crate::api::{AppState, CommandError, ErrorBody, Owner, Product};
 use anyhow::{Context, Result, anyhow, bail};
 use axum::{
-    Json, Router,
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    routing::{get, post},
+    Json,
+    extract::{FromRef, State},
 };
 pub use codex::Model;
 use serde::{Deserialize, Serialize};
@@ -23,6 +21,7 @@ use std::{
 };
 use turnkeel::ModelError;
 use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, ToSchema)]
 pub struct ConnectionStatus {
@@ -63,7 +62,14 @@ struct Inner {
 impl Connection {
     /// The user's Codex profile and the installed or bundled Codex CLI.
     pub fn local() -> Self {
-        Self::new(codex::home(), codex::executable())
+        Self::local_with(None, None)
+    }
+    /// [`Self::local`] with the daemon's configured overrides for either path.
+    pub fn local_with(home: Option<PathBuf>, executable: Option<PathBuf>) -> Self {
+        Self::new(
+            home.unwrap_or_else(codex::default_home),
+            executable.unwrap_or_else(codex::default_executable),
+        )
     }
     pub fn new(home: PathBuf, executable: PathBuf) -> Self {
         Self {
@@ -273,31 +279,30 @@ struct ConnectionState {
     product: Product,
     connection: Connection,
 }
-pub fn router(product: Product, connection: Connection) -> Router {
-    Router::new()
-        .route("/v1/connection", get(status))
-        .route("/v1/connection/login", post(login))
-        .route("/v1/connection/cancel", post(cancel))
-        .route("/v1/connection/logout", post(logout))
-        .with_state(ConnectionState {
-            product,
-            connection,
-        })
+impl FromRef<AppState> for ConnectionState {
+    fn from_ref(state: &AppState) -> Self {
+        Self {
+            product: state.product.clone(),
+            connection: state.connection.clone(),
+        }
+    }
 }
-fn unavailable() -> ApiError {
-    ApiError::new(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "connection_unavailable",
-        "Connection is unavailable. Try refreshing.",
-    )
+pub(crate) fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(status))
+        .routes(routes!(login))
+        .routes(routes!(cancel))
+        .routes(routes!(logout))
+}
+fn unavailable() -> CommandError {
+    CommandError::Unavailable("Connection is unavailable. Try refreshing.".into())
 }
 
-#[utoipa::path(get, path = "/v1/connection", operation_id = "connection_status", responses((status = 200, body = ConnectionStatus), (status = 401, body = ErrorBody), (status = 503, body = ErrorBody)))]
+#[utoipa::path(get, path = "/v1/connection", operation_id = "connection_status", responses((status = 200, body = ConnectionStatus), (status = 503, body = ErrorBody)))]
 async fn status(
     State(state): State<ConnectionState>,
-    headers: HeaderMap,
-) -> Result<Json<ConnectionStatus>, ApiError> {
-    state.product.authorize(&headers)?;
+    _owner: Owner,
+) -> Result<Json<ConnectionStatus>, CommandError> {
     let connection = state.connection;
     let status = tokio::task::spawn_blocking(move || connection.status())
         .await
@@ -305,38 +310,33 @@ async fn status(
     Ok(Json(status))
 }
 
-#[utoipa::path(post, path = "/v1/connection/login", operation_id = "connection_login", responses((status = 200, body = ConnectionStatus), (status = 401, body = ErrorBody), (status = 503, body = ErrorBody)))]
+#[utoipa::path(post, path = "/v1/connection/login", operation_id = "connection_login", responses((status = 200, body = ConnectionStatus), (status = 503, body = ErrorBody)))]
 async fn login(
     State(state): State<ConnectionState>,
-    headers: HeaderMap,
-) -> Result<Json<ConnectionStatus>, ApiError> {
-    state.product.authorize(&headers)?;
+    _owner: Owner,
+) -> Result<Json<ConnectionStatus>, CommandError> {
     Ok(Json(state.connection.login()))
 }
-#[utoipa::path(post, path = "/v1/connection/cancel", operation_id = "connection_cancel", responses((status = 200, body = ConnectionStatus), (status = 401, body = ErrorBody), (status = 503, body = ErrorBody)))]
+#[utoipa::path(post, path = "/v1/connection/cancel", operation_id = "connection_cancel", responses((status = 200, body = ConnectionStatus), (status = 503, body = ErrorBody)))]
 async fn cancel(
     State(state): State<ConnectionState>,
-    headers: HeaderMap,
-) -> Result<Json<ConnectionStatus>, ApiError> {
-    state.product.authorize(&headers)?;
+    _owner: Owner,
+) -> Result<Json<ConnectionStatus>, CommandError> {
     Ok(Json(state.connection.cancel()))
 }
-#[utoipa::path(post, path = "/v1/connection/logout", operation_id = "connection_logout", responses((status = 200, body = ConnectionStatus), (status = 401, body = ErrorBody), (status = 409, body = ErrorBody), (status = 503, body = ErrorBody)))]
+#[utoipa::path(post, path = "/v1/connection/logout", operation_id = "connection_logout", responses((status = 200, body = ConnectionStatus), (status = 409, body = ErrorBody), (status = 503, body = ErrorBody)))]
 async fn logout(
     State(state): State<ConnectionState>,
-    headers: HeaderMap,
-) -> Result<Json<ConnectionStatus>, ApiError> {
-    state.product.authorize(&headers)?;
+    _owner: Owner,
+) -> Result<Json<ConnectionStatus>, CommandError> {
     let pending: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM turns WHERE state IN ('queued','running'))",
     )
     .fetch_one(&state.product.pool)
     .await?;
     if pending {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "busy",
-            "Wait for accepted replies before signing out.",
+        return Err(CommandError::Conflict(
+            "Wait for accepted replies before signing out.".into(),
         ));
     }
     let connection = state.connection;
@@ -345,13 +345,6 @@ async fn logout(
         .map_err(|_| unavailable())?
         .map_err(|_| unavailable())?;
     Ok(Json(ConnectionStatus::default()))
-}
-
-pub fn openapi() -> utoipa::openapi::OpenApi {
-    #[derive(utoipa::OpenApi)]
-    #[openapi(paths(status, login, cancel, logout))]
-    struct Api;
-    <Api as utoipa::OpenApi>::openapi()
 }
 
 #[cfg(test)]

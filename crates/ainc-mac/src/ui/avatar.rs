@@ -58,6 +58,41 @@ pub fn agent_avatar(name: &str, size: f32) -> AnyElement {
         .into_any_element()
 }
 
+/// Who an avatar stands for: a person (round, with a photo when there is one)
+/// or an agent (a rounded square).
+#[derive(Clone)]
+pub struct AssigneeFace {
+    pub name: SharedString,
+    pub photo: Option<Arc<Image>>,
+    pub agent: bool,
+}
+impl AssigneeFace {
+    pub fn person(name: impl Into<SharedString>, photo: Option<Arc<Image>>) -> Self {
+        Self {
+            name: name.into(),
+            photo,
+            agent: false,
+        }
+    }
+    pub fn agent(name: impl Into<SharedString>) -> Self {
+        Self {
+            name: name.into(),
+            photo: None,
+            agent: true,
+        }
+    }
+}
+
+/// The one avatar for an assignee, wherever it appears: people round, agents
+/// rounded squares.
+pub fn assignee_avatar(face: &AssigneeFace, size: f32) -> AnyElement {
+    if face.agent {
+        agent_avatar(&face.name, size)
+    } else {
+        avatar(&face.name, face.photo.clone(), size)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::initials;

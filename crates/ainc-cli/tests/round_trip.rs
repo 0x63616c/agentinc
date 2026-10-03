@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // test output
 use std::{fs, process::Command};
 
 #[sqlx::test(migrations = "../ainc-daemon/migrations")]

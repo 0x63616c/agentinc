@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // cargo build-script protocol
 fn main() {
     println!("cargo:rerun-if-env-changed=AINC_CHANNEL");
     println!("cargo:rerun-if-env-changed=AINC_COMMIT");

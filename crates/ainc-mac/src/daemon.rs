@@ -6,26 +6,28 @@
 //! id once on a transport failure, and lets go only when the daemon rejects it.
 //! While a family's slot is full, a *different* command in that family is
 //! refused until the pending one is retried.
-#[cfg(test)]
+#[cfg(any(test, feature = "fixtures"))]
 #[path = "daemon/board.rs"]
 mod board;
 #[path = "daemon/http.rs"]
 mod http;
-#[cfg(test)]
+#[cfg(any(test, feature = "fixtures"))]
 #[path = "daemon/memory.rs"]
 pub mod memory;
 #[path = "daemon/transport.rs"]
 pub mod transport;
 
+#[cfg(ainc_upgrade_test)]
+pub(crate) use http::connect as client;
 pub(crate) use http::{block_on, discovery_path};
 pub use transport::{ConnectionAction, DaemonError};
 use transport::{Envelope, Reply, Request, Slice, Transport};
 
 use ainc_client::types::{
     Assignee, AssigneeKind, AutomationCommand, AutomationRequest, AutomationSnapshot,
-    Command as ProductCommand, CommandRequest, ConnectionStatus, ErrorBody, ExecutionPage,
-    Snapshot, TicketActivity, TicketCommand, TicketCommandRequest, TicketSnapshot, Workspace,
-    WorkspaceCommand, WorkspaceRequest, WorkspaceState,
+    Command as ProductCommand, CommandRequest, ConnectionStatus, ErrorBody, ErrorCode, Snapshot,
+    TicketActivity, TicketCommand, TicketCommandRequest, TicketSnapshot, WorkPage, Workspace,
+    WorkspaceCommand, WorkspaceRequest, WorkspaceSnapshot,
 };
 use std::sync::{
     Arc, Mutex,
@@ -171,7 +173,7 @@ macro_rules! fetch {
 }
 fetch!(
     Workspaces,
-    WorkspaceState,
+    WorkspaceSnapshot,
     |_s| Slice::Workspaces,
     Workspaces
 );
@@ -191,7 +193,7 @@ fetch!(
 );
 fetch!(
     Executions,
-    ExecutionPage,
+    WorkPage,
     |s| Slice::Executions {
         status: s.status.clone(),
         page: s.page.clone(),
@@ -199,8 +201,8 @@ fetch!(
     Executions
 );
 
-pub(crate) fn default_workspaces() -> WorkspaceState {
-    WorkspaceState {
+pub(crate) fn default_workspaces() -> WorkspaceSnapshot {
+    WorkspaceSnapshot {
         current_id: "local".into(),
         workspaces: vec![Workspace {
             id: "local".into(),
@@ -243,12 +245,12 @@ pub struct Daemon {
     // newer acknowledgement. Never acquire this lock on the foreground.
     serial: Mutex<()>,
     pending: [Mutex<Option<Pending>>; 4],
-    workspaces: Mutex<WorkspaceState>,
+    workspaces: Mutex<WorkspaceSnapshot>,
     product: Mutex<Snapshot>,
-    tickets: Mutex<TicketSnapshot>,
+    tickets: Mutex<Arc<TicketSnapshot>>,
     automations: Mutex<AutomationSnapshot>,
     update_required: AtomicBool,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixtures"))]
     memory: Option<Arc<memory::MemoryTransport>>,
 }
 impl Daemon {
@@ -257,7 +259,7 @@ impl Daemon {
     pub fn connect() -> Self {
         Self::with_transport(Arc::new(http::HttpTransport::default()))
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn in_memory() -> Self {
         let memory = memory::MemoryTransport::new();
         Self {
@@ -272,19 +274,19 @@ impl Daemon {
             pending: Default::default(),
             workspaces: Mutex::new(default_workspaces()),
             product: Mutex::new(default_product()),
-            tickets: Mutex::new(default_tickets()),
+            tickets: Mutex::new(Arc::new(default_tickets())),
             automations: Mutex::new(AutomationSnapshot {
                 rules: vec![],
                 occurrences: vec![],
                 history: vec![],
             }),
             update_required: AtomicBool::new(false),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "fixtures"))]
             memory: None,
         }
     }
     /// The in-memory daemon behind this instance, for editing and inspection.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn memory(&self) -> &memory::MemoryTransport {
         self.memory.as_deref().expect("an in-memory Daemon")
     }
@@ -316,7 +318,7 @@ impl Daemon {
                 *self.automations.lock().expect("Automation snapshot") = self.fetch(Automations)?
             }
             Family::Ticket => {
-                *self.tickets.lock().expect("Ticket snapshot") = self.fetch(Tickets)?
+                *self.tickets.lock().expect("Ticket snapshot") = Arc::new(self.fetch(Tickets)?)
             }
             Family::Product => {
                 *self.product.lock().expect("product snapshot") = self.fetch(Product)?
@@ -360,7 +362,7 @@ impl Daemon {
                 Some(prior) if prior.command == value => prior.envelope.clone(),
                 Some(_) => {
                     return Err(DaemonError::Rejected(ErrorBody {
-                        code: "pending".into(),
+                        code: ErrorCode::Conflict,
                         message: format!(
                             "Retry the unacknowledged {} change before another change.",
                             family.name()
@@ -416,13 +418,14 @@ impl Daemon {
         self.call(Request::Connection(action)).map(|_| ())
     }
 
-    pub fn workspaces(&self) -> WorkspaceState {
+    pub fn workspaces(&self) -> WorkspaceSnapshot {
         self.workspaces.lock().expect("Workspace snapshot").clone()
     }
     pub fn product(&self) -> Snapshot {
         self.product.lock().expect("product snapshot").clone()
     }
-    pub fn tickets(&self) -> TicketSnapshot {
+    /// Shared, not copied: the palette reads it on every keystroke.
+    pub fn tickets(&self) -> Arc<TicketSnapshot> {
         self.tickets.lock().expect("Ticket snapshot").clone()
     }
     pub fn automations(&self) -> AutomationSnapshot {
@@ -464,9 +467,9 @@ mod tests {
             })
             .collect()
     }
-    fn refused(code: &str) -> DaemonError {
+    fn refused(code: ErrorCode) -> DaemonError {
         DaemonError::Rejected(ErrorBody {
-            code: code.into(),
+            code,
             message: "refused".into(),
         })
     }
@@ -497,8 +500,11 @@ mod tests {
     #[test]
     fn a_rejection_clears_the_pending_slot() {
         let daemon = Daemon::in_memory();
-        daemon.memory().fail_next(refused("invalid"));
-        assert_eq!(daemon.send(create("Pay rent")), Err(refused("invalid")));
+        daemon.memory().fail_next(refused(ErrorCode::Invalid));
+        assert_eq!(
+            daemon.send(create("Pay rent")),
+            Err(refused(ErrorCode::Invalid))
+        );
         daemon.send(create("Walk the dog")).unwrap();
         let sent = commands(&daemon);
         assert_eq!(sent.len(), 2);
@@ -517,7 +523,7 @@ mod tests {
         ));
         let blocked = daemon.send(create("Walk the dog"));
         assert!(
-            matches!(&blocked, Err(DaemonError::Rejected(body)) if body.code == "pending"),
+            matches!(&blocked, Err(DaemonError::Rejected(body)) if body.code == ErrorCode::Conflict),
             "{blocked:?}"
         );
         daemon.send(create("Pay rent")).unwrap();

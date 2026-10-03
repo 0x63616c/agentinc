@@ -18,21 +18,21 @@ pub(crate) fn block_on<T>(future: impl Future<Output = T>) -> T {
         .block_on(future)
 }
 
-/// Where the daemon publishes its URL. Follow-up: move into `ainc_identity::discovery()`.
+/// Where the daemon publishes its URL: `AINC_DISCOVERY_FILE`, else the installed location.
 pub(crate) fn discovery_path() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("AINC_DISCOVERY_FILE") {
         return Ok(path.into());
     }
-    Ok(ainc_release::identity::support_dir().join("daemon/api-url"))
+    Ok(ainc_identity::identity::discovery_file())
 }
 
-async fn connect() -> Result<Client> {
+pub(crate) async fn connect() -> Result<Client> {
     anyhow::ensure!(
         !crate::updates::installation_pending(),
         "Update installation is preparing; companion requests are paused"
     );
     let discovery = discovery_path()?;
-    let url = if let Ok(url) = std::env::var("AINC_DAEMON_URL") {
+    let url = if let Ok(url) = std::env::var("AINC_API_URL") {
         url
     } else {
         let existing = std::fs::read_to_string(&discovery).ok();
@@ -72,9 +72,6 @@ fn spawn_daemon(discovery: &std::path::Path) -> Result<()> {
         "Companion daemon missing. Start the development stack or reinstall AgentInc."
     );
     let mut command = std::process::Command::new(binary);
-    if let Ok(database) = std::env::var("AINC_DATABASE_URL") {
-        command.env("DATABASE_URL", database);
-    }
     std::fs::create_dir_all(discovery.parent().context("discovery directory")?)?;
     let log = std::fs::OpenOptions::new()
         .create(true)
@@ -166,7 +163,10 @@ async fn perform(client: &Client, request: Request) -> Result<Reply, DaemonError
                 .into_inner(),
         ),
         Request::Fetch(Slice::Executions { status, page }) => {
-            let mut request = client.temporal_executions().status(status);
+            let mut request = client.work_list();
+            if let Ok(status) = status.parse::<ainc_client::types::WorkStatus>() {
+                request = request.status(status);
+            }
             if let Some(page) = page {
                 request = request.page(page);
             }

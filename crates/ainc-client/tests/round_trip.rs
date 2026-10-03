@@ -1,27 +1,25 @@
-use ainc_client::{Client, types::TicketContract};
+use ainc_client::Client;
 
 #[tokio::test]
-async fn generated_ticket_operation_round_trips() {
+async fn generated_version_operation_round_trips() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let pool = sqlx::PgPool::connect_lazy("postgres://unused:unused@localhost/unused").unwrap();
     let server = tokio::spawn(async move {
-        axum::serve(listener, ainc_daemon::router(pool))
-            .await
-            .unwrap();
-    });
-    let ticket = TicketContract {
-        title: "round trip".into(),
-    };
-    let result = Client::new(&url)
-        .ticket_contract()
-        .body(ticket)
-        .send()
+        axum::serve(
+            listener,
+            ainc_daemon::product_router(
+                ainc_daemon::product::Product::new(pool, "fixture".into()).unwrap(),
+            ),
+        )
         .await
         .unwrap();
-    assert_eq!(result.title, "round trip");
+    });
+    ainc_client::install_tls_provider();
+    let result = Client::new(&url).version_show().send().await.unwrap();
+    assert_eq!(result.version, ainc_identity::VERSION);
     assert_eq!(
-        result.headers().get("agent-inc-server").unwrap(),
+        result.headers().get(ainc_identity::SERVER_HEADER).unwrap(),
         ainc_identity::server_header().as_str()
     );
     server.abort();
@@ -41,6 +39,7 @@ async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::Pg
         .await
         .unwrap();
     });
+    ainc_client::install_tls_provider();
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("authorization", "Bearer fixture".parse().unwrap());
     let client = Client::new_with_client(
@@ -148,6 +147,7 @@ async fn generated_automation_rule_pause_and_run_now_round_trip(pool: sqlx::PgPo
         .await
         .unwrap();
     });
+    ainc_client::install_tls_provider();
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("authorization", "Bearer fixture".parse().unwrap());
     let client = Client::new_with_client(

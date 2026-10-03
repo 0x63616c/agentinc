@@ -279,7 +279,13 @@ mod tests {
         let tool = bundle.join("Contents/MacOS/AgentInc");
         fs::write(&tool, b"binary").unwrap();
         fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
-        symlink("AgentInc", bundle.join("Contents/MacOS/agentinc-os")).unwrap();
+        symlink(
+            "AgentInc",
+            bundle
+                .join("Contents/MacOS")
+                .join(prepare::LEGACY_EXECUTABLE),
+        )
+        .unwrap();
         let archive = root.join("bundle.tar.gz");
         create_tar_gz(&archive, 1, &[(&bundle, "AgentInc.app")]).unwrap();
         let out = root.join("out");
@@ -287,7 +293,9 @@ mod tests {
         extract_tar_gz(&archive, &out).unwrap();
         // A second extraction over the first (a rerun in the same directory) must succeed.
         extract_tar_gz(&archive, &out).unwrap();
-        let link = out.join("AgentInc.app/Contents/MacOS/agentinc-os");
+        let link = out
+            .join("AgentInc.app/Contents/MacOS")
+            .join(prepare::LEGACY_EXECUTABLE);
         assert_eq!(fs::read_link(&link).unwrap(), Path::new("AgentInc"));
         let mode = fs::metadata(out.join("AgentInc.app/Contents/MacOS/AgentInc"))
             .unwrap()

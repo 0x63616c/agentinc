@@ -4,13 +4,13 @@ use gpui::{prelude::*, *};
 
 /// The common page frame. Document pages share the same header, full-width
 /// content and inset; canvas pages let chat and the terminal use their height.
-pub struct Page {
+pub struct PageFrame {
     header: Option<PageHeader>,
     content: Div,
     fill: bool,
 }
 
-impl Page {
+impl PageFrame {
     pub fn document(header: PageHeader) -> Self {
         Self {
             header: Some(header),
@@ -139,11 +139,10 @@ impl ListRow {
         self.enabled = enabled;
         self
     }
-    pub fn build<V: HoverHost>(
+    pub fn build<V: 'static>(
         self,
-        hover: &HoverFade,
+        ui: &mut Ui<V>,
         action: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-        cx: &mut Context<V>,
     ) -> Stateful<Div> {
         let Self {
             id,
@@ -154,7 +153,7 @@ impl ListRow {
             selected,
             enabled,
         } = self;
-        let (progress, on_hover) = hover.track(&id, enabled, cx);
+        let (progress, on_hover) = ui.hover(&id, enabled);
         action_button(
             ButtonSpec {
                 id,
@@ -201,7 +200,7 @@ impl ListRow {
                     .when_some(trailing, |s, trailing| s.child(trailing))
             },
             action,
-            cx,
+            ui.cx,
         )
     }
 }

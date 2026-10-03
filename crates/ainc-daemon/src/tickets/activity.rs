@@ -1,7 +1,7 @@
 //! A Ticket's history: who changed what, from which Conversation or run.
 //! Entries commit in the same transaction as the change they describe.
 use super::TicketStatus;
-use crate::product::ApiError;
+use crate::api::CommandError;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Postgres, Transaction};
 use utoipa::ToSchema;
@@ -109,7 +109,7 @@ pub(super) async fn for_ticket(
     tx: &mut Transaction<'_, Postgres>,
     workspace: &str,
     ticket_id: i64,
-) -> Result<Vec<TicketActivity>, ApiError> {
+) -> Result<Vec<TicketActivity>, CommandError> {
     Ok(sqlx::query_as("SELECT a.id,a.ticket_id,a.actor_id,a.kind,a.from_value,a.to_value,a.conversation_id,a.run_id,a.created_at FROM ticket_activity a JOIN tickets t ON t.id=a.ticket_id WHERE t.workspace_id=$1 AND t.id=$2 ORDER BY a.id")
         .bind(workspace)
         .bind(ticket_id)

@@ -7,25 +7,24 @@ mod fence;
 mod links;
 mod transition;
 
+use crate::api::Product;
 use crate::{
-    product::{ApiError, ErrorBody, Product},
+    api::{AppState, CommandError, ErrorBody},
     receipts::{self, OperationId, Scope},
 };
 pub use activity::{ActivityKind, TicketActivity};
 pub(crate) use activity::{Entry, record};
 use axum::{
-    Json, Router,
+    Json,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
-    routing::{get, post},
 };
 pub(crate) use board::{enter_column, lock as lock_board};
 pub(crate) use fence::LiveAssignment;
 pub use links::{LinkKind, TicketLink};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 /// Where a Ticket sits on the board. Only To do and In progress dispatch an
 /// agent assignee; the other four stop any live work.
@@ -290,32 +289,25 @@ impl Actor {
         &self,
         tx: &mut Transaction<'_, Postgres>,
         entry: Entry<'_>,
-    ) -> Result<(), ApiError> {
+    ) -> Result<(), CommandError> {
         record(tx, &self.id, self.conversation, entry).await?;
         Ok(())
     }
 }
-fn denied() -> ApiError {
-    ApiError::new(
-        StatusCode::FORBIDDEN,
-        "forbidden",
-        "This command is outside the current assignment.",
-    )
+fn denied() -> CommandError {
+    CommandError::Forbidden
 }
-fn invalid(message: &str) -> ApiError {
-    ApiError::new(StatusCode::BAD_REQUEST, "invalid", message)
+fn invalid(message: &str) -> CommandError {
+    CommandError::Invalid(message.into())
 }
-fn token_hash(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
-}
-fn clean_title(title: &str) -> Result<String, ApiError> {
+fn clean_title(title: &str) -> Result<String, CommandError> {
     let title = title.trim();
     if title.is_empty() || title.chars().count() > 500 {
         return Err(invalid("Use a title of 1–500 characters."));
     }
     Ok(title.to_owned())
 }
-fn clean_description(description: &str) -> Result<String, ApiError> {
+fn clean_description(description: &str) -> Result<String, CommandError> {
     let description = description.trim();
     if description.chars().count() > 32000 {
         return Err(invalid("Use a description of 32,000 characters or fewer."));
@@ -323,7 +315,7 @@ fn clean_description(description: &str) -> Result<String, ApiError> {
     Ok(description.to_owned())
 }
 /// Trimmed, deduplicated case-insensitively in the order given.
-fn clean_labels(labels: Vec<String>) -> Result<Vec<String>, ApiError> {
+fn clean_labels(labels: Vec<String>) -> Result<Vec<String>, CommandError> {
     let mut clean: Vec<String> = Vec::new();
     for label in labels {
         let label = label.trim();
@@ -340,62 +332,34 @@ fn clean_labels(labels: Vec<String>) -> Result<Vec<String>, ApiError> {
     Ok(clean)
 }
 
-async fn authorize(product: &Product, headers: &HeaderMap) -> Result<Actor, ApiError> {
-    if product.authorize(headers).is_ok() {
-        return Ok(Actor::owner_in(
-            crate::workspaces::current(&product.pool).await?,
-        ));
-    }
-    let token = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .ok_or_else(denied)?;
-    // The credential names an assignment; whether it is still live is decided
-    // by the fence inside each read or write transaction.
-    let row:Option<(String,String,i64,i64)> = sqlx::query_as("SELECT c.workspace_id,r.agent_id,r.ticket_id,r.generation FROM agent_credentials c JOIN ticket_runs r ON r.run_id=c.run_id WHERE c.token_hash=$1")
-        .bind(token_hash(token)).fetch_optional(&product.pool).await?;
-    let (workspace, id, ticket, generation) = row.ok_or_else(denied)?;
-    Ok(Actor {
-        workspace,
-        id,
-        assignment: Some((ticket, generation)),
-        conversation: None,
-    })
+pub(crate) fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(state))
+        .routes(routes!(command))
+        .routes(routes!(history))
 }
-
-pub fn router(product: Product) -> Router {
-    Router::new()
-        .route("/v1/tickets", get(state))
-        .route("/v1/tickets/commands", post(command))
-        .route("/v1/tickets/{id}/activity", get(history))
-        .with_state(product)
-}
-#[utoipa::path(get,path="/v1/tickets",operation_id="tickets_state",responses((status=200,body=TicketSnapshot),(status=403,body=ErrorBody),(status=503,body=ErrorBody)))]
-pub async fn state(
+#[utoipa::path(get,path="/v1/tickets",operation_id="tickets_state",responses((status=200,body=TicketSnapshot),(status=403,body=ErrorBody)))]
+async fn state(
     State(product): State<Product>,
-    headers: HeaderMap,
-) -> Result<Json<TicketSnapshot>, ApiError> {
-    let actor = authorize(&product, &headers).await?;
+    actor: Actor,
+) -> Result<Json<TicketSnapshot>, CommandError> {
     Ok(Json(snapshot(&product.pool, &actor).await?))
 }
-#[utoipa::path(post,path="/v1/tickets/commands",operation_id="tickets_command",request_body=TicketCommandRequest,responses((status=200,body=TicketReceipt),(status=400,body=ErrorBody),(status=403,body=ErrorBody),(status=409,body=ErrorBody),(status=503,body=ErrorBody)))]
-pub async fn command(
+#[utoipa::path(post,path="/v1/tickets/commands",operation_id="tickets_command",request_body=TicketCommandRequest,responses((status=200,body=TicketReceipt),(status=400,body=ErrorBody),(status=403,body=ErrorBody),(status=404,body=ErrorBody),(status=409,body=ErrorBody)))]
+async fn command(
     State(product): State<Product>,
-    headers: HeaderMap,
+    actor: Actor,
     Json(request): Json<TicketCommandRequest>,
-) -> Result<Json<TicketReceipt>, ApiError> {
-    let actor = authorize(&product, &headers).await?;
+) -> Result<Json<TicketReceipt>, CommandError> {
     Ok(Json(execute(&product.pool, &actor, request).await?))
 }
 /// One Ticket's history, oldest first. Comments stay in the snapshot.
-#[utoipa::path(get,path="/v1/tickets/{id}/activity",operation_id="tickets_activity",params(("id" = i64, Path, description = "Ticket ID")),responses((status=200,body=Vec<TicketActivity>),(status=403,body=ErrorBody),(status=503,body=ErrorBody)))]
-pub async fn history(
+#[utoipa::path(get,path="/v1/tickets/{id}/activity",operation_id="tickets_activity",params(("id" = i64, Path, description = "Ticket ID")),responses((status=200,body=Vec<TicketActivity>),(status=403,body=ErrorBody)))]
+async fn history(
     State(product): State<Product>,
-    headers: HeaderMap,
+    actor: Actor,
     Path(id): Path<i64>,
-) -> Result<Json<Vec<TicketActivity>>, ApiError> {
-    let actor = authorize(&product, &headers).await?;
+) -> Result<Json<Vec<TicketActivity>>, CommandError> {
     if actor.assignment.is_some_and(|(ticket, _)| ticket != id) {
         return Err(denied());
     }
@@ -408,14 +372,14 @@ pub async fn history(
 
 /// An agent reads only while its assignment's run is live; a stale credential
 /// sees nothing, in the same transaction as the read.
-async fn fence_read(tx: &mut Transaction<'_, Postgres>, actor: &Actor) -> Result<(), ApiError> {
+async fn fence_read(tx: &mut Transaction<'_, Postgres>, actor: &Actor) -> Result<(), CommandError> {
     if actor.assignment.is_some() {
         LiveAssignment::check(tx, actor).await?;
     }
     Ok(())
 }
 
-pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<TicketSnapshot, ApiError> {
+pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<TicketSnapshot, CommandError> {
     let ticket = actor.assignment.map(|a| a.0);
     let mut tx = crate::pg::snapshot_tx(pool).await?;
     fence_read(&mut tx, actor).await?;
@@ -449,7 +413,7 @@ async fn lock_ticket(
     actor: &Actor,
     id: i64,
     revision: Option<i64>,
-) -> Result<Ticket, ApiError> {
+) -> Result<Ticket, CommandError> {
     let ticket = if actor.assignment.is_some() {
         // An agent touches only the Ticket it is assigned to, while that assignment is live.
         let live = LiveAssignment::lock(tx, actor).await?;
@@ -465,10 +429,10 @@ async fn lock_ticket(
         .bind(&actor.workspace)
         .fetch_optional(&mut **tx)
         .await?
-        .ok_or_else(denied)?
+        .ok_or(CommandError::NotFound)?
     };
     if revision.is_some_and(|revision| ticket.revision != revision) {
-        return Err(ApiError::conflict());
+        return Err(CommandError::conflict());
     }
     Ok(ticket)
 }
@@ -477,7 +441,7 @@ pub(crate) async fn execute(
     pool: &PgPool,
     actor: &Actor,
     request: TicketCommandRequest,
-) -> Result<TicketReceipt, ApiError> {
+) -> Result<TicketReceipt, CommandError> {
     let mut tx = pool.begin().await?;
     let receipt = execute_in(&mut tx, actor, request).await?;
     tx.commit().await?;
@@ -488,7 +452,7 @@ pub(crate) async fn execute_in(
     tx: &mut Transaction<'_, Postgres>,
     actor: &Actor,
     request: TicketCommandRequest,
-) -> Result<TicketReceipt, ApiError> {
+) -> Result<TicketReceipt, CommandError> {
     let operation_id = OperationId::parse(&request.operation_id)?;
     if actor.assignment.is_some()
         && !matches!(
@@ -518,7 +482,8 @@ pub(crate) async fn execute_in(
     let receipt = receipts::execute(tx, scope, operation_id, &payload, |tx| {
         Box::pin(async move {
             let result_id = apply(tx, &actor, command).await?;
-            sqlx::query("SELECT pg_notify('agentinc_dispatch','')")
+            sqlx::query("SELECT pg_notify($1,'')")
+                .bind(crate::pg::coordination::DISPATCH)
                 .execute(&mut **tx)
                 .await?;
             Ok(result_id)
@@ -545,7 +510,7 @@ async fn create(
     tx: &mut Transaction<'_, Postgres>,
     actor: &Actor,
     ticket: NewTicket,
-) -> Result<i64, ApiError> {
+) -> Result<i64, CommandError> {
     let dispatch = ticket.assignee_kind == AssigneeKind::Agent && ticket.status.actionable();
     let position = board::top(tx, &actor.workspace, ticket.status).await?;
     let id: i64 = sqlx::query_scalar("INSERT INTO tickets(workspace_id,title,description,status,priority,labels,assignee_kind,assignee_id,generation,conversation_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id")
@@ -575,7 +540,7 @@ async fn apply(
     tx: &mut Transaction<'_, Postgres>,
     actor: &Actor,
     command: TicketCommand,
-) -> Result<Option<i64>, ApiError> {
+) -> Result<Option<i64>, CommandError> {
     Ok(match command {
         TicketCommand::CreateAssigned { proposal } => {
             let valid: bool = sqlx::query_scalar(
@@ -697,7 +662,9 @@ async fn apply(
                     .fetch_one(&mut **tx)
                     .await?;
             if worked {
-                return Err(ApiError::conflict());
+                return Err(CommandError::Conflict(
+                    "A Ticket that has been worked on keeps its history.".into(),
+                ));
             }
             links::detach_all(tx, actor, id).await?;
             sqlx::query("DELETE FROM tickets WHERE id=$1")
@@ -894,7 +861,7 @@ async fn change_status(
     actor: &Actor,
     ticket: &Ticket,
     status: TicketStatus,
-) -> Result<(), ApiError> {
+) -> Result<(), CommandError> {
     let Some(plan) = transition::plan(
         actor.assignment.is_none(),
         ticket.status,
@@ -926,7 +893,7 @@ async fn cancel_generation(
     tx: &mut Transaction<'_, Postgres>,
     actor: &Actor,
     ticket: &Ticket,
-) -> Result<(), ApiError> {
+) -> Result<(), CommandError> {
     sqlx::query("INSERT INTO dispatch_outbox(ticket_id,generation,action,run_id) SELECT ticket_id,generation,'cancel',run_id FROM ticket_runs WHERE ticket_id=$1 AND generation=$2 AND state IN ('queued','running') ON CONFLICT DO NOTHING").bind(ticket.id).bind(ticket.generation).execute(&mut **tx).await?;
     let cancelled: Vec<String> = sqlx::query_scalar("UPDATE ticket_runs SET state='cancelled' WHERE ticket_id=$1 AND generation=$2 AND state IN ('queued','running') RETURNING run_id").bind(ticket.id).bind(ticket.generation).fetch_all(&mut **tx).await?;
     for run_id in &cancelled {
@@ -940,7 +907,7 @@ async fn start_generation(
     tx: &mut Transaction<'_, Postgres>,
     actor: &Actor,
     id: i64,
-) -> Result<(), ApiError> {
+) -> Result<(), CommandError> {
     // A fresh assignment owns immutable prompt/model/definition snapshots.
     let run_id = uuid::Uuid::new_v4().to_string();
     let queued = sqlx::query("INSERT INTO ticket_runs(run_id,ticket_id,generation,agent_id,model,instructions,prompt,state) SELECT $1,t.id,t.generation,a.id,a.model,a.instructions,t.title||CASE WHEN t.description='' THEN '' ELSE E'\n\n'||t.description END,'queued' FROM tickets t JOIN agents a ON a.workspace_id=t.workspace_id AND a.id=t.assignee_id WHERE t.id=$2 AND t.workspace_id=$3").bind(&run_id).bind(id).bind(&actor.workspace).execute(&mut **tx).await?.rows_affected();

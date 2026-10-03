@@ -1,11 +1,34 @@
 //! The agent loop, shared by every workflow. Deterministic: no I/O here, only activity calls.
 
-use super::activities::{AgentActivities, StepInput, ToolCallInput};
-use crate::{Agent, Content, Event, Message, Role, StopReason, ToolSpec};
+use super::activities::{StepInput, ToolCallInput, ToolCallOutput};
+use crate::{Agent, Content, Event, Message, ModelResponse, Role, StopReason, ToolSpec};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use temporalio_common::RetryPolicy;
+use temporalio_common::{ActivityDefinition, RetryPolicy};
 use temporalio_sdk::{ActivityOptions, WorkflowContext, WorkflowResult};
+
+/// The model-step activity, addressed by name so a workflow can keep using the activity
+/// names its retained history already carries. See `legacy.rs`.
+pub(crate) struct ModelStep(pub &'static str);
+
+impl ActivityDefinition for ModelStep {
+    type Input = StepInput;
+    type Output = ModelResponse;
+    fn name(&self) -> &str {
+        self.0
+    }
+}
+
+/// The tool-call activity, addressed by name. See [`ModelStep`].
+pub(crate) struct CallTool(pub &'static str);
+
+impl ActivityDefinition for CallTool {
+    type Input = ToolCallInput;
+    type Output = ToolCallOutput;
+    fn name(&self) -> &str {
+        self.0
+    }
+}
 
 /// The serializable part of an [`Agent`]. Model and tool implementations stay in the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +91,10 @@ impl Conversation {
 
 /// A workflow whose state holds a [`Conversation`].
 pub(crate) trait HasConversation {
+    /// Activity type names this workflow schedules. Fixed per workflow type: a history
+    /// replays only against the names it was recorded with.
+    const MODEL_STEP: &'static str;
+    const CALL_TOOL: &'static str;
     fn conversation(&mut self) -> &mut Conversation;
 }
 
@@ -90,7 +117,7 @@ pub(crate) async fn turn<W: HasConversation>(ctx: &WorkflowContext<W>) -> Workfl
 
         let response = ctx
             .execute_activity(
-                AgentActivities::model_step,
+                ModelStep(W::MODEL_STEP),
                 StepInput {
                     agent: agent.name.clone(),
                     messages,
@@ -136,7 +163,7 @@ pub(crate) async fn turn<W: HasConversation>(ctx: &WorkflowContext<W>) -> Workfl
             };
             let result = ctx
                 .execute_activity(
-                    AgentActivities::call_tool,
+                    CallTool(W::CALL_TOOL),
                     ToolCallInput {
                         agent: agent.name.clone(),
                         idempotency_key,

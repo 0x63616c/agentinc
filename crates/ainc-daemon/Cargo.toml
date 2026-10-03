@@ -13,10 +13,15 @@ workspace = true
 name = "aincd"
 path = "src/main.rs"
 
-# Test fixture only: a fake Codex app-server for AGENTINC_CODEX_PATH.
+# Test fixture only: a fake Codex app-server for AINC_CODEX_PATH.
 [[bin]]
 name = "codex-fixture"
 path = "src/bin/codex_fixture.rs"
+
+[features]
+# Imports the pre-Postgres app data once. Remove after 2027-01-01; see docs/ownership.md.
+default = ["legacy-import"]
+legacy-import = ["dep:rusqlite"]
 
 [dependencies]
 # The daemon needs only the product identity. Kept under the old crate name until the
@@ -39,8 +44,10 @@ tokio-tungstenite = "0.29"
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid.workspace = true
-rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+rusqlite = { version = "0.32", features = ["bundled", "backup"], optional = true }
 utoipa = { version = "5.5", features = ["axum_extras"] }
+utoipa-axum = "0.2"
+tower-http = { version = "0.6", features = ["set-header", "trace"] }
 
 [dev-dependencies]
 turnkeel = { workspace = true, features = ["testing"] }

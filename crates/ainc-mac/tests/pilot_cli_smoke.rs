@@ -1,6 +1,7 @@
-//! macOS CLI/OS smoke: drive the real app through the `gpui-pilot` CLI with a visible window and
+//! macOS CLI/OS smoke: drive the real app through the `gpui-pilot-cli` CLI with a visible window and
 //! check the native window with Swift. Needs a desktop, so it is opt-in (`--ignored`).
 //! Build first: `cargo build --workspace --features automation`.
+#![allow(clippy::disallowed_macros)] // test output
 #![cfg(target_os = "macos")]
 use anyhow::{Context, Result, bail, ensure};
 use serde_json::Value;
@@ -12,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const TITLE: &str = "Agentinc Pilot CLI QA";
+const TITLE: &str = "AgentInc Pilot CLI QA";
 
 struct App(Child);
 impl Drop for App {
@@ -79,15 +80,15 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
         .arg("--gpui-pilot-session")
         .arg(&session)
         .arg("--gpui-pilot-visible")
-        .env("AGENTINC_SESSION_PATH", state.join("session.json"))
+        .env("AINC_SESSION_PATH", state.join("session.json"))
         .env(
             "AINC_DISCOVERY_FILE",
             std::env::var_os("AINC_DISCOVERY_FILE")
                 .context("run against an isolated cargo xtask dev stack")?,
         )
         .env("AINC_LEGACY_DIR", state.join("legacy"))
-        .env("AGENTINC_CODEX_HOME", state.join("codex"))
-        .env("AGENTINC_WINDOW_TITLE", TITLE)
+        .env("AINC_CODEX_HOME", state.join("codex"))
+        .env("AINC_WINDOW_TITLE", TITLE)
         .stdout(log.try_clone()?)
         .stderr(log)
         .spawn()?);
@@ -99,7 +100,7 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
         std::thread::sleep(Duration::from_millis(20)); // Process readiness only; UI waits use the protocol.
     }
     let cli = Cli {
-        binary: app_binary.with_file_name("gpui-pilot"),
+        binary: app_binary.with_file_name("gpui-pilot-cli"),
         manifest: manifest.clone(),
     };
     ensure!(
@@ -187,7 +188,7 @@ fn cli_drives_the_visible_app_and_quits_cleanly() -> Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     run(
         &root.canonicalize()?,
-        Path::new(env!("CARGO_BIN_EXE_agentinc-os")),
+        Path::new(env!("CARGO_BIN_EXE_AgentInc")),
     )
 }
 

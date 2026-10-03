@@ -2,9 +2,9 @@
 //! requests: the real daemon over HTTP, or an in-memory stand-in in tests.
 pub use ainc_client::ClientError as DaemonError;
 use ainc_client::types::{
-    AutomationRequest, AutomationSnapshot, CommandRequest, ConnectionStatus, ExecutionPage,
-    Snapshot, TicketActivity, TicketCommandRequest, TicketSnapshot, WorkspaceRequest,
-    WorkspaceState,
+    AutomationRequest, AutomationSnapshot, CommandRequest, ConnectionStatus, Snapshot,
+    TicketActivity, TicketCommandRequest, TicketSnapshot, WorkPage, WorkspaceRequest,
+    WorkspaceSnapshot,
 };
 
 /// One request to the daemon, already carrying any operation id.
@@ -41,7 +41,7 @@ pub enum Envelope {
     Product(CommandRequest),
 }
 impl Envelope {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fixtures"))]
     pub fn operation_id(&self) -> &str {
         match self {
             Envelope::Workspace(request) => &request.operation_id,
@@ -63,12 +63,12 @@ pub enum ConnectionAction {
 /// The daemon's answer to one [`Request`].
 #[derive(Debug, Clone)]
 pub enum Reply {
-    Workspaces(WorkspaceState),
+    Workspaces(WorkspaceSnapshot),
     Product(Snapshot),
     Tickets(TicketSnapshot),
     Automations(AutomationSnapshot),
     Activity(Vec<TicketActivity>),
-    Executions(ExecutionPage),
+    Executions(WorkPage),
     /// A workspace or automation receipt: the id of what the command produced.
     Receipt(String),
     /// A ticket or product acknowledgement: the id of what the command produced, if any.

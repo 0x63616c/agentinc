@@ -45,22 +45,22 @@ Workspace CI runs formatting, Clippy and tests on Linux. Run the native rendered
 The ordinary GPUI interaction tests run with `cargo test --locked`. On macOS, run the real Metal shell regression with:
 
 ```sh
-cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
+cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell
 ```
 
 It captures frames across every route, three window sizes, dialogs, Temporal states and full-page Evee conversations. It checks rendered shell regions and the shared page frame, content width and Settings/Automations right edges. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
 
 ## Evee and Tickets
 
-Install the official [Codex CLI](https://developers.openai.com/codex/cli), then open **Settings → Accounts & connections → Sign in with ChatGPT** and complete Codex’s browser sign-in. Evee uses your ChatGPT/Codex subscription; there is no API-key setup. Codex manages credentials in an app-specific profile. Settings shows the real connection status, sign out, and model choices returned by Codex.
+Install the official [Codex CLI](https://developers.openai.com/codex/cli), then open **Settings → Connections → Sign in with ChatGPT** and complete Codex’s browser sign-in. Evee uses your ChatGPT/Codex subscription; there is no API-key setup. Codex manages credentials in an app-specific profile. Connections shows the real sign-in state, Sign Out, and the model choices returned by Codex.
 
-Open **Assistant** in the sidebar to start, reopen, rename or delete conversations. Existing single-chat history migrates into “Previous conversation”. Send with Return or the composer’s arrow; Shift+Return inserts a newline. Failed replies remain retryable and conversations persist on the daemon, including when the app closes.
+Open **Assistant** in the sidebar to start, reopen, rename or delete Conversations. Existing single-Conversation history migrates into “Previous conversation”. Send with ↵ or the composer’s arrow; ⇧↵ inserts a new line. Failed replies remain retryable and Conversations persist on the daemon, including when the app closes.
 
-**Tickets** opens on a Kanban board with a lane per status (Backlog, To do, In progress, Blocked, Done, Cancelled). Drag cards between and within lanes; the order is saved. Switch to the grouped list, search, and filter by priority, label or assignee. A Ticket's page edits its description, status, priority, assignee and labels, relates it to other Tickets (blocks, relates to, duplicates, parent and sub-issue), and shows its history, Comments, agent runs and the Conversation it came from. Create from any lane's + or from ⌘K, where Tickets are also found by title. Conversations, Tickets and product preferences are owned by `aincd` in Postgres. Its repeat-safe one-way import reads the previous SQLite database without migrating it in place. See [daemon ownership and setup](../../docs/ownership.md) and [native ownership verification](docs/verification/OWNERSHIP.md).
+**Tickets** opens on a Kanban board with a lane per status (Backlog, To do, In progress, Blocked, Done, Cancelled). Drag cards between and within lanes; the order is saved. Switch to the grouped list, search, and filter by priority, label or assignee. A Ticket's page edits its description, status, priority, assignee and labels, relates it to other Tickets (blocks, relates to, duplicates, parent and Sub-Ticket), and shows its history, Comments, Work and the Conversation it came from. Create from any lane's + or from ⌘K, where Tickets are also found by title. Conversations, Tickets and product preferences are owned by `aincd` in Postgres. Its repeat-safe one-way import reads the previous SQLite database without migrating it in place. See [daemon ownership and setup](../../docs/ownership.md) and [native ownership verification](docs/verification/OWNERSHIP.md).
 
 ## Using the shell
 
-Sidebar destinations and Search replace the destination in the single tab. Back and Forward navigate its history.
+Sidebar destinations and Go to… replace the current Page in the one tab. Back and Forward navigate its history.
 
 <!-- shortcuts -->
 | Shortcut | Action |
@@ -76,9 +76,9 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | ⇧↵ | New line |
 <!-- /shortcuts -->
 
-Go to… (⌘K) fuzzy-matches pages, actions and Tickets, groups the results, remembers your recent choices, and supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. The user row opens the account menu: check for or install an update, open Settings, reach Support (Help Center, Send Feedback, About) and, once local accounts land, switch users. Settings holds persisted font family and size controls that update the whole app immediately; default type is two points larger than the original Control scale. The notification bell opens the notification panel; transient notices appear as toasts above the status bar.
+Go to… (⌘K) fuzzy-matches pages, actions and Tickets, groups the results, remembers your recent choices, and supports ↑↓ and ↵ selection, pointer selection, bounded ⇥ and ⇧⇥ focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. The user row opens the profile menu: check for or install an update, open Settings and reach Support (Help Center, Send Feedback, About). Settings holds persisted font family and size controls that update the whole app immediately; default type is two points larger than the original Control scale. Transient notices appear as toasts above the status bar.
 
-Terminal hosts a live Ghostty session in your home directory. It loads your Ghostty configuration, including font, keybinds and included files, then applies AgentInc's colors. The session and split panes stay alive when you visit another page; drag their dividers to resize them. With a Terminal pane focused, Cmd+D splits right, Cmd+Shift+D splits below, Cmd+W closes the focused pane when another exists, and Cmd+Shift+Enter or Cmd+Shift+= toggles a pane to fill the Terminal page. Cmd+K opens AgentInc Search without clearing the terminal; Cmd+, and Cmd+number retain their app navigation actions. Other Ghostty bindings, including Ctrl+L, remain available.
+Terminal hosts a live Ghostty session in your home directory. It loads your Ghostty configuration, including font, keybinds and included files, then applies AgentInc's colors. The session and split panes stay alive when you visit another page; drag their dividers to resize them. With a Terminal pane focused, ⌘D splits right, ⇧⌘D splits below, ⌘W closes the focused pane when another exists, and ⇧⌘↵ or ⇧⌘= toggles a pane to fill the Terminal page. ⌘K opens Go to… without clearing the terminal; ⌘, and ⌘1–6 retain their app navigation actions. Other Ghostty bindings, including ⌃L, remain available.
 
 Development sessions save to `~/Library/Application Support/AgentInc Development/session.json`; installed production sessions retain `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/distribution.md). Older multi-tab sessions restore retained destinations into the single space view; removed destinations and missing or invalid state start on Assistant. The account name/photo is read locally at runtime and is not bundled.
 
@@ -86,9 +86,9 @@ For an isolated session without changing the regular app's state:
 
 ```sh
 mkdir -p .local
-AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
+AINC_SESSION_PATH="$PWD/.local/test-session.json" \
   AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" \
-  AGENTINC_WINDOW_TITLE='Agentinc QA' \
+  AINC_WINDOW_TITLE='AgentInc QA' \
   'crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc'
 ```
 
@@ -96,7 +96,7 @@ AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
 
 - [Native acceptance report and screenshots](docs/verification/STATUS.md)
 - [Workspace import and native flow evidence](docs/verification/IMPORT.md)
-- `src/model.rs`: navigation and persistence, independent of the UI.
+- `src/routes.rs`, `src/ui_state.rs`: navigation and persisted UI state, independent of the UI.
 - `src/shell.rs`, `src/shell/`, `src/ui/`: GPUI shell and the app-owned native component set.
 - `src/input.rs`: native text input adapted from the official GPUI example.
 - [Third-party sources](THIRD_PARTY.md), [current GPUI acceptance](docs/verification/GPUI_UPGRADE.md).

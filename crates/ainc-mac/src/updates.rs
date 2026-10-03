@@ -1,9 +1,9 @@
 //! App-owned settings and shutdown coordination for the custom Sparkle driver.
-use crate::native_update::{self, State};
+use crate::native_update::{self, NativeAction, Setting, State};
 use crate::ui::*;
 use gpui::{prelude::*, *};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::{fs::File, path::Path, time::Duration};
+use std::{fs::File, path::Path, rc::Rc, time::Duration};
 
 static INSTALLATION_PENDING: AtomicBool = AtomicBool::new(false);
 static COMPANION_LAUNCHES: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
@@ -28,25 +28,18 @@ actions!(updates, [CheckForUpdates, ShowChangelog]);
 
 #[derive(Clone)]
 pub struct Updates(pub Entity<UpdateView>);
-#[derive(Clone)]
-pub struct UpdateHost(pub WindowHandle<crate::shell::Shell>);
-impl Global for UpdateHost {}
 impl Global for Updates {}
+type BeforeInstall = Rc<dyn Fn(&mut App) -> anyhow::Result<()>>;
 pub struct UpdateView {
     state: State,
     draining: bool,
     // Prevent another companion from restarting between drain and app exit.
     shutdown_locks: Vec<File>,
-    hover: HoverFade,
-}
-impl HoverHost for UpdateView {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
+    before_install: Option<BeforeInstall>,
 }
 impl UpdateView {
     fn new(cx: &mut Context<Self>) -> Self {
-        let directory = std::env::var_os("AGENTINC_SESSION_PATH")
+        let directory = std::env::var_os("AINC_SESSION_PATH")
             .map(std::path::PathBuf::from)
             .and_then(|p| p.parent().map(|p| p.join("updates")))
             .unwrap_or_else(|| ainc_release::identity::support_dir().join("updates"));
@@ -66,8 +59,17 @@ impl UpdateView {
             state: native_update::state(),
             draining: false,
             shutdown_locks: Vec::new(),
-            hover: HoverFade::default(),
+            before_install: None,
         }
+    }
+    /// Flush the shell's state and drafts before permitting installation.
+    pub fn on_before_install(&mut self, hook: impl Fn(&mut App) -> anyhow::Result<()> + 'static) {
+        self.before_install = Some(Rc::new(hook));
+    }
+    fn flush(&self, cx: &mut App) -> anyhow::Result<()> {
+        self.before_install
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("update host is unavailable"))?(cx)
     }
     pub fn is_ready(&self) -> bool {
         self.state.ready
@@ -75,13 +77,13 @@ impl UpdateView {
     fn poll_native(&mut self, cx: &mut Context<Self>) {
         while let Some((action, _)) = native_update::take_action() {
             match action {
-                8 => self.prepare_install(cx),
-                9 => {
+                NativeAction::PrepareInstall => self.prepare_install(cx),
+                NativeAction::ReleaseInstall => {
                     self.shutdown_locks.clear();
                     INSTALLATION_PENDING.store(false, Ordering::Release);
                 }
                 #[cfg(ainc_upgrade_test)]
-                10 => publish_downloaded_marker(cx),
+                NativeAction::Downloaded => publish_downloaded_marker(cx),
                 _ => {}
             }
         }
@@ -96,8 +98,7 @@ impl UpdateView {
             return;
         }
         let result = (|| -> anyhow::Result<_> {
-            let host = cx.global::<UpdateHost>().0;
-            host.update(cx, |shell, _, cx| shell.flush_for_update(cx))??;
+            self.flush(cx)?;
             crate::daemon::discovery_path()
         })();
         let discovery = match result {
@@ -115,7 +116,7 @@ impl UpdateView {
         }
         self.draining = true;
         INSTALLATION_PENDING.store(true, Ordering::Release);
-        let external = std::env::var_os("AINC_DAEMON_URL").is_some();
+        let external = std::env::var_os("AINC_API_URL").is_some();
         let request = cx.background_executor().spawn(async move {
             crate::daemon::block_on(async move {
                 if external {
@@ -135,9 +136,8 @@ impl UpdateView {
                         this.shutdown_locks = locks;
                         // Flush once more after the asynchronous drain: the user
                         // may have edited a draft while shutdown was in progress.
-                        let host = cx.global::<UpdateHost>().0;
-                        match host.update(cx, |shell, _, cx| shell.flush_for_update(cx)) {
-                            Ok(Ok(())) => native_update::prepared(None),
+                        match this.flush(cx) {
+                            Ok(()) => native_update::prepared(None),
                             result => {
                                 this.shutdown_locks.clear();
                                 INSTALLATION_PENDING.store(false, Ordering::Release);
@@ -160,7 +160,7 @@ impl UpdateView {
         .detach();
     }
     pub fn settings(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        self.hover.animate(window);
+        let ui = &mut Ui::new(window, cx);
         settings_section(
             "Software updates",
             column()
@@ -169,70 +169,59 @@ impl UpdateView {
                     self.state.message.clone(),
                     Button::new("updates.check", "Check Now")
                         .secondary()
-                        .icon("refresh")
+                        .icon(Icon::Refresh)
                         .enabled(self.state.can_check)
-                        .build(
-                            &self.hover,
-                            |_: &mut Self, _, _| native_update::check(false),
-                            cx,
-                        ),
+                        .build(ui, |_: &mut Self, _, _| native_update::check(false)),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Automatic checks",
                     "Check for new versions in the background.",
-                    toggle(
-                        "updates.auto",
-                        "Automatic checks",
-                        self.state.automatic_checks,
-                        self.state.enabled,
-                        |this: &mut Self, _, cx| {
-                            native_update::setting(0, !this.state.automatic_checks);
+                    Toggle::new("updates.auto", "Automatic checks")
+                        .on(self.state.automatic_checks)
+                        .enabled(self.state.enabled)
+                        .build(ui, |this: &mut Self, _, cx| {
+                            native_update::setting(
+                                Setting::AutomaticChecks,
+                                !this.state.automatic_checks,
+                            );
                             this.poll_native(cx);
-                        },
-                        cx,
-                    ),
+                        }),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Check frequency",
                     "How often AgentInc checks for updates.",
-                    segmented(
-                        "updates.frequency",
-                        ["Daily", "Weekly"],
-                        usize::from(self.state.weekly),
-                        self.state.enabled,
-                        &self.hover,
-                        |this: &mut Self, index, _, cx| {
-                            native_update::setting(2, index == 1);
+                    Segmented::new("updates.frequency", ["Daily", "Weekly"])
+                        .selected(usize::from(self.state.weekly))
+                        .enabled(self.state.enabled)
+                        .build(ui, |this: &mut Self, index, _, cx| {
+                            native_update::setting(Setting::Weekly, index == 1);
                             this.poll_native(cx);
-                        },
-                        cx,
-                    ),
+                        }),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Automatic download",
                     "Download new versions when they become available.",
-                    toggle(
-                        "updates.download",
-                        "Automatic download",
-                        self.state.automatic_download,
-                        self.state.enabled,
-                        |this: &mut Self, _, cx| {
-                            native_update::setting(1, !this.state.automatic_download);
+                    Toggle::new("updates.download", "Automatic download")
+                        .on(self.state.automatic_download)
+                        .enabled(self.state.enabled)
+                        .build(ui, |this: &mut Self, _, cx| {
+                            native_update::setting(
+                                Setting::AutomaticDownload,
+                                !this.state.automatic_download,
+                            );
                             this.poll_native(cx);
-                        },
-                        cx,
-                    ),
+                        }),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Release notes",
                     "Browse the full release history.",
-                    Button::new("updates.notes", "View Changelog")
+                    Button::new("updates.notes", "View Release Notes")
                         .secondary()
-                        .build(&self.hover, |_: &mut Self, _, cx| open_changelog(cx), cx),
+                        .build(ui, |_: &mut Self, _, cx| open_changelog(cx)),
                 )),
         )
         .into_any_element()
@@ -243,6 +232,7 @@ impl UpdateView {
 /// locks proves its bundled Postgres/Temporal children have finished stopping.
 async fn drain_owned_runtime(discovery: &Path) -> anyhow::Result<Vec<File>> {
     use anyhow::Context;
+    ainc_client::install_tls_provider();
     let _launches = tokio::time::timeout(Duration::from_secs(120), COMPANION_LAUNCHES.write())
         .await
         .context("companion startup has not completed")?;
@@ -340,8 +330,8 @@ pub fn start_upgrade_test(cx: &mut App) {
                 crate::daemon::block_on(async move {
                     // client() starts the exact new bundled companion and waits for
                     // its readiness endpoint, using the isolated discovery profile.
-                    let client = crate::storage::client().await?;
-                    let version = client.get_version().send().await?;
+                    let client = crate::daemon::client().await?;
+                    let version = client.version_show().send().await?;
                     anyhow::ensure!(
                         version.version == ainc_release::VERSION,
                         "replacement daemon version mismatch"
@@ -364,8 +354,8 @@ pub fn start_upgrade_test(cx: &mut App) {
     match mode.as_str() {
         "manual" => native_update::check(false),
         "automatic" | "download-only" => {
-            native_update::setting(0, true);
-            native_update::setting(1, true);
+            native_update::setting(Setting::AutomaticChecks, true);
+            native_update::setting(Setting::AutomaticDownload, true);
             native_update::check(true);
         }
         _ => panic!("unknown upgrade test mode"),
@@ -383,8 +373,8 @@ fn publish_downloaded_marker(cx: &mut App) {
     cx.background_executor()
         .spawn(async move {
             crate::daemon::block_on(async move {
-                let client = crate::storage::client().await?;
-                let version = client.get_version().send().await?;
+                let client = crate::daemon::client().await?;
+                let version = client.version_show().send().await?;
                 anyhow::ensure!(
                     version.version == ainc_release::VERSION,
                     "cached update must leave the current daemon running"

@@ -1,4 +1,6 @@
 //! Postgres transaction helpers shared by every module that owns product state.
+pub mod coordination;
+
 use sqlx::{PgPool, Postgres, Transaction};
 
 /// A consistent read of several tables: one REPEATABLE READ, read-only

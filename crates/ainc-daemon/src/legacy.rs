@@ -166,3 +166,25 @@ pub async fn import(pool: &PgPool, directory: &Path) -> Result<bool> {
     tx.commit().await?;
     Ok(true)
 }
+
+/// The source that stands for "the import has been settled" in `legacy_imports`.
+const DONE: &str = "<done>";
+
+/// [`import`] on the daemon's first start only. Once it has run (importing or finding
+/// nothing) a marker row stops every later start from looking at the legacy directory.
+pub async fn import_once(pool: &PgPool, directory: &Path) -> Result<bool> {
+    let done: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM legacy_imports WHERE source=$1)")
+            .bind(DONE)
+            .fetch_one(pool)
+            .await?;
+    if done {
+        return Ok(false);
+    }
+    let imported = import(pool, directory).await?;
+    sqlx::query("INSERT INTO legacy_imports(source) VALUES ($1) ON CONFLICT DO NOTHING")
+        .bind(DONE)
+        .execute(pool)
+        .await?;
+    Ok(imported)
+}

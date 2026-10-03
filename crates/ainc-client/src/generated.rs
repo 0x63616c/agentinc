@@ -31,42 +31,6 @@ pub mod types {
             }
         }
     }
-    ///`Acknowledgement`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "operation_id"
-    ///  ],
-    ///  "properties": {
-    ///    "operation_id": {
-    ///      "type": "string"
-    ///    },
-    ///    "result_id": {
-    ///      "type": [
-    ///        "integer",
-    ///        "null"
-    ///      ],
-    ///      "format": "int64"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct Acknowledgement {
-        pub operation_id: ::std::string::String,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub result_id: ::std::option::Option<i64>,
-    }
-    impl Acknowledgement {
-        pub fn builder() -> builder::Acknowledgement {
-            Default::default()
-        }
-    }
     ///`ActivityKind`
     ///
     /// <details><summary>JSON schema</summary>
@@ -851,6 +815,42 @@ pub mod types {
         #[serde(rename = "select_model")]
         SelectModel { model: ::std::string::String },
     }
+    ///`CommandReceipt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "result_id": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CommandReceipt {
+        pub operation_id: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub result_id: ::std::option::Option<i64>,
+    }
+    impl CommandReceipt {
+        pub fn builder() -> builder::CommandReceipt {
+            Default::default()
+        }
+    }
     ///`CommandRequest`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1005,7 +1005,6 @@ pub mod types {
     ///    "id",
     ///    "snippet",
     ///    "title",
-    ///    "updated",
     ///    "updated_at"
     ///  ],
     ///  "properties": {
@@ -1017,9 +1016,6 @@ pub mod types {
     ///      "type": "string"
     ///    },
     ///    "title": {
-    ///      "type": "string"
-    ///    },
-    ///    "updated": {
     ///      "type": "string"
     ///    },
     ///    "updated_at": {
@@ -1035,11 +1031,291 @@ pub mod types {
         pub id: i64,
         pub snippet: ::std::string::String,
         pub title: ::std::string::String,
-        pub updated: ::std::string::String,
         pub updated_at: i64,
     }
     impl Conversation {
         pub fn builder() -> builder::Conversation {
+            Default::default()
+        }
+    }
+    ///`ConversationCommand`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "create"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "title"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "rename"
+    ///          ]
+    ///        },
+    ///        "title": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "delete"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "select"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "conversation_id",
+    ///        "kind",
+    ///        "prompt"
+    ///      ],
+    ///      "properties": {
+    ///        "conversation_id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "send"
+    ///          ]
+    ///        },
+    ///        "prompt": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "retry"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "model"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "select_model"
+    ///          ]
+    ///        },
+    ///        "model": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    #[serde(tag = "kind")]
+    pub enum ConversationCommand {
+        #[serde(rename = "create")]
+        Create,
+        #[serde(rename = "rename")]
+        Rename {
+            id: i64,
+            title: ::std::string::String,
+        },
+        #[serde(rename = "delete")]
+        Delete { id: i64 },
+        #[serde(rename = "select")]
+        Select { id: i64 },
+        #[serde(rename = "send")]
+        Send {
+            conversation_id: i64,
+            prompt: ::std::string::String,
+        },
+        #[serde(rename = "retry")]
+        Retry { id: i64 },
+        #[serde(rename = "select_model")]
+        SelectModel { model: ::std::string::String },
+    }
+    ///`ConversationCommandRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "command",
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "command": {
+    ///      "$ref": "#/components/schemas/ConversationCommand"
+    ///    },
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ConversationCommandRequest {
+        pub command: ConversationCommand,
+        pub operation_id: ::std::string::String,
+    }
+    impl ConversationCommandRequest {
+        pub fn builder() -> builder::ConversationCommandRequest {
+            Default::default()
+        }
+    }
+    ///`ConversationReceipt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "result_id": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ConversationReceipt {
+        pub operation_id: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub result_id: ::std::option::Option<i64>,
+    }
+    impl ConversationReceipt {
+        pub fn builder() -> builder::ConversationReceipt {
+            Default::default()
+        }
+    }
+    ///`ConversationSnapshot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "conversations",
+    ///    "settings",
+    ///    "turns"
+    ///  ],
+    ///  "properties": {
+    ///    "conversations": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Conversation"
+    ///      }
+    ///    },
+    ///    "settings": {
+    ///      "$ref": "#/components/schemas/Settings"
+    ///    },
+    ///    "turns": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Turn"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ConversationSnapshot {
+        pub conversations: ::std::vec::Vec<Conversation>,
+        pub settings: Settings,
+        pub turns: ::std::vec::Vec<Turn>,
+    }
+    impl ConversationSnapshot {
+        pub fn builder() -> builder::ConversationSnapshot {
             Default::default()
         }
     }
@@ -1070,12 +1346,13 @@ pub mod types {
             Default::default()
         }
     }
-    ///`ErrorBody`
+    ///The one shape every non-2xx response has.
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
+    ///  "description": "The one shape every non-2xx response has.",
     ///  "type": "object",
     ///  "required": [
     ///    "code",
@@ -1083,7 +1360,7 @@ pub mod types {
     ///  ],
     ///  "properties": {
     ///    "code": {
-    ///      "type": "string"
+    ///      "$ref": "#/components/schemas/ErrorCode"
     ///    },
     ///    "message": {
     ///      "type": "string"
@@ -1094,7 +1371,7 @@ pub mod types {
     /// </details>
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
     pub struct ErrorBody {
-        pub code: ::std::string::String,
+        pub code: ErrorCode,
         pub message: ::std::string::String,
     }
     impl ErrorBody {
@@ -1102,112 +1379,108 @@ pub mod types {
             Default::default()
         }
     }
-    ///`ExecutionPage`
+    ///The closed set of error codes a client can switch on.
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "executions",
-    ///    "ui_available"
-    ///  ],
-    ///  "properties": {
-    ///    "executions": {
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/ExecutionView"
-    ///      }
-    ///    },
-    ///    "next_page": {
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
-    ///    "ui_available": {
-    ///      "type": "boolean"
-    ///    }
-    ///  }
+    ///  "description": "The closed set of error codes a client can switch on.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "invalid",
+    ///    "conflict",
+    ///    "unauthorized",
+    ///    "forbidden",
+    ///    "not_found",
+    ///    "unavailable",
+    ///    "internal",
+    ///    "upgrade_required"
+    ///  ]
     ///}
     /// ```
     /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct ExecutionPage {
-        pub executions: ::std::vec::Vec<ExecutionView>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub next_page: ::std::option::Option<::std::string::String>,
-        pub ui_available: bool,
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum ErrorCode {
+        #[serde(rename = "invalid")]
+        Invalid,
+        #[serde(rename = "conflict")]
+        Conflict,
+        #[serde(rename = "unauthorized")]
+        Unauthorized,
+        #[serde(rename = "forbidden")]
+        Forbidden,
+        #[serde(rename = "not_found")]
+        NotFound,
+        #[serde(rename = "unavailable")]
+        Unavailable,
+        #[serde(rename = "internal")]
+        Internal,
+        #[serde(rename = "upgrade_required")]
+        UpgradeRequired,
     }
-    impl ExecutionPage {
-        pub fn builder() -> builder::ExecutionPage {
-            Default::default()
+    impl ::std::fmt::Display for ErrorCode {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Invalid => f.write_str("invalid"),
+                Self::Conflict => f.write_str("conflict"),
+                Self::Unauthorized => f.write_str("unauthorized"),
+                Self::Forbidden => f.write_str("forbidden"),
+                Self::NotFound => f.write_str("not_found"),
+                Self::Unavailable => f.write_str("unavailable"),
+                Self::Internal => f.write_str("internal"),
+                Self::UpgradeRequired => f.write_str("upgrade_required"),
+            }
         }
     }
-    ///`ExecutionView`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "run_id",
-    ///    "started_at",
-    ///    "status",
-    ///    "workflow_id",
-    ///    "workflow_type"
-    ///  ],
-    ///  "properties": {
-    ///    "closed_at": {
-    ///      "type": [
-    ///        "integer",
-    ///        "null"
-    ///      ],
-    ///      "format": "int64"
-    ///    },
-    ///    "run_id": {
-    ///      "type": "string"
-    ///    },
-    ///    "started_at": {
-    ///      "type": "integer",
-    ///      "format": "int64"
-    ///    },
-    ///    "status": {
-    ///      "type": "string"
-    ///    },
-    ///    "url": {
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
-    ///    "workflow_id": {
-    ///      "type": "string"
-    ///    },
-    ///    "workflow_type": {
-    ///      "type": "string"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct ExecutionView {
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub closed_at: ::std::option::Option<i64>,
-        pub run_id: ::std::string::String,
-        pub started_at: i64,
-        pub status: ::std::string::String,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub url: ::std::option::Option<::std::string::String>,
-        pub workflow_id: ::std::string::String,
-        pub workflow_type: ::std::string::String,
+    impl ::std::str::FromStr for ErrorCode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "invalid" => Ok(Self::Invalid),
+                "conflict" => Ok(Self::Conflict),
+                "unauthorized" => Ok(Self::Unauthorized),
+                "forbidden" => Ok(Self::Forbidden),
+                "not_found" => Ok(Self::NotFound),
+                "unavailable" => Ok(Self::Unavailable),
+                "internal" => Ok(Self::Internal),
+                "upgrade_required" => Ok(Self::UpgradeRequired),
+                _ => Err("invalid value".into()),
+            }
+        }
     }
-    impl ExecutionView {
-        pub fn builder() -> builder::ExecutionView {
-            Default::default()
+    impl ::std::convert::TryFrom<&str> for ErrorCode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for ErrorCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for ErrorCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
     ///`Health`
@@ -2373,33 +2646,6 @@ pub mod types {
             Default::default()
         }
     }
-    ///`TicketContract`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "title"
-    ///  ],
-    ///  "properties": {
-    ///    "title": {
-    ///      "type": "string"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct TicketContract {
-        pub title: ::std::string::String,
-    }
-    impl TicketContract {
-        pub fn builder() -> builder::TicketContract {
-            Default::default()
-        }
-    }
     ///`TicketLink`
     ///
     /// <details><summary>JSON schema</summary>
@@ -2893,6 +3139,122 @@ pub mod types {
             Default::default()
         }
     }
+    ///`WorkKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "run",
+    ///    "session",
+    ///    "occurrence"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum WorkKind {
+        #[serde(rename = "run")]
+        Run,
+        #[serde(rename = "session")]
+        Session,
+        #[serde(rename = "occurrence")]
+        Occurrence,
+    }
+    impl ::std::fmt::Display for WorkKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Run => f.write_str("run"),
+                Self::Session => f.write_str("session"),
+                Self::Occurrence => f.write_str("occurrence"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for WorkKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "run" => Ok(Self::Run),
+                "session" => Ok(Self::Session),
+                "occurrence" => Ok(Self::Occurrence),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for WorkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for WorkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`WorkPage`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "work"
+    ///  ],
+    ///  "properties": {
+    ///    "next_page": {
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "work": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/WorkView"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct WorkPage {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub next_page: ::std::option::Option<::std::string::String>,
+        pub work: ::std::vec::Vec<WorkView>,
+    }
+    impl WorkPage {
+        pub fn builder() -> builder::WorkPage {
+            Default::default()
+        }
+    }
     ///`WorkRun`
     ///
     /// <details><summary>JSON schema</summary>
@@ -2942,6 +3304,145 @@ pub mod types {
     }
     impl WorkRun {
         pub fn builder() -> builder::WorkRun {
+            Default::default()
+        }
+    }
+    ///`WorkStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "running",
+    ///    "completed",
+    ///    "failed",
+    ///    "cancelled"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+        schemars::JsonSchema,
+    )]
+    pub enum WorkStatus {
+        #[serde(rename = "running")]
+        Running,
+        #[serde(rename = "completed")]
+        Completed,
+        #[serde(rename = "failed")]
+        Failed,
+        #[serde(rename = "cancelled")]
+        Cancelled,
+    }
+    impl ::std::fmt::Display for WorkStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Running => f.write_str("running"),
+                Self::Completed => f.write_str("completed"),
+                Self::Failed => f.write_str("failed"),
+                Self::Cancelled => f.write_str("cancelled"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for WorkStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "running" => Ok(Self::Running),
+                "completed" => Ok(Self::Completed),
+                "failed" => Ok(Self::Failed),
+                "cancelled" => Ok(Self::Cancelled),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for WorkStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for WorkStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`WorkView`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "kind",
+    ///    "started_at",
+    ///    "status"
+    ///  ],
+    ///  "properties": {
+    ///    "closed_at": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    },
+    ///    "id": {
+    ///      "description": "The run, session or occurrence ID.",
+    ///      "type": "string"
+    ///    },
+    ///    "kind": {
+    ///      "$ref": "#/components/schemas/WorkKind"
+    ///    },
+    ///    "started_at": {
+    ///      "description": "Milliseconds since the Unix epoch.",
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/WorkStatus"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct WorkView {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub closed_at: ::std::option::Option<i64>,
+        ///The run, session or occurrence ID.
+        pub id: ::std::string::String,
+        pub kind: WorkKind,
+        ///Milliseconds since the Unix epoch.
+        pub started_at: i64,
+        pub status: WorkStatus,
+    }
+    impl WorkView {
+        pub fn builder() -> builder::WorkView {
             Default::default()
         }
     }
@@ -3152,7 +3653,7 @@ pub mod types {
             Default::default()
         }
     }
-    ///`WorkspaceState`
+    ///`WorkspaceSnapshot`
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -3178,71 +3679,17 @@ pub mod types {
     /// ```
     /// </details>
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct WorkspaceState {
+    pub struct WorkspaceSnapshot {
         pub current_id: ::std::string::String,
         pub workspaces: ::std::vec::Vec<Workspace>,
     }
-    impl WorkspaceState {
-        pub fn builder() -> builder::WorkspaceState {
+    impl WorkspaceSnapshot {
+        pub fn builder() -> builder::WorkspaceSnapshot {
             Default::default()
         }
     }
     /// Types for composing complex structures.
     pub mod builder {
-        #[derive(Clone, Debug)]
-        pub struct Acknowledgement {
-            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
-            result_id: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
-        }
-        impl ::std::default::Default for Acknowledgement {
-            fn default() -> Self {
-                Self {
-                    operation_id: Err("no value supplied for operation_id".to_string()),
-                    result_id: Ok(Default::default()),
-                }
-            }
-        }
-        impl Acknowledgement {
-            pub fn operation_id<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.operation_id = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
-                self
-            }
-            pub fn result_id<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<i64>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.result_id = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<Acknowledgement> for super::Acknowledgement {
-            type Error = super::error::ConversionError;
-            fn try_from(
-                value: Acknowledgement,
-            ) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    operation_id: value.operation_id?,
-                    result_id: value.result_id?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::Acknowledgement> for Acknowledgement {
-            fn from(value: super::Acknowledgement) -> Self {
-                Self {
-                    operation_id: Ok(value.operation_id),
-                    result_id: Ok(value.result_id),
-                }
-            }
-        }
         #[derive(Clone, Debug)]
         pub struct Assignee {
             id: ::std::result::Result<::std::string::String, ::std::string::String>,
@@ -3661,6 +4108,60 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct CommandReceipt {
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            result_id: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        }
+        impl ::std::default::Default for CommandReceipt {
+            fn default() -> Self {
+                Self {
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                    result_id: Ok(Default::default()),
+                }
+            }
+        }
+        impl CommandReceipt {
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CommandReceipt> for super::CommandReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CommandReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    operation_id: value.operation_id?,
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CommandReceipt> for CommandReceipt {
+            fn from(value: super::CommandReceipt) -> Self {
+                Self {
+                    operation_id: Ok(value.operation_id),
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct CommandRequest {
             command: ::std::result::Result<super::Command, ::std::string::String>,
             operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
@@ -3920,7 +4421,6 @@ pub mod types {
             id: ::std::result::Result<i64, ::std::string::String>,
             snippet: ::std::result::Result<::std::string::String, ::std::string::String>,
             title: ::std::result::Result<::std::string::String, ::std::string::String>,
-            updated: ::std::result::Result<::std::string::String, ::std::string::String>,
             updated_at: ::std::result::Result<i64, ::std::string::String>,
         }
         impl ::std::default::Default for Conversation {
@@ -3929,7 +4429,6 @@ pub mod types {
                     id: Err("no value supplied for id".to_string()),
                     snippet: Err("no value supplied for snippet".to_string()),
                     title: Err("no value supplied for title".to_string()),
-                    updated: Err("no value supplied for updated".to_string()),
                     updated_at: Err("no value supplied for updated_at".to_string()),
                 }
             }
@@ -3965,16 +4464,6 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for title: {e}"));
                 self
             }
-            pub fn updated<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.updated = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for updated: {e}"));
-                self
-            }
             pub fn updated_at<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<i64>,
@@ -3995,7 +4484,6 @@ pub mod types {
                     id: value.id?,
                     snippet: value.snippet?,
                     title: value.title?,
-                    updated: value.updated?,
                     updated_at: value.updated_at?,
                 })
             }
@@ -4006,8 +4494,184 @@ pub mod types {
                     id: Ok(value.id),
                     snippet: Ok(value.snippet),
                     title: Ok(value.title),
-                    updated: Ok(value.updated),
                     updated_at: Ok(value.updated_at),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ConversationCommandRequest {
+            command: ::std::result::Result<super::ConversationCommand, ::std::string::String>,
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for ConversationCommandRequest {
+            fn default() -> Self {
+                Self {
+                    command: Err("no value supplied for command".to_string()),
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                }
+            }
+        }
+        impl ConversationCommandRequest {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::ConversationCommand>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ConversationCommandRequest> for super::ConversationCommandRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ConversationCommandRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    command: value.command?,
+                    operation_id: value.operation_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ConversationCommandRequest> for ConversationCommandRequest {
+            fn from(value: super::ConversationCommandRequest) -> Self {
+                Self {
+                    command: Ok(value.command),
+                    operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ConversationReceipt {
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            result_id: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        }
+        impl ::std::default::Default for ConversationReceipt {
+            fn default() -> Self {
+                Self {
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                    result_id: Ok(Default::default()),
+                }
+            }
+        }
+        impl ConversationReceipt {
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ConversationReceipt> for super::ConversationReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ConversationReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    operation_id: value.operation_id?,
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ConversationReceipt> for ConversationReceipt {
+            fn from(value: super::ConversationReceipt) -> Self {
+                Self {
+                    operation_id: Ok(value.operation_id),
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ConversationSnapshot {
+            conversations:
+                ::std::result::Result<::std::vec::Vec<super::Conversation>, ::std::string::String>,
+            settings: ::std::result::Result<super::Settings, ::std::string::String>,
+            turns: ::std::result::Result<::std::vec::Vec<super::Turn>, ::std::string::String>,
+        }
+        impl ::std::default::Default for ConversationSnapshot {
+            fn default() -> Self {
+                Self {
+                    conversations: Err("no value supplied for conversations".to_string()),
+                    settings: Err("no value supplied for settings".to_string()),
+                    turns: Err("no value supplied for turns".to_string()),
+                }
+            }
+        }
+        impl ConversationSnapshot {
+            pub fn conversations<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Conversation>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.conversations = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for conversations: {e}"));
+                self
+            }
+            pub fn settings<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::Settings>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.settings = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for settings: {e}"));
+                self
+            }
+            pub fn turns<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Turn>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.turns = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for turns: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ConversationSnapshot> for super::ConversationSnapshot {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ConversationSnapshot,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    conversations: value.conversations?,
+                    settings: value.settings?,
+                    turns: value.turns?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ConversationSnapshot> for ConversationSnapshot {
+            fn from(value: super::ConversationSnapshot) -> Self {
+                Self {
+                    conversations: Ok(value.conversations),
+                    settings: Ok(value.settings),
+                    turns: Ok(value.turns),
                 }
             }
         }
@@ -4049,7 +4713,7 @@ pub mod types {
         }
         #[derive(Clone, Debug)]
         pub struct ErrorBody {
-            code: ::std::result::Result<::std::string::String, ::std::string::String>,
+            code: ::std::result::Result<super::ErrorCode, ::std::string::String>,
             message: ::std::result::Result<::std::string::String, ::std::string::String>,
         }
         impl ::std::default::Default for ErrorBody {
@@ -4063,7 +4727,7 @@ pub mod types {
         impl ErrorBody {
             pub fn code<T>(mut self, value: T) -> Self
             where
-                T: ::std::convert::TryInto<::std::string::String>,
+                T: ::std::convert::TryInto<super::ErrorCode>,
                 T::Error: ::std::fmt::Display,
             {
                 self.code = value
@@ -4098,205 +4762,6 @@ pub mod types {
                 Self {
                     code: Ok(value.code),
                     message: Ok(value.message),
-                }
-            }
-        }
-        #[derive(Clone, Debug)]
-        pub struct ExecutionPage {
-            executions:
-                ::std::result::Result<::std::vec::Vec<super::ExecutionView>, ::std::string::String>,
-            next_page: ::std::result::Result<
-                ::std::option::Option<::std::string::String>,
-                ::std::string::String,
-            >,
-            ui_available: ::std::result::Result<bool, ::std::string::String>,
-        }
-        impl ::std::default::Default for ExecutionPage {
-            fn default() -> Self {
-                Self {
-                    executions: Err("no value supplied for executions".to_string()),
-                    next_page: Ok(Default::default()),
-                    ui_available: Err("no value supplied for ui_available".to_string()),
-                }
-            }
-        }
-        impl ExecutionPage {
-            pub fn executions<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::vec::Vec<super::ExecutionView>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.executions = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for executions: {e}"));
-                self
-            }
-            pub fn next_page<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.next_page = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for next_page: {e}"));
-                self
-            }
-            pub fn ui_available<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<bool>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.ui_available = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for ui_available: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<ExecutionPage> for super::ExecutionPage {
-            type Error = super::error::ConversionError;
-            fn try_from(
-                value: ExecutionPage,
-            ) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    executions: value.executions?,
-                    next_page: value.next_page?,
-                    ui_available: value.ui_available?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::ExecutionPage> for ExecutionPage {
-            fn from(value: super::ExecutionPage) -> Self {
-                Self {
-                    executions: Ok(value.executions),
-                    next_page: Ok(value.next_page),
-                    ui_available: Ok(value.ui_available),
-                }
-            }
-        }
-        #[derive(Clone, Debug)]
-        pub struct ExecutionView {
-            closed_at: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
-            run_id: ::std::result::Result<::std::string::String, ::std::string::String>,
-            started_at: ::std::result::Result<i64, ::std::string::String>,
-            status: ::std::result::Result<::std::string::String, ::std::string::String>,
-            url: ::std::result::Result<
-                ::std::option::Option<::std::string::String>,
-                ::std::string::String,
-            >,
-            workflow_id: ::std::result::Result<::std::string::String, ::std::string::String>,
-            workflow_type: ::std::result::Result<::std::string::String, ::std::string::String>,
-        }
-        impl ::std::default::Default for ExecutionView {
-            fn default() -> Self {
-                Self {
-                    closed_at: Ok(Default::default()),
-                    run_id: Err("no value supplied for run_id".to_string()),
-                    started_at: Err("no value supplied for started_at".to_string()),
-                    status: Err("no value supplied for status".to_string()),
-                    url: Ok(Default::default()),
-                    workflow_id: Err("no value supplied for workflow_id".to_string()),
-                    workflow_type: Err("no value supplied for workflow_type".to_string()),
-                }
-            }
-        }
-        impl ExecutionView {
-            pub fn closed_at<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<i64>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.closed_at = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for closed_at: {e}"));
-                self
-            }
-            pub fn run_id<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.run_id = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for run_id: {e}"));
-                self
-            }
-            pub fn started_at<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<i64>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.started_at = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for started_at: {e}"));
-                self
-            }
-            pub fn status<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.status = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for status: {e}"));
-                self
-            }
-            pub fn url<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.url = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for url: {e}"));
-                self
-            }
-            pub fn workflow_id<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.workflow_id = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for workflow_id: {e}"));
-                self
-            }
-            pub fn workflow_type<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.workflow_type = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for workflow_type: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<ExecutionView> for super::ExecutionView {
-            type Error = super::error::ConversionError;
-            fn try_from(
-                value: ExecutionView,
-            ) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    closed_at: value.closed_at?,
-                    run_id: value.run_id?,
-                    started_at: value.started_at?,
-                    status: value.status?,
-                    url: value.url?,
-                    workflow_id: value.workflow_id?,
-                    workflow_type: value.workflow_type?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::ExecutionView> for ExecutionView {
-            fn from(value: super::ExecutionView) -> Self {
-                Self {
-                    closed_at: Ok(value.closed_at),
-                    run_id: Ok(value.run_id),
-                    started_at: Ok(value.started_at),
-                    status: Ok(value.status),
-                    url: Ok(value.url),
-                    workflow_id: Ok(value.workflow_id),
-                    workflow_type: Ok(value.workflow_type),
                 }
             }
         }
@@ -5255,46 +5720,6 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
-        pub struct TicketContract {
-            title: ::std::result::Result<::std::string::String, ::std::string::String>,
-        }
-        impl ::std::default::Default for TicketContract {
-            fn default() -> Self {
-                Self {
-                    title: Err("no value supplied for title".to_string()),
-                }
-            }
-        }
-        impl TicketContract {
-            pub fn title<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.title = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for title: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<TicketContract> for super::TicketContract {
-            type Error = super::error::ConversionError;
-            fn try_from(
-                value: TicketContract,
-            ) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    title: value.title?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::TicketContract> for TicketContract {
-            fn from(value: super::TicketContract) -> Self {
-                Self {
-                    title: Ok(value.title),
-                }
-            }
-        }
-        #[derive(Clone, Debug)]
         pub struct TicketLink {
             from_id: ::std::result::Result<i64, ::std::string::String>,
             kind: ::std::result::Result<super::LinkKind, ::std::string::String>,
@@ -5816,6 +6241,63 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct WorkPage {
+            next_page: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
+            work: ::std::result::Result<::std::vec::Vec<super::WorkView>, ::std::string::String>,
+        }
+        impl ::std::default::Default for WorkPage {
+            fn default() -> Self {
+                Self {
+                    next_page: Ok(Default::default()),
+                    work: Err("no value supplied for work".to_string()),
+                }
+            }
+        }
+        impl WorkPage {
+            pub fn next_page<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.next_page = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for next_page: {e}"));
+                self
+            }
+            pub fn work<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::WorkView>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.work = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for work: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<WorkPage> for super::WorkPage {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: WorkPage,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    next_page: value.next_page?,
+                    work: value.work?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::WorkPage> for WorkPage {
+            fn from(value: super::WorkPage) -> Self {
+                Self {
+                    next_page: Ok(value.next_page),
+                    work: Ok(value.work),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct WorkRun {
             error: ::std::result::Result<
                 ::std::option::Option<::std::string::String>,
@@ -5911,6 +6393,102 @@ pub mod types {
                     run_id: Ok(value.run_id),
                     state: Ok(value.state),
                     ticket_id: Ok(value.ticket_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct WorkView {
+            closed_at: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+            id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            kind: ::std::result::Result<super::WorkKind, ::std::string::String>,
+            started_at: ::std::result::Result<i64, ::std::string::String>,
+            status: ::std::result::Result<super::WorkStatus, ::std::string::String>,
+        }
+        impl ::std::default::Default for WorkView {
+            fn default() -> Self {
+                Self {
+                    closed_at: Ok(Default::default()),
+                    id: Err("no value supplied for id".to_string()),
+                    kind: Err("no value supplied for kind".to_string()),
+                    started_at: Err("no value supplied for started_at".to_string()),
+                    status: Err("no value supplied for status".to_string()),
+                }
+            }
+        }
+        impl WorkView {
+            pub fn closed_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.closed_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for closed_at: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn kind<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::WorkKind>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.kind = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for kind: {e}"));
+                self
+            }
+            pub fn started_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.started_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for started_at: {e}"));
+                self
+            }
+            pub fn status<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::WorkStatus>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.status = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for status: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<WorkView> for super::WorkView {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: WorkView,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    closed_at: value.closed_at?,
+                    id: value.id?,
+                    kind: value.kind?,
+                    started_at: value.started_at?,
+                    status: value.status?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::WorkView> for WorkView {
+            fn from(value: super::WorkView) -> Self {
+                Self {
+                    closed_at: Ok(value.closed_at),
+                    id: Ok(value.id),
+                    kind: Ok(value.kind),
+                    started_at: Ok(value.started_at),
+                    status: Ok(value.status),
                 }
             }
         }
@@ -6097,12 +6675,12 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
-        pub struct WorkspaceState {
+        pub struct WorkspaceSnapshot {
             current_id: ::std::result::Result<::std::string::String, ::std::string::String>,
             workspaces:
                 ::std::result::Result<::std::vec::Vec<super::Workspace>, ::std::string::String>,
         }
-        impl ::std::default::Default for WorkspaceState {
+        impl ::std::default::Default for WorkspaceSnapshot {
             fn default() -> Self {
                 Self {
                     current_id: Err("no value supplied for current_id".to_string()),
@@ -6110,7 +6688,7 @@ pub mod types {
                 }
             }
         }
-        impl WorkspaceState {
+        impl WorkspaceSnapshot {
             pub fn current_id<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<::std::string::String>,
@@ -6132,10 +6710,10 @@ pub mod types {
                 self
             }
         }
-        impl ::std::convert::TryFrom<WorkspaceState> for super::WorkspaceState {
+        impl ::std::convert::TryFrom<WorkspaceSnapshot> for super::WorkspaceSnapshot {
             type Error = super::error::ConversionError;
             fn try_from(
-                value: WorkspaceState,
+                value: WorkspaceSnapshot,
             ) -> ::std::result::Result<Self, super::error::ConversionError> {
                 Ok(Self {
                     current_id: value.current_id?,
@@ -6143,8 +6721,8 @@ pub mod types {
                 })
             }
         }
-        impl ::std::convert::From<super::WorkspaceState> for WorkspaceState {
-            fn from(value: super::WorkspaceState) -> Self {
+        impl ::std::convert::From<super::WorkspaceSnapshot> for WorkspaceSnapshot {
+            fn from(value: super::WorkspaceSnapshot) -> Self {
                 Self {
                     current_id: Ok(value.current_id),
                     workspaces: Ok(value.workspaces),
@@ -6251,7 +6829,10 @@ impl Client {
     pub fn automations_command(&self) -> builder::AutomationsCommand<'_> {
         builder::AutomationsCommand::new(self)
     }
-    /*Sends a `POST` request to `/v1/commands`
+    /*Deprecated: send Conversation commands to `/v1/conversations/commands` and Ticket
+    commands to `/v1/tickets/commands`. Removed in a later release
+
+    Sends a `POST` request to `/v1/commands`
 
     ```ignore
     let response = client.product_command()
@@ -6302,7 +6883,30 @@ impl Client {
     pub fn connection_logout(&self) -> builder::ConnectionLogout<'_> {
         builder::ConnectionLogout::new(self)
     }
-    /*Sends a `GET` request to `/v1/state`
+    /*Sends a `GET` request to `/v1/conversations`
+
+    ```ignore
+    let response = client.conversations_state()
+        .send()
+        .await;
+    ```*/
+    pub fn conversations_state(&self) -> builder::ConversationsState<'_> {
+        builder::ConversationsState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/conversations/commands`
+
+    ```ignore
+    let response = client.conversations_command()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn conversations_command(&self) -> builder::ConversationsCommand<'_> {
+        builder::ConversationsCommand::new(self)
+    }
+    /*Deprecated: read `/v1/conversations` and `/v1/tickets`. Removed in a later release
+
+    Sends a `GET` request to `/v1/state`
 
     ```ignore
     let response = client.product_state()
@@ -6311,21 +6915,6 @@ impl Client {
     ```*/
     pub fn product_state(&self) -> builder::ProductState<'_> {
         builder::ProductState::new(self)
-    }
-    /*Sends a `GET` request to `/v1/temporal/executions`
-
-    Arguments:
-    - `page`: Opaque next-page token
-    - `status`: All, Running, Completed, Failed, Canceled, Terminated, TimedOut, ContinuedAsNew, or Paused
-    ```ignore
-    let response = client.temporal_executions()
-        .page(page)
-        .status(status)
-        .send()
-        .await;
-    ```*/
-    pub fn temporal_executions(&self) -> builder::TemporalExecutions<'_> {
-        builder::TemporalExecutions::new(self)
     }
     /*Sends a `GET` request to `/v1/terminal/sessions`
 
@@ -6380,17 +6969,6 @@ impl Client {
     pub fn tickets_command(&self) -> builder::TicketsCommand<'_> {
         builder::TicketsCommand::new(self)
     }
-    /*Sends a `POST` request to `/v1/tickets/contract`
-
-    ```ignore
-    let response = client.ticket_contract()
-        .body(body)
-        .send()
-        .await;
-    ```*/
-    pub fn ticket_contract(&self) -> builder::TicketContract<'_> {
-        builder::TicketContract::new(self)
-    }
     /*One Ticket's history, oldest first. Comments stay in the snapshot
 
     Sends a `GET` request to `/v1/tickets/{id}/activity`
@@ -6405,6 +6983,21 @@ impl Client {
     ```*/
     pub fn tickets_activity(&self) -> builder::TicketsActivity<'_> {
         builder::TicketsActivity::new(self)
+    }
+    /*Sends a `GET` request to `/v1/work`
+
+    Arguments:
+    - `page`: Opaque next-page token
+    - `status`: Only work in this status
+    ```ignore
+    let response = client.work_list()
+        .page(page)
+        .status(status)
+        .send()
+        .await;
+    ```*/
+    pub fn work_list(&self) -> builder::WorkList<'_> {
+        builder::WorkList::new(self)
     }
     /*Sends a `GET` request to `/v1/workspaces`
 
@@ -6430,12 +7023,12 @@ impl Client {
     /*Sends a `GET` request to `/version`
 
     ```ignore
-    let response = client.get_version()
+    let response = client.version_show()
         .send()
         .await;
     ```*/
-    pub fn get_version(&self) -> builder::GetVersion<'_> {
-        builder::GetVersion::new(self)
+    pub fn version_show(&self) -> builder::VersionShow<'_> {
+        builder::VersionShow::new(self)
     }
 }
 /// Types for composing operation parameters.
@@ -6510,7 +7103,7 @@ pub mod builder {
             Self { client: client }
         }
         ///Sends a `GET` request to `/health/ready`
-        pub async fn send(self) -> Result<ResponseValue<types::Health>, Error<()>> {
+        pub async fn send(self) -> Result<ResponseValue<types::Health>, Error<types::ErrorBody>> {
             let Self { client } = self;
             let url = format!("{}/health/ready", client.baseurl,);
             let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
@@ -6545,7 +7138,9 @@ pub mod builder {
             let response = result?;
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
-                503u16 => Err(Error::ErrorResponse(ResponseValue::empty(response))),
+                503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 _ => Err(Error::UnexpectedResponse(response)),
             }
         }
@@ -6602,7 +7197,10 @@ pub mod builder {
                 401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                503u16 => Err(Error::ErrorResponse(
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
@@ -6692,10 +7290,19 @@ pub mod builder {
                 401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
+                403u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 409u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                503u16 => Err(Error::ErrorResponse(
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
@@ -6738,7 +7345,7 @@ pub mod builder {
         ///Sends a `POST` request to `/v1/commands`
         pub async fn send(
             self,
-        ) -> Result<ResponseValue<types::Acknowledgement>, Error<types::ErrorBody>> {
+        ) -> Result<ResponseValue<types::CommandReceipt>, Error<types::ErrorBody>> {
             let Self { client, body } = self;
             let body = body
                 .and_then(|v| types::CommandRequest::try_from(v).map_err(|e| e.to_string()))
@@ -6783,10 +7390,16 @@ pub mod builder {
                 401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 409u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                503u16 => Err(Error::ErrorResponse(
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
@@ -6843,6 +7456,12 @@ pub mod builder {
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
                 401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 503u16 => Err(Error::ErrorResponse(
@@ -6904,6 +7523,12 @@ pub mod builder {
                 401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 503u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
@@ -6961,6 +7586,12 @@ pub mod builder {
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
                 401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 503u16 => Err(Error::ErrorResponse(
@@ -7025,7 +7656,179 @@ pub mod builder {
                 409u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::conversations_state`]
+
+    [`Client::conversations_state`]: super::Client::conversations_state*/
+    #[derive(Debug, Clone)]
+    pub struct ConversationsState<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> ConversationsState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `GET` request to `/v1/conversations`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::ConversationSnapshot>, Error<types::ErrorBody>> {
+            let Self { client } = self;
+            let url = format!("{}/v1/conversations", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "conversations_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::conversations_command`]
+
+    [`Client::conversations_command`]: super::Client::conversations_command*/
+    #[derive(Debug, Clone)]
+    pub struct ConversationsCommand<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::ConversationCommandRequest, String>,
+    }
+    impl<'a> ConversationsCommand<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::ConversationCommandRequest>,
+            <V as std::convert::TryInto<types::ConversationCommandRequest>>::Error:
+                std::fmt::Display,
+        {
+            self.body = value.try_into().map(From::from).map_err(|s| {
+                format!(
+                    "conversion to `ConversationCommandRequest` for body failed: {}",
+                    s
+                )
+            });
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(
+                    types::builder::ConversationCommandRequest,
+                ) -> types::builder::ConversationCommandRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/conversations/commands`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::ConversationReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| {
+                    types::ConversationCommandRequest::try_from(v).map_err(|e| e.to_string())
+                })
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/conversations/commands", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "conversations_command",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
@@ -7082,101 +7885,10 @@ pub mod builder {
                 401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                503u16 => Err(Error::ErrorResponse(
+                426u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                _ => Err(Error::UnexpectedResponse(response)),
-            }
-        }
-    }
-    /*Builder for [`Client::temporal_executions`]
-
-    [`Client::temporal_executions`]: super::Client::temporal_executions*/
-    #[derive(Debug, Clone)]
-    pub struct TemporalExecutions<'a> {
-        client: &'a super::Client,
-        page: Result<Option<::std::string::String>, String>,
-        status: Result<Option<::std::string::String>, String>,
-    }
-    impl<'a> TemporalExecutions<'a> {
-        pub fn new(client: &'a super::Client) -> Self {
-            Self {
-                client: client,
-                page: Ok(None),
-                status: Ok(None),
-            }
-        }
-        pub fn page<V>(mut self, value: V) -> Self
-        where
-            V: std::convert::TryInto<::std::string::String>,
-        {
-            self.page = value.try_into().map(Some).map_err(|_| {
-                "conversion to `:: std :: string :: String` for page failed".to_string()
-            });
-            self
-        }
-        pub fn status<V>(mut self, value: V) -> Self
-        where
-            V: std::convert::TryInto<::std::string::String>,
-        {
-            self.status = value.try_into().map(Some).map_err(|_| {
-                "conversion to `:: std :: string :: String` for status failed".to_string()
-            });
-            self
-        }
-        ///Sends a `GET` request to `/v1/temporal/executions`
-        pub async fn send(
-            self,
-        ) -> Result<ResponseValue<types::ExecutionPage>, Error<types::ErrorBody>> {
-            let Self {
-                client,
-                page,
-                status,
-            } = self;
-            let page = page.map_err(Error::InvalidRequest)?;
-            let status = status.map_err(Error::InvalidRequest)?;
-            let url = format!("{}/v1/temporal/executions", client.baseurl,);
-            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-            header_map.append(
-                ::reqwest::header::HeaderName::from_static("api-version"),
-                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
-            );
-            #[allow(unused_mut)]
-            let mut request = client
-                .client
-                .get(url)
-                .header(
-                    ::reqwest::header::ACCEPT,
-                    ::reqwest::header::HeaderValue::from_static("application/json"),
-                )
-                .query(&progenitor_client::QueryParam::new("page", &page))
-                .query(&progenitor_client::QueryParam::new("status", &status))
-                .headers(header_map)
-                .build()?;
-            let info = OperationInfo {
-                operation_id: "temporal_executions",
-            };
-            match (crate::client_header)(&mut request).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            client.pre(&mut request, &info).await?;
-            let result = client.exec(request, &info).await;
-            client.post(&result, &info).await?;
-            match (crate::server_compatibility)(&result).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            let response = result?;
-            match response.status().as_u16() {
-                200u16 => ResponseValue::from_response(response).await,
-                400u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                401u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                503u16 => Err(Error::ErrorResponse(
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
@@ -7234,6 +7946,12 @@ pub mod builder {
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
                 401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
@@ -7322,6 +8040,12 @@ pub mod builder {
                 401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 503u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
@@ -7403,6 +8127,12 @@ pub mod builder {
                 404u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 _ => Err(Error::UnexpectedResponse(response)),
             }
         }
@@ -7456,10 +8186,16 @@ pub mod builder {
             let response = result?;
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 403u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                503u16 => Err(Error::ErrorResponse(
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
@@ -7548,92 +8284,24 @@ pub mod builder {
                 400u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 403u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 409u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                503u16 => Err(Error::ErrorResponse(
+                426u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                _ => Err(Error::UnexpectedResponse(response)),
-            }
-        }
-    }
-    /*Builder for [`Client::ticket_contract`]
-
-    [`Client::ticket_contract`]: super::Client::ticket_contract*/
-    #[derive(Debug, Clone)]
-    pub struct TicketContract<'a> {
-        client: &'a super::Client,
-        body: Result<types::builder::TicketContract, String>,
-    }
-    impl<'a> TicketContract<'a> {
-        pub fn new(client: &'a super::Client) -> Self {
-            Self {
-                client: client,
-                body: Ok(::std::default::Default::default()),
-            }
-        }
-        pub fn body<V>(mut self, value: V) -> Self
-        where
-            V: std::convert::TryInto<types::TicketContract>,
-            <V as std::convert::TryInto<types::TicketContract>>::Error: std::fmt::Display,
-        {
-            self.body = value
-                .try_into()
-                .map(From::from)
-                .map_err(|s| format!("conversion to `TicketContract` for body failed: {}", s));
-            self
-        }
-        pub fn body_map<F>(mut self, f: F) -> Self
-        where
-            F: std::ops::FnOnce(types::builder::TicketContract) -> types::builder::TicketContract,
-        {
-            self.body = self.body.map(f);
-            self
-        }
-        ///Sends a `POST` request to `/v1/tickets/contract`
-        pub async fn send(self) -> Result<ResponseValue<types::TicketContract>, Error<()>> {
-            let Self { client, body } = self;
-            let body = body
-                .and_then(|v| types::TicketContract::try_from(v).map_err(|e| e.to_string()))
-                .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/v1/tickets/contract", client.baseurl,);
-            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-            header_map.append(
-                ::reqwest::header::HeaderName::from_static("api-version"),
-                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
-            );
-            #[allow(unused_mut)]
-            let mut request = client
-                .client
-                .post(url)
-                .header(
-                    ::reqwest::header::ACCEPT,
-                    ::reqwest::header::HeaderValue::from_static("application/json"),
-                )
-                .json(&body)
-                .headers(header_map)
-                .build()?;
-            let info = OperationInfo {
-                operation_id: "ticket_contract",
-            };
-            match (crate::client_header)(&mut request).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            client.pre(&mut request, &info).await?;
-            let result = client.exec(request, &info).await;
-            client.post(&result, &info).await?;
-            match (crate::server_compatibility)(&result).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            let response = result?;
-            match response.status().as_u16() {
-                200u16 => ResponseValue::from_response(response).await,
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 _ => Err(Error::UnexpectedResponse(response)),
             }
         }
@@ -7706,7 +8374,112 @@ pub mod builder {
             let response = result?;
             match response.status().as_u16() {
                 200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 403u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::work_list`]
+
+    [`Client::work_list`]: super::Client::work_list*/
+    #[derive(Debug, Clone)]
+    pub struct WorkList<'a> {
+        client: &'a super::Client,
+        page: Result<Option<::std::string::String>, String>,
+        status: Result<Option<types::WorkStatus>, String>,
+    }
+    impl<'a> WorkList<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                page: Ok(None),
+                status: Ok(None),
+            }
+        }
+        pub fn page<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<::std::string::String>,
+        {
+            self.page = value.try_into().map(Some).map_err(|_| {
+                "conversion to `:: std :: string :: String` for page failed".to_string()
+            });
+            self
+        }
+        pub fn status<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::WorkStatus>,
+        {
+            self.status = value
+                .try_into()
+                .map(Some)
+                .map_err(|_| "conversion to `WorkStatus` for status failed".to_string());
+            self
+        }
+        ///Sends a `GET` request to `/v1/work`
+        pub async fn send(self) -> Result<ResponseValue<types::WorkPage>, Error<types::ErrorBody>> {
+            let Self {
+                client,
+                page,
+                status,
+            } = self;
+            let page = page.map_err(Error::InvalidRequest)?;
+            let status = status.map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/work", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .query(&progenitor_client::QueryParam::new("page", &page))
+                .query(&progenitor_client::QueryParam::new("status", &status))
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "work_list",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 503u16 => Err(Error::ErrorResponse(
@@ -7730,7 +8503,7 @@ pub mod builder {
         ///Sends a `GET` request to `/v1/workspaces`
         pub async fn send(
             self,
-        ) -> Result<ResponseValue<types::WorkspaceState>, Error<types::ErrorBody>> {
+        ) -> Result<ResponseValue<types::WorkspaceSnapshot>, Error<types::ErrorBody>> {
             let Self { client } = self;
             let url = format!("{}/v1/workspaces", client.baseurl,);
             let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
@@ -7768,7 +8541,10 @@ pub mod builder {
                 401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                503u16 => Err(Error::ErrorResponse(
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
@@ -7858,24 +8634,30 @@ pub mod builder {
                 401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
                 409u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
-                503u16 => Err(Error::ErrorResponse(
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
             }
         }
     }
-    /*Builder for [`Client::get_version`]
+    /*Builder for [`Client::version_show`]
 
-    [`Client::get_version`]: super::Client::get_version*/
+    [`Client::version_show`]: super::Client::version_show*/
     #[derive(Debug, Clone)]
-    pub struct GetVersion<'a> {
+    pub struct VersionShow<'a> {
         client: &'a super::Client,
     }
-    impl<'a> GetVersion<'a> {
+    impl<'a> VersionShow<'a> {
         pub fn new(client: &'a super::Client) -> Self {
             Self { client: client }
         }
@@ -7899,7 +8681,7 @@ pub mod builder {
                 .headers(header_map)
                 .build()?;
             let info = OperationInfo {
-                operation_id: "get_version",
+                operation_id: "version_show",
             };
             match (crate::client_header)(&mut request).await {
                 Ok(_) => {}

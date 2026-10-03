@@ -10,6 +10,7 @@ pub(crate) struct TestServer {
 
 impl TestServer {
     pub async fn start() -> Result<Self, Error> {
+        super::enable_testing();
         let listener = std::net::TcpListener::bind("127.0.0.1:0")
             .map_err(|e| Error::Connection(e.to_string()))?;
         let port = listener
@@ -49,7 +50,9 @@ impl TestServer {
                 let replayer = WorkflowReplayer::new(
                     WorkflowReplayerOptions::new()
                         .register_workflow::<AgentRunWorkflow>()?
+                        .register_workflow::<LegacyRunWorkflow>()?
                         .register_workflow::<SessionWorkflow>()?
+                        .register_workflow::<LegacySessionWorkflow>()?
                         .build(),
                 )?;
                 replayer.replay_workflow(history).await?;

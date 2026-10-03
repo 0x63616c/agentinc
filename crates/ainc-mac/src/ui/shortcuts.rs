@@ -12,13 +12,13 @@ pub struct Shortcut {
 }
 
 impl Shortcut {
-    /// An accessible label: `Search · ⌘K`.
+    /// An accessible label: `Go to… · ⌘K`.
     pub fn labelled(self, label: &str) -> String {
         format!("{label} · {}", self.glyph)
     }
 }
 
-pub const SEARCH: Shortcut = Shortcut {
+pub const GO_TO: Shortcut = Shortcut {
     action: "Go to…",
     keystroke: "cmd-k",
     glyph: "⌘K",
@@ -67,7 +67,7 @@ pub const NEW_LINE: Shortcut = Shortcut {
 
 /// Every shortcut, in the order Settings and the README list them.
 pub const ALL: &[Shortcut] = &[
-    SEARCH,
+    GO_TO,
     BACK,
     FORWARD,
     PAGES,
@@ -100,6 +100,6 @@ mod tests {
     fn routes_wrap_at_ten() {
         assert_eq!(route(1), ("cmd-1".into(), "⌘1".into()));
         assert_eq!(route(10), ("cmd-0".into(), "⌘0".into()));
-        assert_eq!(SEARCH.labelled("Search"), "Search · ⌘K");
+        assert_eq!(GO_TO.labelled("Go to…"), "Go to… · ⌘K");
     }
 }
