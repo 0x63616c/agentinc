@@ -13,6 +13,9 @@ mod macos {
     };
 
     type Shortcut = unsafe extern "C" fn(*mut c_void, i32);
+    type CommandChanged = unsafe extern "C" fn(*mut c_void, bool);
+    type SetCommandCallback =
+        unsafe extern "C" fn(*mut c_void, Option<CommandChanged>, *mut c_void);
     type Create = unsafe extern "C" fn(
         *mut c_void,
         *const std::ffi::c_char,
@@ -58,6 +61,18 @@ mod macos {
         });
     }
 
+    unsafe extern "C" fn command_changed(context: *mut c_void, held: bool) {
+        // SAFETY: same lifetime and UI-thread contract as the shortcut callback.
+        let Some(navigation) = (unsafe { (context as *const Navigation).as_ref() }) else {
+            return;
+        };
+        navigation.app.update(|cx| {
+            let _ = navigation.shell.update(cx, |shell, cx| {
+                shell.set_command_held(held, cx);
+            });
+        });
+    }
+
     pub struct TerminalHost {
         _library: Library,
         raw: NonNull<c_void>,
@@ -96,11 +111,17 @@ mod macos {
                 .context("load AgentInc Ghostty bridge")?;
             // SAFETY: the library is pinned in this struct for the lifetime of
             // these function pointers and its ABI is declared in Bridge.swift.
-            let (create, set_frame, destroy): (Create, SetFrame, Destroy) = unsafe {
+            let (create, set_frame, destroy, set_command_callback): (
+                Create,
+                SetFrame,
+                Destroy,
+                SetCommandCallback,
+            ) = unsafe {
                 (
                     *library.get(b"agentinc_ghostty_create")?,
                     *library.get(b"agentinc_ghostty_set_frame")?,
                     *library.get(b"agentinc_ghostty_destroy")?,
+                    *library.get(b"agentinc_ghostty_set_command_callback")?,
                 )
             };
             let navigation = Box::new(Navigation {
@@ -123,6 +144,16 @@ mod macos {
                 )
             };
             let raw = NonNull::new(raw).context("Ghostty host creation failed")?;
+            // A separate setter keeps the bridge's create ABI stable. Observe
+            // native modifiers without replaying keys into GPUI or stealing
+            // Ghostty's input/shortcuts.
+            unsafe {
+                set_command_callback(
+                    raw.as_ptr(),
+                    Some(command_changed),
+                    (&*navigation as *const Navigation).cast_mut().cast(),
+                );
+            }
             Ok(Self {
                 _library: library,
                 raw,

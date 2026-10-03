@@ -2,6 +2,7 @@ import AppKit
 import GhosttyTerminal
 
 public typealias ShortcutCallback = @convention(c) (UnsafeMutableRawPointer?, Int32) -> Void
+public typealias CommandChangedCallback = @convention(c) (UnsafeMutableRawPointer?, Bool) -> Void
 
 // The AppKit terminal is first responder, so GPUI's window key bindings do
 // not see these keys. Consume only AgentInc's navigation keys here; all other
@@ -40,13 +41,27 @@ private final class PaneView: AppTerminalView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        host?.observeCommand(event, in: self)
         if host?.shortcut(event, in: self) == true { return true }
         return super.performKeyEquivalent(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
+        host?.observeCommand(event, in: self)
         if host?.shortcut(event, in: self) == true { return }
         super.keyDown(with: event)
+    }
+
+    override func keyUp(with event: NSEvent) {
+        host?.observeCommand(event, in: self)
+        super.keyUp(with: event)
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        // AppKit sends this to the terminal first responder, not GPUI. Keep
+        // Ghostty's modifier handling intact; the callback only updates hints.
+        host?.observeCommand(event, in: self)
+        super.flagsChanged(with: event)
     }
 }
 
@@ -217,6 +232,8 @@ private final class TerminalHost: NSObject {
     let layoutURL: URL?
     let navigate: ShortcutCallback?
     let context: UnsafeMutableRawPointer?
+    var commandChanged: CommandChangedCallback?
+    var commandContext: UnsafeMutableRawPointer?
     var tree: PaneNode!
     weak var focused: PaneView?
     weak var zoomed: PaneView?
@@ -335,6 +352,11 @@ private final class TerminalHost: NSObject {
     func focus(_ pane: PaneView) {
         focused = pane
         if shown { pane.window?.makeFirstResponder(pane) }
+    }
+
+    func observeCommand(_ event: NSEvent, in pane: PaneView) {
+        guard shown, pane.window?.firstResponder === pane else { return }
+        commandChanged?(commandContext, event.modifierFlags.contains(.command))
     }
 
     func shortcut(_ event: NSEvent, in pane: PaneView) -> Bool {
@@ -501,6 +523,8 @@ private final class TerminalHost: NSObject {
     }
 
     func dispose() {
+        commandChanged = nil
+        commandContext = nil
         container.removeFromSuperview()
         tree = nil
         focused = nil
@@ -532,6 +556,20 @@ public func agentincGhosttyCreate(_ parent: UnsafeMutableRawPointer?, _ home: Un
         return UInt(bitPattern: Unmanaged.passRetained(host).toOpaque())
     }
     return UnsafeMutableRawPointer(bitPattern: address)
+}
+
+@_cdecl("agentinc_ghostty_set_command_callback")
+public func agentincGhosttySetCommandCallback(_ pointer: UnsafeMutableRawPointer?,
+                                             _ callback: CommandChangedCallback?,
+                                             _ context: UnsafeMutableRawPointer?) {
+    let address = pointer.map { UInt(bitPattern: $0) }
+    let contextAddress = context.map { UInt(bitPattern: $0) }
+    MainActor.assumeIsolated {
+        guard let address, let pointer = UnsafeMutableRawPointer(bitPattern: address) else { return }
+        let host = Unmanaged<TerminalHost>.fromOpaque(pointer).takeUnretainedValue()
+        host.commandChanged = callback
+        host.commandContext = contextAddress.flatMap(UnsafeMutableRawPointer.init(bitPattern:))
+    }
 }
 
 @_cdecl("agentinc_ghostty_set_frame")

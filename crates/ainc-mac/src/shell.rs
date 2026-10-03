@@ -90,6 +90,7 @@ pub struct Shell {
     picker_close_focus: FocusHandle,
     palette_scroll: ScrollHandle,
     _input_subscription: Subscription,
+    _activation_subscription: Subscription,
     command_held: bool,
     palette_transition: Option<Instant>,
     launch_started: Option<Instant>,
@@ -313,6 +314,11 @@ impl Shell {
             picker_close_focus: cx.focus_handle(),
             palette_scroll: ScrollHandle::new(),
             _input_subscription: subscription,
+            _activation_subscription: cx.observe_window_activation(window, |this, window, cx| {
+                // Command can be released in another app, with no modifier event
+                // delivered here. Never retain hints across that focus boundary.
+                this.set_command_held(window.is_window_active() && window.modifiers().platform, cx);
+            }),
             command_held: false,
             palette_transition: None,
             launch_started: None,
@@ -862,6 +868,13 @@ impl Shell {
                     .child(icon(name, HEADER_ICON_SIZE)),
             )
     }
+    pub(crate) fn set_command_held(&mut self, held: bool, cx: &mut Context<Self>) {
+        if self.command_held != held {
+            self.command_held = held;
+            cx.notify();
+        }
+    }
+
     fn keys(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.overlays.borrow().active() == Some(Overlay::Search) {
             let count = self.palette_results(&self.input.read(cx).content).len();
@@ -1071,10 +1084,20 @@ impl Render for Shell {
                 this.tickets.update(cx, |page, cx| page.dismiss_menus(cx));
             }))
             .on_key_down(cx.listener(Self::keys))
-            .capture_any_mouse_down(|_, _, _| set_focus_visible(false))
+            // Observe snapshots before a focused input consumes the event. These
+            // also recover from a modifier release missed during navigation.
+            .capture_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                this.set_command_held(event.keystroke.modifiers.platform, cx);
+            }))
+            .capture_key_up(cx.listener(|this, event: &KeyUpEvent, _, cx| {
+                this.set_command_held(event.keystroke.modifiers.platform, cx);
+            }))
+            .capture_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                set_focus_visible(false);
+                this.set_command_held(event.modifiers.platform, cx);
+            }))
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
-                this.command_held = event.modifiers.platform;
-                cx.notify();
+                this.set_command_held(event.modifiers.platform, cx);
             }))
             .on_action(cx.listener(|this, action: &NavigateRoute, w, cx| {
                 if let Some(route) = Route::from_shortcut(action.0) {
@@ -1285,6 +1308,11 @@ mod interaction_tests {
         }
     }
 
+    fn assert_sidebar_hints(cx: &mut VisualTestContext, visible: bool) {
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        assert_eq!(cx.debug_bounds("sidebar-badge-1").is_some(), visible);
+    }
+
     #[gpui::test]
     fn custom_header_owns_titlebar_gestures(_cx: &mut TestAppContext) {
         let bounds = gpui::Bounds::new(point(px(0.), px(0.)), gpui::size(px(1360.), px(828.)));
@@ -1423,6 +1451,97 @@ mod interaction_tests {
                 }
             }
         }
+    }
+
+    #[gpui::test]
+    fn sidebar_hints_follow_command_across_navigation_and_input_focus(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        cx.update(|cx| {
+            bind_keys(cx);
+            input::bind_keys(cx);
+        });
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        let command = Modifiers {
+            platform: true,
+            ..Modifiers::default()
+        };
+        for number in [2, 5, 1] {
+            cx.simulate_modifiers_change(command);
+            cx.simulate_keystrokes(&format!("cmd-{number}"));
+            shell.read_with(cx, |shell, _| {
+                assert_eq!(
+                    shell.session.current(),
+                    Route::from_shortcut(number).unwrap()
+                );
+                assert!(
+                    shell.command_held,
+                    "navigation must not hide a held Command"
+                );
+            });
+            assert_sidebar_hints(cx, true);
+            cx.simulate_modifiers_change(Modifiers::default());
+            shell.read_with(cx, |shell, _| assert!(!shell.command_held));
+            assert_sidebar_hints(cx, false);
+        }
+
+        cx.simulate_modifiers_change(command);
+        cx.simulate_keystrokes("cmd-k");
+        let focus = shell.read_with(cx, |shell, cx| shell.input.focus_handle(cx));
+        cx.update(|window, _| assert!(focus.is_focused(window)));
+        cx.simulate_modifiers_change(Modifiers::default());
+        shell.read_with(cx, |shell, _| assert!(!shell.command_held));
+        cx.simulate_input("settings");
+        shell.read_with(cx, |shell, cx| {
+            assert_eq!(shell.input.read(cx).content, "settings")
+        });
+        cx.simulate_keystrokes("enter");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Settings)
+        });
+    }
+
+    #[gpui::test]
+    fn sidebar_hints_recover_from_a_missed_release_on_navigation_click(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        cx.simulate_modifiers_change(Modifiers {
+            platform: true,
+            ..Modifiers::default()
+        });
+        assert_sidebar_hints(cx, true);
+        // No release event: AppKit may have sent it to a different responder.
+        let settings = cx.debug_bounds("sidebar-settings").unwrap().center();
+        cx.simulate_click(settings, Modifiers::default());
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.session.current(), Route::Settings);
+            assert!(!shell.command_held);
+        });
+        assert_sidebar_hints(cx, false);
+    }
+
+    #[gpui::test]
+    fn sidebar_hints_clear_when_window_deactivates_without_command_release(
+        cx: &mut TestAppContext,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        cx.simulate_modifiers_change(Modifiers {
+            platform: true,
+            ..Modifiers::default()
+        });
+        assert_sidebar_hints(cx, true);
+        cx.deactivate_window();
+        shell.read_with(cx, |shell, _| assert!(!shell.command_held));
+        assert_sidebar_hints(cx, false);
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
+        shell.read_with(cx, |shell, _| assert!(!shell.command_held));
     }
 
     #[gpui::test]
