@@ -155,7 +155,7 @@ mod tests {
     use super::{Shell, bind_keys};
     use crate::{
         model::{Overlay, PANE_WIDTHS},
-        ui::tokens::SIDEBAR_PROFILE_INSET,
+        ui::SIDEBAR_PROFILE_INSET,
     };
     use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext, px};
 
@@ -196,10 +196,8 @@ mod tests {
             }
         }
         draw_sidebar(&shell, PANE_WIDTHS[0].0, cx);
-        cx.simulate_click(
-            cx.debug_bounds("sidebar-search-shortcut").unwrap().center(),
-            Modifiers::default(),
-        );
+        let shortcut_center = cx.debug_bounds("sidebar-search-shortcut").unwrap().center();
+        cx.simulate_click(shortcut_center, Modifiers::default());
         shell.read_with(cx, |shell, _| {
             assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
         });
@@ -236,10 +234,8 @@ mod tests {
             );
             assert!(name.right() <= chevron.origin.x);
         }
-        cx.simulate_click(
-            cx.debug_bounds("sidebar-profile-chevron").unwrap().center(),
-            Modifiers::default(),
-        );
+        let chevron_center = cx.debug_bounds("sidebar-profile-chevron").unwrap().center();
+        cx.simulate_click(chevron_center, Modifiers::default());
         shell.read_with(cx, |shell, _| {
             assert_eq!(
                 shell.overlays.borrow().active(),
