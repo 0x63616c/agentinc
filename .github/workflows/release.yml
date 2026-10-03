@@ -334,9 +334,37 @@ jobs:
             --key .local/upgrade-input/test-key.pem \
             --manifest-tool .local/upgrade-input/ainc-release-manifest \
             "${prior[@]}"
+      - name: Generate and verify Sparkle deltas from notarized release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          COMMIT: ${{ inputs.commit || github.sha }}
+          TEST_RELEASE: ${{ github.ref != 'refs/heads/main' || inputs.test == true }}
+        run: |
+          export CARGO_HOME="$RUNNER_WORKSPACE/.cargo"
+          export RUSTUP_HOME="$RUNNER_WORKSPACE/.rustup"
+          export CARGO_TARGET_DIR="$RUNNER_WORKSPACE/.cargo-target"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          export PROTOC="$RUNNER_WORKSPACE/release-tools/protoc/bin/protoc"
+          export CARGO_INCREMENTAL=0
+          tag="v$VERSION"
+          flags=()
+          if [ "$TEST_RELEASE" = true ]; then
+            tag="phase5-test-${COMMIT:0:12}"
+            flags+=(--test)
+          fi
+          cargo run --locked -p ainc-xtask -- release-sparkle-deltas \
+            --tag "$tag" --out .local/sparkle-deltas "${flags[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sparkle-deltas-${{ inputs.commit || github.sha }}
+          path: .local/sparkle-deltas
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
       - name: Remove upgrade fixtures
         if: always()
-        run: rm -rf .local/upgrade-input .local/upgrade-signed
+        run: rm -rf .local/upgrade-input .local/upgrade-signed .local/sparkle-deltas .local/release-inputs
   publish:
     needs: [prepare, distribute, upgrade]
     if: needs.upgrade.result == 'success' && ((github.ref == 'refs/heads/main' && inputs.test != true) || (github.event_name == 'workflow_dispatch' && inputs.test == true))
@@ -373,6 +401,27 @@ jobs:
           COMMIT: ${{ inputs.commit || github.sha }}
           CARGO_INCREMENTAL: "0"
         run: cargo run --locked --profile ci -p ainc-xtask -- release-ci-gate "$COMMIT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: sparkle-deltas-${{ inputs.commit || github.sha }}
+          path: .local/sparkle-deltas
+      - name: Sign Sparkle archives, deltas and feed on Linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          COMMIT: ${{ inputs.commit || github.sha }}
+          TEST_RELEASE: ${{ github.ref != 'refs/heads/main' || inputs.test == true }}
+          UPDATE_SIGNING_KEY_ED25519_PEM: ${{ secrets.UPDATE_SIGNING_KEY_ED25519_PEM }}
+          CARGO_INCREMENTAL: "0"
+        run: |
+          tag="v$VERSION"
+          flags=()
+          if [ "$TEST_RELEASE" = true ]; then
+            tag="phase5-test-${COMMIT:0:12}"
+            flags+=(--test)
+          fi
+          cargo run --locked --profile ci -p ainc-xtask -- release-sparkle-sign \
+            --tag "$tag" --deltas .local/sparkle-deltas "${flags[@]}"
       - name: Check draft lookup
         if: inputs.test == true
         env:

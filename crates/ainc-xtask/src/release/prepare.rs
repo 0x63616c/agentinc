@@ -30,7 +30,7 @@ fn ignored(name: &str) -> bool {
 }
 
 /// `shutil.copytree(symlinks=True)`, optionally ignoring the lib patterns above.
-fn copytree(source: &Path, destination: &Path, ignore: bool) -> Result<()> {
+pub(super) fn copytree(source: &Path, destination: &Path, ignore: bool) -> Result<()> {
     fs::create_dir(destination)?;
     for entry in fs::read_dir(source)? {
         let entry = entry?;
@@ -109,7 +109,8 @@ fn audit(bundle: &Path) -> Result<()> {
             continue;
         }
         let listing = output("otool", &["-L", &text(&binary)])?;
-        for line in listing.lines().skip(1) {
+        // Universal Sparkle binaries include a header for each architecture.
+        for line in listing.lines().filter(|line| line.starts_with('\t')) {
             let line = line.trim();
             let dependency = line.split(" (compatibility").next().unwrap_or(line);
             if !["/usr/lib/", "/System/", "@loader_path/", "@rpath/"]
@@ -184,9 +185,17 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
     if test_version.as_deref().is_some_and(|v| !v.is_empty()) && !test_key_set {
         bail!("test version requires an upgrade-test public key");
     }
+    let newer_fixture = test_version.as_deref().is_some_and(|v| !v.is_empty());
     let version = test_version.unwrap_or(product_version);
     let commit = output("git", &["rev-parse", "HEAD"])?;
     let build = output("git", &["rev-list", "--count", "HEAD"])?;
+    // Sparkle compares CFBundleVersion, not the display version. Both fixtures
+    // come from one commit, so give the explicitly newer fixture the next build.
+    let build = if newer_fixture {
+        (build.parse::<u64>()? + 1).to_string()
+    } else {
+        build
+    };
     let mut command = Command::new("cargo");
     command
         .args([
@@ -246,6 +255,7 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
             .args(["crates/ainc-mac/scripts/stage-ghostty.sh", profile])
             .arg(&bundle),
     )?;
+    super::sparkle::stage(&root, &bundle)?;
     let runtime = resources.join("runtime");
     fs::create_dir(&runtime)?;
     // Portable by construction; never relocate a developer's Homebrew install.
@@ -332,6 +342,20 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
         ("LSMinimumSystemVersion", json!("15.0")),
         ("NSHighResolutionCapable", json!(true)),
         ("NSPrincipalClass", json!("NSApplication")),
+        ("SUFeedURL", json!(super::sparkle::FEED_URL)),
+        (
+            "SUPublicEDKey",
+            json!(
+                test_key
+                    .as_deref()
+                    .filter(|key| !key.is_empty())
+                    .unwrap_or(ainc_release::UPDATE_PUBLIC_KEY)
+            ),
+        ),
+        ("SUVerifyUpdateBeforeExtraction", json!(true)),
+        ("SURequireSignedFeed", json!(true)),
+        ("SUEnableAutomaticChecks", json!(false)),
+        ("SUAutomaticallyUpdate", json!(false)),
     ]);
     fs::write(contents.join("Info.plist"), info)?;
     // The runtime input inventory makes local build provenance reviewable.
