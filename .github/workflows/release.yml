@@ -321,7 +321,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.commit || github.sha }}
+          # Old release commits predate the gate; use this workflow's trusted
+          # implementation while checking the requested exact commit below.
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Recheck exact-commit CI before publication
         env:
