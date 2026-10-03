@@ -4,6 +4,7 @@ Only main may publish. Test jobs leave a draft; credentials never enter argument
 """
 import argparse
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+from ci_gate import wait_for_ci
 
 
 def run(*args, **kwargs):
@@ -19,6 +21,8 @@ def run(*args, **kwargs):
 
 
 def sign_bundle(bundle, archive, private):
+    started = time.monotonic()
+    print(f'Signing/notarizing {archive.name}', flush=True)
     subprocess.run(['rcodesign', 'sign', '--p12-file', str(private / 'identity.p12'),
                     '--p12-password-file', str(private / 'password'), '--team-name',
                     os.environ['APPLE_TEAM_ID'], '--for-notarization', str(bundle)], check=True)
@@ -26,6 +30,18 @@ def sign_bundle(bundle, archive, private):
                     '--wait', '--staple', str(bundle)], check=True)
     with tarfile.open(archive, 'w:gz') as tar:
         tar.add(bundle, arcname='AgentInc.app')
+    print(f'Signed, notarized, stapled {archive.name}: {time.monotonic() - started:.1f}s', flush=True)
+
+
+def sign_all(tasks, build_manifest):
+    # Independent bundles and output paths; each worker still waits for Apple's
+    # acceptance and staples its bundle. Any exception prevents upload/publication.
+    with ThreadPoolExecutor(max_workers=1) as compiler, ThreadPoolExecutor(max_workers=4) as pool:
+        manifest = compiler.submit(build_manifest)
+        signed = [pool.submit(task) for task in tasks]
+        for result in signed:
+            result.result()
+        manifest.result()
 
 
 def sign_upgrade_fixture(source, destination, private, commit, version=None):
@@ -64,15 +80,6 @@ def main():
     if commit != args.commit or run('git', 'rev-parse', 'HEAD') != commit:
         raise SystemExit('release checkout does not match requested commit')
     repo = os.environ['GITHUB_REPOSITORY']
-    while True:
-        checks = json.loads(run('gh', 'api', f'repos/{repo}/commits/{commit}/check-runs'))['check_runs']
-        rust = [check for check in checks if check['name'] == 'rust']
-        if any(check['conclusion'] == 'success' for check in rust):
-            break
-        if rust and all(check['status'] == 'completed' for check in rust):
-            raise SystemExit('release refused: workspace CI failed for this exact commit')
-        print('Waiting for workspace CI on the release commit', flush=True)
-        time.sleep(15)
     if not args.test:
         subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
     handoff_tag = 'build-' + commit
@@ -129,17 +136,26 @@ def main():
         # rcodesign uses the modern Notary API and runs on Linux.
         run('rcodesign', 'encode-app-store-connect-api-key', os.environ['NOTARY_ISSUER_ID'], os.environ['NOTARY_KEY_ID'], str(private / 'notary.p8'), '--output-path', str(private / 'notary.json'))
         archive = out / 'AgentInc.tar.gz'
-        sign_bundle(bundle, archive, private)
+        from functools import partial
+        tasks = [partial(sign_bundle, bundle, archive, private)]
         if bool(args.upgrade_candidate) != bool(args.upgrade_newer):
             raise SystemExit('both upgrade fixture handoffs are required')
         if args.upgrade_candidate:
-            sign_upgrade_fixture(args.upgrade_candidate, out / 'upgrade-candidate.tar.gz', private, commit)
-            sign_upgrade_fixture(args.upgrade_newer, out / 'upgrade-newer.tar.gz', private, commit)
+            tasks.append(partial(sign_upgrade_fixture, args.upgrade_candidate,
+                                 out / 'upgrade-candidate.tar.gz', private, commit))
+            tasks.append(partial(sign_upgrade_fixture, args.upgrade_newer,
+                                 out / 'upgrade-newer.tar.gz', private, commit))
         for prior in args.upgrade_prior:
             version = prior.name.removeprefix('upgrade-prior-').removesuffix('-unsigned.tar.gz')
             prior_commit = run('git', 'rev-parse', f'v{version}^{{commit}}')
-            sign_upgrade_fixture(prior, out / f'upgrade-prior-{version}.tar.gz', private,
-                                 prior_commit, version)
+            tasks.append(partial(sign_upgrade_fixture, prior,
+                                 out / f'upgrade-prior-{version}.tar.gz', private,
+                                 prior_commit, version))
+        sign_all(tasks, lambda: subprocess.run(
+            ['cargo', 'build', '--locked', '--profile', 'ci', '-p', 'ainc-release',
+             '--bin', 'ainc-release-manifest'], check=True))
+        metadata = json.loads(run('cargo', 'metadata', '--no-deps', '--format-version=1'))
+        manifest_tool = Path(metadata['target_directory']) / 'ci/ainc-release-manifest'
         env = dict(os.environ)
         env.pop('AINC_RELEASE_TEST_KEY', None)
         if args.test:
@@ -150,7 +166,10 @@ def main():
             public = subprocess.check_output(['openssl', 'pkey', '-in', str(private / 'update.pem'), '-pubout', '-outform', 'DER'])[-32:]
             (out / 'test-public-key.txt').write_text(base64.b64encode(public).decode() + '\n')
         url = f'https://github.com/{repo}/releases/download/{tag}/AgentInc.tar.gz'
-        subprocess.run(['cargo', 'run', '--locked', '-p', 'ainc-release', '--bin', 'ainc-release-manifest', '--', str(bundle / 'Contents/Resources/release.json'), str(archive), str(out / 'notes.md'), str(out / 'changelog.md'), url, str(out / 'feed.json')], check=True, env=env)
+        subprocess.run([str(manifest_tool), str(bundle / 'Contents/Resources/release.json'), str(archive), str(out / 'notes.md'), str(out / 'changelog.md'), url, str(out / 'feed.json')], check=True, env=env)
+    # Staging work overlaps CI, but assets still cannot be uploaded (or published)
+    # until the complete exact-commit workflow succeeds.
+    wait_for_ci(commit)
     assets = [str(out / p) for p in ['AgentInc.tar.gz', 'feed.json', 'notes.md', 'changelog.md']]
     if args.test:
         assets.append(str(out / 'test-public-key.txt'))

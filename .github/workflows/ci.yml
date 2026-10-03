@@ -5,9 +5,28 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  rust:
+  checks:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all -- --check
+      - run: python3 crates/ainc-mac/scripts/check-colors.py
+      - run: python3 -m unittest discover -s crates/ainc-mac/scripts -p 'test_check_colors.py'
+      - run: python3 crates/ainc-mac/scripts/check-ui-spacing.py
+      - run: python3 crates/ainc-mac/scripts/check-ui-core.py
+      - run: python3 -m unittest discover -s scripts/release -p 'test_*.py'
+  workspace:
+    name: workspace (${{ matrix.check }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [clippy, test]
     services:
       postgres:
         image: postgres:16-alpine
@@ -23,13 +42,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libxkbcommon-dev libwayland-dev libfontconfig1-dev libasound2-dev protobuf-compiler
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --all -- --check
-      - run: python3 crates/ainc-mac/scripts/check-colors.py
-      - run: python3 -m unittest discover -s crates/ainc-mac/scripts -p 'test_check_colors.py'
-      - run: python3 crates/ainc-mac/scripts/check-ui-spacing.py
-      - run: python3 crates/ainc-mac/scripts/check-ui-core.py
-      - run: python3 -m unittest discover -s scripts/release -p 'test_*.py'
-      - run: cargo xtask generate --check
-      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
-      - run: cargo test --locked --workspace
+      - uses: actions/cache/restore@v4
+        id: cache
+        with:
+          # Immutable exact cache hits used to replay an incomplete dependency
+          # cache forever. Restore the previous lane, save successful main runs.
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git
+            target
+          key: ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-${{ github.sha }}
+          restore-keys: |
+            ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-
+            ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('rust-toolchain.toml') }}-
+      - if: matrix.check == 'clippy'
+        run: cargo clippy --locked --profile ci --workspace --all-targets -- -D warnings
+      - if: matrix.check == 'test'
+        # Includes generated_api_and_clients_are_current: no second xtask build.
+        run: cargo test --locked --profile ci --workspace
+      - uses: actions/cache/save@v4
+        if: success() && github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git
+            target
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+  # Preserve the required check/release gate name, and fail closed on skipped or
+  # cancelled lanes as well as failures. Never let one green matrix lane suffice.
+  rust:
+    needs: [checks, workspace]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every CI lane
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          WORKSPACE: ${{ needs.workspace.result }}
+        run: test "$CHECKS" = success && test "$WORKSPACE" = success

@@ -118,7 +118,9 @@ def main():
     inventory = {str(p.relative_to(bundle)): hashlib.sha256(p.read_bytes()).hexdigest() for p in bundle.rglob('*') if p.is_file()}
     (out / 'handoff.json').write_text(json.dumps(dict(**identity, files=inventory), indent=2) + '\n')
     archive = out / 'unsigned.tar.gz'
-    with tarfile.open(archive, 'w:gz') as tar:
+    # This is a short-lived handoff, not the downloadable release asset. Avoid
+    # spending native-runner time on maximum compression for every test rebuild.
+    with tarfile.open(archive, 'w:gz', compresslevel=1) as tar:
         tar.add(bundle, arcname='AgentInc.app')
         tar.add(out / 'handoff.json', arcname='handoff.json')
     print(archive)

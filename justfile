@@ -24,7 +24,7 @@ test:
     python3 crates/ainc-mac/scripts/check-ui-spacing.py
     python3 crates/ainc-mac/scripts/check-ui-core.py
     python3 -m unittest discover -s scripts/release -p 'test_*.py'
-    cargo xtask generate --check
+    # The xtask workspace test checks generation using the same compiled dependency graph.
     cargo clippy --locked --workspace --all-targets -- -D warnings
     cargo test --locked --workspace
 

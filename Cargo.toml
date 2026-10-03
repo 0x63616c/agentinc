@@ -46,3 +46,11 @@ opt-level = 3
 
 [profile.release]
 strip = true
+
+# CI exercises the same debug assertions without optimizing every dependency for
+# interactive UI performance. Keep local dev and shipped release profiles intact.
+[profile.ci]
+inherits = "dev"
+
+[profile.ci.package."*"]
+opt-level = 0

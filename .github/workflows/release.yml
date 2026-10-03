@@ -145,9 +145,17 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: unsigned-${{ inputs.commit || github.sha }}
-          path: .local/upgrade-input/
+          path: .local/upgrade-input/*.tar.gz
           if-no-files-found: error
           compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-tools-${{ inputs.commit || github.sha }}
+          path: |
+            .local/upgrade-input/test-key.pem
+            .local/upgrade-input/ainc-release-manifest
+          if-no-files-found: error
           retention-days: 1
       - name: Remove per-release files
         if: always()
@@ -159,11 +167,26 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write
+      actions: read
+    env:
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0
+      - uses: actions/cache/restore@v4
+        id: cache
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git
+            target
+          key: manifest-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-${{ inputs.commit || github.sha }}
+          restore-keys: |
+            manifest-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-
+            manifest-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-
       - uses: actions/download-artifact@v4
         if: needs.native.result == 'success'
         with:
@@ -233,6 +256,15 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
+      - uses: actions/cache/save@v4
+        if: success() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git
+            target
+          key: ${{ steps.cache.outputs.cache-primary-key }}
   upgrade:
     needs: [prepare, native, distribute]
     if: needs.distribute.result == 'success'
@@ -251,7 +283,8 @@ jobs:
         run: xcodebuild -version
       - uses: actions/download-artifact@v4
         with:
-          name: unsigned-${{ inputs.commit || github.sha }}
+          # The gate only needs these two files, not all unsigned app archives.
+          name: upgrade-tools-${{ inputs.commit || github.sha }}
           path: .local/upgrade-input
       - uses: actions/download-artifact@v4
         with:
@@ -282,10 +315,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     env:
       GH_REPO: ${{ github.repository }}
     steps:
-      - name: Check draft lookup without a checkout
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          persist-credentials: false
+      - name: Recheck exact-commit CI before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ inputs.commit || github.sha }}
+        run: python3 scripts/release/ci_gate.py "$COMMIT"
+      - name: Check draft lookup
         if: inputs.test == true
         env:
           GH_TOKEN: ${{ github.token }}

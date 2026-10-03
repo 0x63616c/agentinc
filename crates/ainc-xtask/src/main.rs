@@ -512,6 +512,13 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_api_and_clients_are_current() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        generate(&root, true).unwrap();
+    }
+
     #[test]
     fn canonical_path_controls_identity() {
         let left = tempfile::tempdir().unwrap();
