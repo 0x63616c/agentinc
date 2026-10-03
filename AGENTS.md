@@ -129,11 +129,26 @@ Stable runtime deployment and process-recovery checks: [docs/phase-3-runtime.md]
 
 Verify with `just test`, which runs every CI check and should be clean.
 
-## Committing
+## Committing and releases
 
 Commit proactively. Every coherent step that builds and passes tests gets its own
 commit, without waiting to be asked. Small commits with a clear message beat one large
-one at the end.
+one at the end. Push validated commits to the intended remote branch proactively;
+never force-push or publish unrelated changes. When work is delegated, workers commit
+and report their SHAs; the main coordinator owns integration, validation and pushing.
+
+Recommend a release when validated changes warrant one, with the appropriate
+patch/minor/major bump. Run `just release` only for a user-authorized release bump;
+a recommendation is not authorization.
+
+## Parallel work with Treehouse
+
+Use the repo's `treehouse.toml` and Treehouse CLI for independent work. Acquire a
+worktree with `treehouse get --lease --json --lease-holder <unique-holder>` and record
+its path and lease ID. Work only in that lease; leave other active worktrees alone.
+Return only your own lease after its commits are integrated or otherwise safely
+preserved: `treehouse return <path> --if-lease-id <lease-id>`. Returning may terminate
+processes and reset the worktree; never use `--force` to discard unpreserved work.
 
 ## Decisions already made
 
