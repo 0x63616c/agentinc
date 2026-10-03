@@ -137,7 +137,7 @@ impl Smoke {
                 .append(true)
                 .open(self.root.join("daemon.log"))?
                 .write_all(line.as_bytes())?;
-            if line.contains("daemon ready") {
+            if line.contains(ainc_release::DAEMON_READY) {
                 if self.blocked_signals {
                     let ps = super::output("ps", &["-axo", "pid=,ppid=,stat=,command="])?;
                     check_reaped(&ps, child.id())?;

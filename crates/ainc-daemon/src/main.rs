@@ -136,7 +136,7 @@ async fn run() -> Result<()> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     publish_address(Path::new(&discovery), address)?;
-    tracing::info!(%address, "daemon ready");
+    tracing::info!(%address, "{}", ainc_release::DAEMON_READY);
     let (shutdown, receiver) = tokio::sync::watch::channel(false);
     let drain_signal = shutdown.clone();
     let auth = format!("Bearer {}", token.trim());
