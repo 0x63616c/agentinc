@@ -15,6 +15,8 @@
 #import "SUErrors.h"
 
 extern void ainc_update_action(int action, bool automatic);
+extern char *ainc_update_format_notes(const char *markdown, const char *current, bool history);
+extern void ainc_update_free_notes(char *text);
 static void updateAction(int action, bool automatic);
 
 @interface AincUpdateUI : NSObject <NSWindowDelegate>
@@ -368,20 +370,32 @@ static NSString *escaped(NSString *text) {
         stringByReplacingOccurrencesOfString:@">" withString:@"&gt;"];
 }
 
-static NSString *itemNotes(SUAppcastItem *item) {
+static NSString *itemNotes(SUAppcastItem *item, NSString *current, BOOL history) {
     NSString *description = item.itemDescription ?: @"Release notes unavailable.";
+    if ([item.itemDescriptionFormat isEqualToString:@"markdown"]) {
+        char *html = ainc_update_format_notes(description.UTF8String, current.UTF8String, history);
+        NSString *result = [NSString stringWithUTF8String:html];
+        ainc_update_free_notes(html);
+        return result;
+    }
     return [item.itemDescriptionFormat isEqualToString:@"plain-text"]
         ? [NSString stringWithFormat:@"<p>%@</p>", escaped(description)] : description;
 }
 
 // Sparkle 2.9.6 relaunches through NSWorkspace.openURL without forwarding the
 // host environment. Keep only documented profile/companion configuration,
-// never test feeds/keys or the rest of the caller's process environment.
+// never keys or the rest of the caller's process environment. Fixture-only
+// feed overrides below are compiled out of the shipping application.
 static NSArray<NSString *> *profileEnvironmentKeys(void) {
     return @[@"AGENTINC_SESSION_PATH", @"AINC_DISCOVERY_FILE", @"AINC_DAEMON_URL",
         @"AINC_TOKEN_FILE", @"AINC_DATABASE_URL", @"DATABASE_URL", @"AINC_LEGACY_DIR",
         @"AGENTINC_CODEX_HOME", @"AGENTINC_CODEX_PATH", @"AINC_RUNTIME_CONFIG",
-        @"AINC_WORKSPACE_DIR", @"AINC_TOOL_ALLOW"];
+        @"AINC_WORKSPACE_DIR", @"AINC_TOOL_ALLOW"
+#ifdef AINC_UPGRADE_TEST
+        , @"AINC_UPGRADE_TEST_MODE", @"AINC_UPGRADE_TEST_FROM", @"AINC_UPGRADE_TEST_SUCCESS_FILE",
+        @"AINC_UPGRADE_TEST_SPARKLE_FEED_URL", @"AINC_UPGRADE_TEST_FEED_URL"
+#endif
+    ];
 }
 
 static NSURL *relaunchProfileURL(NSBundle *bundle) {
@@ -392,7 +406,8 @@ static NSURL *relaunchProfileURL(NSBundle *bundle) {
     NSMutableString *name = [NSMutableString string];
     for (NSUInteger i = 0; i < sizeof(digest); i++) [name appendFormat:@"%02x", digest[i]];
     NSURL *support = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL *directory = [[support URLByAppendingPathComponent:bundle.bundleIdentifier isDirectory:YES]
+    NSString *domain = [bundle objectForInfoDictionaryKey:@"SUDefaultsDomain"] ?: bundle.bundleIdentifier;
+    NSURL *directory = [[support URLByAppendingPathComponent:domain isDirectory:YES]
         URLByAppendingPathComponent:@"Updater Relaunch" isDirectory:YES];
     return [directory URLByAppendingPathComponent:[name stringByAppendingPathExtension:@"plist"]];
 }
@@ -501,7 +516,7 @@ const char *ainc_restore_relaunch_profile(void) {
     if (!self.item) return;
     self.changelog = NO;
     ainc_update_offer(self.item.displayVersionString.UTF8String, self.current.UTF8String,
-        (self.notes ?: itemNotes(self.item)).UTF8String,
+        (self.notes ?: itemNotes(self.item, self.current, NO)).UTF8String,
         [self.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"], self.ready, false);
     if (self.item.informationOnlyUpdate) {
         for (NSView *view in ui().offer.contentView.subviews) {
@@ -849,9 +864,10 @@ const char *ainc_restore_relaunch_profile(void) {
     NSMutableString *notes = [NSMutableString string];
     id<SUVersionComparison> comparator = [NSClassFromString(@"SUStandardVersionComparator") defaultComparator];
     for (SUAppcastItem *item in appcast.items) {
-        NSString *section = [NSString stringWithFormat:@"<h2>AgentInc %@</h2>%@", escaped(item.displayVersionString), itemNotes(item)];
-        [history appendString:section];
-        if ([comparator compareVersion:item.versionString toVersion:self.current] == NSOrderedDescending) [notes appendString:section];
+        [history appendString:itemNotes(item, self.current, YES)];
+        if ([comparator compareVersion:item.displayVersionString toVersion:self.current] == NSOrderedDescending) {
+            [notes appendString:itemNotes(item, self.current, NO)];
+        }
     }
     self.history = history;
     self.notes = notes.length ? notes : nil;
@@ -903,6 +919,10 @@ bool ainc_sparkle_start(const char *legacy, const char *version) {
         if (!domain.length || [domain isEqualToString:host.bundleIdentifier]) {
             sparkle.message = @"Upgrade tests require an isolated SUDefaultsDomain.";
             return false;
+        }
+        if (strcmp(getenv("AINC_UPGRADE_TEST_FROM") ?: "", version) == 0) {
+            // Each gate pass starts fresh, without touching production defaults.
+            [[[NSUserDefaults alloc] initWithSuiteName:domain] removePersistentDomainForName:domain];
         }
     }
 #endif
@@ -964,17 +984,3 @@ void ainc_sparkle_prepared(const char *error) {
     if (!failure && sparkle.started) failure = saveRelaunchProfile(relaunchProfileURL(NSBundle.mainBundle), sparkle.item.versionString);
     [sparkle preparedWithError:failure];
 }
-
-#ifdef AINC_UPGRADE_TEST
-void ainc_sparkle_restore_test_environment(void) {
-    NSDictionary *environment = [NSBundle.mainBundle objectForInfoDictionaryKey:@"AINCUpgradeTestEnvironment"];
-    NSArray *keys = @[@"AINC_UPGRADE_TEST_MODE", @"AINC_UPGRADE_TEST_FROM", @"AINC_UPGRADE_TEST_SUCCESS_FILE",
-        @"AINC_UPGRADE_TEST_SPARKLE_FEED_URL", @"AINC_UPGRADE_TEST_FEED_URL", @"AINC_DISCOVERY_FILE",
-        @"AINC_TOKEN_FILE", @"AGENTINC_SESSION_PATH", @"AINC_DATABASE_URL", @"AINC_DAEMON_URL",
-        @"AINC_LEGACY_DIR", @"AGENTINC_CODEX_HOME"];
-    for (NSString *key in keys) {
-        NSString *value = environment[key];
-        if ([value isKindOfClass:NSString.class] && !getenv(key.UTF8String)) setenv(key.UTF8String, value.UTF8String, 0);
-    }
-}
-#endif

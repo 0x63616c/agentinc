@@ -1,6 +1,8 @@
 #import <AppKit/AppKit.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 void ainc_update_smoke_init(void);
 void ainc_update_status(const char *message, const char *current, int kind);
@@ -10,6 +12,9 @@ void ainc_update_close(void);
 bool ainc_update_capture(const char *path, bool progress);
 
 static int lastAction;
+
+char *ainc_update_format_notes(const char *markdown, const char *current, bool history) { return strdup(markdown); }
+void ainc_update_free_notes(char *text) { free(text); }
 
 void ainc_update_action(int action, bool automatic) {
     lastAction = action;

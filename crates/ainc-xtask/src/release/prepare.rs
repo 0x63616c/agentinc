@@ -326,7 +326,7 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
         resources.join("release.json"),
         format!("{}\n", serde_json::to_string_pretty(&identity)?),
     )?;
-    let info = plist(&[
+    let mut info = vec![
         ("CFBundleName", json!("AgentInc")),
         ("CFBundleDisplayName", json!("AgentInc")),
         ("CFBundleIdentifier", json!("co.worldwidewebb.agentinc")),
@@ -356,8 +356,19 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
         ("SURequireSignedFeed", json!(true)),
         ("SUEnableAutomaticChecks", json!(false)),
         ("SUAutomaticallyUpdate", json!(false)),
-    ]);
-    fs::write(contents.join("Info.plist"), info)?;
+    ];
+    if test_key_set {
+        // Both fixture versions share a per-run defaults/cache namespace.
+        // Stamp it before signing; acceptance never edits a notarized bundle.
+        info.push((
+            "SUDefaultsDomain",
+            json!(format!(
+                "co.worldwidewebb.agentinc.upgrade-test.{}",
+                hex(&Sha256::digest(test_key.as_deref().unwrap().as_bytes()))
+            )),
+        ));
+    }
+    fs::write(contents.join("Info.plist"), plist(&info))?;
     // The runtime input inventory makes local build provenance reviewable.
     let mut handoff = identity.clone();
     handoff.insert("files".into(), Value::Object(inventory(&bundle)?));
