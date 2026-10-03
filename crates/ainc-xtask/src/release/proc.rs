@@ -96,15 +96,19 @@ mod tests {
                 .success()
         );
         assert!(quick.poll().is_some());
-        // Not `read`: waiting closes the child's stdin, so a reader would see EOF and exit.
+        // Child::wait closes an automatically piped stdin. Keep the write end of
+        // an explicit input gate here so `read` cannot observe EOF before termination.
+        let (_gate, input) = std::os::unix::net::UnixStream::pair().unwrap();
         let mut hung = ManagedChild::spawn({
-            let mut command = Command::new("sleep");
-            command.arg("30");
+            let mut command = Command::new("sh");
+            command
+                .args(["-c", "read line"])
+                .stdin(std::process::Stdio::from(std::os::fd::OwnedFd::from(input)));
             command
         })
         .unwrap();
         assert!(hung.poll().is_none());
-        assert!(hung.wait_timeout(Duration::from_millis(1)).is_err());
+        assert!(hung.wait_timeout(Duration::ZERO).is_err());
         hung.terminate();
         assert!(
             !hung
