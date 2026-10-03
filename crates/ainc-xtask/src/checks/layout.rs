@@ -3,12 +3,6 @@
 use anyhow::{Result, bail};
 use std::path::Path;
 
-/// `mod.rs` files the engine lane still owns; empty this list as they move.
-const MOD_RS_FOLLOW_UPS: [&str; 2] = [
-    "crates/turnkeel/src/engine/mod.rs",
-    "crates/turnkeel/src/testing/mod.rs",
-];
-
 const DOCUMENTED_TREE: &str = "crates/ainc-mac/src/";
 
 /// Every violation for one tracked file, as `path: reason`.
@@ -17,7 +11,7 @@ pub(crate) fn violations(path: &str, text: &str) -> Vec<String> {
     if !path.starts_with("crates/") || !path.ends_with(".rs") {
         return found;
     }
-    if path.ends_with("/mod.rs") && !MOD_RS_FOLLOW_UPS.contains(&path) {
+    if path.ends_with("/mod.rs") {
         found.push(format!(
             "{path}: use `foo.rs` beside `foo/`, not `foo/mod.rs`"
         ));
@@ -47,12 +41,11 @@ mod tests {
     use super::violations;
 
     #[test]
-    fn mod_rs_is_reported_outside_the_follow_up_list() {
+    fn mod_rs_is_reported() {
         assert_eq!(
             violations("crates/ainc-mac/src/ui/mod.rs", "//! x").len(),
             1
         );
-        assert!(violations("crates/turnkeel/src/engine/mod.rs", "use x;").is_empty());
         assert!(violations("crates/ainc-mac/src/ui.rs", "//! x").is_empty());
     }
 
