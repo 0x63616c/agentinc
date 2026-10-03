@@ -429,15 +429,10 @@ fn step(root: &Path, command: &[&str]) -> Result<()> {
 /// The native UI rules: colors, spacing and component forks. CI runs this on its own, after
 /// its tests have built xtask; `check` runs it as part of the static gate.
 fn check_ui(root: &Path) -> Result<()> {
-    checks::colors::run(&root.join("crates/ainc-mac"))?;
-    step(
-        root,
-        &["python3", "crates/ainc-mac/scripts/check-ui-spacing.py"],
-    )?;
-    step(
-        root,
-        &["python3", "crates/ainc-mac/scripts/check-ui-core.py"],
-    )
+    let app = root.join("crates/ainc-mac");
+    checks::colors::run(&app)?;
+    checks::ui_spacing::run(&app)?;
+    checks::ui_core::run(&app)
 }
 
 /// The static gate: everything CI checks that needs no database and no test run.
@@ -445,14 +440,7 @@ fn check_ui(root: &Path) -> Result<()> {
 fn check(root: &Path) -> Result<()> {
     step(root, &["cargo", "fmt", "--all", "--", "--check"])?;
     checks::colors::run(&root.join("crates/ainc-mac"))?;
-    step(
-        root,
-        &["python3", "crates/ainc-mac/scripts/check-ui-spacing.py"],
-    )?;
-    step(
-        root,
-        &["python3", "crates/ainc-mac/scripts/check-ui-core.py"],
-    )?;
+    check_ui(root)?;
     step(
         root,
         &[
