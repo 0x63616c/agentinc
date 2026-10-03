@@ -46,10 +46,81 @@ gpui = { path = "vendor/gpui" }
 [profile.dev]
 debug = 0
 
-# Dependencies (GPUI, its layout and text engines) run optimized even in dev builds, so the
-# app stays smooth under `just dev`. Our own crates stay unoptimized for fast rebuilds.
+# Dependencies get light optimization in dev builds; GPUI and its layout, text and rendering
+# engines run fully optimized so the app stays smooth under `just dev`, as do the proc-macros
+# our crates expand at every build. Crates that cost minutes to optimize and never run hot
+# (C builds, wasm tooling, derive macros we rarely touch) stay at 0. Our own crates are
+# unoptimized for fast rebuilds.
 [profile.dev.package."*"]
-opt-level = 3
+opt-level = 1
+
+# GPUI and the engines it renders with.
+[profile.dev.package]
+gpui = { opt-level = 3 }
+gpui_platform = { opt-level = 3 }
+taffy = { opt-level = 3 }
+cosmic-text = { opt-level = 3 }
+fontdb = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+ttf-parser = { opt-level = 3 }
+swash = { opt-level = 3 }
+skrifa = { opt-level = 3 }
+read-fonts = { opt-level = 3 }
+yazi = { opt-level = 3 }
+zeno = { opt-level = 3 }
+etagere = { opt-level = 3 }
+pathfinder_geometry = { opt-level = 3 }
+pathfinder_simd = { opt-level = 3 }
+resvg = { opt-level = 3 }
+usvg = { opt-level = 3 }
+tiny-skia = { opt-level = 3 }
+tiny-skia-path = { opt-level = 3 }
+lyon = { opt-level = 3 }
+lyon_path = { opt-level = 3 }
+lyon_geom = { opt-level = 3 }
+lyon_algorithms = { opt-level = 3 }
+lyon_tessellation = { opt-level = 3 }
+image = { opt-level = 3 }
+png = { opt-level = 3 }
+metal = { opt-level = 3 }
+naga = { opt-level = 3 }
+wgpu = { opt-level = 3 }
+core-graphics = { opt-level = 3 }
+core-text = { opt-level = 3 }
+objc2 = { opt-level = 3 }
+parking_lot = { opt-level = 3 }
+smallvec = { opt-level = 3 }
+# Proc-macros our crates expand on every build.
+serde_derive = { opt-level = 3 }
+utoipa-gen = { opt-level = 3 }
+sqlx-macros = { opt-level = 3 }
+thiserror-impl = { opt-level = 3 }
+temporalio-macros = { opt-level = 3 }
+# Expensive to optimize, never hot.
+aws-lc-sys = { opt-level = 0 }
+libsqlite3-sys = { opt-level = 0 }
+wit-bindgen = { opt-level = 0 }
+wit-bindgen-core = { opt-level = 0 }
+wit-bindgen-rust = { opt-level = 0 }
+wit-bindgen-rust-macro = { opt-level = 0 }
+wit-component = { opt-level = 0 }
+wit-parser = { opt-level = 0 }
+wasm-encoder = { opt-level = 0 }
+wasm-metadata = { opt-level = 0 }
+wasmparser = { opt-level = 0 }
+wasm-bindgen = { opt-level = 0 }
+wasm-bindgen-macro = { opt-level = 0 }
+wasm-bindgen-macro-support = { opt-level = 0 }
+wasm-bindgen-shared = { opt-level = 0 }
+bon-macros = { opt-level = 0 }
+mockall_derive = { opt-level = 0 }
+derive_more-impl = { opt-level = 0 }
+darling_core = { opt-level = 0 }
+zerofrom-derive = { opt-level = 0 }
+yoke-derive = { opt-level = 0 }
+zerovec-derive = { opt-level = 0 }
+synstructure = { opt-level = 0 }
+prost-derive = { opt-level = 0 }
 
 [profile.release]
 strip = true
