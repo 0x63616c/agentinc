@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "89e14c8649b247047da35ef390f1c25b9804398eed15187ef307533c85491b9b"
+}

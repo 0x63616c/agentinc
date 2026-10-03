@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO receipts(scope,operation_id,request_hash,result) VALUES ($1,$2::text::uuid,receipt_hash($3),$4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Jsonb",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ea3f07b096c89b721c1d46cee052a923838bd0656c3b59909abb9c4abbc0f575"
+}

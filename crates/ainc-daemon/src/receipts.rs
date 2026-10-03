@@ -100,37 +100,39 @@ where
         .map_err(|_| CommandError::Invalid("Invalid command.".into()))?;
     let scope = scope.to_string();
     let operation = operation_id.to_string();
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
-        .bind(format!("receipt/{scope}/{operation}"))
-        .execute(&mut **tx)
-        .await?;
-    let prior: Option<(bool, serde_json::Value)> = sqlx::query_as(
-        "SELECT request_hash = receipt_hash($3), result FROM receipts WHERE scope=$1 AND operation_id=$2::uuid",
+    sqlx::query!(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+        format!("receipt/{scope}/{operation}")
     )
-    .bind(&scope)
-    .bind(&operation)
-    .bind(&request)
+    .execute(&mut **tx)
+    .await?;
+    let prior = sqlx::query!(
+        r#"SELECT request_hash = receipt_hash($3) AS "same_request!", result FROM receipts WHERE scope=$1 AND operation_id=$2::text::uuid"#,
+        scope,
+        operation,
+        request
+    )
     .fetch_optional(&mut **tx)
     .await?;
     let result = match prior {
-        Some((true, result)) => serde_json::from_value(result).map_err(|error| {
+        Some(prior) if prior.same_request => serde_json::from_value(prior.result).map_err(|error| {
             tracing::error!(%error, scope, operation, "stored receipt result does not match its command");
             CommandError::Internal
         })?,
-        Some((false, _)) => {
+        Some(_) => {
             return Err(CommandError::Conflict(
                 "This operation ID was already used for a different command.".into(),
             ));
         }
         None => {
             let result = apply(tx).await?;
-            sqlx::query(
-                "INSERT INTO receipts(scope,operation_id,request_hash,result) VALUES ($1,$2::uuid,receipt_hash($3),$4)",
+            sqlx::query!(
+                "INSERT INTO receipts(scope,operation_id,request_hash,result) VALUES ($1,$2::text::uuid,receipt_hash($3),$4)",
+                scope,
+                operation,
+                request,
+                serde_json::to_value(&result).expect("serializable result")
             )
-            .bind(&scope)
-            .bind(&operation)
-            .bind(&request)
-            .bind(serde_json::to_value(&result).expect("serializable result"))
             .execute(&mut **tx)
             .await?;
             result

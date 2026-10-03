@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT request_hash = receipt_hash($3) AS \"same_request!\", result FROM receipts WHERE scope=$1 AND operation_id=$2::text::uuid",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "same_request!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
+        "name": "result",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      null,
+      false
+    ]
+  },
+  "hash": "fddaa48f1565a1e955b240fc8c69d11dc6e0d952519ec4f76128c87fd4a1b2a9"
+}

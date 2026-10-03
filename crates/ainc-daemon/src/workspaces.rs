@@ -66,7 +66,7 @@ async fn state(
 }
 
 pub async fn current(pool: &PgPool) -> Result<String, sqlx::Error> {
-    sqlx::query_scalar("SELECT workspace_id FROM selected_workspace WHERE owner_id='owner'")
+    sqlx::query_scalar!("SELECT workspace_id FROM selected_workspace WHERE owner_id='owner'")
         .fetch_one(pool)
         .await
 }
@@ -74,11 +74,15 @@ pub async fn current(pool: &PgPool) -> Result<String, sqlx::Error> {
 pub async fn snapshot(pool: &PgPool) -> Result<WorkspaceSnapshot, sqlx::Error> {
     let mut tx = crate::pg::snapshot_tx(pool).await?;
     let current_id =
-        sqlx::query_scalar("SELECT workspace_id FROM selected_workspace WHERE owner_id='owner'")
+        sqlx::query_scalar!("SELECT workspace_id FROM selected_workspace WHERE owner_id='owner'")
             .fetch_one(&mut *tx)
             .await?;
-    let workspaces = sqlx::query_as("SELECT id,name,icon,color FROM workspaces ORDER BY CASE WHEN id='local' THEN 0 ELSE 1 END,name,id")
-        .fetch_all(&mut *tx).await?;
+    let workspaces = sqlx::query_as!(
+        Workspace,
+        "SELECT id,name,icon,color FROM workspaces ORDER BY CASE WHEN id='local' THEN 0 ELSE 1 END,name,id"
+    )
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(WorkspaceSnapshot {
         current_id,
@@ -116,37 +120,52 @@ pub async fn execute(
                         return Err(invalid());
                     }
                     let id = uuid::Uuid::new_v4().to_string();
-                    sqlx::query("INSERT INTO workspaces(id,name,icon,color) VALUES ($1,$2,$3,$4)")
-                        .bind(&id)
-                        .bind(name.trim())
-                        .bind(icon)
-                        .bind(color)
-                        .execute(&mut **tx)
-                        .await?;
-                    sqlx::query("INSERT INTO principals(workspace_id,id,kind,name) VALUES ($1,'owner','human','You')")
-                        .bind(&id).execute(&mut **tx).await?;
-                    sqlx::query("UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner'")
-                        .bind(&id)
-                        .execute(&mut **tx)
-                        .await?;
+                    sqlx::query!(
+                        "INSERT INTO workspaces(id,name,icon,color) VALUES ($1,$2,$3,$4)",
+                        id,
+                        name.trim(),
+                        icon,
+                        color
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                    sqlx::query!(
+                        "INSERT INTO principals(workspace_id,id,kind,name) VALUES ($1,'owner','human','You')",
+                        id
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                    sqlx::query!(
+                        "UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner'",
+                        id
+                    )
+                    .execute(&mut **tx)
+                    .await?;
                     id
                 }
                 WorkspaceCommand::Rename { id, name } => {
                     validate_name(&name)?;
-                    let changed = sqlx::query("UPDATE workspaces SET name=$2 WHERE id=$1")
-                        .bind(&id)
-                        .bind(name.trim())
-                        .execute(&mut **tx)
-                        .await?
-                        .rows_affected();
+                    let changed = sqlx::query!(
+                        "UPDATE workspaces SET name=$2 WHERE id=$1",
+                        id,
+                        name.trim()
+                    )
+                    .execute(&mut **tx)
+                    .await?
+                    .rows_affected();
                     if changed == 0 {
                         return Err(CommandError::NotFound);
                     }
                     id
                 }
                 WorkspaceCommand::Switch { id } => {
-                    let changed = sqlx::query("UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner' AND EXISTS(SELECT 1 FROM workspaces WHERE id=$1)")
-                        .bind(&id).execute(&mut **tx).await?.rows_affected();
+                    let changed = sqlx::query!(
+                        "UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner' AND EXISTS(SELECT 1 FROM workspaces WHERE id=$1)",
+                        id
+                    )
+                    .execute(&mut **tx)
+                    .await?
+                    .rows_affected();
                     if changed == 0 {
                         return Err(CommandError::NotFound);
                     }
