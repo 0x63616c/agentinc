@@ -1,7 +1,7 @@
 //! Real Metal regression runner; AppKit must execute on the process main thread.
 // The custom harness imports production modules; their ordinary #[test] functions
 // are not registered here, so test-only imports and native startup code are unused.
-#![allow(dead_code, unused_imports)]
+#![allow(dead_code, unused_imports, clippy::disallowed_macros)]
 #[path = "../src/about.rs"]
 mod about;
 #[path = "../src/action.rs"]

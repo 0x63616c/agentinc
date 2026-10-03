@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // user-facing output
 mod checks;
 mod readme;
 mod release;

@@ -1,6 +1,7 @@
 //! macOS CLI/OS smoke: drive the real app through the `gpui-pilot-cli` CLI with a visible window and
 //! check the native window with Swift. Needs a desktop, so it is opt-in (`--ignored`).
 //! Build first: `cargo build --workspace --features automation`.
+#![allow(clippy::disallowed_macros)] // test output
 #![cfg(target_os = "macos")]
 use anyhow::{Context, Result, bail, ensure};
 use serde_json::Value;

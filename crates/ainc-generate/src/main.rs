@@ -1,6 +1,7 @@
 //! `cargo xtask generate`: rewrite `api/openapi-3.0.json`, `crates/ainc-client/src/generated.rs`
 //! and `crates/ainc-cli/src/generated.rs` from the daemon's OpenAPI document. Its own crate so
 //! xtask does not link the daemon (and Temporal) to run checks or releases.
+#![allow(clippy::disallowed_macros)] // user-facing output
 use anyhow::{Context, Result, bail};
 use progenitor::{GenerationSettings, Generator, InterfaceStyle};
 use std::{

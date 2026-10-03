@@ -1,4 +1,5 @@
 //! Actual isolated app + authenticated socket + real Metal. Never runs on Linux.
+#![allow(clippy::disallowed_macros)] // test output
 #![cfg(target_os = "macos")]
 use anyhow::{Context, Result, bail, ensure};
 use gpui_pilot::{protocol::*, transport::Client};

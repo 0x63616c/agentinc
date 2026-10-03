@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // user-facing output
 #[allow(unused_variables, dead_code, clippy::clone_on_copy)] // Progenitor output.
 mod generated;
 

@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // user-facing output
 use ainc_release::{Manifest, SignedManifest};
 use anyhow::{Context, Result, ensure};
 use ed25519_dalek::{SigningKey, pkcs8::DecodePrivateKey};

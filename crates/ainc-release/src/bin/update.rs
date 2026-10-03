@@ -1,4 +1,5 @@
 //! Out-of-process installer. The running app launches its own signed helper.
+#![allow(clippy::disallowed_macros)] // user-facing output
 use ainc_release::{SignedManifest, updater};
 use anyhow::{Context, Result, ensure};
 use std::{

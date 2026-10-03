@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)] // cargo build-script protocol
 fn main() {
     println!("cargo:rerun-if-changed=src/update_window.m");
     println!("cargo:rerun-if-env-changed=AINC_UPGRADE_TEST_PUBLIC_KEY");
