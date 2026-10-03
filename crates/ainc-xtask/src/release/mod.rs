@@ -12,6 +12,7 @@ use std::{
     process::{Command, Stdio, exit},
 };
 
+pub mod bump;
 pub mod ci_gate;
 pub mod distribute;
 pub mod file_server;
@@ -27,7 +28,7 @@ pub mod upgrade_gate;
 pub mod version_changed;
 
 /// The subcommands this module serves, for the xtask usage string.
-pub const NAMES: &str = "release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-terminal-smoke|release-upgrade-gate|release-version-changed";
+pub const NAMES: &str = "bump|release-next-patch|release-package-version|release-version|release-version-less|release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-terminal-smoke|release-upgrade-gate|release-version-changed";
 
 pub fn handles(operation: &str) -> bool {
     NAMES.split('|').any(|name| name == operation)
@@ -37,6 +38,11 @@ pub fn handles(operation: &str) -> bool {
 pub fn run(operation: &str, args: Vec<String>, root: &Path) -> Result<()> {
     let result = match operation {
         "release" => prepare::cli(root, &args),
+        "bump" => bump::bump(root, &args),
+        "release-version" => bump::version_cli(root, &args),
+        "release-package-version" => bump::package_version_cli(root, &args),
+        "release-next-patch" => bump::next_patch_cli(&args),
+        "release-version-less" => bump::version_less_cli(&args),
         "release-ci-gate" => ci_gate::cli(&args),
         "release-distribute" => distribute::cli(&args),
         "release-measure-build" => measure_build::cli(&args),
