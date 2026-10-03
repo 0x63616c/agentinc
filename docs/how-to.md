@@ -109,9 +109,9 @@ Planned: operation IDs become an `OperationId` type shared with receipts (D1).
 2. Push that commit to `main`. The `Distribution` workflow (`.github/workflows/release.yml`) starts
    only on a product version change: the Mac runner builds and tests, Ubuntu signs, notarizes
    and staples, the [native upgrade gate](upgrade-gate.md) runs, then the release and
-    legacy `feed.json` and Sparkle `appcast.xml` publish. Sparkle deltas are generated
-    on the Mac from published signed bundles, round-trip verified, and signed on
-    Linux. Nothing else needs doing; watch the run.
+   legacy `feed.json` and Sparkle `appcast.xml` publish. Sparkle deltas are generated
+   on the Mac from published signed bundles, round-trip verified, and signed on
+   Linux. Nothing else needs doing; watch the run.
 3. Release notes come from commit subjects since the last published version; a nonempty
    `docs/releases/X.Y.Z.md` replaces them. Runner and fallback details:
    [release-runner.md](release-runner.md); signing, channels and the updater:
