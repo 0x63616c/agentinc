@@ -1,6 +1,7 @@
 mod checks;
 mod readme;
 mod release;
+mod spawn;
 mod vendor_pilot_gpui;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -95,7 +96,7 @@ fn write_instance(instance: &Instance) -> Result<Instance> {
 }
 
 fn cmd(instance: &Instance, program: &str) -> Command {
-    let mut command = Command::new(program);
+    let mut command = spawn::command(program);
     command
         .current_dir(&instance.path)
         .env("AINC_INSTANCE", &instance.id)
@@ -420,7 +421,7 @@ fn generate(root: &Path, check: bool) -> Result<()> {
 /// Run one command from the repo root and fail the check if it fails.
 fn step(root: &Path, command: &[&str]) -> Result<()> {
     println!("$ {}", command.join(" "));
-    let status = Command::new(command[0])
+    let status = spawn::command(command[0])
         .args(&command[1..])
         .current_dir(root)
         .status()

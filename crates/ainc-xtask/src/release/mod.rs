@@ -77,7 +77,7 @@ fn failed(line: &str, status: std::process::ExitStatus) -> anyhow::Error {
 
 /// `subprocess.check_output(args, text=True).strip()`: stderr is inherited.
 pub fn output(program: &str, args: &[&str]) -> Result<String> {
-    let result = Command::new(program)
+    let result = crate::spawn::command(program)
         .args(args)
         .stderr(Stdio::inherit())
         .output()?;
@@ -248,7 +248,7 @@ impl Opts {
 
 /// Stdout of a command as raw bytes, for the one place Python read bytes (`openssl pkey`).
 pub fn output_bytes(program: &str, args: &[&str]) -> Result<Vec<u8>> {
-    let result = Command::new(program)
+    let result = crate::spawn::command(program)
         .args(args)
         .stderr(Stdio::inherit())
         .output()?;

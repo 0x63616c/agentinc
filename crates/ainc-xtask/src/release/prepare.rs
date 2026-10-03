@@ -187,7 +187,7 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
     let version = test_version.unwrap_or(product_version);
     let commit = output("git", &["rev-parse", "HEAD"])?;
     let build = output("git", &["rev-list", "--count", "HEAD"])?;
-    let mut command = Command::new("cargo");
+    let mut command = crate::spawn::cargo();
     command
         .args([
             "build",

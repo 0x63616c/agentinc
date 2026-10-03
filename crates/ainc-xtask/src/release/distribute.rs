@@ -12,7 +12,6 @@ use std::{
     env, fs,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
-    process::Command,
     sync::Mutex,
     thread,
     time::Instant,
@@ -53,7 +52,7 @@ impl Shell for Real {
     }
 
     fn run(&self, args: &[String], env: Option<&HashMap<String, String>>) -> Result<()> {
-        let mut command = Command::new(&args[0]);
+        let mut command = crate::spawn::command(&args[0]);
         command.args(&args[1..]);
         if let Some(env) = env {
             command.env_clear().envs(env);
@@ -62,7 +61,7 @@ impl Shell for Real {
     }
 
     fn probe(&self, args: &[String]) -> Result<(i32, String)> {
-        let result = Command::new(&args[0]).args(&args[1..]).output()?;
+        let result = crate::spawn::command(&args[0]).args(&args[1..]).output()?;
         Ok((
             result.status.code().unwrap_or(-1),
             String::from_utf8_lossy(&result.stdout).into_owned(),
