@@ -20,15 +20,21 @@ mod ui;
 mod updates;
 use gpui::*;
 use shell::*;
-struct DiagnosticLog;
-impl log::Log for DiagnosticLog {
-    fn enabled(&self, _: &log::Metadata) -> bool {
-        true
-    }
-    fn log(&self, r: &log::Record) {
-        eprintln!("{}: {}", r.level(), r.args());
-    }
-    fn flush(&self) {}
+/// Logs go to stderr and, on macOS, the unified log under the bundle id. `AINC_LOG` filters
+/// (default `info`); gpui's `log` records are bridged in.
+fn init_tracing() {
+    use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+    let _ = tracing_log::LogTracer::init();
+    let filter = EnvFilter::try_from_env("AINC_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+    let subscriber = tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr));
+    #[cfg(target_os = "macos")]
+    let subscriber = subscriber.with(tracing_oslog::OsLogger::new(
+        ainc_release::identity::BUNDLE_ID,
+        "app",
+    ));
+    subscriber.init();
 }
 
 fn main_window_options(
@@ -52,6 +58,7 @@ fn main_window_options(
     }
 }
 
+#[allow(clippy::disallowed_macros)] // usage text
 fn main() {
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
@@ -105,8 +112,7 @@ fn main() {
         std::process::exit(2);
     }
 
-    let _ = log::set_logger(&DiagnosticLog);
-    log::set_max_level(log::LevelFilter::Warn);
+    init_tracing();
     gpui_platform::application()
         .with_assets(ui::Assets)
         .run(move |cx| {
@@ -177,7 +183,7 @@ fn main() {
             let window = match result {
                 Ok(window) => window,
                 Err(error) => {
-                    eprintln!("Could not open AgentInc: {error}");
+                    tracing::error!(%error, "could not open the main window");
                     cx.quit();
                     return;
                 }
@@ -191,7 +197,7 @@ fn main() {
                 match gpui_pilot::host::Host::start(&directory, title, window.into(), cx) {
                     Ok(host) => cx.set_global(host),
                     Err(error) => {
-                        eprintln!("Could not start pilot: {error:#}");
+                        tracing::error!(error = format!("{error:#}"), "could not start pilot");
                         cx.quit();
                         return;
                     }

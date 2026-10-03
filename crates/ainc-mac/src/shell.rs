@@ -567,7 +567,7 @@ impl Shell {
         self.save_error = match self.session.save(&self.path) {
             Ok(()) => false,
             Err(error) => {
-                eprintln!("Could not save shell session: {error}");
+                tracing::warn!(%error, "could not save shell session");
                 true
             }
         };
