@@ -34,7 +34,7 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 | Motion | `HOVER_MS`, `PANEL_MS`, `MESSAGE_MS`, `SKELETON_MS`, `SPRING_SNAPPY`, `SPRING_GENTLE` | Fades, panel reveal, message arrival, skeleton pulse, springs. |
 
 `cargo xtask check-ui` (`crates/ainc-xtask/src/checks/colors.rs`) fails the build when a color literal appears anywhere
-else; `scripts/check-ui-spacing.py` warns on raw spacing literals in migrated
+else; `checks/ui_spacing.rs` warns on raw spacing literals in migrated
 files.
 
 ## Components
