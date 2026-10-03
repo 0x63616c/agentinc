@@ -1,8 +1,8 @@
 //! The Tickets page's vocabulary and board rules, independent of GPUI: status
 //! and priority presentation, filters, relationship readings and the optimistic
 //! move that mirrors the daemon's column ordering.
-use crate::storage::{LinkKind, Ticket, TicketLink, TicketPriority, TicketStatus};
 use crate::ui::*;
+use ainc_client::types::{LinkKind, Ticket, TicketLink, TicketPriority, TicketStatus};
 
 /// Board order, left to right.
 pub const STATUSES: [TicketStatus; 6] = [
@@ -390,7 +390,7 @@ pub fn apply_move(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::AssigneeKind;
+    use ainc_client::types::AssigneeKind;
 
     fn ticket(id: i64, status: TicketStatus, position: i64) -> Ticket {
         Ticket {

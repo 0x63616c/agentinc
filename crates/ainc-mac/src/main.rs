@@ -2,13 +2,13 @@ mod about;
 mod assistant;
 mod automations;
 mod components;
+mod daemon;
 mod evee;
 mod input;
 mod model;
 mod native_update;
 mod profile;
 mod shell;
-mod storage;
 mod temporal;
 #[cfg(target_os = "macos")]
 mod terminal;

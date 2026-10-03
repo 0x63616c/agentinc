@@ -21,8 +21,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-segmentation = "1"
 ainc-client = { path = "../ainc-client" }
-reqwest = { version = "0.13", features = ["json"] }
-progenitor-client = "0.14"
 tokio.workspace = true
 uuid.workspace = true
 pulldown-cmark = "0.13"

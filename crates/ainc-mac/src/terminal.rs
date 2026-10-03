@@ -106,7 +106,7 @@ mod macos {
             } else {
                 format!("terminal-layout-{workspace_id}.json")
             };
-            let layout = crate::storage::discovery_path()?.with_file_name(layout_name);
+            let layout = crate::daemon::discovery_path()?.with_file_name(layout_name);
             let layout = CString::new(layout.to_string_lossy().as_bytes())?;
             let colors = CString::new(crate::ui::terminal_colors())?;
             let library = unsafe { Library::new(Self::library_path()?) }

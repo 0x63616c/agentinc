@@ -10,6 +10,8 @@ mod assistant;
 mod automations;
 #[path = "../src/components.rs"]
 mod components;
+#[path = "../src/daemon.rs"]
+mod daemon;
 #[path = "../src/evee.rs"]
 mod evee;
 #[path = "../src/input.rs"]
@@ -22,8 +24,6 @@ mod native_update;
 mod profile;
 #[path = "../src/shell.rs"]
 mod shell;
-#[path = "../src/storage.rs"]
-mod storage;
 #[path = "../src/temporal.rs"]
 mod temporal;
 #[path = "../src/terminal.rs"]

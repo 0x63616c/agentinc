@@ -1,6 +1,8 @@
-use crate::{storage, ui::*};
+use crate::{daemon::Daemon, ui::*};
 use ainc_client::types::{ExecutionPage, ExecutionView};
+use anyhow::Context as _;
 use gpui::{prelude::*, *};
+use std::sync::Arc;
 
 const FILTERS: &[(&str, &str)] = &[
     ("All", "All"),
@@ -83,6 +85,7 @@ fn columns() -> [TableColumn; 4] {
 }
 
 pub struct TemporalPage {
+    daemon: Option<Arc<Daemon>>,
     rows: Vec<ExecutionView>,
     filter: &'static str,
     next_page: Option<String>,
@@ -100,8 +103,9 @@ impl HoverHost for TemporalPage {
 }
 
 impl TemporalPage {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(daemon: Option<Arc<Daemon>>, cx: &mut Context<Self>) -> Self {
         let page = Self {
+            daemon,
             rows: Vec::new(),
             filter: "All",
             next_page: None,
@@ -188,16 +192,10 @@ impl TemporalPage {
         self.error = None;
         self.loading = true;
         cx.notify();
+        let daemon = self.daemon.clone();
         let work = cx.background_executor().spawn(async move {
-            storage::background(async {
-                let client = storage::client().await?;
-                let mut request = client.temporal_executions().status(status);
-                if let Some(page) = page {
-                    request = request.page(page);
-                }
-                let response = request.send().await?;
-                anyhow::Ok(response.into_inner())
-            })
+            let daemon = daemon.context("Daemon unavailable")?;
+            anyhow::Ok(daemon.fetch(crate::daemon::Executions { status, page })?)
         });
         cx.spawn(async move |this, cx| {
             let result: anyhow::Result<ExecutionPage> = work.await;

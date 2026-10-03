@@ -20,13 +20,14 @@ mod list;
 pub(crate) mod model;
 
 use crate::{
+    daemon::Daemon,
     input::{Submit, TextInput},
     model::Overlay,
-    storage::{
-        Assignee, AssigneeKind, Store, Ticket, TicketActivity, TicketCommand, TicketPriority,
-        TicketSnapshot, TicketStatus,
-    },
     ui::*,
+};
+use ainc_client::types::{
+    Assignee, AssigneeKind, Ticket, TicketActivity, TicketCommand, TicketPriority, TicketSnapshot,
+    TicketStatus,
 };
 use gpui::{prelude::*, *};
 use model::*;
@@ -88,7 +89,7 @@ impl Default for Draft {
 }
 
 pub struct TicketsPage {
-    store: Option<Arc<Store>>,
+    daemon: Option<Arc<Daemon>>,
     overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     state: TicketSnapshot,
     view: View,
@@ -188,8 +189,8 @@ impl TicketsPage {
     }
 
     pub fn new(
-        store: Option<Arc<Store>>,
-        storage_error: Option<String>,
+        daemon: Option<Arc<Daemon>>,
+        daemon_error: Option<String>,
         overlays: Rc<RefCell<OverlayHost<Overlay>>>,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -234,7 +235,7 @@ impl TicketsPage {
             cx.observe(&agent_name, |_, _, cx| cx.notify()),
         ];
         let mut this = Self {
-            store,
+            daemon,
             overlays,
             state: TicketSnapshot {
                 tickets: vec![],
@@ -266,7 +267,7 @@ impl TicketsPage {
             activity: vec![],
             activity_for: None,
             drag: board::DragState::default(),
-            error: storage_error,
+            error: daemon_error,
             form_error: None,
             pending: false,
             refreshing: false,
@@ -304,8 +305,8 @@ impl TicketsPage {
         cx.notify();
     }
     pub(crate) fn reload(&mut self) {
-        if let Some(store) = &self.store {
-            self.state = store.tickets();
+        if let Some(daemon) = &self.daemon {
+            self.state = daemon.tickets();
         }
         if self
             .selected
@@ -319,7 +320,7 @@ impl TicketsPage {
         if self.refreshing || self.pending {
             return;
         }
-        let Some(store) = self.store.clone() else {
+        let Some(daemon) = self.daemon.clone() else {
             return;
         };
         if self.error.is_some() {
@@ -328,7 +329,7 @@ impl TicketsPage {
         self.refreshing = true;
         let request = cx
             .background_executor()
-            .spawn(async move { store.refresh() });
+            .spawn(async move { daemon.refresh() });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
@@ -366,7 +367,7 @@ impl TicketsPage {
     /// Read the open Ticket's history in the background, unless nothing it
     /// depends on has changed since the last read.
     fn load_activity(&mut self, cx: &mut Context<Self>) {
-        let (Some(store), Some(stamp)) = (self.store.clone(), self.activity_stamp()) else {
+        let (Some(daemon), Some(stamp)) = (self.daemon.clone(), self.activity_stamp()) else {
             return;
         };
         if self.activity_for.as_ref() == Some(&stamp) {
@@ -375,7 +376,7 @@ impl TicketsPage {
         let id = stamp.0;
         let request = cx
             .background_executor()
-            .spawn(async move { store.ticket_activity(id) });
+            .spawn(async move { daemon.fetch(crate::daemon::Activity(id)) });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
@@ -564,10 +565,10 @@ impl TicketsPage {
         );
     }
     fn command(&mut self, command: TicketCommand, cx: &mut Context<Self>) {
-        let Some(store) = self.store.clone() else {
+        let Some(daemon) = self.daemon.clone() else {
             return;
         };
-        self.mutate(move || store.ticket_command(command).map(|_| ()), cx);
+        self.mutate(move || Ok(daemon.send(command).map(|_| ())?), cx);
     }
     fn mutate(
         &mut self,
@@ -584,7 +585,7 @@ impl TicketsPage {
             let _ = this.update(cx, |this, cx| {
                 this.pending = false;
                 this.restore_focus = true;
-                // The store holds the daemon's answer either way; an optimistic
+                // The daemon holds the daemon's answer either way; an optimistic
                 // board move that was refused snaps back here.
                 this.reload();
                 match result {
@@ -898,7 +899,7 @@ impl TicketsPage {
                 Button::new("tickets.create", "New Ticket")
                     .primary()
                     .icon("plus")
-                    .enabled(self.store.is_some() && !self.pending)
+                    .enabled(self.daemon.is_some() && !self.pending)
                     .track_focus(&self.add_focus)
                     .build(
                         &self.hover,
@@ -930,7 +931,7 @@ impl TicketsPage {
                     Button::new("tickets.create.empty", "New Ticket")
                         .secondary()
                         .icon("plus")
-                        .enabled(self.store.is_some() && !self.pending)
+                        .enabled(self.daemon.is_some() && !self.pending)
                         .build(
                             &self.hover,
                             |this: &mut Self, window, cx| this.open_create(None, window, cx),

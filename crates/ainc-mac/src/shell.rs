@@ -13,7 +13,7 @@ mod pane;
 #[path = "shell/sidebar.rs"]
 mod sidebar;
 
-use crate::storage::Store;
+use crate::daemon::Daemon;
 use crate::{
     input::TextInput,
     model::{FontChoice, FontSize, Overlay, PAGES, Route, Session},
@@ -67,7 +67,7 @@ pub(crate) enum Control {
     DismissToast(u64),
 }
 pub struct Shell {
-    store: Option<std::sync::Arc<Store>>,
+    daemon: Option<std::sync::Arc<Daemon>>,
     session: Session,
     overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     assistant: Entity<crate::evee::AssistantPage>,
@@ -133,18 +133,18 @@ impl Shell {
     /// The daemon's current workspace id; the app has one workspace and no switcher.
     #[cfg(target_os = "macos")]
     fn workspace_id(&self) -> String {
-        self.store
+        self.daemon
             .as_ref()
-            .map(|store| store.workspaces())
-            .unwrap_or_else(|| Store::new().workspaces())
+            .map(|daemon| daemon.workspaces())
+            .unwrap_or_else(crate::daemon::default_workspaces)
             .current_id
     }
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let path = std::env::var_os("AGENTINC_SESSION_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|| ainc_release::identity::support_dir().join("session.json"));
-        let store = Some(std::sync::Arc::new(crate::storage::Store::new()));
-        let storage_error = None;
+        let daemon = Some(std::sync::Arc::new(crate::daemon::Daemon::connect()));
+        let daemon_error = None;
         let request = cx
             .background_executor()
             .spawn(async { crate::profile::Profile::local() });
@@ -161,8 +161,8 @@ impl Shell {
         .detach();
         Self::with_state(
             path,
-            store,
-            storage_error,
+            daemon,
+            daemon_error,
             crate::profile::Profile {
                 name: "Profile".into(),
                 photo: None,
@@ -174,8 +174,8 @@ impl Shell {
 
     fn with_state(
         path: PathBuf,
-        store: Option<std::sync::Arc<crate::storage::Store>>,
-        storage_error: Option<String>,
+        daemon: Option<std::sync::Arc<crate::daemon::Daemon>>,
+        daemon_error: Option<String>,
         profile: crate::profile::Profile,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -183,8 +183,8 @@ impl Shell {
         let overlays = Rc::new(RefCell::new(OverlayHost::default()));
         let assistant = cx.new(|cx| {
             crate::evee::AssistantPage::new(
-                store.clone(),
-                storage_error.clone(),
+                daemon.clone(),
+                daemon_error.clone(),
                 overlays.clone(),
                 cx,
             )
@@ -209,8 +209,8 @@ impl Shell {
         ];
         let tickets = cx.new(|cx| {
             crate::tickets::TicketsPage::new(
-                store.clone(),
-                storage_error.clone(),
+                daemon.clone(),
+                daemon_error.clone(),
                 overlays.clone(),
                 cx,
             )
@@ -219,8 +219,8 @@ impl Shell {
             tickets.set_owner(&profile.name, profile.photo.clone(), cx)
         });
         let automations =
-            cx.new(|cx| crate::automations::AutomationsPage::new(store.clone(), storage_error, cx));
-        let temporal = cx.new(crate::temporal::TemporalPage::new);
+            cx.new(|cx| crate::automations::AutomationsPage::new(daemon.clone(), daemon_error, cx));
+        let temporal = cx.new(|cx| crate::temporal::TemporalPage::new(daemon.clone(), cx));
         let temporal_subscription = cx.observe(&temporal, |_, _, cx| cx.notify());
         let components = cx.new(crate::components::ComponentsPage::new);
         let components_subscription = cx.observe(&components, |_, _, cx| cx.notify());
@@ -277,7 +277,7 @@ impl Shell {
             .cloned()
             .map(|updates| cx.observe(&updates.0, |_, _, cx| cx.notify()));
         let mut shell = Self {
-            store,
+            daemon,
             session,
             overlays,
             assistant,
@@ -340,10 +340,10 @@ impl Shell {
     }
     #[cfg(test)]
     pub(crate) fn fixture(path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let store = crate::storage::Store::open(&path.with_extension("sqlite3")).unwrap();
+        let daemon = crate::daemon::Daemon::in_memory();
         let mut shell = Self::with_state(
             path,
-            Some(std::sync::Arc::new(store)),
+            Some(std::sync::Arc::new(daemon)),
             None,
             crate::profile::Profile {
                 name: "QA Profile".into(),
@@ -459,23 +459,23 @@ impl Shell {
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
     pub(crate) fn fixture_ticket_detail(&mut self, cx: &mut Context<Self>) {
-        use crate::storage::TicketCommand;
-        let store = self.store.clone().expect("fixture store");
-        store
-            .ticket_command(TicketCommand::RegisterAgent {
+        use ainc_client::types::TicketCommand;
+        let daemon = self.daemon.clone().expect("fixture daemon");
+        daemon
+            .send(TicketCommand::RegisterAgent {
                 name: "Evee".into(),
                 instructions: "Plan and execute".into(),
                 model: "connection-default".into(),
             })
             .expect("fixture agent");
-        let id = store
-            .ticket_command(TicketCommand::Create {
+        let id = daemon
+            .send(TicketCommand::Create {
                 title: "Reconcile weekly budget and receipts".into(),
             })
             .expect("fixture ticket")
             .expect("ticket id");
-        store
-            .ticket_command(TicketCommand::AddComment {
+        daemon
+            .send(TicketCommand::AddComment {
                 ticket_id: id,
                 body: "Pulled the last four statements; two receipts are still missing.".into(),
             })
@@ -903,7 +903,11 @@ impl Shell {
 }
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if ainc_client::update_required() {
+        if self
+            .daemon
+            .as_ref()
+            .is_some_and(|daemon| daemon.update_required())
+        {
             return column()
                 .size_full()
                 .items_center()

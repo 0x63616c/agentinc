@@ -1,16 +1,13 @@
-use crate::{
-    input::TextInput,
-    storage::{
-        AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, Store, TicketProposal,
-    },
-    ui::*,
+use crate::{daemon::Daemon, input::TextInput, ui::*};
+use ainc_client::types::{
+    AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, TicketProposal,
 };
 use gpui::{prelude::*, *};
 use std::{sync::Arc, time::Instant};
 
 pub struct OpenTicket(pub i64);
 pub struct AutomationsPage {
-    store: Option<Arc<Store>>,
+    daemon: Option<Arc<Daemon>>,
     state: AutomationSnapshot,
     error: Option<String>,
     pending: bool,
@@ -92,7 +89,7 @@ impl AutomationsPage {
         }
     }
 
-    pub fn new(store: Option<Arc<Store>>, error: Option<String>, cx: &mut Context<Self>) -> Self {
+    pub fn new(daemon: Option<Arc<Daemon>>, error: Option<String>, cx: &mut Context<Self>) -> Self {
         let name =
             cx.new(|cx| TextInput::field("Rule name", false, cx).identified("automations.name"));
         let prompt = cx.new(|cx| {
@@ -107,7 +104,7 @@ impl AutomationsPage {
             cx.observe(&minutes, |_, _, cx| cx.notify()),
         ];
         let mut this = Self {
-            store,
+            daemon,
             state: AutomationSnapshot {
                 rules: vec![],
                 occurrences: vec![],
@@ -150,15 +147,15 @@ impl AutomationsPage {
         this
     }
     pub(crate) fn reload(&mut self) {
-        if let Some(store) = &self.store {
-            self.state = store.automations();
+        if let Some(daemon) = &self.daemon {
+            self.state = daemon.automations();
         }
     }
     fn refresh(&mut self, cx: &mut Context<Self>) {
         if self.pending || self.refreshing {
             return;
         }
-        let Some(store) = self.store.clone() else {
+        let Some(daemon) = self.daemon.clone() else {
             return;
         };
         if self.error.is_some() {
@@ -167,7 +164,7 @@ impl AutomationsPage {
         self.refreshing = true;
         let work = cx
             .background_executor()
-            .spawn(async move { store.refresh() });
+            .spawn(async move { daemon.refresh() });
         cx.spawn(async move |this, cx| {
             let result = work.await;
             let _ = this.update(cx, |this, cx| {
@@ -189,13 +186,13 @@ impl AutomationsPage {
         if self.pending {
             return;
         }
-        let Some(store) = self.store.clone() else {
+        let Some(daemon) = self.daemon.clone() else {
             return;
         };
         self.pending = true;
         let work = cx
             .background_executor()
-            .spawn(async move { store.automation_command(command) });
+            .spawn(async move { daemon.send(command) });
         cx.spawn(async move |this, cx| {
             let result = work.await;
             let _ = this.update(cx, |this, cx| {
@@ -266,7 +263,7 @@ impl AutomationsPage {
     }
     fn editor(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         let agents: Vec<_> = self
-            .store
+            .daemon
             .as_ref()
             .map(|s| s.tickets().assignees)
             .unwrap_or_default()

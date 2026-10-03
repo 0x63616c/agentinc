@@ -295,7 +295,7 @@ impl UpdateView {
         self.message = "Checking for updates…".into();
         self.present();
         let request = cx.background_executor().spawn(async {
-            crate::storage::background(updater::check(
+            crate::daemon::block_on(updater::check(
                 &ainc_release::update_feed_url(),
                 ainc_release::update_public_key(),
             ))
@@ -365,7 +365,7 @@ impl UpdateView {
         let request = cx.background_executor().spawn(async move {
             std::fs::create_dir_all(&directory)?;
             std::fs::write(directory.join("feed.json"), serde_json::to_vec(&signed)?)?;
-            crate::storage::background(updater::download_cancellable(
+            crate::daemon::block_on(updater::download_cancellable(
                 &manifest,
                 &directory.join("app.tar.gz"),
                 progress,
@@ -427,7 +427,7 @@ impl UpdateView {
                 .parent()
                 .and_then(|p| p.parent())
                 .ok_or_else(|| anyhow::anyhow!("app bundle unavailable"))?;
-            let discovery = crate::storage::discovery_path()?;
+            let discovery = crate::daemon::discovery_path()?;
             // The helper verifies the signed feed/archive again after launch.
             let log = std::fs::File::create(self.directory.join("install.log"))?;
             ainc_release::process::prepare_child(&mut std::process::Command::new(

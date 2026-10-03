@@ -2,7 +2,7 @@
 //! history and Comments with the composer, and a properties column for status,
 //! priority, assignee, labels, relationships, work and where it came from.
 use super::*;
-use crate::storage::{ActivityKind, Comment};
+use ainc_client::types::{ActivityKind, Comment};
 
 /// Attempts listed under Work, newest first.
 const RECENT_RUNS: usize = 3;
@@ -814,11 +814,11 @@ impl TicketsPage {
         runs.sort_by_key(|r| std::cmp::Reverse(r.generation));
         let conversation = ticket.conversation_id.map(|id| {
             let title = self
-                .store
+                .daemon
                 .as_ref()
-                .and_then(|store| {
-                    store
-                        .snapshot()
+                .and_then(|daemon| {
+                    daemon
+                        .product()
                         .conversations
                         .into_iter()
                         .find(|c| c.id == id)

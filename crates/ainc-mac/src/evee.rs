@@ -1,10 +1,12 @@
 use crate::{
     assistant,
+    daemon::Daemon,
     input::{Submit, TextInput},
     model::Overlay,
-    storage::{Command, Conversation, Store, Turn},
     ui::*,
 };
+use ainc_client::types::{Command, Conversation, Turn};
+use anyhow::Context as _;
 use gpui::{prelude::*, *};
 use std::{
     cell::RefCell,
@@ -37,7 +39,7 @@ fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
 }
 
 pub struct AssistantPage {
-    store: Option<Arc<Store>>,
+    daemon: Option<Arc<Daemon>>,
     overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     turns: Vec<Turn>,
     input: Entity<TextInput>,
@@ -110,8 +112,8 @@ impl AssistantPage {
     }
 
     pub fn new(
-        store: Option<Arc<Store>>,
-        storage_error: Option<String>,
+        daemon: Option<Arc<Daemon>>,
+        daemon_error: Option<String>,
         overlays: Rc<RefCell<OverlayHost<Overlay>>>,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -130,16 +132,16 @@ impl AssistantPage {
                 cx.notify();
             }),
         ];
-        let conversations = store
+        let conversations = daemon
             .as_ref()
-            .map(|db| db.snapshot().conversations)
+            .map(|db| db.product().conversations)
             .unwrap_or_default();
         let conversation = conversations.first().map(|c| c.id);
         let turns = vec![];
-        let error = storage_error;
+        let error = daemon_error;
         let model = None;
         #[cfg(not(test))]
-        if let Some(db) = store.clone() {
+        if let Some(db) = daemon.clone() {
             let request = cx.background_executor().spawn(async move { db.refresh() });
             cx.spawn(async move |this, cx| {
                 let result = request.await;
@@ -160,9 +162,10 @@ impl AssistantPage {
         }
         #[cfg(not(test))]
         {
-            let request = cx
-                .background_executor()
-                .spawn(async { assistant::status() });
+            let request = cx.background_executor().spawn({
+                let daemon = daemon.clone();
+                async move { assistant::status(daemon.as_deref()) }
+            });
             cx.spawn(async move |this, cx| {
                 let result = request.await;
                 let _ = this.update(cx, |this, cx| {
@@ -173,7 +176,7 @@ impl AssistantPage {
             .detach();
         }
         Self {
-            store,
+            daemon,
             overlays,
             turns,
             input,
@@ -222,9 +225,10 @@ impl AssistantPage {
             return;
         }
         self.credentials_busy = true;
+        let daemon = self.daemon.clone();
         let request = cx
             .background_executor()
-            .spawn(async { assistant::status() });
+            .spawn(async move { assistant::status(daemon.as_deref()) });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
@@ -243,11 +247,13 @@ impl AssistantPage {
         self.connection_error = None;
         let cancel = Arc::new(AtomicBool::new(false));
         self.login_cancel = Some(cancel.clone());
+        let daemon = self.daemon.clone();
         let request = cx.background_executor().spawn(async move {
-            assistant::login(cancel, |url| {
+            let daemon = daemon.as_deref();
+            assistant::login(daemon, cancel, |url| {
                 let _ = std::process::Command::new("/usr/bin/open").arg(url).spawn();
             })
-            .and_then(|_| assistant::status())
+            .and_then(|_| assistant::status(daemon))
         });
         cx.spawn(async move |this, cx| {
             let result = request.await;
@@ -264,9 +270,11 @@ impl AssistantPage {
             return;
         }
         self.credentials_busy = true;
-        let request = cx
-            .background_executor()
-            .spawn(async { assistant::logout().and_then(|_| assistant::status()) });
+        let daemon = self.daemon.clone();
+        let request = cx.background_executor().spawn(async move {
+            let daemon = daemon.as_deref();
+            assistant::logout(daemon).and_then(|_| assistant::status(daemon))
+        });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
@@ -397,21 +405,21 @@ impl AssistantPage {
     }
     fn mutate<R: Send + 'static>(
         &mut self,
-        operation: impl FnOnce(Arc<Store>) -> anyhow::Result<R> + Send + 'static,
+        operation: impl FnOnce(Arc<Daemon>) -> anyhow::Result<R> + Send + 'static,
         apply: impl FnOnce(&mut Self, R, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) {
         if self.pending {
             return;
         }
-        let Some(store) = self.store.clone() else {
+        let Some(daemon) = self.daemon.clone() else {
             return;
         };
         self.pending = true;
         self.error = None;
         let request = cx
             .background_executor()
-            .spawn(async move { operation(store) });
+            .spawn(async move { operation(daemon) });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
@@ -433,8 +441,8 @@ impl AssistantPage {
         cx.notify();
     }
     pub(crate) fn reload_snapshot(&mut self) {
-        let Some(db) = &self.store else { return };
-        let snapshot = db.snapshot();
+        let Some(db) = &self.daemon else { return };
+        let snapshot = db.product();
         self.conversations = snapshot.conversations;
         if self
             .conversation
@@ -462,9 +470,9 @@ impl AssistantPage {
         self.model_menu_open = false;
         self.mutate(
             move |db| {
-                db.command(Command::SelectModel {
+                Ok(db.send(Command::SelectModel {
                     model: model.unwrap_or_default(),
-                })
+                })?)
             },
             |_, _, _| {},
             cx,
@@ -475,7 +483,7 @@ impl AssistantPage {
             return;
         }
         self.mutate(
-            move |db| db.command(Command::SelectConversation { id }),
+            move |db| Ok(db.send(Command::SelectConversation { id })?),
             move |this, _, cx| {
                 this.conversation = Some(id);
                 this.show_chat = true;
@@ -497,8 +505,8 @@ impl AssistantPage {
     fn new_conversation(&mut self, cx: &mut Context<Self>) {
         self.mutate(
             |db| {
-                let id = db.new_conversation()?;
-                db.command(Command::SelectConversation { id })?;
+                let id = new_conversation(&db)?;
+                db.send(Command::SelectConversation { id })?;
                 Ok(id)
             },
             |this, id, cx| {
@@ -522,7 +530,7 @@ impl AssistantPage {
                 return;
             }
             self.mutate(
-                move |db| db.command(Command::RenameConversation { id, title }),
+                move |db| Ok(db.send(Command::RenameConversation { id, title })?),
                 |this, _, _| {
                     this.overlays.borrow_mut().close();
                     this.form_error = None;
@@ -535,7 +543,7 @@ impl AssistantPage {
         let active = self.overlays.borrow().active();
         if let Some(Overlay::DeleteConversation(id)) = active {
             self.mutate(
-                move |db| db.command(Command::DeleteConversation { id }),
+                move |db| Ok(db.send(Command::DeleteConversation { id })?),
                 |this, _, _| {
                     this.overlays.borrow_mut().close();
                     this.form_error = None;
@@ -546,7 +554,7 @@ impl AssistantPage {
         }
     }
     fn new_conversation_button(&self, id: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
-        let enabled = self.active.is_none() && !self.pending && self.store.is_some();
+        let enabled = self.active.is_none() && !self.pending && self.daemon.is_some();
         Button::new(id, "New Conversation")
             .primary()
             .icon("plus")
@@ -554,7 +562,7 @@ impl AssistantPage {
             .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx)
     }
     pub fn conversations_view(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let enabled = self.active.is_none() && !self.pending && self.store.is_some();
+        let enabled = self.active.is_none() && !self.pending && self.daemon.is_some();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |time| time.as_secs() as i64);
@@ -841,7 +849,7 @@ impl AssistantPage {
                 })
                 .into_any_element()
         };
-        let enabled = self.store.is_some()
+        let enabled = self.daemon.is_some()
             && self.active.is_none()
             && !self.pending
             && (!rename
@@ -905,9 +913,14 @@ impl AssistantPage {
             move |db| {
                 let id = match conversation {
                     Some(id) => id,
-                    None => db.new_conversation()?,
+                    None => new_conversation(&db)?,
                 };
-                let turn = db.begin_turn(id, &prompt)?;
+                let turn = db
+                    .send(Command::Send {
+                        conversation_id: id,
+                        prompt,
+                    })?
+                    .context("Missing turn acknowledgement")?;
                 Ok((id, turn))
             },
             |this, (conversation, id), cx| {
@@ -928,26 +941,26 @@ impl AssistantPage {
             return;
         }
         self.mutate(
-            move |db| db.command(Command::Retry { id }),
+            move |db| Ok(db.send(Command::Retry { id })?),
             move |this, _, cx| this.watch_turn(id, cx),
             cx,
         );
     }
     fn watch_turn(&mut self, id: i64, cx: &mut Context<Self>) {
-        let Some(store) = self.store.clone() else {
+        let Some(daemon) = self.daemon.clone() else {
             return;
         };
         self.active = Some(id);
         self.loading_started = Instant::now();
         cx.spawn(async move |this, cx| {
             loop {
-                let db = store.clone();
+                let db = daemon.clone();
                 let result = cx
                     .background_executor()
                     .spawn(async move {
                         db.refresh()?;
                         Ok::<_, anyhow::Error>(
-                            db.snapshot()
+                            db.product()
                                 .turns
                                 .iter()
                                 .find(|t| t.id == id)
@@ -985,7 +998,7 @@ impl AssistantPage {
     }
     fn save_again(&mut self, cx: &mut Context<Self>) {
         self.mutate(
-            |db| db.refresh(),
+            |db| Ok(db.refresh()?),
             |this, _, cx| {
                 if let Some(id) = this.active {
                     this.watch_turn(id, cx);
@@ -1120,7 +1133,7 @@ impl Render for AssistantPage {
             && !self.credentials_busy
             && self.active.is_none()
             && !self.pending
-            && self.store.is_some()
+            && self.daemon.is_some()
             && !self.input.read(cx).content.trim().is_empty();
         if !self.show_chat {
             return self
@@ -1204,7 +1217,7 @@ impl Render for AssistantPage {
                                 ),
                         )
                     })
-                    .when(self.store.is_none(), |s| {
+                    .when(self.daemon.is_none(), |s| {
                         s.child(error_text(
                             "Conversation data is unavailable. Refresh to reconnect.",
                         ))
@@ -1292,18 +1305,23 @@ impl Render for AssistantPage {
     }
 }
 
+fn new_conversation(daemon: &Daemon) -> anyhow::Result<i64> {
+    daemon
+        .send(Command::CreateConversation)?
+        .context("Missing conversation acknowledgement")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AssistantPage, Conversation, Store, Turn, conversation_date};
+    use super::{AssistantPage, Conversation, Daemon, Turn, conversation_date};
     use gpui::{AppContext, TestAppContext};
     use std::{cell::RefCell, rc::Rc, sync::Arc};
 
     #[gpui::test]
     fn pending_reply_yields_without_a_tokio_runtime(cx: &mut TestAppContext) {
         assert!(tokio::runtime::Handle::try_current().is_err());
-        let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Store::open(&dir.path().join("fixture")).unwrap());
-        let mut snapshot = store.snapshot();
+        let daemon = Arc::new(Daemon::in_memory());
+        let mut snapshot = daemon.product();
         snapshot.conversations.push(Conversation {
             id: 1,
             title: "Pending reply".into(),
@@ -1319,9 +1337,10 @@ mod tests {
             error: None,
             state: "running".into(),
         });
-        store.fixture_snapshot(snapshot);
+        daemon.memory().edit(|state| state.product = snapshot);
+        daemon.refresh().unwrap();
         let page =
-            cx.new(|cx| AssistantPage::new(Some(store), None, Rc::new(RefCell::default()), cx));
+            cx.new(|cx| AssistantPage::new(Some(daemon), None, Rc::new(RefCell::default()), cx));
         page.update(cx, |page, cx| page.watch_turn(1, cx));
 
         // Drain runnable work without advancing time: the watcher must refresh

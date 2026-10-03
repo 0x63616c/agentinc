@@ -89,7 +89,7 @@ impl TicketsPage {
                         .icon("plus")
                         .icon_only()
                         .tint(TEXT_TERTIARY)
-                        .enabled(self.store.is_some() && !self.pending)
+                        .enabled(self.daemon.is_some() && !self.pending)
                         .build(
                             &self.hover,
                             move |this: &mut Self, window, cx| {

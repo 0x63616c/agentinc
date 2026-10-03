@@ -657,8 +657,8 @@ fn release(suite: &mut Suite, position: Point<Pixels>) {
 /// The board, a real pointer drag between and within lanes, filters, the
 /// list, a rich detail, its menus and dialogs, and ⌘K Tickets.
 fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
-    use crate::storage::TicketStatus;
     use crate::tickets::Menu;
+    use ainc_client::types::TicketStatus;
     let page = suite
         .window
         .read_with(&suite.cx, |shell, _| shell.fixture_tickets_page())?;

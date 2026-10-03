@@ -14,7 +14,7 @@ impl TicketsPage {
             Button::new(id, "New Agent")
                 .primary()
                 .icon("plus")
-                .enabled(this.store.is_some() && !this.pending)
+                .enabled(this.daemon.is_some() && !this.pending)
                 .build(&this.hover, Self::open_agent, cx)
         };
         Page::document(
@@ -41,7 +41,7 @@ impl TicketsPage {
                                 Button::new("agents.create.empty", "New Agent")
                                     .secondary()
                                     .icon("plus")
-                                    .enabled(self.store.is_some() && !self.pending)
+                                    .enabled(self.daemon.is_some() && !self.pending)
                                     .build(&self.hover, Self::open_agent, cx),
                             )
                             .build(),

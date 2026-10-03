@@ -92,8 +92,8 @@ impl Shell {
             });
         }
 
-        if let Some(store) = &self.store {
-            for ticket in store.tickets().tickets {
+        if let Some(daemon) = &self.daemon {
+            for ticket in daemon.tickets().tickets {
                 let status = ticket.status;
                 items.push(PaletteCandidate {
                     group: "Tickets",

@@ -2,8 +2,8 @@
 //! A believable board for the rendered-shell captures: two agents, Tickets in
 //! every column, labels, priorities, relationships, Comments, runs and history.
 use super::*;
-use crate::storage::{ActivityKind, Comment, LinkKind};
 use ainc_client::types::WorkRun;
+use ainc_client::types::{ActivityKind, Comment, LinkKind};
 
 const HOUR: i64 = 3600;
 
@@ -18,20 +18,20 @@ type Row<'a> = (
 
 impl TicketsPage {
     pub(crate) fn fixture_board(&mut self, cx: &mut Context<Self>) -> i64 {
-        let store = self.store.clone().expect("fixture store");
+        let daemon = self.daemon.clone().expect("fixture daemon");
         for (name, model) in [
             ("Evee", "connection-default"),
             ("Scout", "connection-default"),
         ] {
-            store
-                .ticket_command(TicketCommand::RegisterAgent {
+            daemon
+                .send(TicketCommand::RegisterAgent {
                     name: name.into(),
                     instructions: "Plan and execute".into(),
                     model: model.into(),
                 })
                 .expect("fixture agent");
         }
-        let agents: Vec<String> = store
+        let agents: Vec<String> = daemon
             .tickets()
             .assignees
             .into_iter()
@@ -134,8 +134,8 @@ impl TicketsPage {
         ];
         let mut ids = Vec::new();
         for (title, status, priority, labels, assignee) in rows {
-            let id = store
-                .ticket_command(TicketCommand::CreateDetailed {
+            let id = daemon
+                .send(TicketCommand::CreateDetailed {
                     title: title.into(),
                     description: None,
                     status: Some(status),
@@ -164,23 +164,24 @@ impl TicketsPage {
             (trip, campsite, LinkKind::ParentOf),
             (savings, streaming, LinkKind::RelatesTo),
         ] {
-            store
-                .ticket_command(TicketCommand::Link {
+            daemon
+                .send(TicketCommand::Link {
                     from_id,
                     to_id,
                     link,
                 })
                 .expect("fixture link");
         }
-        store
-            .ticket_command(TicketCommand::Describe {
+        daemon
+            .send(TicketCommand::Describe {
                 id: budget,
                 revision: 0,
                 description: "Pull the September statements from both checking accounts and the card, match every receipt, and flag anything over $200 without one.\n\nSummarize the totals by category in a Comment when done.".into(),
             })
             .expect("fixture description");
         let now = list::now();
-        store.fixture_edit(|snapshot, history| {
+        daemon.memory().edit(|state| {
+            let (snapshot, history) = (&mut state.tickets, &mut state.activity);
             for (age, ticket) in snapshot.tickets.iter_mut().rev().enumerate() {
                 ticket.created_at = now - (age as i64 + 2) * 9 * HOUR;
                 ticket.updated_at = now - age as i64 * 2 * HOUR - 300;
@@ -234,6 +235,7 @@ impl TicketsPage {
                 },
             ]);
         });
+        daemon.refresh().expect("fixture refresh");
         self.reload();
         self.loaded = true;
         cx.notify();
