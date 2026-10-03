@@ -7,14 +7,18 @@ exercises the same gate and keeps every artifact in a draft.
 The native build job makes three handoffs from the exact commit: the production
 candidate, an upgrade-test candidate, and the same upgrade-test code reporting
 the next patch version and a strictly newer `CFBundleVersion`. Sparkle compares build
-numbers, so changing the display version alone is insufficient. The test builds have the production bundle identity but
+numbers, so changing the display version alone is insufficient. The test builds
+have the production bundle identity but
 a separate compiled Ed25519 public key. The Mac generates the matching private
 key for that workflow run. Linux signs and notarizes all three apps. The test
 key travels only in the one-day Actions handoff; it is never a release asset.
 The shipping handoff carries `upgrade_test: false`, which `cargo xtask release-distribute`
-requires before staging it. The test-only feed override and local HTTP client
-are compiled out of the shipping app and helper. Signature, archive hash,
-Developer ID, and Gatekeeper checks remain mandatory in both builds.
+requires before staging it. Test feed overrides are compiled out of shipping builds.
+Signature, archive hash, Developer ID, and Gatekeeper checks remain mandatory in
+both builds. Fixtures carry a defaults domain derived from their test key before
+signing, isolating Sparkle preferences from the installed application. Relaunch uses
+a private one-shot environment record; the gate never edits a signed bundle's plist
+to insert profile paths or feed URLs.
 
 `cargo xtask release-upgrade-gate` installs the signed test candidate in an
 isolated profile and serves the signed newer build from a local feed. The manual

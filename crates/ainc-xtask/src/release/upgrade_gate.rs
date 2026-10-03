@@ -298,10 +298,8 @@ fn exercise(
     let next_app = unpack(newer, &root.join("newer"))?;
     let identity = next_app.join("Contents/Resources/release.json");
     let old_version = field(&release_json(&app)?, "version")?;
-    let next_version = field(
-        &serde_json::from_str(&read_to_string(&identity)?)?,
-        "version",
-    )?;
+    let next_identity = release_json(&next_app)?;
+    let next_version = field(&next_identity, "version")?;
     if old_version == next_version {
         bail!("fixture must be newer than candidate");
     }
@@ -436,6 +434,11 @@ fn exercise(
         verify_runtime(&profile, &next_version)?;
         terminal_smoke::check(&app, &profile)?;
         if uses_sparkle {
+            anyhow::ensure!(
+                read_to_string(&preparation)?.trim()
+                    == format!("{} prepared=1 fence=armed", field(&next_identity, "build")?),
+                "Sparkle extraction must follow completed daemon drain and an armed startup fence"
+            );
             let requests = server.requests();
             payload.verify(&requests)?;
             let transferred: usize = requests
