@@ -83,10 +83,12 @@ needs to become its own crate.
 There is no framework layer yet. Extract one from the OS later, once the generic parts
 are obvious. Do not start it early.
 
-OS constructs (settled, seven): Agents (data, created at runtime), Conversations (map to
-SDK sessions), Tickets (shared human/agent, assignable to an agent, comments are the work
-log), Knowledge (later), Inbox (human view over an event stream), Automations (trigger +
-agent + prompt), Connections (external accounts contributing tools).
+OS constructs (settled, seven), named as in [CONTEXT.md](CONTEXT.md): Agents (created at
+runtime, with a model and instructions), Conversations (map to SDK sessions), Tickets (shared
+human/agent, assignable to an Agent; Comments are the work log; a run on a Ticket is Work),
+Automations (trigger + Agent + prompt; each firing is an Occurrence), Connections (external
+accounts contributing tools), and two planned and not yet in CONTEXT.md: Knowledge and Inbox
+(human view over an event stream). Vocabulary and avoid-words live in CONTEXT.md.
 
 OS MVP: tickets, a minimal agents registry, and one automation: "ticket assigned to an
 agent → run it".
