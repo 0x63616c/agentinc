@@ -178,6 +178,27 @@ impl Suite {
         }
     }
 
+    fn check_button_icon_order(&mut self, selector: &str, trailing: bool) -> Result<()> {
+        let label = self.bounds(&format!("{selector}.label"))?;
+        let icon = self.bounds(&format!("{selector}.icon"))?;
+        if trailing {
+            ensure!(
+                icon.origin.x >= label.origin.x + label.size.width,
+                "{selector}: + must follow the label"
+            );
+        } else {
+            ensure!(
+                icon.origin.x + icon.size.width <= label.origin.x,
+                "{selector}: other icons must lead the label"
+            );
+        }
+        near(
+            &format!("{selector} icon is vertically centered"),
+            f32::from(icon.center().y),
+            f32::from(label.center().y),
+        )
+    }
+
     // Check actual pixels in independent shell regions, rather than trusting scene/AX nodes.
     // Regions come from the current layout; thresholds are below normal text contrast.
     fn probes(&mut self, width: u32, dimmed: bool) -> Result<Vec<Probe>> {
@@ -290,6 +311,26 @@ impl Suite {
                 f32::from(button.size.height),
                 CONTROL_HEIGHT,
             )?;
+            self.check_button_icon_order("tickets.create", true)?;
+        }
+        if name == "route-0-2" {
+            self.check_button_icon_order("agents.create", true)?;
+            self.check_button_icon_order("agents.create.empty", true)?;
+        }
+        if name == "automations-0" {
+            self.check_button_icon_order("automations.create", true)?;
+            self.check_button_icon_order("automations.create.empty", true)?;
+        }
+        if name == "assistant-conversation-list" {
+            self.check_button_icon_order("new-chat", true)?;
+        }
+        if name == "ticket-create-dialog" {
+            self.check_button_icon_order("tickets.labels.open", true)?;
+        }
+        if name == "components-buttons" {
+            self.check_button_icon_order("components.small", true)?;
+            self.check_button_icon_order("components.regular", true)?;
+            self.check_button_icon_order("components.trailing", false)?;
         }
         if name == "settings-0" || name == "settings-1" {
             self.check_settings_row_geometry("Font")?;
@@ -647,6 +688,18 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
             .ok_or_else(|| anyhow::anyhow!("missing fixture Ticket {title}"))
     };
     suite.capture("tickets-board", Route::Tickets, None, false)?;
+    let add = suite.bounds("tickets.lane.backlog.create")?;
+    let plus = suite.bounds("tickets.lane.backlog.create.icon")?;
+    near(
+        "icon-only + stays centered",
+        f32::from(plus.center().x),
+        f32::from(add.center().x),
+    )?;
+    near(
+        "icon-only + stays square",
+        f32::from(add.size.width),
+        f32::from(add.size.height),
+    )?;
     // Lanes: one per status, headers on one line, the first on the content rail,
     // cards inset evenly inside their lane, everything above the status bar.
     let content = suite.bounds("main-content")?;
@@ -831,6 +884,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.cx.simulate_input(window.into(), "test");
     suite.settle()?;
     suite.check_label_menu_anchor()?;
+    suite.check_button_icon_order("tickets.labels.create", true)?;
     suite.click_selector("tickets.labels.create")?;
     suite.settle()?;
     // Adding a tag changes the trigger to a compact +; its menu follows it.

@@ -44,6 +44,9 @@ surface can fade between frames) and a `cx.listener`-style action; hosts impleme
 `HoverHost` and call `hover.animate(window)` once per render. `HoverFade::track`
 is the one place a control gets its hover amount and listener.
 
+Labelled add/create buttons place their `+` after the text ("New Agent +").
+Other button icons lead the text; icon-only buttons stay centered.
+
 Sheets, tabs and checkboxes are built for the 1.0 workstreams (onboarding,
 providers) and are exercised only on the Components page today.
 
