@@ -459,7 +459,7 @@ impl AutomationsPage {
                                             div()
                                                 .flex_1()
                                                 .text_size(type_size(LABEL_SIZE))
-                                                .child(timestamp(o.scheduled_at)),
+                                                .child(time::absolute(o.scheduled_at)),
                                         )
                                         .when_some(o.ticket_id, |s, id| {
                                             s.child(
@@ -490,7 +490,7 @@ impl AutomationsPage {
                             .map(|h| {
                                 caption(format!(
                                     "{} · {} {}",
-                                    timestamp(h.observed_at),
+                                    time::absolute(h.observed_at),
                                     h.count,
                                     h.kind.replace('_', " ")
                                 ))

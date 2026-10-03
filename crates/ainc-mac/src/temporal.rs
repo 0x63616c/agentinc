@@ -45,40 +45,6 @@ fn status_tone(status: &str) -> Tone {
     }
 }
 
-fn relative_time(started_at: i64, now: i64) -> String {
-    let seconds = (now - started_at).max(0) / 1000;
-    if seconds < 60 {
-        "just now".into()
-    } else if seconds < 3600 {
-        format!("{}m ago", seconds / 60)
-    } else if seconds < 86_400 {
-        format!("{}h ago", seconds / 3600)
-    } else {
-        format!("{}d ago", seconds / 86_400)
-    }
-}
-
-fn absolute_time(timestamp: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(timestamp)
-        .map(|time| {
-            time.with_timezone(&chrono::Local)
-                .format("%b %-d, %Y · %H:%M:%S")
-                .to_string()
-        })
-        .unwrap_or_else(|| "Time unavailable".into())
-}
-
-fn duration(started_at: i64, closed_at: Option<i64>, now: i64) -> String {
-    let seconds = (closed_at.unwrap_or(now) - started_at).max(0) / 1000;
-    if seconds < 60 {
-        format!("{seconds}s")
-    } else if seconds < 3600 {
-        format!("{}m {:02}s", seconds / 60, seconds % 60)
-    } else {
-        format!("{}h {:02}m", seconds / 3600, (seconds % 3600) / 60)
-    }
-}
-
 fn columns() -> [TableColumn; 4] {
     [
         TableColumn::new("Workflow"),
@@ -261,15 +227,17 @@ impl TemporalPage {
                         .child(
                             div()
                                 .text_color(rgb(TEXT))
-                                .child(relative_time(execution.started_at, now)),
+                                .child(time::relative(execution.started_at / 1000, now)),
                         )
-                        .child(caption(absolute_time(execution.started_at)))
+                        .child(caption(time::absolute(execution.started_at / 1000)))
                         .into_any_element(),
                     div()
                         .font_family("SF Mono")
                         .text_size(type_size(LABEL_SIZE))
                         .text_color(rgb(TEXT))
-                        .child(duration(execution.started_at, execution.closed_at, now))
+                        .child(time::duration(
+                            execution.closed_at.unwrap_or(now * 1000) - execution.started_at,
+                        ))
                         .into_any_element(),
                 ];
                 table_row(
@@ -300,7 +268,7 @@ impl TemporalPage {
 impl Render for TemporalPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
-        let now = chrono::Utc::now().timestamp_millis();
+        let now = time::now();
         let filter = FILTERS
             .iter()
             .position(|(value, _)| *value == self.filter)

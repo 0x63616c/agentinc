@@ -70,11 +70,6 @@ fn unsupported(what: &str) -> DaemonError {
         message: format!("{what} require the daemon"),
     })
 }
-fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64)
-}
 impl Transport for MemoryTransport {
     fn call(&self, request: Request) -> Result<Reply, DaemonError> {
         self.requests
@@ -103,7 +98,7 @@ impl Transport for MemoryTransport {
                 let State {
                     tickets, activity, ..
                 } = &mut *state;
-                board::apply(tickets, activity, now(), request.command)
+                board::apply(tickets, activity, crate::ui::time::now(), request.command)
                     .map(Reply::Acknowledgement)
                     .map_err(DaemonError::Rejected)
             }

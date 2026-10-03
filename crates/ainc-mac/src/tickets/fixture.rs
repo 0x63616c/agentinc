@@ -179,7 +179,7 @@ impl TicketsPage {
                 description: "Pull the September statements from both checking accounts and the card, match every receipt, and flag anything over $200 without one.\n\nSummarize the totals by category in a Comment when done.".into(),
             })
             .expect("fixture description");
-        let now = list::now();
+        let now = time::now();
         daemon.memory().edit(|state| {
             let (snapshot, history) = (&mut state.tickets, &mut state.activity);
             for (age, ticket) in snapshot.tickets.iter_mut().rev().enumerate() {

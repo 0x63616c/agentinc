@@ -273,7 +273,7 @@ impl TicketsPage {
     }
 
     fn timeline(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> Div {
-        let now = list::now();
+        let now = time::now();
         let history: &[TicketActivity] =
             if self.activity_for.as_ref().map(|s| s.0) == Some(ticket.id) {
                 &self.activity
@@ -383,7 +383,7 @@ impl TicketsPage {
             .child(
                 div()
                     .pt(px(SPACE_HALF))
-                    .child(hint(relative_time(entry.created_at, now))),
+                    .child(hint(time::relative(entry.created_at, now))),
             )
     }
 
@@ -510,7 +510,7 @@ impl TicketsPage {
                                     .font_weight(FontWeight::MEDIUM)
                                     .child(author),
                             )
-                            .child(hint(relative_time(comment.created_at, now))),
+                            .child(hint(time::relative(comment.created_at, now))),
                     )
                     .child(
                         div()
@@ -658,11 +658,11 @@ impl TicketsPage {
             .child(divider().my(px(SPACE_3)))
             .child(property_row(
                 "Created",
-                caption(timestamp(ticket.created_at)),
+                caption(time::absolute(ticket.created_at)),
             ))
             .child(property_row(
                 "Updated",
-                caption(timestamp(ticket.updated_at)),
+                caption(time::absolute(ticket.updated_at)),
             ))
     }
 

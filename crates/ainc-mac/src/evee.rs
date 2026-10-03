@@ -17,28 +17,8 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::Instant,
 };
-
-fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
-    let updated = chrono::DateTime::from_timestamp(updated_at, 0)
-        .map(|time| {
-            time.with_timezone(&chrono::Local)
-                .format("%Y-%m-%d %H:%M")
-                .to_string()
-        })
-        .unwrap_or_else(|| updated.to_owned());
-    let age = now.saturating_sub(updated_at);
-    if age < 86_400 {
-        format!("Today, {}", updated.get(11..16).unwrap_or_default())
-    } else if age < 172_800 {
-        "Yesterday".to_owned()
-    } else {
-        let year = updated.get(2..4).unwrap_or_default();
-        let month_day = updated.get(5..10).unwrap_or_default().replace('-', "/");
-        format!("{month_day}/{year}")
-    }
-}
 
 pub struct AssistantPage {
     daemon: Option<Arc<Daemon>>,
@@ -521,9 +501,7 @@ impl AssistantPage {
     }
     pub fn conversations_view(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let enabled = self.active.is_none() && !self.pending.busy() && self.daemon.is_some();
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |time| time.as_secs() as i64);
+        let now = time::now();
         Page::document(
             PageHeader::new("Assistant")
                 .description("Your conversations with Evee.")
@@ -607,7 +585,7 @@ impl AssistantPage {
                                             .debug_selector(|| "conversation.menu".into())
                                             .child(menu_label(format!(
                                                 "Updated {}",
-                                                conversation.updated
+                                                time::absolute(conversation.updated_at)
                                             )))
                                             .child(
                                                 MenuEntry::new(
@@ -682,8 +660,7 @@ impl AssistantPage {
                                 .trailing(
                                     row()
                                         .gap(px(SPACE_2))
-                                        .child(caption(conversation_date(
-                                            &conversation.updated,
+                                        .child(caption(time::relative(
                                             conversation.updated_at,
                                             now,
                                         )))
@@ -1232,7 +1209,7 @@ fn new_conversation(daemon: &Daemon) -> anyhow::Result<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AssistantPage, Conversation, Daemon, Turn, conversation_date};
+    use super::{AssistantPage, Conversation, Daemon, Turn};
     use crate::sync::{ManualClock, Sync};
     use gpui::{AppContext, TestAppContext};
     use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -1290,28 +1267,5 @@ mod tests {
             assert_eq!(page.turns[0].response.as_deref(), Some("Hi!"));
             assert!(page.appearance.is_some(), "the reply animates in once");
         });
-    }
-
-    #[test]
-    fn conversation_dates_keep_the_list_compact() {
-        use chrono::TimeZone;
-        let precise = "2026-09-23 16:06";
-        let timestamp = chrono::Local
-            .with_ymd_and_hms(2026, 9, 23, 16, 6, 0)
-            .single()
-            .unwrap()
-            .timestamp();
-        assert_eq!(
-            conversation_date(precise, timestamp, timestamp + 30),
-            "Today, 16:06"
-        );
-        assert_eq!(
-            conversation_date(precise, timestamp, timestamp + 100_000),
-            "Yesterday"
-        );
-        assert_eq!(
-            conversation_date(precise, timestamp, timestamp + 200_000),
-            "09/23/26"
-        );
     }
 }

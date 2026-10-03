@@ -20,6 +20,7 @@ mod settings;
 mod table;
 #[cfg(target_os = "macos")]
 mod terminal;
+pub mod time;
 mod toast;
 mod toggle;
 mod tokens;

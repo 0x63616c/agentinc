@@ -130,20 +130,6 @@ pub fn label_color(label: &str) -> u32 {
     LABEL_COLORS[hash as usize % LABEL_COLORS.len()]
 }
 
-/// A short age: `now`, `5m`, `3h`, `2d`, then a date.
-pub fn relative_time(then: i64, now: i64) -> String {
-    let seconds = (now - then).max(0);
-    match seconds {
-        0..60 => "now".into(),
-        60..3600 => format!("{}m", seconds / 60),
-        3600..86400 => format!("{}h", seconds / 3600),
-        86400..604800 => format!("{}d", seconds / 86400),
-        _ => chrono::DateTime::from_timestamp(then, 0)
-            .map(|t| t.with_timezone(&chrono::Local).format("%b %-d").to_string())
-            .unwrap_or_default(),
-    }
-}
-
 /// What the board and list show: a search plus any number of values per facet.
 /// An empty facet matches everything.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -534,8 +520,6 @@ mod tests {
             assert_eq!(priority_from_key(priority_key(priority)), Some(priority));
         }
         assert_eq!(label_color("Home"), label_color("home"));
-        assert_eq!(relative_time(100, 130), "now");
-        assert_eq!(relative_time(0, 7200), "2h");
         assert_eq!(ticket_key(42), "T-42");
     }
 }

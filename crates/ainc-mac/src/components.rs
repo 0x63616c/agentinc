@@ -354,9 +354,9 @@ impl ComponentsPage {
     fn data(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let columns = columns();
         let rows = [
-            ("Reconcile weekly budget", "Running", Tone::Info, "2m ago"),
-            ("Morning review", "Completed", Tone::Success, "1h ago"),
-            ("House check", "Timed out", Tone::Danger, "1d ago"),
+            ("Reconcile weekly budget", "Running", Tone::Info, "2m"),
+            ("Morning review", "Completed", Tone::Success, "1h"),
+            ("House check", "Timed out", Tone::Danger, "1d"),
         ];
         column()
             .gap(px(SECTION_GAP))
