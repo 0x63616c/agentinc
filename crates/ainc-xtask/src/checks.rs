@@ -7,6 +7,7 @@ use std::{
 
 pub mod colors;
 pub mod commit_msg;
+pub mod copy;
 pub mod env_names;
 pub mod layout;
 pub mod naming;

@@ -138,7 +138,7 @@ impl ComponentsPage {
                 row().flex_wrap().items_center().gap(px(CONTROL_GAP))
                     .child(Button::new("components.small", "Small").secondary().small().icon("plus").build(&self.hover, noop, cx))
                     .child(Button::new("components.regular", "New Ticket").primary().icon("plus").build(&self.hover, noop, cx))
-                    .child(Button::new("components.large", "Get started").primary().large().build(&self.hover, noop, cx))
+                    .child(Button::new("components.large", "Get Started").primary().large().build(&self.hover, noop, cx))
                     .child(Button::new("components.icon-ghost", "More").icon("more").icon_only().ghost().build(&self.hover, noop, cx))
                     .child(Button::new("components.icon-secondary", "Refresh").icon("refresh").icon_only().secondary().build(&self.hover, noop, cx))
                     .child(Button::new("components.icon-primary", "Send").icon("send").icon_only().primary().build(&self.hover, noop, cx).rounded_full()),
@@ -150,7 +150,7 @@ impl ComponentsPage {
                     .child(Button::new("components.disabled-primary", "Primary").primary().enabled(false).build(&self.hover, noop, cx))
                     .child(Button::new("components.disabled-secondary", "Secondary").secondary().enabled(false).build(&self.hover, noop, cx))
                     .child(Button::new("components.selected-secondary", "Selected").secondary().selected(true).build(&self.hover, noop, cx))
-                    .child(Button::new("components.selected-ghost", "Selected ghost").ghost().selected(true).build(&self.hover, noop, cx))
+                    .child(Button::new("components.selected-ghost", "Selected Ghost").ghost().selected(true).build(&self.hover, noop, cx))
                     .child(Button::new("components.trailing", "Go to…").secondary().icon("search").trailing(kbd(shortcuts::GO_TO.glyph)).build(&self.hover, noop, cx)),
             ))
     }
@@ -207,7 +207,7 @@ impl ComponentsPage {
                         Select::new(
                             "components.select",
                             vec![
-                                SelectOption::new("Codex default"),
+                                SelectOption::new("Codex Default"),
                                 SelectOption::new("Codex One").description("Fast"),
                                 SelectOption::new("Codex Two").description("Careful"),
                             ],
@@ -473,7 +473,7 @@ impl ComponentsPage {
                     .child(MenuButton::new("components.menu-button", "Priority").icon("filter").active(true).build(&self.hover, vec![], noop, cx))
                     .child(menu_shell(MENU_WIDTH)
                         .child(menu_label("Model"))
-                        .child(MenuEntry::new("components.menu.default", "Codex default").checked(true).build(&self.hover, noop, cx))
+                        .child(MenuEntry::new("components.menu.default", "Codex Default").checked(true).build(&self.hover, noop, cx))
                         .child(MenuEntry::new("components.menu.one", "Codex One").build(&self.hover, noop, cx))
                         .child(MenuEntry::new("components.menu.two", "Codex Two").enabled(false).build(&self.hover, noop, cx))),
             ))
@@ -481,7 +481,7 @@ impl ComponentsPage {
                 "Toasts",
                 "Transient notices stack above the status bar and slide in; sticky ones wait to be dismissed.",
                 column().gap(px(SPACE_3))
-                    .child(row().child(Button::new("components.toast", "Show a toast").secondary().build(
+                    .child(row().child(Button::new("components.toast", "Show a Toast").secondary().build(
                         &self.hover,
                         |this, _, cx| {
                             let id = this.toasts.push("Saved", Some("Your changes are on the daemon.".into()), Tone::Info);

@@ -325,7 +325,8 @@ fn check_ui(root: &Path) -> Result<()> {
     checks::colors::run(&app)?;
     checks::ui_spacing::run(&app)?;
     checks::ui_core::run(&app)?;
-    checks::ui_vocabulary::run(&app)
+    checks::ui_vocabulary::run(&app)?;
+    checks::copy::run(&app)
 }
 
 /// Repository-wide name rules: product spellings and environment variable families.
@@ -529,6 +530,7 @@ fn main() -> Result<()> {
         "test" => test(&root, profile(&args.collect::<Vec<_>>())?.as_deref()),
         "clean-incremental" => clean_incremental(&root),
         "check-ui" => check_ui(&root),
+        "check-copy" => checks::copy::run(&root.join("crates/ainc-mac")),
         "check-names" => check_names(&root),
         "check-layout" => check_layout(&root),
         "check-commit-msg" => checks::commit_msg::run(&args.collect::<Vec<_>>()),

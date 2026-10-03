@@ -281,7 +281,7 @@ impl AssistantPage {
         column()
             .relative()
             .child(
-                Button::new(("conversation-menu", id as u64), "Conversation actions")
+                Button::new(("conversation-menu", id as u64), "Conversation Actions")
                     .icon("more")
                     .icon_only()
                     .ghost()
@@ -925,7 +925,7 @@ impl Render for AssistantPage {
                                             div().into_any_element()
                                         })
                                         .child(
-                                            Button::new("send", "Send message")
+                                            Button::new("send", "Send Message")
                                                 .icon("send")
                                                 .icon_only()
                                                 .primary()
