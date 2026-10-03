@@ -61,7 +61,7 @@ async fn child(
     tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
 )> {
     let mut process = tokio::process::Command::new(std::env::current_exe()?)
-        .args(["--exact", "recovery_worker", "--nocapture"])
+        .args(["--exact", "recovery::recovery_worker", "--nocapture"])
         .env("TURNKEEL_RECOVERY_CONFIG", serde_json::to_string(config)?)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -280,7 +280,7 @@ async fn killed_worker_recovers_unacknowledged_effect_without_repeating_it() -> 
     std::fs::create_dir(&directory)?;
     let spawn = |gate: &str| -> anyhow::Result<_> {
         Ok(tokio::process::Command::new(std::env::current_exe()?)
-            .args(["--exact", "effect_worker", "--nocapture"])
+            .args(["--exact", "recovery::effect_worker", "--nocapture"])
             .env(
                 "TURNKEEL_EFFECT_CONFIG",
                 serde_json::to_string(&server.config())?,
