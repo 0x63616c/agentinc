@@ -1,4 +1,5 @@
 //! Product release identity, wire compatibility and authenticated update metadata.
+pub mod notes;
 #[cfg(unix)]
 pub mod process;
 use anyhow::{Context, Result, ensure};
@@ -212,6 +213,27 @@ impl SignedManifest {
     }
 }
 impl Manifest {
+    /// All changes since the installed version; legacy feeds retain their latest notes.
+    pub fn notes_since(&self, current: &str) -> String {
+        let (Ok(current), Some(releases)) = (
+            Version::parse(current),
+            notes::parse_changelog(&self.changelog),
+        ) else {
+            return self.notes.clone();
+        };
+        if !releases
+            .iter()
+            .any(|release| release.version == self.version)
+        {
+            return self.notes.clone();
+        }
+        let releases = releases
+            .into_iter()
+            .filter(|release| release.version > current && release.version <= self.version)
+            .collect::<Vec<_>>();
+        notes::changelog(&releases)
+    }
+
     pub fn verify_archive(&self, archive: &[u8]) -> Result<()> {
         ensure!(
             archive.len() as u64 == self.archive_bytes,
@@ -276,6 +298,89 @@ mod tests {
                 .is_err()
         );
         assert!(signed.verify(UPDATE_PUBLIC_KEY).is_err());
+    }
+    #[test]
+    fn skipped_versions_show_only_missed_releases_newest_first() {
+        let mut manifest = fixture();
+        manifest.version = Version::new(0, 4, 3);
+        manifest.changelog = notes::changelog(&[0, 1, 2, 3, 4].map(|patch| notes::ReleaseNotes {
+            version: Version::new(0, 4, patch),
+            notes: format!("- Change {patch}"),
+        }));
+        let selected = notes::parse_changelog(&manifest.notes_since("0.4.0")).unwrap();
+        assert_eq!(
+            selected.iter().map(|r| r.version.patch).collect::<Vec<_>>(),
+            [3, 2, 1]
+        );
+        assert_eq!(selected[0].notes, "- Change 3");
+        assert!(
+            notes::parse_changelog(&manifest.notes_since("0.4.3"))
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            notes::parse_changelog(&manifest.changelog).unwrap().len(),
+            5
+        );
+    }
+
+    #[test]
+    fn legacy_feeds_and_incomplete_history_keep_latest_notes() {
+        let mut manifest = fixture();
+        assert_eq!(manifest.notes_since("0.1.0"), "Notes");
+        manifest.changelog = notes::changelog(&[notes::ReleaseNotes {
+            version: Version::new(0, 1, 0),
+            notes: "Old".into(),
+        }]);
+        assert_eq!(manifest.notes_since("0.1.0"), "Notes");
+        assert_eq!(manifest.notes_since("invalid"), "Notes");
+    }
+
+    #[test]
+    fn versioned_history_is_authenticated_without_changing_schema_one_fields() {
+        let mut manifest = fixture();
+        manifest.changelog = notes::changelog(&[notes::ReleaseNotes {
+            version: manifest.version.clone(),
+            notes: "- A direct commit".into(),
+        }]);
+        let key = SigningKey::from_bytes(&[7; 32]);
+        let public = STANDARD.encode(key.verifying_key().to_bytes());
+        let mut signed = SignedManifest::sign(&manifest, &key).unwrap();
+        let mut payload: serde_json::Value =
+            serde_json::from_slice(&STANDARD.decode(&signed.payload).unwrap()).unwrap();
+        // This is the exact schema accepted by installed deny_unknown_fields readers.
+        let mut fields = payload
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        fields.sort();
+        assert_eq!(
+            fields,
+            [
+                "api",
+                "architecture",
+                "archive_bytes",
+                "archive_sha256",
+                "archive_url",
+                "build",
+                "changelog",
+                "commit",
+                "daemon_version",
+                "minimum_client",
+                "notes",
+                "schema",
+                "version"
+            ]
+        );
+        assert_eq!(
+            signed.verify(&public).unwrap().changelog,
+            manifest.changelog
+        );
+        payload["changelog"] = "changed history".into();
+        signed.payload = STANDARD.encode(serde_json::to_vec(&payload).unwrap());
+        assert!(signed.verify(&public).is_err());
     }
     #[test]
     fn refuses_mixed_versions_and_unsupported_contracts() {

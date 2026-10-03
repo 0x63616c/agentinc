@@ -18,6 +18,7 @@ pub mod distribute;
 pub mod file_server;
 pub mod http;
 pub mod measure_build;
+mod notes;
 #[cfg(test)]
 mod pipeline_config;
 pub mod prepare;

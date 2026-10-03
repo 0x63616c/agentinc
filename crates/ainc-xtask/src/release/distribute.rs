@@ -1,10 +1,10 @@
 //! Linux signing/notarization and idempotent GitHub distribution.
 //! Only main may publish. Test jobs leave a draft; credentials never enter arguments.
 use super::{
-    checked, ci_gate, create_tar_gz, extract_tar_gz, inventory, output, output_bytes, parse_args,
-    read_to_string, resolve, truthy,
+    checked, ci_gate, create_tar_gz, extract_tar_gz, inventory, notes as release_notes, output,
+    output_bytes, parse_args, read_to_string, resolve, truthy,
 };
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::Value;
 use std::{
@@ -348,7 +348,7 @@ pub fn main(
         "--json",
         "targetCommitish,isDraft,body",
     ]))?;
-    let notes;
+    let mut notes = None;
     if code == 0 {
         let release: Value = serde_json::from_str(&stdout)?;
         if key(&release, "targetCommitish")?.as_str() != Some(commit.as_str()) {
@@ -359,29 +359,20 @@ pub fn main(
             return Ok(());
         }
         // A null body would have crashed the Python; treat it as empty.
-        notes = key(&release, "body")?.as_str().unwrap_or("").to_string();
+        notes = Some(key(&release, "body")?.as_str().unwrap_or("").to_string());
+    }
+    let published = release_notes::published(shell, &repo, &version)?;
+    let notes = if let Some(notes) = notes {
+        notes
     } else {
-        let notes_file = base.join(format!("docs/releases/{version}.md"));
-        notes = if notes_file.exists() {
-            read_to_string(&notes_file)?
-        } else {
-            let generated = json_output(
-                shell,
-                &[
-                    "gh",
-                    "api",
-                    &format!("repos/{repo}/releases/generate-notes"),
-                    "-f",
-                    &format!("tag_name={tag}"),
-                    "-f",
-                    &format!("target_commitish={commit}"),
-                ],
-            )?;
-            key(&generated, "body")?
-                .as_str()
-                .ok_or_else(|| anyhow!("generated notes have no body"))?
-                .to_string()
-        };
+        let notes = release_notes::generate(
+            shell,
+            base,
+            &repo,
+            &version,
+            &commit,
+            published.first().map(|release| release.tag.as_str()),
+        )?;
         let notes_path = out.join("notes.md");
         fs::write(&notes_path, &notes)?;
         shell.run(
@@ -400,22 +391,14 @@ pub fn main(
             ]),
             None,
         )?;
-    }
+        notes
+    };
     // Notes are generated once, saved in the draft, then reused on every retry.
     fs::write(out.join("notes.md"), &notes)?;
-    let releases = json_output(
-        shell,
-        &["gh", "api", &format!("repos/{repo}/releases?per_page=100")],
+    fs::write(
+        out.join("changelog.md"),
+        release_notes::history(shell, base, &repo, &version, &notes, &published)?,
     )?;
-    let history = releases
-        .as_array()
-        .context("releases is not a list")?
-        .iter()
-        .filter(|release| !truthy(release.get("draft")))
-        .map(|release| release["body"].as_str().unwrap_or("").to_string())
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    fs::write(out.join("changelog.md"), format!("{notes}\n\n{history}"))?;
 
     let private = tempfile::tempdir()?;
     let private = private.path();
@@ -626,6 +609,7 @@ mod tests {
         calls: Mutex<Vec<Vec<String>>>,
         fail_at: Option<usize>,
         outputs: Option<fn(&[String]) -> String>,
+        draft: Option<String>,
         ci_error: bool,
     }
 
@@ -645,7 +629,12 @@ mod tests {
             Ok(())
         }
         fn probe(&self, _: &[String]) -> Result<(i32, String)> {
-            Ok((1, String::new()))
+            Ok(self.draft.as_ref().map_or((1, String::new()), |body| {
+                (
+                    0,
+                    json!({"targetCommitish": COMMIT, "isDraft": true, "body": body}).to_string(),
+                )
+            }))
         }
         fn sign_all(&self, _: Vec<Task<'_>>, _: Task<'_>) -> Result<()> {
             self.calls.lock().unwrap().push(vec!["sign_all".into()]);
@@ -772,10 +761,8 @@ mod tests {
                     "target_directory": "/nonexistent/target",
                 })
                 .to_string(),
-                ["gh", "api", endpoint, ..] if endpoint.contains("generate-notes") => {
-                    json!({"body": "Release notes"}).to_string()
-                }
-                ["gh", "api", ..] => "[]".to_string(),
+                ["git", "log", ..] => format!("{COMMIT}\tA direct commit"),
+                ["gh", "api", ..] => "[[]]".to_string(),
                 _ => String::new(),
             }
         }
@@ -800,6 +787,13 @@ mod tests {
         let raw = args(&["--commit", COMMIT, "--archive", &text(&source)]);
         let error = main(&raw, &env, root, &shell).unwrap_err();
         assert!(error.to_string().contains("CI failed"));
+        let notes = fs::read_to_string(root.join(".local/distribution/notes.md")).unwrap();
+        assert!(notes.contains("A direct commit"));
+        let history = fs::read_to_string(root.join(".local/distribution/changelog.md")).unwrap();
+        assert_eq!(
+            ainc_release::notes::parse_changelog(&history).unwrap()[0].notes,
+            notes.strip_prefix("# AgentInc 0.3.5\n\n").unwrap().trim()
+        );
         let calls = shell.calls.lock().unwrap();
         assert_eq!(calls.iter().filter(|c| *c == &["sign_all"]).count(), 1);
         assert!(
@@ -811,6 +805,40 @@ mod tests {
             !calls
                 .iter()
                 .any(|c| c.contains(&"--draft=false".to_string()))
+        );
+        drop(calls);
+
+        // A retry must use the draft verbatim, even when the override and Git history changed.
+        fs::create_dir_all(root.join("docs/releases")).unwrap();
+        fs::write(root.join("docs/releases/0.3.5.md"), "Changed override").unwrap();
+        let retry = Recorder {
+            outputs: Some(outputs),
+            draft: Some("Original draft **notes**".into()),
+            ci_error: true,
+            ..Default::default()
+        };
+        assert!(
+            main(&raw, &env, root, &retry)
+                .unwrap_err()
+                .to_string()
+                .contains("CI failed")
+        );
+        assert_eq!(
+            fs::read_to_string(root.join(".local/distribution/notes.md")).unwrap(),
+            "Original draft **notes**"
+        );
+        let history = fs::read_to_string(root.join(".local/distribution/changelog.md")).unwrap();
+        assert_eq!(
+            ainc_release::notes::parse_changelog(&history).unwrap()[0].notes,
+            "Original draft **notes**"
+        );
+        assert!(
+            !retry
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|call| call.starts_with(&args(&["gh", "release", "create"])))
         );
     }
 }
