@@ -548,7 +548,7 @@ static NSString *itemNotes(SUAppcastItem *item, NSString *current, BOOL history)
 // feed overrides below are compiled out of the shipping application.
 static NSArray<NSString *> *profileEnvironmentKeys(void) {
     return @[@"AINC_SESSION_PATH", @"AINC_DISCOVERY_FILE", @"AINC_API_URL",
-        @"AINC_TOKEN_FILE", @"AINC_DATABASE_URL", @"AINC_LEGACY_DIR",
+        @"AINC_TOKEN_FILE", @"AINC_DATABASE_URL", @"DATABASE_URL", @"AINC_LEGACY_DIR",
         @"AINC_CODEX_HOME", @"AINC_CODEX_PATH", @"AINC_RUNTIME_CONFIG",
         @"AINC_WORKSPACE_DIR", @"AINC_TOOL_ALLOW"
 #ifdef AINC_UPGRADE_TEST

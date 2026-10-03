@@ -71,7 +71,7 @@ fn spawn_daemon(discovery: &std::path::Path) -> Result<()> {
         binary.exists(),
         "Companion daemon missing. Start the development stack or reinstall AgentInc."
     );
-    let mut command = std::process::Command::new(binary);
+    let mut command = daemon_command(binary, discovery, std::env::var_os("AINC_DATABASE_URL"));
     std::fs::create_dir_all(discovery.parent().context("discovery directory")?)?;
     let log = std::fs::OpenOptions::new()
         .create(true)
@@ -80,12 +80,26 @@ fn spawn_daemon(discovery: &std::path::Path) -> Result<()> {
         .open(discovery.with_file_name("daemon.log"))?;
     ainc_release::process::prepare_child(&mut command)
         .process_group(0)
-        .env("AINC_DISCOVERY_FILE", discovery)
         .stdin(std::process::Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log)
         .spawn()?;
     Ok(())
+}
+
+/// The companion command: the app's `AINC_DATABASE_URL` reaches `aincd` as
+/// `DATABASE_URL`; without it the inherited `DATABASE_URL` applies unchanged.
+fn daemon_command(
+    binary: PathBuf,
+    discovery: &std::path::Path,
+    database: Option<std::ffi::OsString>,
+) -> std::process::Command {
+    let mut command = std::process::Command::new(binary);
+    if let Some(database) = database {
+        command.env("DATABASE_URL", database);
+    }
+    command.env("AINC_DISCOVERY_FILE", discovery);
+    command
 }
 
 #[derive(Default)]
@@ -233,4 +247,45 @@ async fn perform(client: &Client, request: Request) -> Result<Reply, DaemonError
             Reply::Done
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn child_environment(database: Option<&str>) -> String {
+        let output = daemon_command(
+            "/usr/bin/env".into(),
+            std::path::Path::new("/isolated/api-url"),
+            database.map(Into::into),
+        )
+        .output()
+        .expect("run companion command");
+        assert!(output.status.success());
+        String::from_utf8(output.stdout).expect("environment")
+    }
+
+    #[test]
+    fn configured_external_database_reaches_the_spawned_daemon() {
+        let environment = child_environment(Some("postgres://external/db"));
+        assert!(
+            environment
+                .lines()
+                .any(|line| line == "DATABASE_URL=postgres://external/db")
+        );
+        assert!(
+            environment
+                .lines()
+                .any(|line| line == "AINC_DISCOVERY_FILE=/isolated/api-url")
+        );
+    }
+
+    #[test]
+    fn without_an_app_override_the_daemon_inherits_its_database() {
+        let inherited = std::env::var("DATABASE_URL").ok();
+        let child = child_environment(None)
+            .lines()
+            .find_map(|line| line.strip_prefix("DATABASE_URL=").map(str::to_owned));
+        assert_eq!(child, inherited);
+    }
 }

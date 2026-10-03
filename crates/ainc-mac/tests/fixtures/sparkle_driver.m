@@ -365,6 +365,7 @@ int main(void) {
         setenv("AINC_SESSION_PATH", "/isolated/profile/sessions.json", 1);
         setenv("AINC_DISCOVERY_FILE", "/isolated/profile/api-url", 1);
         setenv("AINC_DATABASE_URL", "postgres://fixture/password", 1);
+        setenv("DATABASE_URL", "postgres://fixture/inherited", 1);
         setenv("AINC_RUNTIME_CONFIG", "{\"endpoint\":\"fixture\"}", 1);
         setenv("AINC_UPGRADE_TEST_SPARKLE_FEED_URL", "https://test-only.invalid/feed", 1);
         setenv("AINC_UPGRADE_TEST_DOWNLOADED_FILE", "/isolated/downloaded", 1);
@@ -384,6 +385,7 @@ int main(void) {
         NSCAssert([permissions[NSFilePosixPermissions] unsignedShortValue] == 0600, @"credentials are owner-only");
         unsetenv("AINC_SESSION_PATH");
         unsetenv("AINC_DATABASE_URL");
+        unsetenv("DATABASE_URL");
         unsetenv("AINC_RUNTIME_CONFIG");
         setenv("AINC_DISCOVERY_FILE", "/explicit/new-launch/api-url", 1);
         NSCAssert(!restoreRelaunchProfile(record, @"1") && !getenv("AINC_SESSION_PATH"), @"old-version launch does not consume a failed update's profile");
@@ -393,6 +395,7 @@ int main(void) {
 #endif
         NSCAssert(strcmp(getenv("AINC_SESSION_PATH"), "/isolated/profile/sessions.json") == 0, @"session path survives LaunchServices relaunch");
         NSCAssert(getenv("AINC_DATABASE_URL") && strcmp(getenv("AINC_DATABASE_URL"), "postgres://fixture/password") == 0, @"external database configuration survives");
+        NSCAssert(getenv("DATABASE_URL") && strcmp(getenv("DATABASE_URL"), "postgres://fixture/inherited") == 0, @"inherited daemon database configuration survives");
         NSCAssert(strcmp(getenv("AINC_RUNTIME_CONFIG"), "{\"endpoint\":\"fixture\"}") == 0, @"companion runtime override survives");
         NSCAssert(strcmp(getenv("AINC_DISCOVERY_FILE"), "/explicit/new-launch/api-url") == 0, @"explicit new launch overrides win");
         NSCAssert(![NSFileManager.defaultManager fileExistsAtPath:record.path], @"handoff is consumed exactly once");
