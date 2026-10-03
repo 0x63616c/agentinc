@@ -1,43 +1,11 @@
-//! App-owned update state. Native AppKit windows remain available when the backend is down.
-use crate::native_update::{self, Status};
+//! App-owned settings and shutdown coordination for the custom Sparkle driver.
+use crate::native_update::{self, State};
 use crate::ui::*;
-use ainc_release::{
-    Manifest, SignedManifest,
-    updater::{self, Preferences},
-};
 use gpui::{prelude::*, *};
-use std::{
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
-    time::Duration,
-};
+use std::{fs::File, path::Path, time::Duration};
 
 actions!(updates, [CheckForUpdates, ShowChangelog]);
 
-#[derive(Clone, Copy)]
-enum Retry {
-    Check,
-    Download { install: bool },
-    Install,
-}
-
-fn apply_choice(
-    preferences: &mut Preferences,
-    action: i32,
-    automatic: bool,
-    version: Option<&str>,
-    now: u64,
-) {
-    preferences.automatic_download = automatic;
-    match action {
-        1 => preferences.skipped_version = version.map(str::to_owned),
-        2 => preferences.remind_after = now + 86400,
-        _ => {}
-    }
-}
 #[derive(Clone)]
 pub struct Updates(pub Entity<UpdateView>);
 #[derive(Clone)]
@@ -45,20 +13,10 @@ pub struct UpdateHost(pub WindowHandle<crate::shell::Shell>);
 impl Global for UpdateHost {}
 impl Global for Updates {}
 pub struct UpdateView {
-    preferences: Preferences,
-    directory: PathBuf,
-    message: String,
-    release: Option<(SignedManifest, Manifest)>,
-    busy: bool,
-    ready: bool,
-    available: bool,
-    progress: Arc<AtomicU64>,
-    cancel: Option<tokio::sync::watch::Sender<bool>>,
-    downloading: bool,
-    install_after_download: bool,
-    visible: bool,
-    changelog: bool,
-    failure: Option<Retry>,
+    state: State,
+    draining: bool,
+    // Prevent another companion from restarting between drain and app exit.
+    shutdown_locks: Vec<File>,
     hover: HoverFade,
 }
 impl HoverHost for UpdateView {
@@ -69,34 +27,10 @@ impl HoverHost for UpdateView {
 impl UpdateView {
     fn new(cx: &mut Context<Self>) -> Self {
         let directory = std::env::var_os("AGENTINC_SESSION_PATH")
-            .map(PathBuf::from)
+            .map(std::path::PathBuf::from)
             .and_then(|p| p.parent().map(|p| p.join("updates")))
             .unwrap_or_else(|| ainc_release::identity::support_dir().join("updates"));
-        let loaded = Preferences::load(&directory.join("preferences.json"));
-        let message = loaded
-            .as_ref()
-            .err()
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| format!("AgentInc {}", ainc_release::identity::version()));
-        let preferences = loaded.unwrap_or_default();
-        cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor()
-                    .timer(Duration::from_secs(60))
-                    .await;
-                if this
-                    .update(cx, |this, cx| {
-                        if this.preferences.due(updater::now()) && !this.busy {
-                            this.check(false, cx);
-                        }
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        })
-        .detach();
+        native_update::start(&directory.join("preferences.json"));
         cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -108,377 +42,94 @@ impl UpdateView {
             }
         })
         .detach();
-        if directory.join("feed.json").is_file() && !ainc_release::update_public_key().is_empty() {
-            let saved = directory.clone();
-            let request = cx.background_executor().spawn(async move {
-                let signed: SignedManifest =
-                    serde_json::from_slice(&std::fs::read(saved.join("feed.json"))?)?;
-                let manifest =
-                    updater::verify_download(&signed, ainc_release::update_public_key(), &saved)?;
-                anyhow::ensure!(
-                    manifest.is_upgrade(ainc_release::VERSION, std::env::consts::ARCH)?,
-                    "saved update is no longer newer"
-                );
-                anyhow::Ok((signed, manifest))
-            });
-            cx.spawn(async move |this, cx| {
-                if let Ok(release) = request.await {
-                    let _ = this.update(cx, |this, cx| {
-                        if !this.busy
-                            && this
-                                .release
-                                .as_ref()
-                                .is_none_or(|(_, manifest)| manifest.version <= release.1.version)
-                        {
-                            this.release = Some(release);
-                            this.available = true;
-                            this.ready = true;
-                            this.message = "Update verified and ready to install".into();
-                            this.present();
-                            cx.notify();
-                        }
-                    });
-                }
-            })
-            .detach();
-        }
         Self {
-            preferences,
-            directory,
-            message,
-            release: None,
-            busy: false,
-            ready: false,
-            available: false,
-            progress: Arc::new(AtomicU64::new(0)),
-            cancel: None,
-            downloading: false,
-            install_after_download: false,
-            visible: false,
-            changelog: false,
-            failure: None,
+            state: native_update::state(),
+            draining: false,
+            shutdown_locks: Vec::new(),
             hover: HoverFade::default(),
         }
     }
     pub fn is_ready(&self) -> bool {
-        self.ready
-            && updater::now() >= self.preferences.remind_after
-            && self.release.as_ref().is_some_and(|(_, manifest)| {
-                self.preferences.skipped_version.as_deref() != Some(&manifest.version.to_string())
-            })
-    }
-    fn save(&mut self) {
-        if let Err(error) = self
-            .preferences
-            .save(&self.directory.join("preferences.json"))
-        {
-            self.message = error.to_string();
-        }
-    }
-    fn present(&self) {
-        if !self.visible {
-            return;
-        }
-        if self.downloading {
-            if let Some((_, manifest)) = &self.release {
-                native_update::progress(
-                    self.progress.load(Ordering::Relaxed),
-                    manifest.archive_bytes,
-                );
-            }
-        } else if self.busy {
-            native_update::status(Status::Checking);
-        } else if self.failure.is_some() {
-            native_update::status(Status::Failed(&self.message));
-        } else if self.available || (self.changelog && self.release.is_some()) {
-            if let Some((_, manifest)) = &self.release {
-                native_update::offer(
-                    manifest,
-                    self.preferences.automatic_download,
-                    self.ready,
-                    self.changelog,
-                );
-                #[cfg(ainc_upgrade_test)]
-                if std::env::var_os("AINC_UPGRADE_TEST_MODE").is_some() {
-                    native_update::upgrade_test_click_install();
-                }
-            }
-        } else {
-            native_update::status(if self.release.is_some() {
-                Status::UpToDate
-            } else {
-                Status::Info(&self.message)
-            });
-        }
+        self.state.ready
     }
     fn poll_native(&mut self, cx: &mut Context<Self>) {
-        if self.downloading && self.visible {
-            self.present_progress();
-        }
-        if let Some((action, automatic)) = native_update::take_action() {
-            if action == 6 {
-                match self.failure.take() {
-                    Some(Retry::Check) => self.check(true, cx),
-                    Some(Retry::Download { install }) => {
-                        self.install_after_download = install;
-                        self.download(cx);
-                    }
-                    Some(Retry::Install) => self.install(cx),
-                    None => {}
-                }
-                return;
-            }
-            if action == 7 {
-                self.visible = false;
-                return;
-            }
-            if action == 4 {
-                if let Some(cancel) = &self.cancel {
-                    let _ = cancel.send(true);
-                }
-                self.visible = false;
-                return;
-            }
-            let version = self.release.as_ref().map(|(_, m)| m.version.to_string());
-            apply_choice(
-                &mut self.preferences,
-                action,
-                automatic,
-                version.as_deref(),
-                updater::now(),
-            );
+        while let Some((action, _)) = native_update::take_action() {
             match action {
-                1 => {
-                    self.visible = false;
-                }
-                2 => {
-                    self.visible = false;
-                }
-                3 => {
-                    if self.ready {
-                        self.install(cx);
-                    } else {
-                        self.install_after_download = true;
-                        self.download(cx);
-                    }
-                }
+                8 => self.prepare_install(cx),
+                9 => self.shutdown_locks.clear(),
                 _ => {}
             }
-            self.save();
+        }
+        let state = native_update::state();
+        if self.state != state {
+            self.state = state;
             cx.notify();
         }
     }
-    fn present_progress(&self) {
-        if let Some((_, manifest)) = &self.release {
-            native_update::progress(
-                self.progress.load(Ordering::Relaxed),
-                manifest.archive_bytes,
-            );
-        }
-    }
-    fn check(&mut self, manual: bool, cx: &mut Context<Self>) {
-        if !ainc_release::identity::PRODUCTION {
-            self.message = "Updates are available in production builds.".into();
-            self.present();
-            cx.notify();
+    fn prepare_install(&mut self, cx: &mut Context<Self>) {
+        if self.draining {
             return;
         }
-        if self.busy {
-            return;
-        }
-        if manual {
-            self.preferences.skipped_version = None;
-            self.preferences.remind_after = 0;
-        }
-        self.busy = true;
-        self.failure = None;
-        self.message = "Checking for updates…".into();
-        self.present();
-        let request = cx.background_executor().spawn(async {
-            crate::storage::background(updater::check(
-                &ainc_release::update_feed_url(),
-                ainc_release::update_public_key(),
-            ))
-        });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.busy = false;
-                this.preferences.last_check = updater::now();
-                match result {
-                    Ok((signed, manifest)) => match manifest
-                        .is_upgrade(ainc_release::VERSION, std::env::consts::ARCH)
-                    {
-                        Ok(true)
-                            if manual
-                                || this.preferences.skipped_version.as_deref()
-                                    != Some(&manifest.version.to_string()) =>
-                        {
-                            this.message = format!("AgentInc {} is available", manifest.version);
-                            this.release = Some((signed, manifest));
-                            this.ready = false;
-                            this.available = true;
-                            if !manual && this.preferences.automatic_download {
-                                this.download(cx);
-                            }
-                        }
-                        Ok(_) => {
-                            this.message = "You’re up to date".into();
-                            this.available = false;
-                            this.release = Some((signed, manifest));
-                        }
-                        Err(error) => {
-                            this.message = error.to_string();
-                            this.failure = Some(Retry::Check);
-                        }
-                    },
-                    Err(error) => {
-                        this.message = format!("Could not check for updates: {error:#}");
-                        this.failure = Some(Retry::Check);
-                    }
-                }
-                this.save();
-                this.present();
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-    fn download(&mut self, cx: &mut Context<Self>) {
-        let Some((signed, manifest)) = self.release.clone() else {
-            return;
-        };
-        if self.busy {
-            return;
-        }
-        self.busy = true;
-        self.downloading = true;
-        self.failure = None;
-        let (cancel, cancelled) = tokio::sync::watch::channel(false);
-        self.cancel = Some(cancel);
-        self.message = "Downloading update…".into();
-        self.progress.store(0, Ordering::Relaxed);
-        let directory = self.directory.clone();
-        let progress = self.progress.clone();
-        self.present();
-        let request = cx.background_executor().spawn(async move {
-            std::fs::create_dir_all(&directory)?;
-            std::fs::write(directory.join("feed.json"), serde_json::to_vec(&signed)?)?;
-            crate::storage::background(updater::download_cancellable(
-                &manifest,
-                &directory.join("app.tar.gz"),
-                progress,
-                cancelled,
-            ))?;
-            updater::verify_download(&signed, ainc_release::update_public_key(), &directory)
-                .map(|_| ())
-        });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.busy = false;
-                this.downloading = false;
-                let cancelled = this.cancel.take().is_some_and(|cancel| *cancel.borrow());
-                if cancelled {
-                    this.install_after_download = false;
-                    this.message = "Download canceled".into();
-                    native_update::close();
-                    cx.notify();
-                    return;
-                }
-                this.ready = result.is_ok();
-                this.failure = result.is_err().then_some(Retry::Download {
-                    install: this.install_after_download,
-                });
-                this.message = match result {
-                    Ok(()) => "Update verified and ready to install".into(),
-                    Err(e) => format!("Download failed: {e:#}"),
-                };
-                if this.ready && this.install_after_download {
-                    this.install(cx);
-                } else {
-                    #[cfg(ainc_upgrade_test)]
-                    if this.ready
-                        && std::env::var("AINC_UPGRADE_TEST_MODE").as_deref() == Ok("automatic")
-                    {
-                        this.visible = true;
-                    }
-                    this.present();
-                }
-                this.install_after_download = false;
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-    fn install(&mut self, cx: &mut Context<Self>) {
-        self.failure = None;
-        let result = (|| -> anyhow::Result<()> {
-            anyhow::ensure!(self.ready, "download is not verified");
+        let result = (|| -> anyhow::Result<_> {
             let host = cx.global::<UpdateHost>().0;
             host.update(cx, |shell, _, cx| shell.flush_for_update(cx))??;
-            let executable = std::env::current_exe()?;
-            let macos = executable
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("app bundle unavailable"))?;
-            let app = macos
-                .parent()
-                .and_then(|p| p.parent())
-                .ok_or_else(|| anyhow::anyhow!("app bundle unavailable"))?;
-            let discovery = crate::storage::discovery_path()?;
-            // The helper verifies the signed feed/archive again after launch.
-            let log = std::fs::File::create(self.directory.join("install.log"))?;
-            ainc_release::process::prepare_child(&mut std::process::Command::new(
-                macos.join("ainc-update"),
-            ))
-            .arg(app)
-            .arg(&self.directory)
-            .arg(std::process::id().to_string())
-            .arg(discovery)
-            .stdout(log.try_clone()?)
-            .stderr(log)
-            .spawn()?;
-            Ok(())
+            crate::storage::discovery_path()
         })();
-        match result {
-            Ok(()) => {
-                native_update::close();
-                cx.quit()
-            }
+        let discovery = match result {
+            Ok(path) => path,
             Err(error) => {
-                self.message = format!("Install failed: {error:#}");
-                self.failure = Some(Retry::Install);
-                self.present();
-                cx.notify();
+                native_update::prepared(Some(&format!("Update postponed: {error:#}")));
+                return;
             }
-        }
+        };
+        self.draining = true;
+        let request = cx
+            .background_executor()
+            .spawn(async move { crate::storage::background(drain_owned_runtime(&discovery)) });
+        cx.spawn(async move |this, cx| {
+            let result = request.await;
+            let _ = this.update(cx, |this, cx| {
+                this.draining = false;
+                match result {
+                    Ok(locks) => {
+                        this.shutdown_locks = locks;
+                        // Flush once more after the asynchronous drain: the user
+                        // may have edited a draft while shutdown was in progress.
+                        let host = cx.global::<UpdateHost>().0;
+                        match host.update(cx, |shell, _, cx| shell.flush_for_update(cx)) {
+                            Ok(Ok(())) => native_update::prepared(None),
+                            result => {
+                                this.shutdown_locks.clear();
+                                native_update::prepared(Some(&format!(
+                                    "Could not save work; update postponed: {result:?}"
+                                )));
+                            }
+                        }
+                    }
+                    Err(error) => native_update::prepared(Some(&format!(
+                        "Could not stop the local runtime; update postponed: {error:#}"
+                    ))),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
     pub fn settings(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         self.hover.animate(window);
-        let frequency = if self.preferences.interval_hours == 24 {
-            0
-        } else {
-            1
-        };
         settings_section(
             "Software updates",
             column()
                 .child(settings_row(
                     "Updates",
-                    self.message.clone(),
+                    self.state.message.clone(),
                     Button::new("updates.check", "Check Now")
                         .secondary()
                         .icon("refresh")
-                        .enabled(!self.busy)
+                        .enabled(self.state.can_check)
                         .build(
                             &self.hover,
-                            |this: &mut Self, _, cx| {
-                                this.visible = true;
-                                this.changelog = false;
-                                this.check(true, cx);
-                            },
+                            |_: &mut Self, _, _| native_update::check(false),
                             cx,
                         ),
                 ))
@@ -489,12 +140,11 @@ impl UpdateView {
                     toggle(
                         "updates.auto",
                         "Automatic checks",
-                        self.preferences.automatic_checks,
-                        true,
+                        self.state.automatic_checks,
+                        self.state.enabled,
                         |this: &mut Self, _, cx| {
-                            this.preferences.automatic_checks = !this.preferences.automatic_checks;
-                            this.save();
-                            cx.notify();
+                            native_update::setting(0, !this.state.automatic_checks);
+                            this.poll_native(cx);
                         },
                         cx,
                     ),
@@ -506,13 +156,12 @@ impl UpdateView {
                     segmented(
                         "updates.frequency",
                         ["Daily", "Weekly"],
-                        frequency,
-                        true,
+                        usize::from(self.state.weekly),
+                        self.state.enabled,
                         &self.hover,
                         |this: &mut Self, index, _, cx| {
-                            this.preferences.interval_hours = if index == 0 { 24 } else { 168 };
-                            this.save();
-                            cx.notify();
+                            native_update::setting(2, index == 1);
+                            this.poll_native(cx);
                         },
                         cx,
                     ),
@@ -524,13 +173,11 @@ impl UpdateView {
                     toggle(
                         "updates.download",
                         "Automatic download",
-                        self.preferences.automatic_download,
-                        true,
+                        self.state.automatic_download,
+                        self.state.enabled,
                         |this: &mut Self, _, cx| {
-                            this.preferences.automatic_download =
-                                !this.preferences.automatic_download;
-                            this.save();
-                            cx.notify();
+                            native_update::setting(1, !this.state.automatic_download);
+                            this.poll_native(cx);
                         },
                         cx,
                     ),
@@ -548,30 +195,84 @@ impl UpdateView {
     }
 }
 
-pub fn open(cx: &mut App, check: bool) {
-    let view = cx.global::<Updates>().0.clone();
-    view.update(cx, |this, cx| {
-        this.visible = true;
-        if check || this.release.is_none() {
-            this.changelog = false;
-            this.check(true, cx);
-        } else {
-            this.present();
+/// Drain only this profile's authenticated companion. Holding both ownership
+/// locks proves its bundled Postgres/Temporal children have finished stopping.
+async fn drain_owned_runtime(discovery: &Path) -> anyhow::Result<Vec<File>> {
+    use anyhow::Context;
+    let mut locks = Vec::new();
+    let daemon_lock = discovery.with_extension("lock");
+    match File::options().read(true).write(true).open(&daemon_lock) {
+        Ok(lock) => {
+            if lock.try_lock().is_err() {
+                let url =
+                    std::fs::read_to_string(discovery).context("read owned daemon discovery")?;
+                let url = reqwest::Url::parse(url.trim())?;
+                anyhow::ensure!(
+                    url.scheme() == "http"
+                        && matches!(url.host_str(), Some("127.0.0.1" | "[::1]" | "localhost")),
+                    "owned daemon must use a loopback URL"
+                );
+                let token = std::fs::read_to_string(discovery.with_file_name("owner-token"))?;
+                let response = reqwest::Client::new()
+                    .post(url.join("/internal/drain")?)
+                    .bearer_auth(token.trim())
+                    .timeout(Duration::from_secs(10))
+                    .send()
+                    .await;
+                match response {
+                    Ok(response) => anyhow::ensure!(
+                        response.status() == reqwest::StatusCode::ACCEPTED,
+                        "daemon refused update drain ({})",
+                        response.status()
+                    ),
+                    // It may have finished draining between the lock probe and HTTP.
+                    Err(error) => {
+                        lock.try_lock().context(error)?;
+                    }
+                }
+                wait_for_lock(&lock)
+                    .await
+                    .context("daemon has not drained")?;
+            }
+            locks.push(lock);
         }
-    });
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && !discovery.exists() => {}
+        Err(error) => return Err(error).context("open daemon ownership lock"),
+    }
+    let runtime_lock = discovery.with_file_name("runtime").join("owner.lock");
+    match File::options().read(true).write(true).open(runtime_lock) {
+        Ok(lock) => {
+            wait_for_lock(&lock)
+                .await
+                .context("bundled runtime has not stopped")?;
+            locks.push(lock);
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).context("open runtime ownership lock"),
+    }
+    Ok(locks)
 }
 
-pub fn open_changelog(cx: &mut App) {
-    let view = cx.global::<Updates>().0.clone();
-    view.update(cx, |this, cx| {
-        this.changelog = true;
-        this.visible = true;
-        if this.release.is_none() {
-            this.check(true, cx);
-        } else {
-            this.present();
+async fn wait_for_lock(lock: &File) -> anyhow::Result<()> {
+    tokio::time::timeout(Duration::from_secs(120), async {
+        loop {
+            match lock.try_lock() {
+                Ok(()) => return Ok(()),
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    tokio::time::sleep(Duration::from_millis(100)).await
+                }
+                Err(error) => return Err(anyhow::Error::from(error)),
+            }
         }
-    });
+    })
+    .await?
+}
+
+pub fn open(_: &mut App, _: bool) {
+    native_update::check(false);
+}
+pub fn open_changelog(_: &mut App) {
+    native_update::changelog();
 }
 pub fn init(cx: &mut App) {
     let view = cx.new(UpdateView::new);
@@ -587,24 +288,35 @@ pub fn start_upgrade_test(cx: &mut App) {
     };
     if std::env::var("AINC_UPGRADE_TEST_FROM").as_deref() != Ok(ainc_release::VERSION) {
         let marker = std::env::var("AINC_UPGRADE_TEST_SUCCESS_FILE").expect("upgrade test marker");
-        std::fs::write(
-            marker,
-            format!("{} {}\n", ainc_release::VERSION, std::process::id()),
-        )
-        .expect("write upgrade test marker");
+        cx.background_executor()
+            .spawn(async move {
+                crate::storage::background(async move {
+                    // client() starts the exact new bundled companion and waits for
+                    // its readiness endpoint, using the isolated discovery profile.
+                    let client = crate::storage::client().await?;
+                    let version = client.get_version().send().await?;
+                    anyhow::ensure!(
+                        version.version == ainc_release::VERSION,
+                        "replacement daemon version mismatch"
+                    );
+                    client.health_ready().send().await?;
+                    std::fs::write(
+                        marker,
+                        format!("{} {}\n", ainc_release::VERSION, std::process::id()),
+                    )?;
+                    anyhow::Ok(())
+                })
+                .expect("replacement runtime must become ready");
+            })
+            .detach();
         return;
     }
     match mode.as_str() {
-        "manual" => open(cx, true),
+        "manual" => native_update::check(false),
         "automatic" => {
-            let view = cx.global::<Updates>().0.clone();
-            view.update(cx, |this, cx| {
-                this.preferences.automatic_checks = true;
-                this.preferences.automatic_download = true;
-                this.preferences.last_check = 0;
-                this.visible = false;
-                this.check(false, cx);
-            });
+            native_update::setting(0, true);
+            native_update::setting(1, true);
+            native_update::check(true);
         }
         _ => panic!("unknown upgrade test mode"),
     }
@@ -612,17 +324,113 @@ pub fn start_upgrade_test(cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Preferences, apply_choice};
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    #[test]
-    fn native_choices_preserve_skip_remind_and_automatic_download() {
-        let mut preferences = Preferences::default();
-        apply_choice(&mut preferences, 5, true, Some("0.2.0"), 100);
-        assert!(preferences.automatic_download);
-        apply_choice(&mut preferences, 1, true, Some("0.2.0"), 100);
-        assert_eq!(preferences.skipped_version.as_deref(), Some("0.2.0"));
-        apply_choice(&mut preferences, 2, false, Some("0.2.0"), 100);
-        assert_eq!(preferences.remind_after, 86500);
-        assert!(!preferences.automatic_download);
+    async fn drain_server(
+        discovery: &Path,
+        response: &'static str,
+        release_daemon: Option<File>,
+    ) -> tokio::task::JoinHandle<()> {
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        std::fs::write(
+            discovery,
+            format!("http://{}", server.local_addr().unwrap()),
+        )
+        .unwrap();
+        std::fs::write(
+            discovery.with_file_name("owner-token"),
+            "isolated-owner-token",
+        )
+        .unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = server.accept().await.unwrap();
+            let mut request = Vec::new();
+            loop {
+                let mut bytes = [0; 1024];
+                let count = stream.read(&mut bytes).await.unwrap();
+                assert_ne!(count, 0);
+                request.extend_from_slice(&bytes[..count]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let request = String::from_utf8(request).unwrap().to_lowercase();
+            assert!(request.starts_with("post /internal/drain http/1.1"));
+            assert!(request.contains("authorization: bearer isolated-owner-token\r\n"));
+            drop(release_daemon);
+            stream.write_all(response.as_bytes()).await.unwrap();
+        })
+    }
+
+    #[tokio::test]
+    async fn install_waits_for_both_owned_daemon_and_runtime_locks() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("api-url");
+        let daemon = File::create(discovery.with_extension("lock")).unwrap();
+        daemon.lock().unwrap();
+        let runtime = directory.path().join("runtime");
+        std::fs::create_dir(&runtime).unwrap();
+        let owner = File::create(runtime.join("owner.lock")).unwrap();
+        owner.lock().unwrap();
+        let server = drain_server(
+            &discovery,
+            "HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\n\r\n",
+            Some(daemon),
+        )
+        .await;
+        let path = discovery.clone();
+        let drain = tokio::spawn(async move { drain_owned_runtime(&path).await });
+        server.await.unwrap();
+        // Observe the actual ownership handoff, rather than guessing its timing.
+        let probe = File::open(discovery.with_extension("lock")).unwrap();
+        loop {
+            if probe.try_lock().is_err() {
+                break;
+            }
+            probe.unlock().unwrap();
+            tokio::task::yield_now().await;
+        }
+        assert!(!drain.is_finished(), "runtime still owns its children");
+        drop(owner);
+        let locks = drain.await.unwrap().unwrap();
+        assert_eq!(locks.len(), 2);
+        assert!(
+            probe.try_lock().is_err(),
+            "restart is blocked until app exit"
+        );
+        drop(locks);
+        probe.try_lock().unwrap();
+    }
+
+    #[tokio::test]
+    async fn rejected_drain_never_releases_the_install_barrier() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("api-url");
+        let daemon = File::create(discovery.with_extension("lock")).unwrap();
+        daemon.lock().unwrap();
+        let server = drain_server(
+            &discovery,
+            "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n",
+            None,
+        )
+        .await;
+        let error = drain_owned_runtime(&discovery).await.unwrap_err();
+        assert!(error.to_string().contains("daemon refused update drain"));
+        server.await.unwrap();
+        let probe = File::open(discovery.with_extension("lock")).unwrap();
+        assert!(probe.try_lock().is_err());
+    }
+
+    #[tokio::test]
+    async fn stopped_profile_needs_no_network_and_missing_ownership_fails_closed() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("api-url");
+        assert!(drain_owned_runtime(&discovery).await.unwrap().is_empty());
+        std::fs::write(&discovery, "http://127.0.0.1:1").unwrap();
+        assert!(drain_owned_runtime(&discovery).await.is_err());
+        let lock = File::create(discovery.with_extension("lock")).unwrap();
+        drop(lock);
+        assert_eq!(drain_owned_runtime(&discovery).await.unwrap().len(), 1);
     }
 }
