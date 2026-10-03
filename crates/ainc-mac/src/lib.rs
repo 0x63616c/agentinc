@@ -25,9 +25,10 @@ pub mod ui_state;
 pub mod updates;
 use gpui::*;
 use shell::*;
-/// Logs go to stderr and, on macOS, the unified log under the bundle id. `AINC_LOG` filters
-/// (default `info`); gpui's `log` records are bridged in.
-fn init_tracing() {
+/// Installs the app's one tracing subscriber: stderr and, on macOS, the unified log under the
+/// bundle id. `AINC_LOG` filters (default `info`). `init` also bridges gpui's `log` records, so
+/// nothing else may install a `log` logger: a second one panics at launch.
+pub fn init_tracing() {
     use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
     let filter = EnvFilter::try_from_env("AINC_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
     let subscriber = tracing_subscriber::registry()
@@ -227,6 +228,8 @@ mod tests {
     #[test]
     fn tracing_starts_once_and_bridges_gpui_log_records() {
         super::init_tracing();
-        assert!(tracing_log::log::log_enabled!(tracing_log::log::Level::Info));
+        assert!(tracing_log::log::log_enabled!(
+            tracing_log::log::Level::Info
+        ));
     }
 }

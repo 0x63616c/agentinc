@@ -203,7 +203,7 @@ mod acceptance {
         let mut reader = std::io::BufReader::new(output);
         let mut ready = false;
         for line in reader.by_ref().lines() {
-            if line.unwrap().contains("AgentInc daemon ready") {
+            if line.unwrap().contains(ainc_release::DAEMON_READY) {
                 ready = true;
                 break;
             }
