@@ -2,11 +2,16 @@
 name = "gpui-pilot"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 rust-version = "1.98"
 publish = false
 
 [lints]
 workspace = true
+
+[package.metadata.cargo-machete]
+# `image` is used through its traits on the frames GPUI renders.
+ignored = ["image"]
 
 [features]
 default = []

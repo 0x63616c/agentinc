@@ -114,6 +114,3 @@ Planned: operation IDs become an `OperationId` type shared with receipts (D1).
    `docs/releases/X.Y.Z.md` replaces them. Runner and fallback details:
    [release-runner.md](release-runner.md); signing, channels and the updater:
    [distribution.md](distribution.md). The SDK crates version independently.
-
-Planned: the release build stops watching git refs and `ainc-release` splits (B2); CI calls
-`cargo xtask check` / `cargo xtask test` (S22).

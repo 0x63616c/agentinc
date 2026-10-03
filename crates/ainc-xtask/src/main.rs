@@ -351,7 +351,34 @@ fn check(root: &Path, profile: Option<&str>) -> Result<()> {
         clippy.extend(["--profile", profile]);
     }
     clippy.extend(["--", "-D", "warnings"]);
-    step(root, &clippy)
+    step(root, &clippy)?;
+    optional_tools(root)
+}
+
+/// Linters that run only when installed: a missing one prints a note instead of failing, so
+/// a fresh machine still passes `just check` and CI installs the ones it wants.
+fn optional_tools(root: &Path) -> Result<()> {
+    const TOOLS: [(&str, &str, &[&str]); 4] = [
+        ("cargo-deny", "cargo-deny", &["cargo", "deny", "check"]),
+        ("cargo-machete", "cargo-machete", &["cargo", "machete"]),
+        ("typos", "typos-cli", &["typos"]),
+        ("taplo", "taplo-cli", &["taplo", "fmt", "--check"]),
+    ];
+    for (binary, package, command) in TOOLS {
+        if installed(binary) {
+            step(root, command)?;
+        } else {
+            println!(
+                "note: {binary} is not installed; skipping (cargo install {package} --locked)"
+            );
+        }
+    }
+    Ok(())
+}
+
+fn installed(binary: &str) -> bool {
+    env::var_os("PATH")
+        .is_some_and(|path| env::split_paths(&path).any(|dir| dir.join(binary).is_file()))
 }
 
 /// A throwaway Postgres in Docker, stopped when dropped. `--rm` removes the container.
