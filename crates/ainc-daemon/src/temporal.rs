@@ -91,7 +91,7 @@ pub async fn list(
                 "Choose a valid status or refresh the page.",
             )
         } else {
-            tracing::warn!(%error, "Temporal visibility unavailable");
+            tracing::warn!(%error, "temporal visibility unavailable");
             ApiError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "unavailable",
