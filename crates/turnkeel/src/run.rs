@@ -1,5 +1,5 @@
 use crate::{Error, Event, Message, engine::RunHandle};
-use futures::{StreamExt, stream, stream::BoxStream};
+use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 
 /// Identifies an agent run. Stable for the run's whole life, including across restarts and
@@ -42,23 +42,7 @@ impl Run {
     /// Recorded messages and tool results, followed by live events until the run ends.
     /// Each new subscriber starts at the beginning; terminal failures end with an error.
     pub fn events(&self) -> BoxStream<'static, Result<Event, Error>> {
-        let handle = self.handle.clone();
-        stream::unfold(Some((handle, 0usize)), |state| async move {
-            let (handle, offset) = state?;
-            match handle.events_after(offset).await {
-                Ok((events, done)) => {
-                    let next = offset + events.len();
-                    let batch: Vec<Result<Event, Error>> = events.into_iter().map(Ok).collect();
-                    Some((
-                        stream::iter(batch),
-                        if done { None } else { Some((handle, next)) },
-                    ))
-                }
-                Err(error) => Some((stream::iter(vec![Err(error)]), None)),
-            }
-        })
-        .flatten()
-        .boxed()
+        self.handle.events()
     }
 
     /// Wait for the run to finish and return the final answer.

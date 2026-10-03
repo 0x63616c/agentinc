@@ -1,6 +1,7 @@
 #[cfg(feature = "testing")]
 use crate::engine::EngineOptions;
-use crate::{Agent, Error, Message, Run, RunId, Session, SessionId, engine::Engine};
+use crate::{Agent, AgentSource, Error, Message, Run, RunId, Session, SessionId, engine::Engine};
+use std::sync::Arc;
 
 /// Stable deployment identity. Reuse the same values and register the same versioned
 /// agent definitions when replacing a process. A group shares work between its workers.
@@ -11,7 +12,51 @@ pub struct RuntimeConfig {
     pub worker_group: String,
 }
 
+/// What a piece of retained work is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunKind {
+    /// One message in, one reply out.
+    Run,
+    /// A conversation that stays open across many messages.
+    Session,
+    /// One invocation of a recurring action.
+    Occurrence,
+}
+
+/// Where a piece of retained work stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunStatus {
+    Running,
+    Completed,
+    Failed,
+    /// Stopped on request, whether by its caller or by an operator.
+    Cancelled,
+}
+
+/// One run, session or occurrence in the runtime's retained history.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WorkRecord {
+    /// The run, session or occurrence ID.
+    pub id: String,
+    pub kind: RunKind,
+    pub status: RunStatus,
+    /// Milliseconds since the Unix epoch.
+    pub started_at: i64,
+    pub closed_at: Option<i64>,
+}
+
+/// A page of work, open work first, then newest first.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct WorkPage {
+    pub work: Vec<WorkRecord>,
+    /// Pass back to [`Runtime::work_history`] for the next page.
+    pub next_page: Option<String>,
+}
+
 /// One run in the runtime's retained history.
+#[deprecated(note = "use `Runtime::work_history` and `WorkRecord`")]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RunRecord {
     pub id: String,
@@ -22,7 +67,9 @@ pub struct RunRecord {
     pub closed_at: Option<i64>,
 }
 
-/// A page of runs ordered by start time, newest first.
+/// A page of runs.
+#[deprecated(note = "use `Runtime::work_history` and `WorkPage`")]
+#[allow(deprecated)]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RunPage {
     pub runs: Vec<RunRecord>,
@@ -36,13 +83,19 @@ pub struct Runtime {
 
 impl Runtime {
     /// Read one page of retained runs without starting a worker.
+    #[deprecated(note = "use `Runtime::observer(config)` and `work_history`")]
+    #[allow(deprecated)]
     pub async fn run_history(
         config: &RuntimeConfig,
         status: Option<&str>,
         page: Option<&str>,
     ) -> Result<RunPage, Error> {
-        crate::engine::list_workflows(config, status, page).await
+        Engine::observer(config.clone())
+            .await?
+            .run_history(status, page)
+            .await
     }
+
     /// Start an embedded local runtime. Good for development and examples.
     #[cfg(feature = "testing")]
     pub async fn local() -> Result<Self, Error> {
@@ -59,22 +112,54 @@ impl Runtime {
     }
 
     /// Connect with a stable identity and install definitions before accepting work.
-    /// Give changed definitions new names (for example `evee-v2`), and retain old
+    /// Give changed definitions new names (for example `assistant-v2`), and retain old
     /// definitions while their runs or sessions are still open.
     pub async fn configured(config: RuntimeConfig, agents: &[Agent]) -> Result<Self, Error> {
         Ok(Self {
-            engine: Engine::configured(config, agents).await?,
+            engine: Engine::configured(config, agents, None).await?,
         })
+    }
+
+    /// Connect with a stable identity and look definitions up as runs need them.
+    ///
+    /// The source is consulted on this worker the first time a run or session names an
+    /// agent it has not seen, so a replacement process needs no list of in-flight agents
+    /// and new definition versions need no restart. Resolved definitions are cached.
+    pub async fn configured_with(
+        config: RuntimeConfig,
+        source: impl AgentSource,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            engine: Engine::configured(config, &[], Some(Arc::new(source))).await?,
+        })
+    }
+
+    /// Connect without accepting work: read history, attach to runs and sessions, start
+    /// work for other workers in the group. Workers in the group do the running.
+    pub async fn observer(config: RuntimeConfig) -> Result<Self, Error> {
+        Ok(Self {
+            engine: Engine::observer(config).await?,
+        })
+    }
+
+    /// One page of retained work, optionally only work in one status. Pass the previous
+    /// page's `next_page` to continue; a token from elsewhere is [`Error::InvalidInput`].
+    pub async fn work_history(
+        &self,
+        status: Option<RunStatus>,
+        page: Option<&str>,
+    ) -> Result<WorkPage, Error> {
+        self.engine.work_history(status, page).await
     }
 
     /// Connect a dedicated worker for recurring actions. Use a distinct worker
     /// group from ordinary agent workers and retain the same handler on restart.
     pub async fn recurring(
         config: RuntimeConfig,
-        action: std::sync::Arc<dyn crate::RecurringAction>,
+        action: Arc<dyn crate::RecurringAction>,
     ) -> Result<Self, Error> {
         Ok(Self {
-            engine: Engine::configured_recurring(config, &[], Some(action)).await?,
+            engine: Engine::configured_recurring(config, action).await?,
         })
     }
 
@@ -125,7 +210,7 @@ impl Runtime {
         Ok(Run { id, handle })
     }
 
-    /// Attach to a retained run. Its agent must be installed on a worker.
+    /// Attach to a retained run. Its agent must be installed on, or resolvable by, a worker.
     pub fn run_by_id(&self, id: RunId) -> Run {
         let handle = self.engine.run_handle(&id);
         Run { id, handle }

@@ -50,6 +50,8 @@ pub async fn run(agent: &Agent, input: impl Into<Message>) -> Result<TestRun, Er
 
 /// An isolated service that outlives individual worker processes.
 /// Use its configuration in each replacement [`Runtime`]. No model is called by it.
+/// Once one has started, every [`Runtime::configured`] in this process runs with the
+/// same test-only checks as [`Runtime::test`].
 pub struct Server(crate::engine::TestServer);
 
 impl Server {

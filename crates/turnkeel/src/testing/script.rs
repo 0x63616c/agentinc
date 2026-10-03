@@ -83,7 +83,7 @@ impl Script {
 /// A model call waiting for its reply.
 pub struct ModelCall {
     request: ModelRequest,
-    reply: oneshot::Sender<ModelResponse>,
+    reply: oneshot::Sender<Result<ModelResponse, ModelError>>,
 }
 
 impl ModelCall {
@@ -97,7 +97,13 @@ impl ModelCall {
     }
 
     pub fn reply(self, response: ModelResponse) {
-        let _ = self.reply.send(response);
+        let _ = self.reply.send(Ok(response));
+    }
+
+    /// Fail this call the way a rate limit or a network blip would. The engine retries the
+    /// step, so the test's next model call is the same step again.
+    pub fn reply_retryable(self, message: impl Into<String>) {
+        let _ = self.reply.send(Err(ModelError::retryable(message)));
     }
 }
 
@@ -156,7 +162,7 @@ impl Model for ScriptModel {
             .send(ModelCall { request, reply: tx });
         Box::pin(async move {
             rx.await
-                .map_err(|_| ModelError::fatal("Script dropped before replying"))
+                .unwrap_or_else(|_| Err(ModelError::fatal("Script dropped before replying")))
         })
     }
 }

@@ -1,5 +1,5 @@
 use crate::{Error, Event, Message, engine::SessionHandle};
-use futures::{StreamExt, stream, stream::BoxStream};
+use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 
 /// Identifies a session. Stable for its whole life, including across restarts.
@@ -63,28 +63,15 @@ impl Session {
 
     /// Everything that has happened in this session, then everything that happens next.
     ///
-    /// Starts from the beginning, so a fresh subscriber catches up on history first. Never
-    /// ends on its own; stop reading when you have what you need.
+    /// Starts from the beginning, so a fresh subscriber catches up on history first. Ends
+    /// only when the session itself ends; stop reading when you have what you need.
     pub fn events(&self) -> BoxStream<'static, Result<Event, Error>> {
         self.events_from(0)
     }
 
     /// Resume reading at a previously persisted event offset.
     pub fn events_from(&self, offset: usize) -> BoxStream<'static, Result<Event, Error>> {
-        let handle = self.handle.clone();
-        stream::unfold(Some((handle, offset)), |state| async move {
-            let (handle, offset) = state?;
-            match handle.events_after(offset).await {
-                Ok(events) => {
-                    let next = offset + events.len();
-                    let batch: Vec<Result<Event, Error>> = events.into_iter().map(Ok).collect();
-                    Some((stream::iter(batch), Some((handle, next))))
-                }
-                Err(e) => Some((stream::iter(vec![Err(e)]), None)),
-            }
-        })
-        .flatten()
-        .boxed()
+        self.handle.events_from(offset)
     }
 }
 

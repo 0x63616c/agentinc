@@ -28,14 +28,16 @@ mod session;
 pub mod testing;
 mod tool;
 
-pub use agent::{Agent, AgentBuilder};
+pub use agent::{Agent, AgentBuilder, AgentSource};
 pub use error::Error;
 pub use event::Event;
 pub use message::{Content, Message, Role};
 pub use model::{Model, ModelError, ModelRequest, ModelResponse, StopReason, ToolSpec};
 pub use recurring::{Occurrence, OccurrenceRecord, RecurringAction, RecurringRule, RecurringState};
 pub use run::{Run, RunId};
-pub use runtime::{RunPage, RunRecord, Runtime, RuntimeConfig};
+pub use runtime::{RunKind, RunStatus, Runtime, RuntimeConfig, WorkPage, WorkRecord};
+#[allow(deprecated)]
+pub use runtime::{RunPage, RunRecord};
 pub use session::{Session, SessionId};
 pub use tool::{Tool, ToolCtx, ToolError, ToolSet};
 pub use turnkeel_macros::tool;

@@ -97,3 +97,17 @@ pub trait Model: Send + Sync + 'static {
         request: ModelRequest,
     ) -> BoxFuture<'static, Result<ModelResponse, ModelError>>;
 }
+
+/// A shared model is a model. Lets one provider client back many agents.
+impl<M: Model + ?Sized> Model for std::sync::Arc<M> {
+    fn id(&self) -> &str {
+        (**self).id()
+    }
+
+    fn complete(
+        &self,
+        request: ModelRequest,
+    ) -> BoxFuture<'static, Result<ModelResponse, ModelError>> {
+        (**self).complete(request)
+    }
+}
