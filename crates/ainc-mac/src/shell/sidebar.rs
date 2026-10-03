@@ -201,7 +201,11 @@ mod tests {
         shell.read_with(cx, |shell, _| {
             assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
         });
-        cx.simulate_keystrokes("escape cmd-k");
+        cx.simulate_keystrokes("escape");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.overlays.borrow().active(), None);
+        });
+        cx.simulate_keystrokes("cmd-k");
         shell.read_with(cx, |shell, _| {
             assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
         });
