@@ -99,21 +99,22 @@ pub async fn import(pool: &PgPool, directory: &Path) -> Result<bool> {
     let directory = directory.canonicalize()?;
     let source = directory.to_string_lossy().into_owned();
     let mut tx = pool.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('agentinc-legacy-import',0))")
+    sqlx::query!("SELECT pg_advisory_xact_lock(hashtextextended('agentinc-legacy-import',0))")
         .execute(&mut *tx)
         .await?;
-    let imported: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM legacy_imports WHERE source=$1)")
-            .bind(&source)
-            .fetch_one(&mut *tx)
-            .await?;
+    let imported = sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM legacy_imports WHERE source=$1) AS "imported!""#,
+        source
+    )
+    .fetch_one(&mut *tx)
+    .await?;
     if imported {
         return Ok(false);
     }
     // Import is first-start only: refusing a populated destination is safer than
     // remapping or overwriting existing IDs behind the user's back.
-    let populated: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM conversations UNION ALL SELECT id FROM tickets)",
+    let populated = sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM conversations UNION ALL SELECT id FROM tickets) AS "populated!""#
     )
     .fetch_one(&mut *tx)
     .await?;
@@ -124,12 +125,14 @@ pub async fn import(pool: &PgPool, directory: &Path) -> Result<bool> {
     }
     let legacy = tokio::task::spawn_blocking(move || read(&directory)).await??;
     for (id, title, updated) in legacy.conversations {
-        sqlx::query("INSERT INTO conversations(id,title,updated_at) VALUES ($1,$2,$3)")
-            .bind(id)
-            .bind(title)
-            .bind(updated)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            "INSERT INTO conversations(id,title,updated_at) VALUES ($1,$2,$3)",
+            id,
+            title,
+            updated
+        )
+        .execute(&mut *tx)
+        .await?;
     }
     for (id, conversation, prompt, response, error) in legacy.turns {
         let (state, error) = if response.is_some() && error.is_none() {
@@ -142,27 +145,54 @@ pub async fn import(pool: &PgPool, directory: &Path) -> Result<bool> {
                 })),
             )
         };
-        sqlx::query("INSERT INTO turns(id,conversation_id,prompt,response,error,state) VALUES ($1,$2,$3,$4,$5,$6)").bind(id).bind(conversation).bind(prompt).bind(response).bind(error).bind(state).execute(&mut *tx).await?;
-    }
-    for (id, title, completed) in legacy.todos {
-        sqlx::query("INSERT INTO tickets(id,title,status) VALUES ($1,$2,CASE WHEN $3 THEN 'done' ELSE 'to_do' END)")
-            .bind(id)
-            .bind(title)
-            .bind(completed)
-            .execute(&mut *tx)
-            .await?;
-    }
-    for (key, value) in legacy.settings {
-        sqlx::query("INSERT INTO assistant_settings(key,value) VALUES ($1,$2) ON CONFLICT(workspace_id,key) DO NOTHING").bind(key).bind(value).execute(&mut *tx).await?;
-    }
-    for table in ["conversations", "turns", "tickets"] {
-        sqlx::query(&format!("SELECT setval(pg_get_serial_sequence('{table}','id'), COALESCE((SELECT max(id) FROM {table}),0)+1,false)")).execute(&mut *tx).await?;
-    }
-    sqlx::query("INSERT INTO legacy_imports(source,session) VALUES ($1,$2)")
-        .bind(source)
-        .bind(legacy.session)
+        sqlx::query!(
+            "INSERT INTO turns(id,conversation_id,prompt,response,error,state) VALUES ($1,$2,$3,$4,$5,$6)",
+            id,
+            conversation,
+            prompt,
+            response,
+            error,
+            state
+        )
         .execute(&mut *tx)
         .await?;
+    }
+    for (id, title, completed) in legacy.todos {
+        sqlx::query!(
+            "INSERT INTO tickets(id,title,status) VALUES ($1,$2,CASE WHEN $3 THEN 'done' ELSE 'to_do' END)",
+            id,
+            title,
+            completed
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    for (key, value) in legacy.settings {
+        sqlx::query!(
+            "INSERT INTO assistant_settings(key,value) VALUES ($1,$2) ON CONFLICT(workspace_id,key) DO NOTHING",
+            key,
+            value
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    // Imported rows kept their IDs; the next generated ID follows the largest.
+    sqlx::query!("SELECT setval(pg_get_serial_sequence('conversations','id'), COALESCE((SELECT max(id) FROM conversations),0)+1,false)")
+        .fetch_one(&mut *tx)
+        .await?;
+    sqlx::query!("SELECT setval(pg_get_serial_sequence('turns','id'), COALESCE((SELECT max(id) FROM turns),0)+1,false)")
+        .fetch_one(&mut *tx)
+        .await?;
+    sqlx::query!("SELECT setval(pg_get_serial_sequence('tickets','id'), COALESCE((SELECT max(id) FROM tickets),0)+1,false)")
+        .fetch_one(&mut *tx)
+        .await?;
+    sqlx::query!(
+        "INSERT INTO legacy_imports(source,session) VALUES ($1,$2)",
+        source,
+        legacy.session
+    )
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(true)
 }
@@ -173,18 +203,21 @@ const DONE: &str = "<done>";
 /// [`import`] on the daemon's first start only. Once it has run (importing or finding
 /// nothing) a marker row stops every later start from looking at the legacy directory.
 pub async fn import_once(pool: &PgPool, directory: &Path) -> Result<bool> {
-    let done: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM legacy_imports WHERE source=$1)")
-            .bind(DONE)
-            .fetch_one(pool)
-            .await?;
+    let done = sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM legacy_imports WHERE source=$1) AS "done!""#,
+        DONE
+    )
+    .fetch_one(pool)
+    .await?;
     if done {
         return Ok(false);
     }
     let imported = import(pool, directory).await?;
-    sqlx::query("INSERT INTO legacy_imports(source) VALUES ($1) ON CONFLICT DO NOTHING")
-        .bind(DONE)
-        .execute(pool)
-        .await?;
+    sqlx::query!(
+        "INSERT INTO legacy_imports(source) VALUES ($1) ON CONFLICT DO NOTHING",
+        DONE
+    )
+    .execute(pool)
+    .await?;
     Ok(imported)
 }

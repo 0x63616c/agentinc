@@ -329,8 +329,8 @@ async fn logout(
     State(state): State<ConnectionState>,
     _owner: Owner,
 ) -> Result<Json<ConnectionStatus>, CommandError> {
-    let pending: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM turns WHERE state IN ('queued','running'))",
+    let pending = sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM turns WHERE state IN ('queued','running')) AS "pending!""#
     )
     .fetch_one(&state.product.pool)
     .await?;

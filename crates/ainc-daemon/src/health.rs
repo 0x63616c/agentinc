@@ -35,7 +35,7 @@ async fn live() -> Json<Health> {
 
 #[utoipa::path(get, path = "/health/ready", operation_id = "health_ready", responses((status = 200, body = Health), (status = 503, body = ErrorBody)))]
 async fn ready(State(pool): State<PgPool>) -> Result<Json<Health>, CommandError> {
-    sqlx::query_scalar::<_, i32>("SELECT id FROM product_bootstrap WHERE id = 1")
+    sqlx::query_scalar!("SELECT id FROM product_bootstrap WHERE id = 1")
         .fetch_one(&pool)
         .await
         .map_err(|error| {

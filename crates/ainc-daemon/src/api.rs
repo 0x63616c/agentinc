@@ -83,13 +83,17 @@ where
             return Ok(Actor::owner_in(workspaces::current(&product.pool).await?));
         }
         let token = bearer(&parts.headers).ok_or(CommandError::Unauthorized)?;
-        let row: Option<(String, String, i64, i64)> = sqlx::query_as("SELECT c.workspace_id,r.agent_id,r.ticket_id,r.generation FROM agent_credentials c JOIN ticket_runs r ON r.run_id=c.run_id WHERE c.token_hash=$1")
-            .bind(format!("{:x}", Sha256::digest(token.as_bytes()))).fetch_optional(&product.pool).await?;
-        let (workspace, id, ticket, generation) = row.ok_or(CommandError::Unauthorized)?;
+        let row = sqlx::query!(
+            "SELECT c.workspace_id,r.agent_id,r.ticket_id,r.generation FROM agent_credentials c JOIN ticket_runs r ON r.run_id=c.run_id WHERE c.token_hash=$1",
+            format!("{:x}", Sha256::digest(token.as_bytes()))
+        )
+        .fetch_optional(&product.pool)
+        .await?
+        .ok_or(CommandError::Unauthorized)?;
         Ok(Actor {
-            workspace,
-            id,
-            assignment: Some((ticket, generation)),
+            workspace: row.workspace_id,
+            id: row.agent_id,
+            assignment: Some((row.ticket_id, row.generation)),
             conversation: None,
         })
     }

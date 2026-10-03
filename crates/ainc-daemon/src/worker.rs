@@ -52,8 +52,7 @@ impl Leased {
         owned_elsewhere: &'static str,
     ) -> Result<Self> {
         let mut owner = pool.acquire().await?.detach();
-        let owned: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
-            .bind(lock)
+        let owned = sqlx::query_scalar!(r#"SELECT pg_try_advisory_lock($1) AS "owned!""#, lock)
             .fetch_one(&mut owner)
             .await?;
         anyhow::ensure!(owned, owned_elsewhere);
@@ -75,7 +74,9 @@ impl Leased {
         let mut tasks = Tasks::default();
         loop {
             // Notices loss of exclusive ownership.
-            sqlx::query("SELECT 1").execute(&mut self.owner).await?;
+            sqlx::query!("SELECT 1 AS alive")
+                .fetch_one(&mut self.owner)
+                .await?;
             work.reconcile(&mut tasks).await?;
             tokio::select! {
                 _ = &mut shutdown => {
