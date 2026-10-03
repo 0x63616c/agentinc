@@ -256,6 +256,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "flate2",
+ "image",
  "libc",
  "openapiv3",
  "prettyplease 0.2.37",

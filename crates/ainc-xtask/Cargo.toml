@@ -16,6 +16,7 @@ ainc-daemon = { path = "../ainc-daemon" }
 anyhow.workspace = true
 base64 = "0.22"
 flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
 libc = "0.2"
 openapiv3 = "2"
 prettyplease = "0.2"

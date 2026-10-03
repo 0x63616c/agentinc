@@ -1,4 +1,5 @@
 mod checks;
+mod readme;
 mod release;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -460,14 +461,16 @@ fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args.next().ok_or_else(|| {
         anyhow!(
-            "usage: cargo xtask dev|down|doctor|check|generate|{}",
-            release::NAMES
+            "usage: cargo xtask dev|down|doctor|check|generate|{}|{}",
+            release::NAMES,
+            readme::NAMES
         )
     })?;
     let root = root()?;
     let instance = identity(&root)?;
     match operation.as_str() {
         op if release::handles(op) => release::run(op, args.collect(), &root),
+        op if readme::handles(op) => readme::run(op, args.collect(), &root),
         "check" => check(&root),
         "check-ui" => check_ui(&root),
         "generate" => generate(&root, args.next().as_deref() == Some("--check")),
