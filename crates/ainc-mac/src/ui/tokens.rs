@@ -252,11 +252,11 @@ pub const FONT_MONO: &str = "SF Mono";
 /// The current-space tab in the header: its face, the slot it sits in and the
 /// contour painted around it. The face is `TAB_FACE_HEIGHT` tall inside a
 /// contour `TAB_HEIGHT` tall whose last pixels overlap the panel border.
-pub const TAB_WIDTH: f32 = 142.;
+pub const TAB_WIDTH: f32 = 176.;
 pub const TAB_HEIGHT: f32 = 40.;
 pub const TAB_FACE_HEIGHT: f32 = 38.;
 pub const TAB_RADIUS: f32 = 10.;
-pub const TAB_SLOT_WIDTH: f32 = 170.;
+pub const TAB_SLOT_WIDTH: f32 = TAB_WIDTH + 2. * TAB_CONTOUR_SHOULDER;
 pub const TAB_SLOT_HEIGHT: f32 = 42.;
 /// How far the slot sinks below the header so the tab meets the panel.
 pub const TAB_SLOT_SINK: f32 = 2.;
@@ -273,6 +273,8 @@ pub const TAB_ICON_SIZE: f32 = 14.;
 pub const HEADER_CONTROLS_INSET: f32 = 9.;
 /// How much wider than the sidebar the header's left controls run.
 pub const HEADER_LEFT_EXTRA: f32 = 60.;
+pub const HEADER_TRAFFIC_WIDTH: f32 = 80.;
+pub const TAB_CLOSE_SIZE: f32 = 24.;
 /// The segmented track's inset around its segments and the gap between them.
 pub const SEGMENT_TRACK_INSET: f32 = 3.;
 pub const SEGMENT_GAP: f32 = 2.;

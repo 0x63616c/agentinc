@@ -213,7 +213,7 @@ impl Shell {
         .icon(Icon::Search)
         .selected(self.selected)
         .empty("Try a page, an action or a Ticket.")
-        .aria_label("Go to pages, actions and Tickets")
+        .aria_label("Search pages, actions and Tickets")
         .build(
             &mut Ui::new(window, cx),
             |this: &mut Self, index, window, cx| this.choose_palette(index, window, cx),

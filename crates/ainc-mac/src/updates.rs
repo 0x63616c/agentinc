@@ -38,6 +38,18 @@ pub struct UpdateView {
     before_install: Option<BeforeInstall>,
 }
 impl UpdateView {
+    #[cfg(any(test, feature = "fixtures"))]
+    pub fn fixture_ready(ready: bool) -> Self {
+        Self {
+            state: State {
+                ready,
+                ..State::default()
+            },
+            draining: false,
+            shutdown_locks: Vec::new(),
+            before_install: None,
+        }
+    }
     fn new(cx: &mut Context<Self>) -> Self {
         let directory = std::env::var_os("AINC_SESSION_PATH")
             .map(std::path::PathBuf::from)

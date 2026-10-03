@@ -1,0 +1,166 @@
+# Tabs, cohesion follow-ups, and the next minor release
+
+Requested by Calum on 2026-10-03. This is the durable execution checklist for
+the tabs/sidebar request and the entire supplied cohesion follow-up handoff.
+The goal is to implement, verify, integrate on `main`, push, and **publish the
+next minor release**, expected to be **0.7.0** from the audited 0.6.0 baseline.
+Re-check the version before bumping; publication and the upgrade gate are part
+of completion, not a later optional step.
+
+## Execution order and ownership
+
+1. Audit current code, `AGENTS.md`, `CONTEXT.md`, `docs/how-to.md`,
+   `docs/cohesion-plan.md`, checks and their follow-up allow-lists.
+2. Run daemon/API and build/SDK lanes independently. One Mac editing lane only;
+   coordinate mechanical Mac API call-site edits from the daemon lane.
+3. Integrate coherent commits, validate, and finish Mac follow-ups after API
+   migrations; detail-aware navigation comes last.
+4. Run complete integration, native visual and packaged-app acceptance.
+5. Write release notes, bump minor on clean main, push and watch Distribution
+   through successful publication and the native upgrade gate.
+
+Workers use Sonnet and owned Treehouse leases; commit and report SHAs, without
+pushing or releasing. The coordinator integrates, validates and pushes. Preserve
+unrelated active branches, especially `feat/sparkle-updater`; reconcile any
+updater architecture changes before modifying or releasing them. No PR unless
+Calum requests one. Do not run a PR-creating validation pipeline by default.
+
+## UI acceptance checklist
+
+- [x] Multiple tabs, using the reference's curved top corners and inverse
+  shoulders joining the rounded content card.
+- [x] Right-hand X appears on tab hover, closes with the mouse without selecting
+  a different tab accidentally, and remains keyboard accessible.
+- [x] Cmd+T opens a tab; Cmd+Shift+W closes; Cmd+Shift+[ / ] moves left/right.
+- [x] Shortcut handling also works while a native Ghostty pane is focused.
+- [x] Tabs and their histories persist and restore safely from single-tab and
+  older multi-tab files. Unknown/removed routes, invalid selection, empty files,
+  closing first/last/active/inactive tabs and rapid repeated actions are covered.
+- [ ] Many tabs stay inside a bounded horizontal viewport. Active tabs reveal
+  on selection, opening, closing and resize. Scrolling works with trackpad and
+  mouse wheel; right/left boundaries and rounded shoulders do not bleed, clip
+  incorrectly, overlap page corners or push controls outside the window.
+- [x] Sidebar Search field and palette say **Search**, replacing **Go to…**.
+- [x] Collapsed sidebar remains a thin icon strip: Search, Tickets, Assistant,
+  remaining navigation icons and bottom profile avatar. Match expanded vertical
+  positions and icon rail; retain usable hit targets and selected styling.
+- [x] Expanded sidebar minimum width increases by at least 10% (150 → 176 px
+  planned); resizing, persistence and animation remain correct.
+- [x] White update-available control in the sidebar, including collapsed mode;
+  adapt to AgentInc rather than copying the blue ChatGPT reference.
+- [x] Profile menu is appropriately sized, fits labels at every font size, shows
+  available updates, and Support opens alongside it without parent overlap.
+- [x] Cmd+Shift+U checks for updates.
+
+## Daemon/API lane — all handoff items
+
+- [x] **D-2:** Remove deprecated CreateTodo/CompleteTodo/DeleteTodo adapters,
+  Snapshot.todos if present, and test allow(deprecated); regenerate.
+- [x] **D-3:** AutomationSnapshot.rules → automations; TerminalSession → Terminal,
+  CreateTerminalSession → CreateTerminal, terminal_sessions_* → terminals_*.
+  Settle Terminal as a domain noun; empty legacy schema/operation allow-lists.
+- [x] **D-1:** Mac uses conversations_state/conversations_command. Delete
+  /v1/state and /v1/commands, product CLI group and legacy operation exceptions;
+  regenerate API/client/CLI. No product_state/product_command uses remain.
+  Old endpoint operation IDs returning 409 on the new endpoint is accepted.
+  D-1…D-3 worker commit `d9a57be` integrated as `6ae6ebc`; generated API and
+  callers migrated together. Full integrated validation remains outstanding.
+- [ ] **D-4:** Compile-check SQL with sqlx query!/query_as! and committed .sqlx
+  offline metadata. One commit per module: tickets, automations,
+  product/conversations, execution, workspaces, receipts, coding, terminal.
+  No literal runtime queries except named/reasoned exceptions. Add prepare
+  --check --workspace to check when DATABASE_URL exists (explicit skip otherwise),
+  run in test, install sqlx-cli in CI and verify offline builds there.
+- [ ] **D-5:** Move terminal WebSocket attach to `ainc terminal attach <id>`;
+  bundle/sign ainc, change Mac host, bundle script, Ghostty docs, pilot terminal
+  test and xtask smoke; delete aincd argv dispatch. Shared identity discovery.
+  Terminal smoke and pilot terminal acceptance pass.
+- [ ] **D-6:** One process-group/PTY helper owns spawn-in-group,
+  kill-group-on-drop, setpgid/setsid/killpg/openpty. Migrate coding, terminal,
+  local runtime and Codex safely; test cleanup and process lifecycles.
+- [ ] **D-7:** Shared ainc-client ticket_key(id) produces T-42 and is used by CLI,
+  Conversation tools and Mac. Use clock_timestamp for event times. Rename
+  lifecycle state to status only on tables otherwise touched by a migration,
+  with documented expand/contract compatibility.
+
+## Mac follow-up lane — after API integration
+
+- [ ] **M-1:** Automations Assign to uses Select with stable option IDs
+  `automations.agent.{id}`; pilot test keeps working.
+- [ ] **M-2:** Monospace font follows an appearance choice or is derived from
+  the selected font, rather than fixed FONT_MONO; all usages follow it.
+- [ ] **M-3:** Native update actions use shared Objective-C NS_ENUM instead of
+  bare 1..7; Rust NativeAction value contract remains tested. Reconcile if the
+  independent updater migration supersedes this code.
+- [ ] **M-4:** Audit/trim tokio runtime features (including blocking Codex login),
+  objc2 feature use and GPUI/accesskit version matching; justify retained deps.
+- [ ] **M-5, last:** Route::Ticket(id)/Conversation(id), detail-aware Back/Forward
+  and tab restoration, preserving legacy UI-state files.
+
+## Build/SDK lane — all handoff items
+
+- [ ] **B-3:** engine/mod.rs and testing/mod.rs become sibling foo.rs; remove
+  their layout follow-up exceptions.
+- [ ] **B-4:** Merge Temporal-heavy Turnkeel integrations into one binary;
+  update recovery/effect worker self-reexec exact paths; recovery tests pass.
+- [ ] **B-5:** Remove release workflow's unnecessary libssl-dev,
+  protobuf-compiler and macOS protoc download; prove via test=true Distribution.
+- [x] **B-6:** Install taplo-cli, format TOML and enforce installed taplo in CI.
+  Worker `b89b721` integrated as `1573d17`; CI pins taplo 0.10.0.
+- [ ] **B-1:** Measure cold daemon build, workspace nextest --no-run and target
+  size before/after hakari in a fresh lease. Adopt only with measured savings;
+  report numbers even if rejected. If adopted: flat generated workspace-hack,
+  pinned hakari, generated-file header and AGENTS note, check generation diff
+  and manage-deps dry-run with fix command; just fix regenerates.
+- [ ] **B-2:** Measure target after full tests plus rendered run. Reduce below
+  15 GB using measured contributors/profile/incremental improvements or provide
+  a concrete explanation.
+
+## Verification and release gates
+
+- [ ] Follow-up allow-lists in xtask checks are empty; actual behavior tests
+  supplement the static standards. No source-string tests as behavior evidence.
+- [ ] Static checks and full tests pass with isolated Postgres. Docker was
+  unavailable at audit; use Homebrew Postgres, unique ports and disposable data.
+  Never import the real application profile. No added sleeps/timers in tests.
+- [ ] Native rendered matrix: minimum/normal/large windows; minimum/default/max
+  sidebar; expanded/collapsed; all font sizes; 1/2/many tabs; first/middle/last
+  selection; wheel/trackpad; hover and mouse-close; reopening persisted state;
+  profile/support with/without updates and long names. Assert geometry and
+  inspect real Metal images at logical resolution.
+- [ ] Terminal bridge shortcut tests, pilot native interactions, terminal attach
+  smoke and relevant detail navigation tests pass.
+- [ ] Build bundled app and confirm an actual isolated window before releasing.
+  Visible updater/live Sparkle fixtures belong on the dedicated release Mac,
+  never Calum's active desktop. Test the package, not just Cargo binaries.
+- [ ] Review all changes; commit coherent validated steps. Preserve work before
+  returning owned leases; never force-return dirty worktrees.
+- [ ] Write docs/releases/0.7.0.md (adjust only if baseline changed), run authorized
+  `just release minor` on clean main, and push version commit.
+- [ ] Watch Distribution prepare/native/distribute/upgrade/publish to success;
+  verify GitHub Latest release, version and update feed. Do not claim shipping
+  based only on a push or successful local build. Never replace a published
+  version; failed unpublished drafts can be repaired/retried at an exact commit.
+
+## Current checkpoint
+
+- Original handoff baseline: local main `afa450e`, product version 0.6.0.
+  Fresh leases actually start at `1323ec1`, which includes the now-integrated
+  Sparkle updater and version 0.7.0. Remote main has advanced to `c6b68d7`.
+  Reconcile remote changes before integration; next minor may therefore be 0.8.0.
+- Coordinator: `feat/tabs-cohesion-followups`, lease 12,
+  ID `0e55267c7a52d7694616e7ddea5b152c`; owns Mac changes and integration.
+- Daemon Sonnet worker: lease 14, ID `f10cb12bcfb8769a74374f91a591b538`, D-1…D-7.
+- Build Sonnet worker: lease 13, ID `792fc3a472f5f3c43adf8e8820984fa5`, B-1…B-6.
+- Disk audit: 43 GiB free, main target 27 GB. Normal coordinator/daemon builds
+  share the existing main target; build measurements use owned fresh targets.
+- Tab persistence, bounded header, shortcuts/terminal forwarding, compact sidebar
+  and menu placement implemented. Mac library tests: 107 passed. Native Swift
+  ShortcutTests: 2 passed. Rendered suite: 187 real Metal frames passed across
+  760/1024/1360 px windows, expanded/collapsed rails and every font size, including
+  hover-X pixel checks. Fixed first-frame restoration (GPUI item reveal had stale
+  overflow state) and inactive tab backgrounds masking the panel border. Inspected
+  saved images at logical resolution. `just check` passed before API integration;
+  full integrated tests still outstanding. No release yet.
+- Worker outputs: temporary opencode daemon-followups-result.md and
+  build-followups-result.md; transfer final evidence here when integrating.

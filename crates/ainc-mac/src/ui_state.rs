@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
 /// The sidebar's minimum, maximum and default width.
-pub const SIDEBAR_MIN: f32 = 150.;
+pub const SIDEBAR_MIN: f32 = 176.;
 pub const SIDEBAR_MAX: f32 = 320.;
 pub const SIDEBAR_DEFAULT: f32 = 216.;
+pub const SIDEBAR_COLLAPSED: f32 = 64.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PanePreference {
@@ -86,7 +87,8 @@ mod panes {
 #[serde(default)]
 pub struct UiState {
     pub schema_version: u32,
-    router: Router,
+    tabs: Vec<Router>,
+    active: usize,
     #[serde(rename = "panes", with = "panes")]
     pub sidebar: PanePreference,
     pub font: FontChoice,
@@ -97,8 +99,9 @@ pub struct UiState {
 impl Default for UiState {
     fn default() -> Self {
         Self {
-            schema_version: 1,
-            router: Router::default(),
+            schema_version: 2,
+            tabs: vec![Router::default()],
+            active: 0,
             sidebar: PanePreference {
                 open: true,
                 width: SIDEBAR_DEFAULT,
@@ -125,16 +128,52 @@ impl UiState {
         }
     }
     pub fn current(&self) -> Route {
-        self.router.current()
+        self.tabs[self.active].current()
     }
     pub fn navigate(&mut self, route: Route) {
-        self.router.navigate(route);
+        self.tabs[self.active].navigate(route);
     }
     pub fn can_go(&self, forward: bool) -> bool {
-        self.router.can_go(forward)
+        self.tabs[self.active].can_go(forward)
     }
     pub fn go(&mut self, forward: bool) {
-        self.router.go(forward);
+        self.tabs[self.active].go(forward);
+    }
+    pub fn tabs(&self) -> &[Router] {
+        &self.tabs
+    }
+    pub fn active_tab(&self) -> usize {
+        self.active
+    }
+    pub fn new_tab(&mut self) {
+        self.active += 1;
+        self.tabs.insert(self.active, Router::default());
+    }
+    pub fn select_tab(&mut self, index: usize) {
+        if index < self.tabs.len() {
+            self.active = index;
+        }
+    }
+    pub fn step_tab(&mut self, forward: bool) {
+        self.active = if forward {
+            (self.active + 1) % self.tabs.len()
+        } else {
+            (self.active + self.tabs.len() - 1) % self.tabs.len()
+        };
+    }
+    /// Closing the last tab leaves a fresh Assistant tab, never an empty window.
+    pub fn close_tab(&mut self, index: usize) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        self.tabs.remove(index);
+        if self.tabs.is_empty() {
+            self.tabs.push(Router::default());
+        }
+        if index < self.active {
+            self.active -= 1;
+        }
+        self.active = self.active.min(self.tabs.len() - 1);
     }
     pub fn from_json(json: &str) -> Self {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
@@ -178,37 +217,20 @@ impl UiState {
                 .take(RECENT_COMMANDS)
                 .collect();
         }
-        if let Some(router) = value.get("router").and_then(|v| v.as_object()) {
-            state.router.current = router
-                .get("current")
-                .and_then(|v| serde_json::from_value(v.clone()).ok())
-                .unwrap_or(Route::Assistant);
-            for (key, history) in [
-                ("back", &mut state.router.back),
-                ("forward", &mut state.router.forward),
-            ] {
-                if let Some(saved) = router.get(key).and_then(|v| v.as_array()) {
-                    *history = saved
-                        .iter()
-                        .filter_map(|v| serde_json::from_value(v.clone()).ok())
-                        .collect();
-                }
-            }
-        } else if let Some(tabs) = value.get("tabs").and_then(|v| v.as_array()) {
+        if let Some(tabs) = value.get("tabs").and_then(|v| v.as_array()) {
             let active = value.get("active").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-            let selected = tabs
-                .get(active)
-                .and_then(|v| serde_json::from_value::<Route>(v.clone()).ok())
-                .map(|route| (active, route))
-                .or_else(|| {
-                    tabs.iter().enumerate().find_map(|(i, v)| {
-                        serde_json::from_value::<Route>(v.clone())
-                            .ok()
-                            .map(|route| (i, route))
-                    })
-                });
-            if let Some((index, route)) = selected {
-                state.router.current = route;
+            let mut restored = Vec::new();
+            for (index, saved) in tabs.iter().enumerate() {
+                let Some(mut router) = restore_router(saved).or_else(|| {
+                    serde_json::from_value(saved.clone())
+                        .ok()
+                        .map(|current| Router {
+                            current,
+                            ..Router::default()
+                        })
+                }) else {
+                    continue;
+                };
                 if let Some(history) = value.get("history").and_then(|v| v.get(index)) {
                     let entries = history.get("entries").and_then(|v| v.as_array());
                     let cursor = history
@@ -229,16 +251,33 @@ impl UiState {
                         if entries
                             .get(cursor)
                             .and_then(|v| serde_json::from_value::<Route>(v.clone()).ok())
-                            == Some(route)
+                            == Some(router.current)
                             && let (Some(back), Some(mut forward)) = (before, after)
                         {
                             forward.reverse();
-                            state.router.back = back;
-                            state.router.forward = forward;
+                            router.back = back;
+                            router.forward = forward;
                         }
                     }
                 }
+                if index <= active {
+                    state.active = restored.len();
+                }
+                restored.push(router);
             }
+            if !restored.is_empty() {
+                state.tabs = restored;
+            }
+        } else if let Some(saved) = value.get("router") {
+            state.tabs[0] = restore_router(saved).unwrap_or_else(|| {
+                // A removed current page should not discard still-valid history.
+                if !saved.is_object() {
+                    return Router::default();
+                }
+                let mut saved = saved.clone();
+                saved["current"] = serde_json::to_value(Route::Assistant).unwrap();
+                restore_router(&saved).unwrap_or_default()
+            });
         }
         state
     }
@@ -253,7 +292,7 @@ impl UiState {
             .get("schema_version")
             .and_then(|v| v.as_u64())
             .unwrap_or(0)
-            > 1
+            > 2
         {
             return Err(io::Error::other("UI preferences require a newer app"));
         }
@@ -274,9 +313,112 @@ impl UiState {
     }
 }
 
+fn restore_router(value: &serde_json::Value) -> Option<Router> {
+    let current = serde_json::from_value(value.get("current")?.clone()).ok()?;
+    let history = |key| {
+        value
+            .get(key)
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|v| serde_json::from_value(v.clone()).ok())
+            .collect()
+    };
+    Some(Router {
+        current,
+        back: history("back"),
+        forward: history("forward"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tabs_keep_independent_history_and_round_trip() {
+        let mut state = UiState::default();
+        state.navigate(Route::Tickets);
+        state.navigate(Route::Settings);
+        state.go(false);
+        state.new_tab();
+        assert_eq!(state.current(), Route::Assistant);
+        assert!(!state.can_go(false));
+        state.navigate(Route::Agents);
+        state.select_tab(0);
+        assert_eq!(state.current(), Route::Tickets);
+        state.go(true);
+        assert_eq!(state.current(), Route::Settings);
+        state.new_tab();
+        assert_eq!(state.active_tab(), 1);
+        assert_eq!(state.tabs()[2].current(), Route::Agents);
+        assert_eq!(
+            UiState::from_json(&serde_json::to_string(&state).unwrap()),
+            state
+        );
+    }
+
+    #[test]
+    fn close_and_cycle_tabs_keep_a_valid_selection() {
+        let mut state = UiState::default();
+        state.navigate(Route::Tickets);
+        state.new_tab();
+        state.navigate(Route::Agents);
+        state.new_tab();
+        state.navigate(Route::Settings);
+        state.close_tab(0);
+        assert_eq!(state.current(), Route::Settings);
+        assert_eq!(state.active_tab(), 1);
+        state.step_tab(true);
+        assert_eq!(state.current(), Route::Agents);
+        state.step_tab(false);
+        assert_eq!(state.current(), Route::Settings);
+        state.close_tab(1);
+        assert_eq!(state.current(), Route::Agents);
+        state.close_tab(9);
+        state.select_tab(9);
+        assert_eq!(state.current(), Route::Agents);
+        state.close_tab(0);
+        assert_eq!(state.current(), Route::Assistant);
+        assert_eq!(state.tabs().len(), 1);
+        assert!(!state.can_go(false));
+        state.step_tab(false);
+        assert_eq!(state.active_tab(), 0);
+    }
+
+    #[test]
+    fn restores_each_legacy_tab_and_survives_removed_or_malformed_entries() {
+        let restored = UiState::from_json(
+            r#"{
+            "tabs":["today","tickets","agents"], "active":2,
+            "history":[{}, {"entries":["evee","tickets","settings"],"cursor":1}]
+        }"#,
+        );
+        assert_eq!(restored.tabs().len(), 2);
+        assert_eq!(restored.active_tab(), 1);
+        assert_eq!(restored.current(), Route::Agents);
+        let mut restored = restored;
+        restored.select_tab(0);
+        restored.go(true);
+        assert_eq!(restored.current(), Route::Settings);
+        restored.go(false);
+        restored.go(false);
+        assert_eq!(restored.current(), Route::Assistant);
+        for json in [
+            r#"{"tabs":[],"active":99}"#,
+            r#"{"tabs":[null,{},"gone"],"active":99}"#,
+            r#"{"router":"broken"}"#,
+        ] {
+            let state = UiState::from_json(json);
+            assert_eq!(state.current(), Route::Assistant);
+            assert_eq!(state.active_tab(), 0);
+        }
+        let restored = UiState::from_json(
+            r#"{"tabs":[{"current":"tickets","back":["gone","agents"]},null,{"current":"evee"}],"active":99}"#,
+        );
+        assert_eq!(restored.tabs().len(), 2);
+        assert_eq!(restored.active_tab(), 1);
+        assert_eq!(restored.tabs()[0].back, [Route::Agents]);
+    }
     #[test]
     fn history_round_trips() {
         let mut s = UiState::default();
@@ -314,8 +456,8 @@ mod tests {
             r#"{"router":{"current":"tickets","back":["today","evee"],"forward":["home","agents"]}}"#,
         );
         assert_eq!(retained.current(), Route::Tickets);
-        assert_eq!(retained.router.back, vec![Route::Assistant]);
-        assert_eq!(retained.router.forward, vec![Route::Agents]);
+        assert_eq!(retained.tabs[0].back, vec![Route::Assistant]);
+        assert_eq!(retained.tabs[0].forward, vec![Route::Agents]);
         assert_eq!(unknown.font, FontChoice::HelveticaNeue);
         assert!(!unknown.sidebar.open);
     }

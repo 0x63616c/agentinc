@@ -1,7 +1,10 @@
-//! The sidebar: Route navigation items, the Go to… shortcut and the profile row.
+//! Expanded navigation or a compact icon rail, with Search and the profile footer.
 use super::*;
 
 impl Shell {
+    fn sidebar_labels(&self) -> bool {
+        self.ui_state.sidebar.open && self.sidebar_visible >= crate::ui_state::SIDEBAR_MIN
+    }
     fn sidebar_item(&self, route: Route, index: usize, ui: &mut Ui<Self>) -> Stateful<Div> {
         let selected = self.ui_state.current() == route;
         let tint = if selected { TEXT } else { TEXT_SECONDARY };
@@ -18,6 +21,7 @@ impl Shell {
             route.label().to_lowercase().replace(' ', "-")
         ))
         .h(px(CONTROL_HEIGHT))
+        .flex_shrink_0()
         .when(route == Route::Agents, |s| s.mt(px(SPACE_6)))
         .px(px(SPACE_2))
         .gap(px(SIDEBAR_TEXT_GAP))
@@ -29,15 +33,17 @@ impl Shell {
             s.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM)
         })
         .child(nav_icon(route.icon(), selected, tint, hover_group))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .truncate()
-                .debug_selector(move || format!("sidebar-label-{index}"))
-                .child(route.label()),
-        )
-        .when(self.command_held, |s| {
+        .when(self.sidebar_labels(), |s| {
+            s.child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .debug_selector(move || format!("sidebar-label-{index}"))
+                    .child(route.label()),
+            )
+        })
+        .when(self.command_held && self.sidebar_labels(), |s| {
             s.child(
                 kbd(shortcuts::route(index).1)
                     .debug_selector(move || format!("sidebar-badge-{index}")),
@@ -46,6 +52,20 @@ impl Shell {
     }
 
     pub(super) fn sidebar(&self, ui: &mut Ui<Self>) -> impl IntoElement {
+        let expanded = self.sidebar_labels();
+        let update_ready = ui
+            .cx
+            .try_global::<crate::updates::Updates>()
+            .is_some_and(|updates| updates.0.read(ui.cx).is_ready());
+        let update_button = Button::new("update-ready", "Update Available")
+            .primary()
+            .icon(Icon::Download)
+            .full_width();
+        let update_button = if expanded {
+            update_button
+        } else {
+            update_button.icon_only()
+        };
         let mut nav = column().gap(px(2.));
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             nav = nav.child(self.sidebar_item(page.route, index + 1, ui));
@@ -65,7 +85,7 @@ impl Shell {
             .child(
                 self.button(
                     "shell.search",
-                    shortcuts::GO_TO.labelled("Go to…"),
+                    shortcuts::GO_TO.labelled("Search"),
                     Control::GoTo,
                     ui,
                 )
@@ -73,6 +93,7 @@ impl Shell {
                 .w_full()
                 .min_w_0()
                 .h(px(CONTROL_HEIGHT))
+                .flex_shrink_0()
                 .mb(px(SPACE_4))
                 // The magnifier centres on the navigation icon column and the
                 // placeholder lands on the label rail.
@@ -87,18 +108,39 @@ impl Shell {
                 .text_color(rgb(TEXT_SECONDARY))
                 .text_size(type_size(LABEL_SIZE))
                 .child(icon(Icon::Search, ICON_SIZE_SM))
-                .child(div().flex_1().min_w_0().truncate().child("Go to…"))
-                .child(
-                    kbd(shortcuts::GO_TO.glyph).debug_selector(|| "sidebar-search-shortcut".into()),
-                ),
+                .when(expanded, |s| {
+                    s.child(div().flex_1().min_w_0().truncate().child("Search"))
+                        .child(
+                            kbd(shortcuts::GO_TO.glyph)
+                                .debug_selector(|| "sidebar-search-shortcut".into()),
+                        )
+                }),
             )
-            .child(nav)
-            .child(div().flex_1())
+            .child(
+                column()
+                    .id("sidebar.navigation")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .child(nav),
+            )
+            .when(update_ready, |s| {
+                s.child(
+                    update_button
+                        .build(ui, |this, window, cx| {
+                            this.dispatch(Control::InstallUpdate, window, cx)
+                        })
+                        .accessibility_id("updates.ready")
+                        .mb(px(SPACE_2))
+                        .flex_shrink_0(),
+                )
+            })
             .child(
                 // A flex column gives the floating menu the row's top-left as its origin.
                 column()
                     .relative()
                     .w_full()
+                    .flex_shrink_0()
                     .child(
                         self.button("profile", "Profile menu", Control::UserMenu, ui)
                             .h(px(44.))
@@ -124,21 +166,23 @@ impl Shell {
                                         AVATAR_SIZE,
                                     )),
                             )
-                            .child(
-                                column().flex_1().min_w_0().child(
-                                    div()
-                                        .truncate()
-                                        .debug_selector(|| "sidebar-profile-name".into())
-                                        .text_size(type_size(LABEL_SIZE))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(rgb(TEXT))
-                                        .child(self.profile.name.clone()),
-                                ),
-                            )
-                            .child(
-                                icon(Icon::ChevronUpDown, ICON_SIZE_SM)
-                                    .debug_selector(|| "sidebar-profile-chevron".into()),
-                            ),
+                            .when(expanded, |s| {
+                                s.child(
+                                    column().flex_1().min_w_0().child(
+                                        div()
+                                            .truncate()
+                                            .debug_selector(|| "sidebar-profile-name".into())
+                                            .text_size(type_size(LABEL_SIZE))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(rgb(TEXT))
+                                            .child(self.profile.name.clone()),
+                                    ),
+                                )
+                                .child(
+                                    icon(Icon::ChevronUpDown, ICON_SIZE_SM)
+                                        .debug_selector(|| "sidebar-profile-chevron".into()),
+                                )
+                            }),
                     )
                     .when_some(user_menu, |s, support| s.child(self.user_menu(support, ui))),
             )

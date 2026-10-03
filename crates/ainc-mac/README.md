@@ -60,14 +60,19 @@ Open **Assistant** in the sidebar to start, reopen, rename or delete Conversatio
 
 ## Using the shell
 
-Sidebar destinations and Go to… replace the current Page in the one tab. Back and Forward navigate its history.
+Sidebar destinations and Search navigate the active tab. Each tab retains its own Back/Forward history. Open tabs with ⌘T or +, switch with ⇧⌘[ / ⇧⌘], and close with ⇧⌘W or the X revealed on hover. The tab strip scrolls horizontally when full; opening or selecting a tab brings it into view. Closing the final tab leaves a fresh Assistant tab.
 
 <!-- shortcuts -->
 | Shortcut | Action |
 | --- | --- |
-| ⌘K | Go to… |
+| ⌘K | Search |
 | ⌘[ | Back |
 | ⌘] | Forward |
+| ⌘T | New tab |
+| ⇧⌘W | Close tab |
+| ⇧⌘[ | Previous tab |
+| ⇧⌘] | Next tab |
+| ⇧⌘U | Check for Updates |
 | ⌘1–6 | Tickets, Assistant, Agents… |
 | ⌘, | Settings |
 | ⌘B | Toggle sidebar |
@@ -76,11 +81,11 @@ Sidebar destinations and Go to… replace the current Page in the one tab. Back 
 | ⇧↵ | New line |
 <!-- /shortcuts -->
 
-Go to… (⌘K) fuzzy-matches pages, actions and Tickets, groups the results, remembers your recent choices, and supports ↑↓ and ↵ selection, pointer selection, bounded ⇥ and ⇧⇥ focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. The user row opens the profile menu: check for or install an update, open Settings and reach Support (Help Center, Send Feedback, About). Settings holds persisted font family and size controls that update the whole app immediately; default type is two points larger than the original Control scale. Transient notices appear as toasts above the status bar.
+Search (⌘K) fuzzy-matches pages, actions and Tickets, groups the results, remembers your recent choices, and supports ↑↓ and ↵ selection, pointer selection, bounded ⇥ and ⇧⇥ focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. Collapsing the sidebar leaves a compact icon rail. The profile menu offers updates, Settings and an adjacent Support menu (Help Center, Send Feedback, About). Available updates also appear in the sidebar. Settings holds persisted font family and size controls that update the whole app immediately. Transient notices appear as toasts above the status bar.
 
-Terminal hosts a live Ghostty session in your home directory. It loads your Ghostty configuration, including font, keybinds and included files, then applies AgentInc's colors. The session and split panes stay alive when you visit another page; drag their dividers to resize them. With a Terminal pane focused, ⌘D splits right, ⇧⌘D splits below, ⌘W closes the focused pane when another exists, and ⇧⌘↵ or ⇧⌘= toggles a pane to fill the Terminal page. ⌘K opens Go to… without clearing the terminal; ⌘, and ⌘1–6 retain their app navigation actions. Other Ghostty bindings, including ⌃L, remain available.
+Terminal hosts a live Ghostty session in your home directory. It loads your Ghostty configuration, including font, keybinds and included files, then applies AgentInc's colors. The session and split panes stay alive when you visit another page; drag their dividers to resize them. With a Terminal pane focused, ⌘D splits right, ⇧⌘D splits below, ⌘W closes the focused pane when another exists, and ⇧⌘↵ or ⇧⌘= toggles a pane to fill the Terminal page. ⌘K opens Search without clearing the terminal; tab shortcuts, ⇧⌘U, ⌘, and ⌘1–6 retain their app actions. Other Ghostty bindings, including ⌃L, remain available.
 
-Development sessions save to `~/Library/Application Support/AgentInc Development/session.json`; installed production sessions retain `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/distribution.md). Older multi-tab sessions restore retained destinations into the single space view; removed destinations and missing or invalid state start on Assistant. The account name/photo is read locally at runtime and is not bundled.
+Development UI state saves to `~/Library/Application Support/AgentInc Development/session.json`; installed production state retains `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/distribution.md). Single-tab and older multi-tab files restore retained destinations and history; missing or invalid state starts on Assistant. The profile name/photo is read locally at runtime and is not bundled.
 
 For an isolated session without changing the regular app's state:
 

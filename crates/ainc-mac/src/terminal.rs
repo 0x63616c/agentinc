@@ -22,6 +22,11 @@ pub enum Shortcut {
     Settings,
     Back,
     Forward,
+    NewTab,
+    CloseTab,
+    PreviousTab,
+    NextTab,
+    CheckUpdates,
     Page(Route),
 }
 

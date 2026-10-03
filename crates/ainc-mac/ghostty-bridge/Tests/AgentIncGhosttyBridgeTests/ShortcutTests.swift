@@ -94,8 +94,22 @@ final class ShortcutTests: XCTestCase {
                                           in: pane, shown: true), -4)
         XCTAssertNil(appShortcutCommand(key("[", modifiers: [], code: 33),
                                         in: pane, shown: true))
-        XCTAssertNil(appShortcutCommand(key("]", modifiers: [.command, .shift], code: 30),
-                                        in: pane, shown: true))
+        XCTAssertEqual(appShortcutCommand(key("]", modifiers: [.command, .shift], code: 30),
+                                        in: pane, shown: true), -8)
+        XCTAssertEqual(appShortcutCommand(key("t", modifiers: .command, code: 17),
+                                         in: pane, shown: true), -5)
+        for (character, code, expected) in [("w", UInt16(13), Int32(-6)),
+                                             ("[", 33, -7), ("{", 33, -7),
+                                             ("}", 30, -8), ("u", 32, -9)] {
+            XCTAssertEqual(appShortcutCommand(key(character, modifiers: [.command, .shift], code: code),
+                                             in: pane, shown: true), expected)
+            XCTAssertNil(appShortcutCommand(key(character, modifiers: [.command, .shift, .option], code: code),
+                                           in: pane, shown: true))
+        }
+        XCTAssertNil(appShortcutCommand(key("w", modifiers: .command, code: 13),
+                                       in: pane, shown: true), "Cmd+W still belongs to the terminal pane")
+        XCTAssertNil(appShortcutCommand(key("d", modifiers: [.command, .shift], code: 2),
+                                       in: pane, shown: true), "Split below still belongs to Ghostty")
         XCTAssertEqual(appShortcutCommand(key("5", modifiers: .command, code: 23),
                                           in: pane, shown: true), 5)
         XCTAssertNil(appShortcutCommand(key("0", modifiers: .command, code: 29),

@@ -13,47 +13,53 @@ impl Shell {
             .cx
             .try_global::<crate::updates::Updates>()
             .is_some_and(|updates| updates.0.read(ui.cx).is_ready());
-        let support = column()
-            .relative()
-            .child(
-                MenuEntry::new("user-menu.support", "Support")
-                    .icon(Icon::Help)
-                    .trailing(
-                        row()
-                            .debug_selector(|| "user-menu.support.chevron".into())
-                            .w(px(ICON_SIZE))
-                            .flex_none()
-                            .child(icon(Icon::ChevronRight, ICON_SIZE)),
-                    )
-                    .build(ui, Self::menu_action(Control::SupportMenu))
-                    .when(support, |s| s.bg(rgb(SELECTED))),
+        // Place both menus in one anchored row. Independently anchored submenus
+        // can flip back across their parent near the bottom/right window edge.
+        let scale = self.appearance.get().font_size.scale().max(1.);
+        let menu_width = POPOVER_WIDTH * scale;
+        let support_width = MENU_WIDTH * scale;
+        let max_height =
+            ui.window.viewport_size().height - px(TITLEBAR_HEIGHT + CONTROL_HEIGHT + SPACE_6);
+        let support_entry = MenuEntry::new("user-menu.support", "Support")
+            .icon(Icon::Help)
+            .trailing(
+                row()
+                    .debug_selector(|| "user-menu.support.chevron".into())
+                    .w(px(ICON_SIZE))
+                    .flex_none()
+                    .child(icon(Icon::ChevronRight, ICON_SIZE)),
             )
-            .when(support, |s| {
-                s.child(floating(
-                    menu_shell(MENU_WIDTH)
-                        .debug_selector(|| "user-menu.support.menu".into())
-                        .gap(px(MENU_INSET))
-                        .child(
-                            MenuEntry::new("user-menu.help", "Help Center")
-                                .icon(Icon::ArrowUpRight)
-                                .build(ui, Self::menu_action(Control::HelpCenter)),
-                        )
-                        .child(
-                            MenuEntry::new("user-menu.feedback", "Send Feedback")
-                                .icon(Icon::Feedback)
-                                .build(ui, Self::menu_action(Control::SendFeedback)),
-                        )
-                        .child(
-                            MenuEntry::new("user-menu.about", "About AgentInc")
-                                .icon(Icon::Info)
-                                .build(ui, Self::menu_action(Control::About)),
-                        ),
-                    Anchor::TopLeft,
-                    point(px(POPOVER_WIDTH - CHIP_GAP), px(-MENU_INSET)),
-                ))
-            });
-        let menu = popover_shell(POPOVER_WIDTH)
+            .build(ui, Self::menu_action(Control::SupportMenu))
+            .when(support, |s| s.bg(rgb(SELECTED)));
+        let submenu = || {
+            menu_shell(support_width)
+                .debug_selector(|| "user-menu.support.menu".into())
+                .flex_shrink_0()
+                .max_h(max_height)
+                .overflow_y_scroll()
+                .gap(px(MENU_INSET))
+                .child(
+                    MenuEntry::new("user-menu.help", "Help Center")
+                        .icon(Icon::ArrowUpRight)
+                        .build(ui, Self::menu_action(Control::HelpCenter)),
+                )
+                .child(
+                    MenuEntry::new("user-menu.feedback", "Send Feedback")
+                        .icon(Icon::Feedback)
+                        .build(ui, Self::menu_action(Control::SendFeedback)),
+                )
+                .child(
+                    MenuEntry::new("user-menu.about", "About AgentInc")
+                        .icon(Icon::Info)
+                        .build(ui, Self::menu_action(Control::About)),
+                )
+        };
+        let submenu = support.then(submenu);
+        let menu = popover_shell(menu_width)
             .debug_selector(|| "user-menu".into())
+            .flex_shrink_0()
+            .max_h(max_height)
+            .overflow_y_scroll()
             .child(
                 row()
                     .px(px(SPACE_2))
@@ -113,6 +119,7 @@ impl Shell {
                     .child(
                         MenuEntry::new("user-menu.updates", "Check for Updates")
                             .icon(Icon::Download)
+                            .shortcut(shortcuts::CHECK_UPDATES.glyph)
                             .build(ui, Self::menu_action(Control::CheckForUpdates)),
                     )
                     .child(
@@ -124,8 +131,16 @@ impl Shell {
                                 Self::menu_action(Control::Go(Destination::Page(Route::Settings))),
                             ),
                     )
-                    .child(support),
+                    .child(support_entry),
             );
-        floating(menu, Anchor::BottomLeft, point(px(0.), px(-SPACE_2)))
+        floating(
+            row()
+                .items_end()
+                .gap(px(SPACE_2))
+                .child(menu)
+                .when_some(submenu, |row, submenu| row.child(submenu)),
+            Anchor::BottomLeft,
+            point(px(0.), px(-SPACE_2)),
+        )
     }
 }

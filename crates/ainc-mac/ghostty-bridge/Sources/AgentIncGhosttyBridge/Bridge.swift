@@ -11,19 +11,28 @@ public typealias CommandChangedCallback = @convention(c) (UnsafeMutableRawPointe
 func appShortcutCommand(_ event: NSEvent, in pane: NSView, shown: Bool) -> Int32? {
     guard shown, pane.window?.firstResponder === pane,
           event.modifierFlags.contains(.command),
-          !event.modifierFlags.contains(.shift),
           !event.modifierFlags.contains(.option),
           !event.modifierFlags.contains(.control)
     else { return nil }
     let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+    if event.modifierFlags.contains(.shift) {
+        switch key {
+        case "w": return -6 // Close tab, distinct from closing a terminal pane.
+        case "[", "{": return -7
+        case "]", "}": return -8
+        case "u": return -9 // Check for updates
+        default: return nil
+        }
+    }
     switch key {
+    case "t": return -5
     case "k": return -1 // AgentInc Search
     case ",": return -2 // AgentInc Settings
     case "[": return -3 // AgentInc Back
     case "]": return -4 // AgentInc Forward
     default:
         guard key.count == 1, let digit = key.first?.wholeNumberValue,
-              (1...5).contains(digit) else { return nil }
+              (1...6).contains(digit) else { return nil }
         return Int32(digit)
     }
 }

@@ -194,7 +194,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     let mut client = Client::connect(&manifest)?;
     client.call(Command::Hello)?;
     let initial = snap(&mut client)?;
-    ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Go to…"));
+    ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Search"));
     ensure!(
         initial.by_id("sidebar.version")?.name.as_deref()
             == Some(ainc_release::identity::version().as_str())

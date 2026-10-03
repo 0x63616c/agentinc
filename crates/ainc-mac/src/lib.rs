@@ -146,7 +146,7 @@ pub fn run() {
                 Menu {
                     disabled: false,
                     name: "File".into(),
-                    items: vec![MenuItem::action("Go to…", GoTo)],
+                    items: vec![MenuItem::action("Search", GoTo)],
                 },
                 Menu {
                     disabled: false,

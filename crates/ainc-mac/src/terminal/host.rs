@@ -46,6 +46,11 @@ mod macos {
             -2 => Shortcut::Settings,
             -3 => Shortcut::Back,
             -4 => Shortcut::Forward,
+            -5 => Shortcut::NewTab,
+            -6 => Shortcut::CloseTab,
+            -7 => Shortcut::PreviousTab,
+            -8 => Shortcut::NextTab,
+            -9 => Shortcut::CheckUpdates,
             0..=9 => {
                 let Some(route) = crate::routes::Route::from_shortcut(number as u8) else {
                     return;

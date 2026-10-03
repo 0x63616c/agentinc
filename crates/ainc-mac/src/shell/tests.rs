@@ -39,6 +39,167 @@ fn zoom_requests() -> usize {
 }
 
 #[gpui::test]
+fn tab_shortcuts_history_mouse_close_and_restore(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("tabs.json");
+    cx.update(bind_keys);
+    let (shell, cx) = cx.add_window_view(|window, cx| Shell::fixture(path.clone(), window, cx));
+    cx.simulate_keystrokes("cmd-1 cmd-t cmd-3 cmd-shift-[");
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.ui_state.tabs().len(), 2);
+        assert_eq!(shell.ui_state.current(), Route::Tickets);
+    });
+    cx.simulate_keystrokes("cmd-[");
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.ui_state.current(), Route::Assistant)
+    });
+    cx.simulate_keystrokes("cmd-shift-]");
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.ui_state.current(), Route::Agents)
+    });
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    // Closing an inactive tab does not activate it, nor bubble into its parent.
+    let close = cx.debug_bounds("tabs.0.close").unwrap().center();
+    cx.simulate_click(close, Modifiers::default());
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.ui_state.tabs().len(), 1);
+        assert_eq!(shell.ui_state.current(), Route::Agents);
+    });
+    assert_eq!(UiState::load(&path).current(), Route::Agents);
+    cx.simulate_keystrokes("cmd-shift-w");
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.ui_state.tabs().len(), 1);
+        assert_eq!(shell.ui_state.current(), Route::Assistant);
+    });
+    cx.simulate_keystrokes("cmd-k cmd-shift-u");
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.overlays.borrow().active(), None)
+    });
+}
+
+#[gpui::test]
+fn overflowing_tabs_scroll_reveal_and_stay_between_controls(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    cx.update(bind_keys);
+    let (shell, cx) =
+        cx.add_window_view(|window, cx| Shell::fixture(dir.path().join("tabs.json"), window, cx));
+    cx.simulate_resize(gpui::size(px(760.), px(600.)));
+    for _ in 0..24 {
+        cx.simulate_keystrokes("cmd-t");
+    }
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    let viewport = cx.debug_bounds("tabs.viewport").unwrap();
+    let active = cx.debug_bounds("tabs.24").unwrap();
+    let new = cx.debug_bounds("tabs.new").unwrap();
+    assert!(active.left() >= viewport.left() && active.right() <= viewport.right());
+    assert!(viewport.right() <= new.left());
+    assert!(new.right() <= px(760.));
+    let offset = shell.read_with(cx, |shell, _| shell.tab_scroll.offset().x);
+    assert!(offset < px(0.));
+    cx.simulate_event(gpui::ScrollWheelEvent {
+        position: viewport.center(),
+        delta: gpui::ScrollDelta::Lines(point(0., 3.)),
+        ..Default::default()
+    });
+    shell.read_with(cx, |shell, _| assert!(shell.tab_scroll.offset().x > offset));
+    cx.simulate_keystrokes("cmd-shift-]");
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    shell.read_with(cx, |shell, _| assert_eq!(shell.ui_state.active_tab(), 0));
+    let first = cx.debug_bounds("tabs.0").unwrap();
+    assert!(first.left() >= viewport.left() && first.right() <= viewport.right());
+    cx.simulate_resize(gpui::size(px(960.), px(700.)));
+    cx.simulate_keystrokes("cmd-shift-[");
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    let viewport = cx.debug_bounds("tabs.viewport").unwrap();
+    let last = cx.debug_bounds("tabs.24").unwrap();
+    assert!(last.left() >= viewport.left() && last.right() <= viewport.right());
+}
+
+#[gpui::test]
+fn restored_active_tab_is_visible_on_the_first_frame(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("tabs.json");
+    let mut state = UiState::default();
+    for _ in 0..24 {
+        state.new_tab();
+    }
+    state.save(&path).unwrap();
+    let (_, cx) = cx.add_window_view(|window, cx| Shell::fixture(path, window, cx));
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    let viewport = cx.debug_bounds("tabs.viewport").unwrap();
+    let tab = cx.debug_bounds("tabs.24").unwrap();
+    assert!(tab.left() >= viewport.left() && tab.right() <= viewport.right());
+}
+
+#[gpui::test]
+fn compact_sidebar_preserves_icon_positions_and_profile_access(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let (shell, cx) =
+        cx.add_window_view(|window, cx| Shell::fixture(dir.path().join("tabs.json"), window, cx));
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    let search = cx.debug_bounds("shell.search").unwrap();
+    let nav = cx.debug_bounds("sidebar-nav-1").unwrap();
+    let profile = cx.debug_bounds("sidebar-profile-avatar").unwrap();
+    shell.update(cx, |shell, cx| {
+        shell.ui_state.sidebar.open = false;
+        shell.sidebar_visible = crate::ui_state::SIDEBAR_COLLAPSED;
+        cx.notify();
+    });
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    assert_eq!(cx.debug_bounds("shell.search").unwrap().top(), search.top());
+    assert_eq!(cx.debug_bounds("sidebar-nav-1").unwrap().origin, nav.origin);
+    assert_eq!(cx.debug_bounds("sidebar-profile-avatar").unwrap(), profile);
+    assert!(cx.debug_bounds("sidebar-profile-name").is_none());
+    let main = cx.debug_bounds("main-pane").unwrap();
+    assert_eq!(main.left(), px(crate::ui_state::SIDEBAR_COLLAPSED));
+    let ticket = cx.debug_bounds("sidebar-nav-1").unwrap().center();
+    cx.simulate_click(ticket, Modifiers::default());
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.ui_state.current(), Route::Tickets)
+    });
+    cx.simulate_click(profile.center(), Modifiers::default());
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(
+            shell.overlays.borrow().active(),
+            Some(Overlay::UserMenu { support: false })
+        )
+    });
+}
+
+#[gpui::test]
+fn support_menu_stays_beside_profile_menu_at_all_font_sizes(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let (shell, cx) =
+        cx.add_window_view(|window, cx| Shell::fixture(dir.path().join("tabs.json"), window, cx));
+    cx.simulate_resize(gpui::size(px(760.), px(600.)));
+    for (font_size, _) in crate::ui_state::FontSize::ALL {
+        cx.update(|window, cx| {
+            shell.update(cx, |shell, cx| {
+                let appearance = crate::ui_state::Appearance {
+                    font_size,
+                    ..Default::default()
+                };
+                shell.apply_appearance(appearance, cx);
+                shell.overlays.borrow_mut().open(
+                    Overlay::UserMenu { support: true },
+                    window,
+                    cx,
+                    None,
+                );
+            });
+            window.draw(cx).clear(cx);
+        });
+        let parent = cx.debug_bounds("user-menu").unwrap();
+        let support = cx.debug_bounds("user-menu.support.menu").unwrap();
+        assert!(support.left() >= parent.right() + px(crate::ui::SPACE_2));
+        assert!(support.right() <= px(760.));
+        assert!(support.bottom() <= px(600.));
+        assert_eq!(support.bottom(), parent.bottom());
+    }
+    crate::ui::set_type_scale(1.);
+}
+
+#[gpui::test]
 fn custom_header_owns_titlebar_gestures(_cx: &mut TestAppContext) {
     let bounds = gpui::Bounds::new(point(px(0.), px(0.)), gpui::size(px(1360.), px(828.)));
     assert!(crate::main_window_options(bounds, "QA".into(), true).app_owns_titlebar_drag);

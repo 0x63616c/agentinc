@@ -1,4 +1,4 @@
-//! The shell header: the current Page tab and its contour, with the header controls.
+//! Bounded, horizontally scrollable tabs and their panel-joining contours.
 use super::*;
 
 // One continuous contour avoids vertical border tails at the inverse shoulders.
@@ -45,6 +45,75 @@ pub fn current_page_contour() -> impl IntoElement {
 }
 
 impl Shell {
+    fn header_left_width(&self, window: &Window) -> f32 {
+        (self.sidebar_visible.min(self.sidebar_limit(window)) + HEADER_LEFT_EXTRA)
+            .max(HEADER_TRAFFIC_WIDTH + HEADER_CONTROL * 3. + HEADER_CONTROLS_INSET)
+    }
+
+    pub(super) fn tab_viewport(&self, window: &Window) -> Pixels {
+        (window.viewport_size().width
+            - px(self.header_left_width(window) + HEADER_EDGE_INSET + HEADER_CONTROL * 2.))
+        .max(px(0.))
+    }
+
+    fn tab(&self, index: usize, route: Route, ui: &mut Ui<Self>) -> Div {
+        let selected = self.ui_state.active_tab() == index;
+        let group: SharedString = format!("tab-{index}").into();
+        row()
+            .relative()
+            .flex_shrink_0()
+            .w(px(TAB_SLOT_WIDTH))
+            .h(px(TAB_SLOT_HEIGHT))
+            .child(
+                self.button(("tab", index), route.label(), Control::SelectTab(index), ui)
+                    .accessibility_id(format!("tabs.{index}"))
+                    .debug_selector(move || format!("tabs.{index}"))
+                    .role(accesskit::Role::Tab)
+                    .aria_selected(selected)
+                    .group(group.clone())
+                    .absolute()
+                    .left(px(TAB_CONTOUR_SHOULDER))
+                    .bottom_0()
+                    .w(px(TAB_WIDTH))
+                    .h(px(TAB_HEIGHT))
+                    .rounded_t(px(TAB_RADIUS))
+                    .bg(rgba(SHELL << 8))
+                    .when(selected, |tab| tab.child(current_page_contour()))
+                    .child(
+                        row()
+                            .relative()
+                            .size_full()
+                            .pb(px(TAB_LABEL_LIFT))
+                            .pl(px(TAB_LABEL_INSET))
+                            .pr(px(SPACE_1))
+                            .gap(px(TAB_LABEL_GAP))
+                            .text_size(type_size(LABEL_SIZE))
+                            .text_color(rgb(if selected { TEXT } else { TEXT_SECONDARY }))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(icon(route.icon(), TAB_ICON_SIZE))
+                            .child(div().flex_1().min_w_0().truncate().child(route.label()))
+                            .child(
+                                self.button(
+                                    ("tab-close", index),
+                                    "Close tab",
+                                    Control::CloseTab(index),
+                                    ui,
+                                )
+                                .accessibility_id(format!("tabs.{index}.close"))
+                                .debug_selector(move || format!("tabs.{index}.close"))
+                                .size(px(TAB_CLOSE_SIZE))
+                                .flex_shrink_0()
+                                .justify_center()
+                                .rounded(px(RADIUS_SM))
+                                .bg(rgba(SHELL << 8))
+                                .opacity(0.)
+                                .group_hover(group, |s| s.opacity(1.))
+                                .focus(|s| s.opacity(1.).shadow(focus_ring()))
+                                .child(icon(Icon::Close, TAB_ICON_SIZE)),
+                            ),
+                    ),
+            )
+    }
     /// A bare ghost control with the shared contract and hover fade; callers
     /// compose its children. Labeled buttons use `ui::Button`.
     pub(super) fn button(
@@ -134,15 +203,16 @@ impl Shell {
     }
 
     pub(super) fn header(&self, ui: &mut Ui<Self>) -> impl IntoElement {
-        let route = self.ui_state.current();
         row()
+            .w_full()
+            .min_w_0()
             .h(px(TITLEBAR_HEIGHT))
             .flex_shrink_0()
             .items_end()
             .pr(px(HEADER_EDGE_INSET))
             .child(
                 row()
-                    .w(px(self.ui_state.sidebar.width + HEADER_LEFT_EXTRA))
+                    .w(px(self.header_left_width(ui.window)))
                     .h_full()
                     .flex_shrink_0()
                     .justify_end()
@@ -186,35 +256,51 @@ impl Shell {
             )
             .child(
                 row()
+                    .id("tabs.viewport")
+                    .debug_selector(|| "tabs.viewport".into())
                     .relative()
                     .mb(px(-TAB_SLOT_SINK))
-                    .w(px(TAB_SLOT_WIDTH))
+                    .w(self.tab_viewport(ui.window))
+                    .min_w_0()
+                    .flex_shrink_0()
                     .h(px(TAB_SLOT_HEIGHT))
-                    .child(
-                        row()
-                            .absolute()
-                            .left(px(TAB_LABEL_INSET))
-                            .bottom_0()
-                            .w(px(TAB_WIDTH))
-                            .h(px(TAB_HEIGHT))
-                            .rounded_t(px(TAB_RADIUS))
-                            .child(current_page_contour())
-                            .child(
-                                // The tab's visible face is its top `TAB_FACE_HEIGHT`; centre the label in it.
-                                row()
-                                    .h_full()
-                                    .items_center()
-                                    .pb(px(TAB_LABEL_LIFT))
-                                    .pl(px(TAB_LABEL_INSET))
-                                    .gap(px(TAB_LABEL_GAP))
-                                    .text_size(type_size(LABEL_SIZE))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(icon(route.icon(), TAB_ICON_SIZE))
-                                    .child(route.label()),
-                            ),
+                    .overflow_x_scroll()
+                    .overflow_y_hidden()
+                    .track_scroll(&self.tab_scroll)
+                    .on_scroll_wheel(ui.cx.listener(|this, event: &ScrollWheelEvent, _, cx| {
+                        let delta = event.delta.pixel_delta(px(CONTROL_HEIGHT));
+                        // A vertical mouse wheel scrolls the tab strip too. Diagonal
+                        // trackpad gestures use the dominant axis, once per event.
+                        let delta = if delta.x.abs() > delta.y.abs() {
+                            delta.x
+                        } else {
+                            delta.y
+                        };
+                        let x = (this.tab_scroll.offset().x + delta)
+                            .clamp(-this.tab_scroll.max_offset().x, px(0.));
+                        this.tab_scroll.set_offset(point(x, px(0.)));
+                        cx.stop_propagation();
+                        cx.notify();
+                    }))
+                    .children(
+                        self.ui_state
+                            .tabs()
+                            .iter()
+                            .enumerate()
+                            .map(|(index, router)| self.tab(index, router.current(), ui)),
                     ),
             )
-            .child(self.titlebar_space("titlebar-center-space", ui).flex_1())
+            .child(
+                self.titlebar_space("titlebar-center-space", ui)
+                    .w(px(HEADER_CONTROL)),
+            )
+            .child(div().mb(px(HEADER_EDGE_INSET)).child(self.icon_button(
+                "tabs.new",
+                shortcuts::NEW_TAB.labelled("New tab"),
+                Icon::Plus,
+                Control::NewTab,
+                ui,
+            )))
     }
 }
 

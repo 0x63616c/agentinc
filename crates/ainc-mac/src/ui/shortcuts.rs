@@ -12,14 +12,14 @@ pub struct Shortcut {
 }
 
 impl Shortcut {
-    /// An accessible label: `Go to… · ⌘K`.
+    /// An accessible label: `Search · ⌘K`.
     pub fn labelled(self, label: &str) -> String {
         format!("{label} · {}", self.glyph)
     }
 }
 
 pub const GO_TO: Shortcut = Shortcut {
-    action: "Go to…",
+    action: "Search",
     keystroke: "cmd-k",
     glyph: "⌘K",
 };
@@ -32,6 +32,31 @@ pub const FORWARD: Shortcut = Shortcut {
     action: "Forward",
     keystroke: "cmd-]",
     glyph: "⌘]",
+};
+pub const NEW_TAB: Shortcut = Shortcut {
+    action: "New tab",
+    keystroke: "cmd-t",
+    glyph: "⌘T",
+};
+pub const CLOSE_TAB: Shortcut = Shortcut {
+    action: "Close tab",
+    keystroke: "cmd-shift-w",
+    glyph: "⇧⌘W",
+};
+pub const PREVIOUS_TAB: Shortcut = Shortcut {
+    action: "Previous tab",
+    keystroke: "cmd-shift-[",
+    glyph: "⇧⌘[",
+};
+pub const NEXT_TAB: Shortcut = Shortcut {
+    action: "Next tab",
+    keystroke: "cmd-shift-]",
+    glyph: "⇧⌘]",
+};
+pub const CHECK_UPDATES: Shortcut = Shortcut {
+    action: "Check for Updates",
+    keystroke: "cmd-shift-u",
+    glyph: "⇧⌘U",
 };
 /// The sidebar pages, one digit each; `route(n)` gives one page's binding.
 pub const PAGES: Shortcut = Shortcut {
@@ -70,6 +95,11 @@ pub const ALL: &[Shortcut] = &[
     GO_TO,
     BACK,
     FORWARD,
+    NEW_TAB,
+    CLOSE_TAB,
+    PREVIOUS_TAB,
+    NEXT_TAB,
+    CHECK_UPDATES,
     PAGES,
     SETTINGS,
     TOGGLE_SIDEBAR,
@@ -100,6 +130,6 @@ mod tests {
     fn routes_wrap_at_ten() {
         assert_eq!(route(1), ("cmd-1".into(), "⌘1".into()));
         assert_eq!(route(10), ("cmd-0".into(), "⌘0".into()));
-        assert_eq!(GO_TO.labelled("Go to…"), "Go to… · ⌘K");
+        assert_eq!(GO_TO.labelled("Search"), "Search · ⌘K");
     }
 }

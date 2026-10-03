@@ -154,7 +154,10 @@ mod tests {
         cx.update(|window, cx| window.draw(cx).clear(cx));
         assert_eq!(
             shortcuts::ALL.iter().map(|s| s.glyph).collect::<Vec<_>>(),
-            ["⌘K", "⌘[", "⌘]", "⌘1–6", "⌘,", "⌘B", "⎋", "↵", "⇧↵"]
+            [
+                "⌘K", "⌘[", "⌘]", "⌘T", "⇧⌘W", "⇧⌘[", "⇧⌘]", "⇧⌘U", "⌘1–6", "⌘,", "⌘B", "⎋", "↵",
+                "⇧↵"
+            ]
         );
         for shortcut in shortcuts::ALL {
             let pill = cx.debug_bounds(shortcut.glyph).unwrap();

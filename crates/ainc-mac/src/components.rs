@@ -148,7 +148,7 @@ impl ComponentsPage {
                     .child(Button::new("components.disabled-secondary", "Secondary").secondary().enabled(false).build(ui, noop))
                     .child(Button::new("components.selected-secondary", "Selected").secondary().selected(true).build(ui, noop))
                     .child(Button::new("components.selected-ghost", "Selected Ghost").ghost().selected(true).build(ui, noop))
-                    .child(Button::new("components.trailing", "Go to…").secondary().icon(Icon::Search).trailing(kbd(shortcuts::GO_TO.glyph)).build(ui, noop)),
+                    .child(Button::new("components.trailing", "Search").secondary().icon(Icon::Search).trailing(kbd(shortcuts::GO_TO.glyph)).build(ui, noop)),
             ))
     }
 

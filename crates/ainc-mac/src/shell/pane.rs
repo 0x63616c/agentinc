@@ -1,7 +1,7 @@
 //! The body under the title bar: the sidebar pane (width, resize handle,
 //! open/close animation) beside the content card with its status bar.
 use super::*;
-use crate::ui_state::{SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN};
+use crate::ui_state::{SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN};
 
 impl Shell {
     /// The content card: the current page over the status bar.
@@ -69,7 +69,7 @@ impl Shell {
             if preference.open {
                 preference.width
             } else {
-                0.
+                SIDEBAR_COLLAPSED
             },
         ));
     }
@@ -133,7 +133,7 @@ impl Shell {
         window.refresh();
     }
 
-    fn sidebar_limit(&self, window: &Window) -> f32 {
+    pub(super) fn sidebar_limit(&self, window: &Window) -> f32 {
         (f32::from(window.viewport_size().width) - 378.).clamp(SIDEBAR_MIN, SIDEBAR_MAX)
     }
 
@@ -176,7 +176,6 @@ impl Shell {
     /// The sidebar beside the content card, under the title bar.
     pub(super) fn body(&self, sidebar: AnyElement, content: AnyElement, ui: &mut Ui<Self>) -> Div {
         let visible = self.sidebar_visible.min(self.sidebar_limit(ui.window));
-        let saved = self.ui_state.sidebar.width;
         row()
             .relative()
             .flex_1()
@@ -195,10 +194,9 @@ impl Shell {
                             .w(px(visible))
                             .h_full()
                             .overflow_hidden()
-                            .child(div().w(px(saved)).h_full().child(sidebar)),
+                            .child(div().w(px(visible)).h_full().child(sidebar)),
                     ),
             )
-            .pl(px(PANEL_GAP * (1. - visible / saved)))
             .child(
                 row()
                     .flex_1()

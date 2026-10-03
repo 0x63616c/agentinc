@@ -43,6 +43,11 @@ actions!(
         GoTo,
         GoBack,
         GoForward,
+        NewTab,
+        CloseTab,
+        PreviousTab,
+        NextTab,
+        CheckUpdates,
         ToggleSidebar,
         Escape,
         Down,
@@ -63,6 +68,10 @@ pub(crate) enum Control {
     Go(Destination),
     Back,
     Forward,
+    NewTab,
+    CloseTab(usize),
+    SelectTab(usize),
+    StepTab(bool),
     GoTo,
     Sidebar,
     Dismiss,
@@ -98,6 +107,9 @@ pub struct Shell {
     picker_result_focus: Vec<FocusHandle>,
     picker_close_focus: FocusHandle,
     palette_scroll: ScrollHandle,
+    tab_scroll: ScrollHandle,
+    tab_reveal: bool,
+    tab_viewport_width: Pixels,
     _input_subscription: Subscription,
     _activation_subscription: Subscription,
     command_held: bool,
@@ -186,6 +198,20 @@ impl Shell {
                         Shortcut::Settings => Control::Go(Destination::Page(Route::Settings)),
                         Shortcut::Back => Control::Back,
                         Shortcut::Forward => Control::Forward,
+                        Shortcut::NewTab => Control::NewTab,
+                        Shortcut::CloseTab => {
+                            let _ = shell.update(cx, |shell, cx| {
+                                shell.dispatch(
+                                    Control::CloseTab(shell.ui_state.active_tab()),
+                                    window,
+                                    cx,
+                                )
+                            });
+                            return;
+                        }
+                        Shortcut::PreviousTab => Control::StepTab(false),
+                        Shortcut::NextTab => Control::StepTab(true),
+                        Shortcut::CheckUpdates => Control::CheckForUpdates,
                         Shortcut::Page(route) => Control::Go(Destination::Page(route)),
                     };
                     let _ = shell.update(cx, |shell, cx| shell.dispatch(control, window, cx));
@@ -296,7 +322,7 @@ impl Shell {
         let sidebar_visible = if ui_state.sidebar.open {
             ui_state.sidebar.width
         } else {
-            0.
+            crate::ui_state::SIDEBAR_COLLAPSED
         };
         let update_subscription = cx
             .try_global::<crate::updates::Updates>()
@@ -327,6 +353,9 @@ impl Shell {
             picker_result_focus: (0..64).map(|_| cx.focus_handle()).collect(),
             picker_close_focus: cx.focus_handle(),
             palette_scroll: ScrollHandle::new(),
+            tab_scroll: ScrollHandle::new(),
+            tab_reveal: true,
+            tab_viewport_width: px(0.),
             _input_subscription: subscription,
             _activation_subscription: cx.observe_window_activation(window, |this, window, cx| {
                 // Command can be released in another app, with no modifier event
@@ -525,6 +554,30 @@ impl Shell {
             return;
         }
         match control {
+            Control::NewTab => {
+                self.ui_state.new_tab();
+                self.tab_reveal = true;
+                self.overlays.borrow_mut().dismiss(window, cx);
+                window.focus(&self.focus, cx);
+            }
+            Control::CloseTab(index) => {
+                self.ui_state.close_tab(index);
+                self.tab_reveal = true;
+                self.overlays.borrow_mut().dismiss(window, cx);
+                window.focus(&self.focus, cx);
+            }
+            Control::SelectTab(index) => {
+                self.ui_state.select_tab(index);
+                self.tab_reveal = true;
+                self.overlays.borrow_mut().dismiss(window, cx);
+                window.focus(&self.focus, cx);
+            }
+            Control::StepTab(forward) => {
+                self.ui_state.step_tab(forward);
+                self.tab_reveal = true;
+                self.overlays.borrow_mut().dismiss(window, cx);
+                window.focus(&self.focus, cx);
+            }
             Control::Back | Control::Forward => {
                 self.ui_state.go(matches!(&control, Control::Forward));
                 self.overlays.borrow_mut().dismiss(window, cx);
@@ -641,6 +694,26 @@ impl Render for Shell {
         }
         self.sync_save_toast();
         self.animate_sidebar(window);
+        let tab_width = self.tab_viewport(window);
+        if self.tab_reveal || tab_width != self.tab_viewport_width {
+            // ScrollHandle's item reveal uses the previous frame's overflow and
+            // bounds, which are absent when restoring a window. Fixed-width slots
+            // let us reveal on the very first layout, including both shoulders.
+            let left = px(self.ui_state.active_tab() as f32 * TAB_SLOT_WIDTH);
+            let right = left + px(TAB_SLOT_WIDTH);
+            let mut x = self.tab_scroll.offset().x;
+            if left + x < px(0.) {
+                x = -left;
+            } else if right + x > tab_width {
+                x = tab_width - right;
+            }
+            let extent =
+                (px(self.ui_state.tabs().len() as f32 * TAB_SLOT_WIDTH) - tab_width).max(px(0.));
+            self.tab_scroll
+                .set_offset(point(x.clamp(-extent, px(0.)), px(0.)));
+            self.tab_reveal = false;
+            self.tab_viewport_width = tab_width;
+        }
         if reduced_motion() {
             self.palette_transition = None;
         }
@@ -685,9 +758,6 @@ impl Render for Shell {
             Some(Overlay::Dialog(route)) => self.page(route).overlay(window, cx),
             _ => None,
         };
-        let update_ready = cx
-            .try_global::<crate::updates::Updates>()
-            .is_some_and(|updates| updates.0.read(cx).is_ready());
         let ui = &mut Ui::new(window, cx);
         column()
             .id("shell")
@@ -773,6 +843,24 @@ impl Render for Shell {
                 this.dispatch(Control::GoTo, w, cx);
             }))
             .on_action(
+                ui.cx
+                    .listener(|this, _: &NewTab, w, cx| this.dispatch(Control::NewTab, w, cx)),
+            )
+            .on_action(ui.cx.listener(|this, _: &CloseTab, w, cx| {
+                this.dispatch(Control::CloseTab(this.ui_state.active_tab()), w, cx)
+            }))
+            .on_action(ui.cx.listener(|this, _: &PreviousTab, w, cx| {
+                this.dispatch(Control::StepTab(false), w, cx)
+            }))
+            .on_action(
+                ui.cx.listener(|this, _: &NextTab, w, cx| {
+                    this.dispatch(Control::StepTab(true), w, cx)
+                }),
+            )
+            .on_action(ui.cx.listener(|this, _: &CheckUpdates, w, cx| {
+                this.dispatch(Control::CheckForUpdates, w, cx)
+            }))
+            .on_action(
                 ui.cx.listener(|this, _: &ToggleSidebar, w, cx| {
                     this.dispatch(Control::Sidebar, w, cx)
                 }),
@@ -805,23 +893,6 @@ impl Render for Shell {
                     .right_0()
                     .child(self.header(ui)),
             )
-            .when(update_ready, |view| {
-                view.child(
-                    div()
-                        .absolute()
-                        .bottom(px(PANEL_GAP + STATUS_BAR_HEIGHT + SPACE_3))
-                        .left(px(self.sidebar_visible + PANEL_GAP + SPACE_3))
-                        .child(
-                            Button::new("update-ready", "Update ready · Install")
-                                .primary()
-                                .small()
-                                .icon(Icon::Download)
-                                .build(ui, |_, _, cx| crate::updates::open(cx, false))
-                                .accessibility_id("updates.ready")
-                                .shadow(shadow_toast()),
-                        ),
-                )
-            })
             .when_some(dialog_content, |s, content| {
                 s.child(
                     div()
@@ -901,6 +972,19 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new(shortcuts::BACK.keystroke, GoBack, Some("Control")),
         KeyBinding::new(shortcuts::FORWARD.keystroke, GoForward, Some("Control")),
         KeyBinding::new(shortcuts::GO_TO.keystroke, GoTo, None),
+        KeyBinding::new(shortcuts::NEW_TAB.keystroke, NewTab, Some("Control")),
+        KeyBinding::new(shortcuts::CLOSE_TAB.keystroke, CloseTab, Some("Control")),
+        KeyBinding::new(
+            shortcuts::PREVIOUS_TAB.keystroke,
+            PreviousTab,
+            Some("Control"),
+        ),
+        KeyBinding::new(shortcuts::NEXT_TAB.keystroke, NextTab, Some("Control")),
+        KeyBinding::new(
+            shortcuts::CHECK_UPDATES.keystroke,
+            CheckUpdates,
+            Some("Control"),
+        ),
         KeyBinding::new(shortcuts::SETTINGS.keystroke, OpenSettings, Some("Control")),
         KeyBinding::new(
             shortcuts::TOGGLE_SIDEBAR.keystroke,

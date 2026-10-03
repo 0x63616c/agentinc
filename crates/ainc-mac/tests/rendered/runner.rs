@@ -9,7 +9,7 @@ use ainc_mac::{
     routes::Route,
     shell::{self, Shell},
     ui::Assets,
-    ui_state::{FontSize, UiState},
+    ui_state::{FontSize, SIDEBAR_MAX, SIDEBAR_MIN, UiState},
 };
 use anyhow::{Result, ensure};
 use gpui::prelude::*;
@@ -1531,9 +1531,166 @@ pub fn run() -> Result<()> {
     })?;
     suite.capture("terminal-unavailable", Route::Terminal, None, false)?;
     suite.bounds("terminal.unavailable")?;
+    capture_tab_matrix(&mut suite, temporary.path())?;
     println!(
         "{} real Metal frames passed, including region-removal negative controls",
         suite.count
     );
+    Ok(())
+}
+
+/// Real Metal evidence for the new chrome, independent of the page fixture suite.
+/// Layout is driven to a committed frame without sleeps or animation deadlines.
+fn capture_tab_matrix(suite: &mut Suite, temporary: &std::path::Path) -> Result<()> {
+    for (width, height) in [(760., 600.), (1024., 720.), (1360., 828.)] {
+        for expanded in [false, true] {
+            for (font_size, _) in FontSize::ALL {
+                let name = format!("tabs-{width}-{expanded}-{font_size:?}");
+                let path = temporary.join(format!("{name}.json"));
+                let mut state = UiState::default();
+                state.sidebar.open = expanded;
+                state.sidebar.width = if width == 760. {
+                    SIDEBAR_MIN
+                } else {
+                    SIDEBAR_MAX
+                };
+                state.font_size = font_size;
+                for index in 0..18 {
+                    if index > 0 {
+                        state.new_tab();
+                    }
+                    state.navigate(
+                        [
+                            Route::Tickets,
+                            Route::Agents,
+                            Route::Automations,
+                            Route::Assistant,
+                        ][index % 4],
+                    );
+                }
+                state.navigate(Route::Assistant);
+                state.save(&path)?;
+                suite.cx.update(|cx| {
+                    let updates = cx.new(|_| ainc_mac::updates::UpdateView::fixture_ready(true));
+                    cx.set_global(ainc_mac::updates::Updates(updates));
+                });
+                suite.window = suite
+                    .cx
+                    .open_offscreen_window(size(px(width), px(height)), |window, cx| {
+                        cx.new(|cx| Shell::fixture(path, window, cx))
+                    })?;
+                for (position, keys, selector) in [
+                    ("last", "", "tabs.17"),
+                    ("first", "cmd-shift-]", "tabs.0"),
+                    ("last-again", "cmd-shift-[", "tabs.17"),
+                ] {
+                    if !keys.is_empty() {
+                        suite.keys(keys);
+                    }
+                    suite.cx.run_until_parked();
+                    suite
+                        .cx
+                        .update_window(suite.window.into(), |_, window, cx| {
+                            window.draw(cx).clear(cx)
+                        })?;
+                    let viewport = suite.bounds("tabs.viewport")?;
+                    let tab = suite.bounds(selector)?;
+                    let new = suite.bounds("tabs.new")?;
+                    ensure!(
+                        tab.left() >= viewport.left() && tab.right() <= viewport.right(),
+                        "{name}/{position}: selected tab must be fully visible: tab={tab:?}, viewport={viewport:?}"
+                    );
+                    ensure!(
+                        viewport.right() <= new.left() && new.right() <= px(width),
+                        "{name}: tabs must leave the new-tab button inside the window"
+                    );
+                    let close = suite.bounds(&format!("{selector}.close"))?;
+                    let scale = suite
+                        .cx
+                        .update_window(suite.window.into(), |_, window, _| {
+                            window.scale_factor() as u32
+                        })?;
+                    let close_pixels = |image: &image::RgbaImage| {
+                        let area = rect(close);
+                        (area[1] * scale..area[3] * scale)
+                            .flat_map(|y| (area[0] * scale..area[2] * scale).map(move |x| (x, y)))
+                            .filter(|&(x, y)| image.get_pixel(x, y).0[0] > 90)
+                            .count()
+                    };
+                    suite.cx.simulate_mouse_move(
+                        suite.window.into(),
+                        point(px(width / 2.), px(height / 2.)),
+                        None::<MouseButton>,
+                        Modifiers::default(),
+                    );
+                    suite
+                        .cx
+                        .update_window(suite.window.into(), |_, window, cx| {
+                            window.draw(cx).clear(cx)
+                        })?;
+                    let resting = suite.cx.capture_screenshot(suite.window.into())?;
+                    ensure!(
+                        close_pixels(&resting) == 0,
+                        "{name}: close icon should be hidden until its tab is hovered or focused"
+                    );
+                    suite.cx.simulate_mouse_move(
+                        suite.window.into(),
+                        tab.center(),
+                        None::<MouseButton>,
+                        Modifiers::default(),
+                    );
+                    suite
+                        .cx
+                        .update_window(suite.window.into(), |_, window, cx| {
+                            window.draw(cx).clear(cx)
+                        })?;
+                    let hovered = suite.cx.capture_screenshot(suite.window.into())?;
+                    ensure!(
+                        close_pixels(&hovered) > 10,
+                        "{name}: hovered tab must show its close icon"
+                    );
+                    hovered.save(suite.output.join(format!("{name}-{position}.png")))?;
+                    suite.count += 1;
+                }
+                suite.bounds("update-ready")?;
+                suite.click_selector("sidebar-profile")?;
+                suite
+                    .cx
+                    .update_window(suite.window.into(), |_, window, cx| {
+                        window.draw(cx).clear(cx)
+                    })?;
+                suite.bounds("user-menu.update")?;
+                suite.click_selector("user-menu.support")?;
+                suite
+                    .cx
+                    .update_window(suite.window.into(), |_, window, cx| {
+                        window.draw(cx).clear(cx)
+                    })?;
+                let parent = suite.bounds("user-menu")?;
+                let submenu = suite.bounds("user-menu.support.menu")?;
+                ensure!(
+                    submenu.left() >= parent.right() + px(ui::SPACE_2),
+                    "{name}: submenu must not overlap profile menu"
+                );
+                ensure!(
+                    submenu.right() <= px(width)
+                        && submenu.bottom() <= px(height)
+                        && parent.top() >= px(0.),
+                    "{name}: menus must fit the window"
+                );
+                suite
+                    .cx
+                    .capture_screenshot(suite.window.into())?
+                    .save(suite.output.join(format!("{name}-update-support.png")))?;
+                suite.count += 1;
+                suite
+                    .cx
+                    .update_window(suite.window.into(), |_, window, _| window.remove_window())?;
+                println!(
+                    "PASS {name}: tab overflow, selected reveal, compact rail, update and support geometry"
+                );
+            }
+        }
+    }
     Ok(())
 }
