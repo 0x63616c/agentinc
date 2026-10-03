@@ -15,8 +15,8 @@ pub(crate) struct DraggedTicket {
     title: SharedString,
     priority: TicketPriority,
     labels: Vec<String>,
-    /// The assignee's name, photo and whether it is an agent.
-    assignee: (SharedString, Option<Arc<Image>>, bool),
+    running: bool,
+    assignee: AssigneeFace,
     width: Pixels,
     /// Where the pointer picked the card up, inside it.
     grab: Point<Pixels>,
@@ -34,7 +34,6 @@ impl Render for DraggedTicket {
 }
 impl DraggedTicket {
     fn card(&self) -> Div {
-        let (name, photo, agent) = &self.assignee;
         column()
             .w(self.width)
             .p(px(SPACE_3))
@@ -46,26 +45,12 @@ impl DraggedTicket {
             .shadow(shadow_dialog())
             .text_color(rgb(TEXT))
             .gap(px(SPACE_2))
-            .child(
-                row()
-                    .w_full()
-                    .child(hint(self.key.clone()))
-                    .child(div().flex_1())
-                    .child(if *agent {
-                        agent_avatar(name, AVATAR_SIZE_SM)
-                    } else {
-                        avatar(name, photo.clone(), AVATAR_SIZE_SM)
-                    }),
-            )
-            .child(
-                div()
-                    .w_full()
-                    .text_size(type_size(BODY_SIZE))
-                    .line_height(relative(TITLE_LINE_HEIGHT))
-                    .line_clamp(3)
-                    .text_ellipsis()
-                    .child(self.title.clone()),
-            )
+            .child(ticket_card_body(
+                self.key.clone(),
+                self.title.clone(),
+                self.running,
+                &self.assignee,
+            ))
             .when(
                 self.priority != TicketPriority::None || !self.labels.is_empty(),
                 |s| {
@@ -134,13 +119,8 @@ impl DragState {
 }
 
 impl TicketsPage {
-    pub(super) fn board(
-        &self,
-        visible: &[Ticket],
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let dragging = self.drag.dragging.get().filter(|_| cx.has_active_drag());
+    pub(super) fn board(&self, visible: &[Ticket], ui: &mut Ui<Self>) -> Stateful<Div> {
+        let dragging = self.drag.dragging.get().filter(|_| ui.cx.has_active_drag());
         div()
             .id("tickets.board")
             .debug_selector(|| "tickets.board".into())
@@ -151,7 +131,7 @@ impl TicketsPage {
             .gap(px(SPACE_3))
             .overflow_x_scroll()
             .children(
-                STATUSES.map(|status| self.lane(status, in_column(visible, status), dragging, cx)),
+                STATUSES.map(|status| self.lane(status, in_column(visible, status), dragging, ui)),
             )
     }
 
@@ -160,7 +140,7 @@ impl TicketsPage {
         status: TicketStatus,
         cards: Vec<&Ticket>,
         dragging: Option<i64>,
-        cx: &mut Context<Self>,
+        ui: &mut Ui<Self>,
     ) -> Stateful<Div> {
         let key = status_key(status);
         let ids: Vec<i64> = cards.iter().map(|t| t.id).collect();
@@ -205,7 +185,7 @@ impl TicketsPage {
             .children(cards.iter().map(|ticket| {
                 column()
                     .pb(px(SPACE_2))
-                    .child(self.card(ticket, dragging == Some(ticket.id), cx))
+                    .child(self.card(ticket, dragging == Some(ticket.id), ui))
                     .when(indicator.is_some_and(|t| t.after == Some(ticket.id)), |s| {
                         s.child(drop_line(true).mt(px(SPACE_2)))
                     })
@@ -251,17 +231,7 @@ impl TicketsPage {
                     .pl(px(SPACE_3))
                     .pr(px(SPACE_1))
                     .gap(px(SPACE_2))
-                    .child(
-                        icon(status_icon(status), ICON_SIZE_SM)
-                            .text_color(rgb(status_color(status))),
-                    )
-                    .child(
-                        div()
-                            .text_size(type_size(LABEL_SIZE))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(name),
-                    )
-                    .child(hint(cards.len().to_string()))
+                    .child(status_group_header(status, cards.len()))
                     .child(div().flex_1())
                     .when(creates, |s| {
                         s.child(
@@ -271,16 +241,15 @@ impl TicketsPage {
                             )
                             .ghost()
                             .small()
-                            .icon("plus")
+                            .icon(Icon::Plus)
                             .icon_only()
                             .tint(TEXT_TERTIARY)
                             .enabled(!self.pending.busy())
                             .build(
-                                &self.hover,
+                                ui,
                                 move |this: &mut Self, window, cx| {
                                     this.open_create(Some(status), window, cx)
                                 },
-                                cx,
                             ),
                         )
                     }),
@@ -294,8 +263,8 @@ impl TicketsPage {
                     .pb(px(BOARD_LANE_INSET))
                     .child(body),
             )
-            .on_drag_move(
-                cx.listener(move |this, event: &DragMoveEvent<DraggedTicket>, _, cx| {
+            .on_drag_move(ui.cx.listener(
+                move |this, event: &DragMoveEvent<DraggedTicket>, _, cx| {
                     // Every lane hears every move; only the one under the pointer answers.
                     if !event.bounds.contains(&event.event.position) {
                         return;
@@ -309,17 +278,17 @@ impl TicketsPage {
                         this.drag.target = target;
                         cx.notify();
                     }
-                }),
-            )
-            .on_drop(cx.listener(move |this, dragged: &DraggedTicket, _, cx| {
+                },
+            ))
+            .on_drop(ui.cx.listener(move |this, dragged: &DraggedTicket, _, cx| {
                 this.drop_ticket(dragged.id, status, cx)
             }))
     }
 
-    fn card(&self, ticket: &Ticket, ghost: bool, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn card(&self, ticket: &Ticket, ghost: bool, ui: &mut Ui<Self>) -> Stateful<Div> {
         let id = ticket.id;
         let element = ElementId::NamedInteger("ticket".into(), id as u64);
-        let (progress, on_hover) = self.hover.track(&element, true, cx);
+        let (progress, on_hover) = ui.hover(&element, true);
         // Freshly landed cards settle from a bright edge to their resting border.
         let settle = self
             .drag
@@ -339,13 +308,8 @@ impl TicketsPage {
             title: title.clone(),
             priority: ticket.priority,
             labels: ticket.labels.clone(),
-            assignee: (
-                self.assignee_name(&ticket.assignee_id),
-                (ticket.assignee_id == "owner")
-                    .then(|| self.owner.1.clone())
-                    .flatten(),
-                self.is_agent(&ticket.assignee_id),
-            ),
+            running: self.running(ticket),
+            assignee: self.assignee_face(&ticket.assignee_id),
             width: px(BOARD_LANE_MIN_WIDTH),
             grab: Point::default(),
         };
@@ -370,36 +334,16 @@ impl TicketsPage {
                     .border_color(border)
                     .when(ghost, |s| s.opacity(GHOST_OPACITY))
                     .on_hover(on_hover)
-                    .child(
-                        row()
-                            .w_full()
-                            .gap(px(SPACE_2))
-                            .child(hint(key.clone()))
-                            .when(self.running(ticket), |s| {
-                                s.child(
-                                    row()
-                                        .gap(px(SPACE_1))
-                                        .child(status_dot(Tone::Info))
-                                        .child(hint("Working")),
-                                )
-                            })
-                            .child(div().flex_1())
-                            .child(self.assignee_avatar(&ticket.assignee_id, AVATAR_SIZE_SM)),
-                    )
-                    .child(
-                        div()
-                            .w_full()
-                            .text_size(type_size(BODY_SIZE))
-                            .line_height(relative(TITLE_LINE_HEIGHT))
-                            .text_color(rgb(TEXT))
-                            .line_clamp(3)
-                            .text_ellipsis()
-                            .child(title.clone()),
-                    )
+                    .child(ticket_card_body(
+                        key.clone(),
+                        title.clone(),
+                        self.running(ticket),
+                        &preview.assignee,
+                    ))
                     .when_some(footer, |s, footer| s.child(footer))
             },
             move |this: &mut Self, _, cx| this.select(id, cx),
-            cx,
+            ui.cx,
         )
         .on_drag(preview, move |drag, grab, _, cx| {
             dragging.set(Some(drag.id));
@@ -460,7 +404,7 @@ impl TicketsPage {
             .filter(|(relation, _)| *relation == Relation::SubTicket)
             .count();
         let comments = self.comment_count(ticket.id);
-        [("list", children), ("feedback", comments)]
+        [(Icon::List, children), (Icon::Feedback, comments)]
             .into_iter()
             .filter(|(_, count)| *count > 0)
             .map(|(name, count)| {

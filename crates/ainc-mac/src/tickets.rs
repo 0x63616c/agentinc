@@ -15,6 +15,8 @@ mod labels;
 mod list;
 #[path = "tickets/model.rs"]
 pub(crate) mod model;
+#[path = "tickets/parts.rs"]
+mod parts;
 
 use crate::{
     action::{Pending, Run},
@@ -32,6 +34,7 @@ use ainc_client::types::{
 };
 use gpui::{prelude::*, *};
 use model::*;
+use parts::*;
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 
 /// How the Tickets page lays out the filtered Tickets.
@@ -39,23 +42,6 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 pub enum View {
     Board,
     List,
-}
-
-/// The one floating menu open on the page.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Menu {
-    FilterPriority,
-    FilterLabel,
-    FilterAssignee,
-    Status,
-    Priority,
-    Assignee,
-    Labels,
-    DraftLabels,
-    DraftStatus,
-    DraftPriority,
-    DraftAssignee,
-    Relation,
 }
 
 /// The one dialog this page can have open.
@@ -98,7 +84,6 @@ pub struct TicketsPage {
     view: View,
     selected: Option<i64>,
     filters: Filters,
-    menu: Option<Menu>,
     owner: (SharedString, Option<Arc<Image>>),
     search: Entity<TextInput>,
     input: Entity<TextInput>,
@@ -125,13 +110,7 @@ pub struct TicketsPage {
     add_focus: FocusHandle,
     cancel_focus: FocusHandle,
     submit_focus: FocusHandle,
-    hover: HoverFade,
     _subscriptions: Vec<Subscription>,
-}
-impl HoverHost for TicketsPage {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
 }
 impl EventEmitter<Destination> for TicketsPage {}
 
@@ -214,7 +193,6 @@ impl TicketsPage {
             view: View::Board,
             selected: None,
             filters: Filters::default(),
-            menu: None,
             owner: ("You".into(), None),
             search,
             input,
@@ -239,7 +217,6 @@ impl TicketsPage {
             add_focus: cx.focus_handle(),
             cancel_focus: cx.focus_handle(),
             submit_focus: cx.focus_handle(),
-            hover: HoverFade::default(),
             _subscriptions: subscriptions,
         };
         this.reload();
@@ -314,13 +291,13 @@ impl TicketsPage {
             self.editing_description = false;
         }
         self.selected = Some(id);
-        self.menu = None;
+        self.overlays.close_popover();
         self.load_activity(cx);
         cx.notify();
     }
     fn close_detail(&mut self, cx: &mut Context<Self>) {
         self.selected = None;
-        self.menu = None;
+        self.overlays.close_popover();
         self.editing_description = false;
         cx.notify();
     }
@@ -339,13 +316,10 @@ impl TicketsPage {
     fn title_error(title: &str) -> Option<&'static str> {
         (title.trim().chars().count() > 500).then_some("Use 500 characters or fewer.")
     }
-    fn toggle_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
-        self.menu = if self.menu == Some(menu) {
-            None
-        } else {
-            Some(menu)
-        };
-        if menu == Menu::Labels {
+    /// Open the select or menu with this id, or close it when it is the open one.
+    fn toggle_menu(&mut self, id: &'static str, cx: &mut Context<Self>) {
+        self.overlays.toggle_popover(id);
+        if id == "tickets.labels" {
             self.label_input.update(cx, |input, _| input.reset());
         }
         cx.notify();
@@ -359,7 +333,7 @@ impl TicketsPage {
         cx: &mut Context<Self>,
     ) {
         self.form_error = None;
-        self.menu = None;
+        self.overlays.close_popover();
         self.draft = Draft {
             status: status.unwrap_or(TicketStatus::ToDo),
             ..Draft::default()
@@ -477,18 +451,19 @@ impl TicketsPage {
         self.assignee(id)
             .map_or_else(|| "Agent".into(), |a| a.name.clone().into())
     }
-    fn assignee_avatar(&self, id: &str, size: f32) -> AnyElement {
+    fn assignee_face(&self, id: &str) -> AssigneeFace {
+        let name = self.assignee_name(id);
         if self.is_agent(id) {
-            return agent_avatar(&self.assignee_name(id), size);
+            AssigneeFace::agent(name)
+        } else {
+            AssigneeFace::person(
+                name,
+                (id == "owner").then(|| self.owner.1.clone()).flatten(),
+            )
         }
-        avatar(&self.assignee_name(id), self.assignee_photo(id), size)
-    }
-    fn assignee_photo(&self, id: &str) -> Option<Arc<Image>> {
-        (id == "owner").then(|| self.owner.1.clone()).flatten()
     }
     fn assignee_option(&self, id: &str) -> SelectOption {
-        let name = self.assignee_name(id);
-        SelectOption::new(name.clone()).avatar(name, self.assignee_photo(id), self.is_agent(id))
+        SelectOption::new(self.assignee_name(id)).avatar(self.assignee_face(id))
     }
     fn is_agent(&self, id: &str) -> bool {
         self.assignee(id)
@@ -520,34 +495,19 @@ impl TicketsPage {
             .gap(px(SPACE_1))
             .text_size(type_size(CAPTION_SIZE))
             .text_color(rgb(TEXT_SECONDARY))
-            .child(icon("status-blocked", ICON_SIZE_XS).text_color(rgb(STATUS_RED)))
+            .child(icon(Icon::StatusBlocked, ICON_SIZE_XS).text_color(rgb(STATUS_RED)))
             .child(keys)
     }
     /// The header's icon-only Refresh: every page that polls the daemon has one.
-    fn refresh_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let fetching = self.sync.read(cx).fetching();
+    fn refresh_button(&self, ui: &mut Ui<Self>) -> Stateful<Div> {
+        let fetching = self.sync.read(ui.cx).fetching();
         Button::new("tickets.refresh", "Refresh")
-            .icon("refresh")
+            .icon(Icon::Refresh)
             .icon_only()
             .secondary()
             .enabled(!fetching)
-            .build(
-                &self.hover,
-                |this: &mut Self, _, cx| this.sync.update(cx, |sync, cx| sync.wake(cx)),
-                cx,
-            )
-    }
-    /// The load state every polled page shows the same way: a danger banner for
-    /// the error and a "Reconnecting…" line while the next fetch is in flight.
-    fn sync_notices(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let sync = self.sync.read(cx);
-        let (message, reconnecting, loading_started) =
-            (sync.message(), sync.reconnecting(), sync.loading_started);
-        column()
-            .gap(px(SPACE_4))
-            .when_some(message, |s, message| s.child(banner(Tone::Danger, message)))
-            .when(reconnecting, |s| {
-                s.child(LoadingFrame::new(loading_started, window).inline("Reconnecting…"))
+            .build(ui, |this: &mut Self, _, cx| {
+                this.sync.update(cx, |sync, cx| sync.wake(cx))
             })
     }
 
@@ -557,27 +517,23 @@ impl TicketsPage {
         &self,
         id: &'static str,
         label: SharedString,
-        icon_name: &'static str,
+        icon_name: Icon,
         active: bool,
-        menu: Menu,
         width: f32,
         items: Vec<AnyElement>,
-        cx: &mut Context<Self>,
+        ui: &mut Ui<Self>,
     ) -> Div {
         MenuButton::new(id, label)
             .icon(icon_name)
             .active(active)
-            .open(self.menu == Some(menu))
+            .open(self.overlays.popover_open(id))
             .width(width)
-            .build(
-                &self.hover,
-                items,
-                move |this: &mut Self, _, cx| this.toggle_menu(menu, cx),
-                cx,
-            )
+            .build(ui, items, move |this: &mut Self, _, cx| {
+                this.toggle_menu(id, cx)
+            })
     }
 
-    fn filter_bar(&self, window: &Window, cx: &mut Context<Self>) -> Div {
+    fn filter_bar(&self, ui: &mut Ui<Self>) -> Div {
         let tickets = &self.state.tickets;
         let tally = |n: usize| hint(n.to_string());
         let priority_items = PRIORITIES
@@ -595,14 +551,10 @@ impl TicketsPage {
                     tickets.iter().filter(|t| t.priority == priority).count(),
                 ))
                 .checked(self.filters.priorities.contains(&priority))
-                .build(
-                    &self.hover,
-                    move |this: &mut Self, _, cx| {
-                        this.filters.toggle_priority(priority);
-                        cx.notify();
-                    },
-                    cx,
-                )
+                .build(ui, move |this: &mut Self, _, cx| {
+                    this.filters.toggle_priority(priority);
+                    cx.notify();
+                })
                 .into_any_element()
             })
             .collect();
@@ -622,7 +574,7 @@ impl TicketsPage {
                         SharedString::from(format!("tickets.filter.label.{label}")),
                         label.clone(),
                     )
-                    .glyph("dot", label_color(&label))
+                    .glyph(Icon::Dot, label_color(&label))
                     .trailing(tally(
                         tickets
                             .iter()
@@ -630,14 +582,10 @@ impl TicketsPage {
                             .count(),
                     ))
                     .checked(checked)
-                    .build(
-                        &self.hover,
-                        move |this: &mut Self, _, cx| {
-                            this.filters.toggle_label(&label);
-                            cx.notify();
-                        },
-                        cx,
-                    )
+                    .build(ui, move |this: &mut Self, _, cx| {
+                        this.filters.toggle_label(&label);
+                        cx.notify();
+                    })
                     .into_any_element()
                 })
                 .collect()
@@ -653,22 +601,18 @@ impl TicketsPage {
                     self.assignee_name(&id),
                 )
                 .icon(if assignee.kind == AssigneeKind::Agent {
-                    "agents"
+                    Icon::Agents
                 } else {
-                    "user"
+                    Icon::User
                 })
                 .trailing(tally(
                     tickets.iter().filter(|t| t.assignee_id == id).count(),
                 ))
                 .checked(self.filters.assignees.contains(&id))
-                .build(
-                    &self.hover,
-                    move |this: &mut Self, _, cx| {
-                        this.filters.toggle_assignee(&id);
-                        cx.notify();
-                    },
-                    cx,
-                )
+                .build(ui, move |this: &mut Self, _, cx| {
+                    this.filters.toggle_assignee(&id);
+                    cx.notify();
+                })
                 .into_any_element()
             })
             .collect();
@@ -685,74 +629,65 @@ impl TicketsPage {
             .child(
                 div().w(px(TOOLBAR_SEARCH_WIDTH)).child(
                     Field::new(self.search.clone())
-                        .leading_icon("search")
+                        .leading_icon(Icon::Search)
                         .selector("tickets.search")
-                        .build(window, cx),
+                        .build(ui),
                 ),
             )
             .child(self.dropdown(
                 "tickets.filter.priority",
                 count("Priority", self.filters.priorities.len()),
-                "filter",
+                Icon::Filter,
                 !self.filters.priorities.is_empty(),
-                Menu::FilterPriority,
                 MENU_WIDTH,
                 priority_items,
-                cx,
+                ui,
             ))
             .child(self.dropdown(
                 "tickets.filter.label",
                 count("Labels", self.filters.labels.len()),
-                "tag",
+                Icon::Tag,
                 !self.filters.labels.is_empty(),
-                Menu::FilterLabel,
                 MENU_WIDTH,
                 label_items,
-                cx,
+                ui,
             ))
             .child(self.dropdown(
                 "tickets.filter.assignee",
                 count("Assignee", self.filters.assignees.len()),
-                "user",
+                Icon::User,
                 !self.filters.assignees.is_empty(),
-                Menu::FilterAssignee,
                 MENU_WIDTH,
                 assignee_items,
-                cx,
+                ui,
             ))
             .when(self.filters.active(), |s| {
                 s.child(
                     Button::new("tickets.filter.clear", "Clear")
                         .ghost()
                         .tint(TEXT_SECONDARY)
-                        .build(
-                            &self.hover,
-                            |this: &mut Self, _, cx| {
-                                this.filters = Filters::default();
-                                this.search.update(cx, |input, cx| {
-                                    input.reset();
-                                    cx.notify();
-                                });
+                        .build(ui, |this: &mut Self, _, cx| {
+                            this.filters = Filters::default();
+                            this.search.update(cx, |input, cx| {
+                                input.reset();
                                 cx.notify();
-                            },
-                            cx,
-                        ),
+                            });
+                            cx.notify();
+                        }),
                 )
             })
             .child(div().flex_1())
-            .child(div().flex_shrink_0().child(segmented(
-                "tickets.view",
-                ["Board", "List"],
-                usize::from(self.view == View::List),
-                true,
-                &self.hover,
-                |this: &mut Self, index, _, cx| {
-                    this.view = if index == 0 { View::Board } else { View::List };
-                    this.menu = None;
-                    cx.notify();
-                },
-                cx,
-            )))
+            .child(
+                div().flex_shrink_0().child(
+                    Segmented::new("tickets.view", ["Board", "List"])
+                        .selected(usize::from(self.view == View::List))
+                        .build(ui, |this: &mut Self, index, _, cx| {
+                            this.view = if index == 0 { View::Board } else { View::List };
+                            this.overlays.close_popover();
+                            cx.notify();
+                        }),
+                ),
+            )
     }
 
     fn summary(&self) -> String {
@@ -786,54 +721,52 @@ impl TicketsPage {
         parts.join(" · ")
     }
 
-    fn overview(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn overview(&mut self, ui: &mut Ui<Self>) -> Stateful<Div> {
         let header = PageHeader::new(self.title())
             .description(self.summary())
             .actions(
-                row_gap(CONTROL_GAP).child(self.refresh_button(cx)).child(
+                row_gap(CONTROL_GAP).child(self.refresh_button(ui)).child(
                     Button::new("tickets.create", "New Ticket")
                         .primary()
-                        .icon("plus")
+                        .icon(Icon::Plus)
                         .enabled(!self.pending.busy())
                         .track_focus(&self.add_focus)
-                        .build(
-                            &self.hover,
-                            |this: &mut Self, window, cx| this.open_create(None, window, cx),
-                            cx,
-                        )
+                        .build(ui, |this: &mut Self, window, cx| {
+                            this.open_create(None, window, cx)
+                        })
                         .debug_selector(|| "tickets.create".into()),
                 ),
             );
-        let sync = self.sync.read(cx);
-        let (loaded, error) = (sync.loaded, sync.message());
-        let form_error = self
+        let sync = self.sync.read(ui.cx);
+        let state = sync.load_state();
+        let notices: Vec<String> = self
             .form_error
-            .clone()
-            .filter(|_| self.overlays.active().is_none());
+            .iter()
+            .filter(|_| self.overlays.active().is_none())
+            .cloned()
+            .collect();
         let visible = self.visible();
-        let body = if !loaded && error.is_none() {
-            skeleton_rows("tickets.loading", SKELETON_ROWS).into_any_element()
-        } else if self.view == View::Board {
-            self.board(&visible, window, cx).into_any_element()
-        } else if self.state.tickets.is_empty() {
-            EmptyState::new("tickets", "No Tickets yet.")
-                .description("Create a Ticket and assign it to an agent to start work.")
-                .selector("tickets.empty")
-                .action(
-                    Button::new("tickets.create.empty", "New Ticket")
-                        .secondary()
-                        .icon("plus")
-                        .enabled(!self.pending.busy())
-                        .build(
-                            &self.hover,
-                            |this: &mut Self, window, cx| this.open_create(None, window, cx),
-                            cx,
-                        ),
-                )
-                .build()
-                .into_any_element()
-        } else {
-            self.list(&visible, cx).into_any_element()
+        let body = |ui: &mut Ui<Self>| {
+            if self.view == View::Board {
+                self.board(&visible, ui).into_any_element()
+            } else if self.state.tickets.is_empty() {
+                EmptyState::new(Icon::Tasks, "No Tickets yet.")
+                    .description("Create a Ticket and assign it to an agent to start work.")
+                    .selector("tickets.empty")
+                    .action(
+                        Button::new("tickets.create.empty", "New Ticket")
+                            .secondary()
+                            .icon(Icon::Plus)
+                            .enabled(!self.pending.busy())
+                            .build(ui, |this: &mut Self, window, cx| {
+                                this.open_create(None, window, cx)
+                            }),
+                    )
+                    .build()
+                    .into_any_element()
+            } else {
+                self.list(&visible, ui).into_any_element()
+            }
         };
         let page = match self.view {
             View::Board => PageFrame::fill(header),
@@ -846,10 +779,13 @@ impl TicketsPage {
                 .w_full()
                 .when(self.view == View::Board, |s| s.flex_1().min_h_0())
                 .gap(px(SPACE_4))
-                .child(self.filter_bar(window, cx))
-                .child(self.sync_notices(window, cx))
-                .when_some(form_error, |s, error| s.child(banner(Tone::Danger, error)))
-                .child(body),
+                .child(self.filter_bar(ui))
+                .children(
+                    notices
+                        .into_iter()
+                        .map(|notice| banner(Tone::Danger, notice)),
+                )
+                .children(page_frame("tickets", &state, SKELETON_ROWS, ui, body)),
         )
         .build()
     }
@@ -857,15 +793,15 @@ impl TicketsPage {
 
 impl Render for TicketsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.hover.animate(window);
         self.drag.settle(window, cx);
         if self.restore_focus && self.overlays.active().is_none() {
             self.restore_focus = false;
             window.focus(&self.page_focus, cx);
         }
+        let ui = &mut Ui::new(window, cx);
         match self.selected.and_then(|id| self.ticket(id)).cloned() {
-            Some(ticket) => self.detail(&ticket, window, cx).into_any_element(),
-            None => self.overview(window, cx).into_any_element(),
+            Some(ticket) => self.detail(&ticket, ui).into_any_element(),
+            None => self.overview(ui).into_any_element(),
         }
     }
 }
@@ -873,17 +809,10 @@ impl Render for TicketsPage {
 impl Page for TicketsPage {
     const ROUTE: Route = Route::Tickets;
     fn overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        self.dialog(window, cx)
+        self.dialog(&mut Ui::new(window, cx))
     }
     fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
         self.dialog_focus(cx)
-    }
-    fn dismiss_menus(&mut self, cx: &mut Context<Self>) -> bool {
-        let was_open = self.menu.take().is_some();
-        if was_open {
-            cx.notify();
-        }
-        was_open
     }
     fn drafts(&self, cx: &App) -> anyhow::Result<Drafts> {
         anyhow::ensure!(

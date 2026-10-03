@@ -5,8 +5,12 @@ use gpui::{prelude::*, *};
 
 /// Tracks which overlay is open and where focus returns when it closes. The
 /// overlay vocabulary belongs to the host; the shell uses `overlay::Overlay`.
+/// One popover (a select or menu) may float above the active surface, so a
+/// form in a dialog can open its selects; Escape and a click outside close
+/// the popover first.
 pub struct OverlayHost<O> {
     active: Option<O>,
+    popover: Option<O>,
     return_focus: Option<FocusHandle>,
     pending_focus: Option<FocusHandle>,
 }
@@ -14,6 +18,7 @@ impl<O> Default for OverlayHost<O> {
     fn default() -> Self {
         Self {
             active: None,
+            popover: None,
             return_focus: None,
             pending_focus: None,
         }
@@ -23,6 +28,17 @@ impl<O: Copy + PartialEq> OverlayHost<O> {
     pub fn active(&self) -> Option<O> {
         self.active
     }
+    /// The select or menu floating above the active surface, if any.
+    pub fn popover(&self) -> Option<O> {
+        self.popover
+    }
+    pub fn open_popover(&mut self, popover: O) {
+        self.popover = Some(popover);
+    }
+    /// Returns whether a popover was open.
+    pub fn close_popover(&mut self) -> bool {
+        self.popover.take().is_some()
+    }
     pub fn open(
         &mut self,
         overlay: O,
@@ -30,6 +46,7 @@ impl<O: Copy + PartialEq> OverlayHost<O> {
         cx: &mut App,
         initial: Option<FocusHandle>,
     ) {
+        self.popover = None;
         if self.active.is_none() {
             self.return_focus = window.focused(cx);
         }
@@ -39,6 +56,9 @@ impl<O: Copy + PartialEq> OverlayHost<O> {
         }
     }
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut App) -> bool {
+        if self.close_popover() {
+            return true;
+        }
         let was_open = self.active.is_some();
         self.close();
         if let Some(focus) = self.pending_focus.take() {
@@ -47,6 +67,7 @@ impl<O: Copy + PartialEq> OverlayHost<O> {
         was_open
     }
     pub fn close(&mut self) {
+        self.popover = None;
         if self.active.take().is_some() {
             self.pending_focus = self.return_focus.take();
         }
@@ -186,12 +207,11 @@ impl DialogFooter {
         self.focus = Some((cancel.clone(), submit.clone()));
         self
     }
-    pub fn build<V: HoverHost>(
+    pub fn build<V: 'static>(
         self,
-        hover: &HoverFade,
+        ui: &mut Ui<V>,
         cancel: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
         submit: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-        cx: &mut Context<V>,
     ) -> Div {
         let label: SharedString = if self.pending {
             self.verb.pending().into()
@@ -213,8 +233,8 @@ impl DialogFooter {
         row()
             .gap(px(CONTROL_GAP))
             .justify_end()
-            .child(cancel_button.build(hover, cancel, cx))
-            .child(submit_button.build(hover, submit, cx))
+            .child(cancel_button.build(ui, cancel))
+            .child(submit_button.build(ui, submit))
     }
 }
 
@@ -274,7 +294,12 @@ mod tests {
             active: Some(42u8),
             ..Default::default()
         };
+        host.open_popover(7);
+        // Escape closes the popover first, then the surface under it.
+        assert!(host.close_popover());
+        assert_eq!(host.active(), Some(42));
         host.close(); // Escape and Cancel both use this state transition.
         assert_eq!(host.active(), None);
+        assert_eq!(host.popover(), None);
     }
 }

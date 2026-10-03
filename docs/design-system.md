@@ -34,8 +34,8 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 | Motion | `HOVER_MS`, `PANEL_MS`, `MESSAGE_MS`, `SKELETON_MS`, `SPRING_SNAPPY`, `SPRING_GENTLE` | Fades, panel reveal, message arrival, skeleton pulse, springs. |
 
 `cargo xtask check-ui` (`crates/ainc-xtask/src/checks/colors.rs`) fails the build when a color literal appears anywhere
-else; `checks/ui_spacing.rs` warns on raw spacing literals in migrated
-files.
+else; `checks/ui_spacing.rs` fails on new raw spacing literals in the files listed in
+`crates/ainc-mac/scripts/ui-spacing-baseline.json`.
 
 ## Components
 
@@ -59,9 +59,10 @@ providers) and are exercised only on the Components page today.
 | `banner`, `error_text` | `banner.rs` | A toned full-width notice inside a page; short red copy under a field or inside a dialog. |
 | `toggle`, `checkbox` | `toggle.rs` | Boolean settings. Toggles for immediate effect, checkboxes inside forms. |
 | `segmented`, `tabs`, `chip` | `segmented.rs` | One of a few options (segments hug their content), switching views inside a page (tabs underline their label), picking a value in a form (chips: the chosen one is filled with full-strength text, the rest are outlined). |
-| `badge`, `status_pill`, `status_dot`, `count_badge`, `tag`, `Tone` | `badge.rs` | States and counts. Badges in lists and headers, pills in tables. A `tag` is a label: a bordered pill with a dot in one of the `LABEL_COLORS`, never red, which stays for status. |
-| `avatar`, `agent_avatar` | `avatar.rs` | People are round, with a photo or initials; agents are rounded squares with initials, so the two read apart wherever they appear together. |
+| `badge`, `status_pill`, `status_dot`, `count_badge`, `tag`, `Tone` | `badge.rs` | States and counts. Use `badge` in lists and headers, `status_pill` in tables and property rows, `tag` for labels and `chip` for form picks; never mix them on one surface. A `tag` is a label: a bordered pill with a dot in one of the `LABEL_COLORS`, never red, which stays for status. |
+| `avatar`, `agent_avatar`, `AssigneeFace`, `assignee_avatar` | `avatar.rs` | Show an assignee with `assignee_avatar(&AssigneeFace, size)` everywhere (cards, rows, selects, the Agents page). People are round, with a photo or initials; agents are rounded squares with initials, so the two read apart wherever they appear together. |
 | `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `property_row`, `PageFrame`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. A detail page makes its record the one H1 and puts the way back in `PageHeader::leading`; rows live in a `card` with hairlines between them. `PageFrame::fill` is a document page whose content fills the height under its header and scrolls its own parts (the Tickets board). `property_row` is a record's labeled value, the label kept beside a wrapping value's first line. |
+| `LoadState`, `page_frame`, `skeleton_rows`, `LoadingFrame` | `loading.rs` | Every data page's loading frame: `page_frame(id, &state, rows, ui, body)` gives the `{id}.error` banner, the reconnecting hint, `{id}.loading` skeleton rows until the first load, then the page's body. Pages never hand-assemble these. |
 | `table_container`, `table_header`, `table_cells`, `table_row`, `TableColumn` | `table.rs` | Columnar data with an eyebrow header and clickable rows. |
 | `dialog_shell`, `DialogFooter`, `Verb`, `sheet_shell`, `popover_shell`, `menu_shell`, `OverlayHost<O>` | `overlay.rs` | Modal confirmations and forms with a Cancel / confirm footer whose confirm label and pending label ("Creating…", "Deleting…") follow a `Verb`, side panels, floating surfaces; one active overlay per window with focus return. The overlay vocabulary itself (`overlay::Overlay`) belongs to the shell; a page registers its own dialogs under its route through `page::PageOverlays`. |
 | `Toasts` | `toast.rs` | Transient notices; the host anchors the stack on its content rail and schedules dismissal for transient ones (the shell keeps a sticky one while the session cannot be saved). |

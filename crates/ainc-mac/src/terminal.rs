@@ -153,7 +153,7 @@ impl Render for TerminalPage {
         PageFrame::canvas()
             .child(
                 column().size_full().min_h_0().p(px(PAGE_X)).child(
-                    EmptyState::new("terminal", "Terminal is unavailable.")
+                    EmptyState::new(Icon::Terminal, "Terminal is unavailable.")
                         .description(message)
                         .selector("terminal.unavailable")
                         .build(),

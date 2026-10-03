@@ -14,13 +14,16 @@ use anyhow::Context as _;
 use gpui::{prelude::*, *};
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 
-/// The one dialog or popover this page can have open.
+/// The one dialog this page can have open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Dialog {
     Rename(i64),
     Delete(i64),
-    /// A Conversation row's actions menu.
-    Menu(i64),
+}
+
+/// The popover id of a Conversation row's actions menu.
+fn chat_menu_id(id: i64) -> SharedString {
+    format!("conversation-menu.{id}").into()
 }
 
 pub struct AssistantPage {
@@ -47,13 +50,7 @@ pub struct AssistantPage {
     appearance: Option<Instant>,
     loading_started: Instant,
     reduced_motion: bool,
-    hover: HoverFade,
     _subscriptions: Vec<Subscription>,
-}
-impl HoverHost for AssistantPage {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
 }
 fn evee_mark(size: f32) -> Img {
     img(ImageSource::Resource(Resource::Embedded("evee.png".into())))
@@ -113,7 +110,6 @@ impl AssistantPage {
             appearance: None,
             loading_started: Instant::now(),
             reduced_motion: reduced_motion(),
-            hover: HoverFade::default(),
             _subscriptions: subscriptions,
         };
         this.refresh_sign_in(cx);
@@ -262,44 +258,36 @@ impl AssistantPage {
             );
         }
     }
-    fn new_conversation_button(&self, id: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn new_conversation_button(&self, id: &'static str, ui: &mut Ui<Self>) -> Stateful<Div> {
         let enabled = self.active.is_none() && !self.pending.busy();
         Button::new(id, "New Conversation")
             .primary()
-            .icon("plus")
+            .icon(Icon::Plus)
             .enabled(enabled)
-            .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx)
+            .build(ui, |this, _, cx| this.new_conversation(cx))
     }
     fn conversation_menu(
         &self,
         conversation: &Conversation,
         enabled: bool,
-        cx: &mut Context<Self>,
+        ui: &mut Ui<Self>,
     ) -> Div {
         let id = conversation.id;
-        let menu_open = self.overlays.active() == Some(Dialog::Menu(id));
+        let menu_open = self.overlays.popover_open(&chat_menu_id(id));
         column()
             .relative()
             .child(
                 Button::new(("conversation-menu", id as u64), "Conversation Actions")
-                    .icon("more")
+                    .icon(Icon::More)
                     .icon_only()
                     .ghost()
                     .small()
                     .enabled(enabled)
                     .selected(menu_open)
-                    .build(
-                        &self.hover,
-                        move |this, window, cx| {
-                            if this.overlays.active() == Some(Dialog::Menu(id)) {
-                                this.overlays.dismiss(window, cx);
-                            } else {
-                                this.overlays.open_popover(Dialog::Menu(id), window, cx);
-                            }
-                            cx.notify();
-                        },
-                        cx,
-                    ),
+                    .build(ui, move |this, _, cx| {
+                        this.overlays.toggle_popover(chat_menu_id(id));
+                        cx.notify();
+                    }),
             )
             .when(menu_open, |s| {
                 s.child(floating(
@@ -311,51 +299,41 @@ impl AssistantPage {
                         )))
                         .child(
                             MenuEntry::new(("rename-conversation", id as u64), "Rename")
-                                .icon("edit")
+                                .icon(Icon::Edit)
                                 .enabled(enabled)
-                                .build(
-                                    &self.hover,
-                                    move |this, window, cx| {
-                                        if let Some(c) =
-                                            this.conversations.iter().find(|c| c.id == id)
-                                        {
-                                            this.rename_input.update(cx, |input, cx| {
-                                                input.set_text(&c.title, cx)
-                                            });
-                                        }
-                                        this.form_error = None;
-                                        let focus = this.rename_input.focus_handle(cx);
-                                        this.overlays.open_dialog(
-                                            Dialog::Rename(id),
-                                            focus,
-                                            window,
-                                            cx,
-                                        );
-                                        cx.notify();
-                                    },
-                                    cx,
-                                ),
+                                .build(ui, move |this, window, cx| {
+                                    if let Some(c) = this.conversations.iter().find(|c| c.id == id)
+                                    {
+                                        this.rename_input
+                                            .update(cx, |input, cx| input.set_text(&c.title, cx));
+                                    }
+                                    this.form_error = None;
+                                    let focus = this.rename_input.focus_handle(cx);
+                                    this.overlays.open_dialog(
+                                        Dialog::Rename(id),
+                                        focus,
+                                        window,
+                                        cx,
+                                    );
+                                    cx.notify();
+                                }),
                         )
                         .child(
                             MenuEntry::new(("delete-conversation", id as u64), "Delete")
-                                .icon("trash")
+                                .icon(Icon::Trash)
                                 .destructive()
                                 .enabled(enabled)
-                                .build(
-                                    &self.hover,
-                                    move |this, window, cx| {
-                                        this.form_error = None;
-                                        let focus = this.cancel_focus.clone();
-                                        this.overlays.open_dialog(
-                                            Dialog::Delete(id),
-                                            focus,
-                                            window,
-                                            cx,
-                                        );
-                                        cx.notify();
-                                    },
-                                    cx,
-                                ),
+                                .build(ui, move |this, window, cx| {
+                                    this.form_error = None;
+                                    let focus = this.cancel_focus.clone();
+                                    this.overlays.open_dialog(
+                                        Dialog::Delete(id),
+                                        focus,
+                                        window,
+                                        cx,
+                                    );
+                                    cx.notify();
+                                }),
                         ),
                     Anchor::TopRight,
                     point(px(CONTROL_HEIGHT_SM), px(CONTROL_HEIGHT_SM + SPACE_1)),
@@ -363,48 +341,39 @@ impl AssistantPage {
             })
     }
     /// The header's icon-only Refresh: every page that polls the daemon has one.
-    fn refresh_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let fetching = self.sync.read(cx).fetching();
+    fn refresh_button(&self, ui: &mut Ui<Self>) -> Stateful<Div> {
+        let fetching = self.sync.read(ui.cx).fetching();
         Button::new("assistant.refresh", "Refresh")
-            .icon("refresh")
+            .icon(Icon::Refresh)
             .icon_only()
             .secondary()
             .enabled(!fetching && !self.pending.busy())
-            .build(&self.hover, |this, _, cx| this.save_again(cx), cx)
+            .build(ui, |this, _, cx| this.save_again(cx))
     }
-    /// The load state every polled page shows the same way: a danger banner for
-    /// the error and a "Reconnecting…" line while the next fetch is in flight.
-    fn sync_notices(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let sync = self.sync.read(cx);
-        let (message, reconnecting, loading_started) =
-            (sync.message(), sync.reconnecting(), sync.loading_started);
-        column()
-            .gap(px(SPACE_4))
-            .when_some(message, |s, message| s.child(banner(Tone::Danger, message)))
-            .when(reconnecting, |s| {
-                s.child(LoadingFrame::new(loading_started, window).inline("Reconnecting…"))
-            })
-    }
-    pub fn conversations_view(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
+    pub fn conversations_view(&self, ui: &mut Ui<Self>) -> Stateful<Div> {
         let enabled = self.active.is_none() && !self.pending.busy();
         let now = time::now();
+        let mut state = self.sync.read(ui.cx).load_state();
+        state.error = self.error.clone().or(state.error.take());
         PageFrame::document(
             PageHeader::new(self.title())
                 .description("Your Conversations with Evee.")
                 .actions(
                     row_gap(CONTROL_GAP)
-                        .child(self.refresh_button(cx))
-                        .child(self.new_conversation_button("new-conversation", cx)),
+                        .child(self.refresh_button(ui))
+                        .child(self.new_conversation_button("new-conversation", ui)),
                 ),
         )
-        .child(
-            column()
-                .gap(px(SPACE_4))
-                .child(self.sync_notices(window, cx))
-                .when_some(self.error.clone(), |s, e| s.child(banner(Tone::Danger, e)))
-                .when(self.conversations.is_empty(), |s| {
-                    s.child(
-                        EmptyState::new("spark", "No Conversations yet.")
+        .child(column().gap(px(SPACE_4)).children(page_frame(
+            "assistant",
+            &state,
+            SKELETON_ROWS,
+            ui,
+            |ui| {
+                if self.conversations.is_empty() {
+                    return match state.error {
+                        Some(_) => div().into_any_element(),
+                        None => EmptyState::new(Icon::Spark, "No Conversations yet.")
                             .description(
                                 "Ask Evee to plan your day, dig into a Ticket or kick off work.",
                             )
@@ -412,52 +381,42 @@ impl AssistantPage {
                             .action(
                                 Button::new("new-conversation.empty", "New Conversation")
                                     .secondary()
-                                    .icon("plus")
+                                    .icon(Icon::Plus)
                                     .enabled(enabled)
-                                    .build(
-                                        &self.hover,
-                                        |this, _, cx| this.new_conversation(cx),
-                                        cx,
-                                    ),
+                                    .build(ui, |this, _, cx| this.new_conversation(cx)),
                             )
-                            .build(),
-                    )
-                })
-                .child(
-                    column()
-                        .gap(px(SPACE_HALF))
-                        .children(self.conversations.iter().map(|conversation| {
-                            let id = conversation.id;
-                            let snippet = if conversation.snippet.trim().is_empty() {
-                                "No messages yet".to_owned()
-                            } else {
-                                conversation
-                                    .snippet
-                                    .split_whitespace()
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            };
-                            ListRow::new(("conversation", id as u64), conversation.title.clone())
-                                .leading(evee_mark(AVATAR_SIZE))
-                                .subtitle(snippet)
-                                .enabled(enabled)
-                                .trailing(
-                                    row()
-                                        .gap(px(SPACE_2))
-                                        .child(caption(time::relative(
-                                            conversation.updated_at,
-                                            now,
-                                        )))
-                                        .child(self.conversation_menu(conversation, enabled, cx)),
-                                )
-                                .build(
-                                    &self.hover,
-                                    move |this, _, cx| this.open_conversation(id, cx),
-                                    cx,
-                                )
-                        })),
-                ),
-        )
+                            .build()
+                            .into_any_element(),
+                    };
+                }
+                column()
+                    .gap(px(SPACE_HALF))
+                    .children(self.conversations.iter().map(|conversation| {
+                        let id = conversation.id;
+                        let snippet = if conversation.snippet.trim().is_empty() {
+                            "No messages yet".to_owned()
+                        } else {
+                            conversation
+                                .snippet
+                                .split_whitespace()
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        };
+                        ListRow::new(("conversation", id as u64), conversation.title.clone())
+                            .leading(evee_mark(AVATAR_SIZE))
+                            .subtitle(snippet)
+                            .enabled(enabled)
+                            .trailing(
+                                row()
+                                    .gap(px(SPACE_2))
+                                    .child(caption(time::relative(conversation.updated_at, now)))
+                                    .child(self.conversation_menu(conversation, enabled, ui)),
+                            )
+                            .build(ui, move |this, _, cx| this.open_conversation(id, cx))
+                    }))
+                    .into_any_element()
+            },
+        )))
         .build()
     }
     pub fn show_list(&mut self, cx: &mut Context<Self>) {
@@ -496,11 +455,10 @@ impl AssistantPage {
         self.conversation_open = true;
         cx.notify();
     }
-    fn dialog(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn dialog(&self, ui: &mut Ui<Self>) -> Option<AnyElement> {
         let (rename, id) = match self.overlays.active()? {
             Dialog::Rename(id) => (true, id),
             Dialog::Delete(id) => (false, id),
-            Dialog::Menu(_) => return None,
         };
         let conversation = self.conversations.iter().find(|c| c.id == id)?;
         let (delete_title, delete_body, _) =
@@ -515,7 +473,7 @@ impl AssistantPage {
                 .label("Title")
                 .selector("Conversation title")
                 .error(self.form_error.clone())
-                .build(window, cx)
+                .build(ui)
                 .into_any_element()
         } else {
             column()
@@ -529,14 +487,14 @@ impl AssistantPage {
         let enabled = self.active.is_none()
             && (!rename
                 || (self.form_error.is_none()
-                    && !self.rename_input.read(cx).content.trim().is_empty()));
+                    && !self.rename_input.read(ui.cx).content.trim().is_empty()));
         let footer = DialogFooter::new(if rename { Verb::Save } else { Verb::Delete })
             .ids("conversation-cancel", "conversation-submit")
             .enabled(enabled)
             .pending(self.pending.busy())
             .focus(&self.cancel_focus, &self.submit_focus)
             .build(
-                &self.hover,
+                ui,
                 |this, window, cx| {
                     this.overlays.dismiss(window, cx);
                     cx.notify();
@@ -548,7 +506,6 @@ impl AssistantPage {
                         this.delete(cx)
                     }
                 },
-                cx,
             );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
@@ -626,8 +583,7 @@ impl AssistantPage {
         turn: &Turn,
         latest: bool,
         progress: f32,
-        window: &mut Window,
-        cx: &mut Context<Self>,
+        ui: &mut Ui<Self>,
     ) -> Stateful<Div> {
         let id = turn.id;
         column()
@@ -638,7 +594,7 @@ impl AssistantPage {
             .child(
                 row().justify_end().child(
                     div()
-                        .max_w(px(620.))
+                        .max_w(px(CHAT_MESSAGE_WIDTH))
                         .px(px(SPACE_4))
                         .py(px(SPACE_3))
                         .rounded(px(RADIUS_XL))
@@ -661,7 +617,7 @@ impl AssistantPage {
                                 column()
                                     .flex_1()
                                     .min_w_0()
-                                    .max_w(px(680.))
+                                    .max_w(px(CHAT_REPLY_WIDTH))
                                     .gap(px(SPACE_2))
                                     .child(
                                         div()
@@ -681,25 +637,21 @@ impl AssistantPage {
                                                 Button::new(("copy", id as u64), "Copy")
                                                     .ghost()
                                                     .small()
-                                                    .icon("copy")
-                                                    .build(
-                                                        &self.hover,
-                                                        move |_, _, cx| {
-                                                            cx.write_to_clipboard(
-                                                                ClipboardItem::new_string(
-                                                                    reply.to_string(),
-                                                                ),
-                                                            )
-                                                        },
-                                                        cx,
-                                                    )
+                                                    .icon(Icon::Copy)
+                                                    .build(ui, move |_, _, cx| {
+                                                        cx.write_to_clipboard(
+                                                            ClipboardItem::new_string(
+                                                                reply.to_string(),
+                                                            ),
+                                                        )
+                                                    })
                                                     .ml(px(-CONTROL_INSET_X_SM)),
                                             ),
                                         )
                                     })
                                     .when(self.active == Some(id), |s| {
                                         s.child(
-                                            LoadingFrame::new(self.loading_started, window)
+                                            LoadingFrame::new(self.loading_started, ui.window)
                                                 .inline("Evee is thinking…"),
                                         )
                                     })
@@ -709,16 +661,14 @@ impl AssistantPage {
                                                 Button::new(("retry", id as u64), "Retry")
                                                     .secondary()
                                                     .small()
-                                                    .icon("refresh")
+                                                    .icon(Icon::Refresh)
                                                     .enabled(
                                                         self.active.is_none()
                                                             && !self.pending.busy(),
                                                     )
-                                                    .build(
-                                                        &self.hover,
-                                                        move |this, _, cx| this.retry(id, cx),
-                                                        cx,
-                                                    ),
+                                                    .build(ui, move |this, _, cx| {
+                                                        this.retry(id, cx)
+                                                    }),
                                             ),
                                         )
                                     }),
@@ -732,7 +682,7 @@ impl AssistantPage {
 impl Page for AssistantPage {
     const ROUTE: Route = Route::Assistant;
     fn overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        self.dialog(window, cx)
+        self.dialog(&mut Ui::new(window, cx))
     }
     fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
         if matches!(self.overlays.active(), Some(Dialog::Rename(_))) {
@@ -777,7 +727,6 @@ impl Page for AssistantPage {
 
 impl Render for AssistantPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.hover.animate(window);
         if std::mem::take(&mut self.focus_composer) {
             let focus = self.input.focus_handle(cx);
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
@@ -801,9 +750,10 @@ impl Render for AssistantPage {
             && self.active.is_none()
             && !self.pending.busy()
             && !self.input.read(cx).content.trim().is_empty();
+        let ui = &mut Ui::new(window, cx);
         if !self.conversation_open {
             return self
-                .conversations_view(window, cx)
+                .conversations_view(ui)
                 .id("conversation-list")
                 .into_any_element();
         }
@@ -813,31 +763,37 @@ impl Render for AssistantPage {
             .find(|c| Some(c.id) == self.conversation)
             .map(|c| c.title.clone())
             .unwrap_or("New Conversation".into());
-        let composer_focused = self.input.read(cx).focus_handle(cx).is_focused(window);
-        let has_draft = !self.input.read(cx).content.trim().is_empty();
+        let composer_focused = self
+            .input
+            .read(ui.cx)
+            .focus_handle(ui.cx)
+            .is_focused(ui.window);
+        let has_draft = !self.input.read(ui.cx).content.trim().is_empty();
+        let mut state = self.sync.read(ui.cx).load_state();
+        state.error = self.error.clone().or(state.error.take());
         let turns: Vec<Stateful<Div>> = self
             .turns
             .iter()
-            .map(|turn| self.turn_view(turn, latest == Some(turn.id), progress, window, cx))
+            .map(|turn| self.turn_view(turn, latest == Some(turn.id), progress, ui))
             .collect();
         let header = PageHeader::new(title)
             .leading(
                 Button::new("back-to-conversations", "Conversations")
                     .ghost()
                     .small()
-                    .icon("chevronLeft")
+                    .icon(Icon::ChevronLeft)
                     .tint(TEXT_SECONDARY)
-                    .build(&self.hover, |this, _, cx| this.show_list(cx), cx)
+                    .build(ui, |this, _, cx| this.show_list(cx))
                     .ml(px(-CONTROL_INSET_X_SM)),
             )
             .actions(
-                row_gap(CONTROL_GAP).child(self.refresh_button(cx)).child(
+                row_gap(CONTROL_GAP).child(self.refresh_button(ui)).child(
                     Button::new("panel-new", "New Conversation")
-                        .icon("plus")
+                        .icon(Icon::Plus)
                         .icon_only()
                         .secondary()
                         .enabled(self.active.is_none() && !self.pending.busy())
-                        .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx),
+                        .build(ui, |this, _, cx| this.new_conversation(cx)),
                 ),
             );
         PageFrame::fill(header)
@@ -847,15 +803,16 @@ impl Render for AssistantPage {
                     .min_h_0()
                     .w_full()
                     .gap(px(SPACE_3))
-                    .max_w(px(900.))
+                    .max_w(px(READING_WIDTH))
                     .mx_auto()
-                    .child(self.sync_notices(window, cx))
-                    .when_some(self.error.clone(), |s, error| {
-                        s.child(banner(Tone::Danger, error))
-                    })
+                    .children(page_frame("assistant", &state, SKELETON_ROWS, ui, |ui| {
+                      column()
+                        .flex_1()
+                        .min_h_0()
+                        .gap(px(SPACE_3))
                     .when(self.signed_in_as.is_none(), |s| {
                         s.child(
-                            EmptyState::new("openai", "No ChatGPT Connection yet.")
+                            EmptyState::new(Icon::OpenAi, "No ChatGPT Connection yet.")
                                 .description(
                                     "Evee replies through your ChatGPT subscription. Sign in once in Connections.",
                                 )
@@ -863,12 +820,8 @@ impl Render for AssistantPage {
                                 .action(
                                     Button::new("open-connections", "Sign in with ChatGPT")
                                         .primary()
-                                        .icon("openai")
-                                        .build(
-                                            &self.hover,
-                                            |_, _, cx| cx.emit(Destination::Page(Route::Connections)),
-                                            cx,
-                                        ),
+                                        .icon(Icon::OpenAi)
+                                        .build(ui, |_, _, cx| cx.emit(Destination::Page(Route::Connections))),
                                 )
                                 .build(),
                         )
@@ -886,7 +839,7 @@ impl Render for AssistantPage {
                             .py(px(SPACE_2))
                             .when(self.turns.is_empty(), |s| {
                                 s.child(
-                                    EmptyState::new("spark", "No messages yet.")
+                                    EmptyState::new(Icon::Spark, "No messages yet.")
                                         .description(
                                             "Evee can plan, research and start work on your Tickets.",
                                         )
@@ -926,16 +879,18 @@ impl Render for AssistantPage {
                                         })
                                         .child(
                                             Button::new("send", "Send Message")
-                                                .icon("send")
+                                                .icon(Icon::Send)
                                                 .icon_only()
                                                 .primary()
                                                 .enabled(send_enabled)
-                                                .build(&self.hover, |this, _, cx| this.send(cx), cx)
+                                                .build(ui, |this, _, cx| this.send(cx))
                                                 .rounded_full(),
                                         ),
                                 ),
                         )
-                    }),
+                    })
+                    .into_any_element()
+                    })),
             )
             .build()
             .into_any_element()

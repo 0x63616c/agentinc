@@ -1,9 +1,9 @@
 //! Empty states: an icon, a short title, one line of guidance, one action.
-use super::{display::icon, layout::*, tokens::*};
+use super::{display::icon, icon::Icon, layout::*, tokens::*};
 use gpui::{prelude::*, *};
 
 pub struct EmptyState {
-    icon: &'static str,
+    icon: Icon,
     title: SharedString,
     description: Option<SharedString>,
     action: Option<AnyElement>,
@@ -11,7 +11,7 @@ pub struct EmptyState {
 }
 
 impl EmptyState {
-    pub fn new(icon: &'static str, title: impl Into<SharedString>) -> Self {
+    pub fn new(icon: Icon, title: impl Into<SharedString>) -> Self {
         Self {
             icon,
             title: title.into(),
@@ -48,7 +48,7 @@ impl EmptyState {
             .border_color(rgb(BORDER))
             .child(
                 row()
-                    .size(px(40.))
+                    .size(px(EMPTY_ICON_TILE))
                     .justify_center()
                     .rounded(px(RADIUS_MD))
                     .bg(rgb(SURFACE_RAISED))
@@ -69,7 +69,7 @@ impl EmptyState {
                     .when_some(self.description, |s, description| {
                         s.child(
                             div()
-                                .max_w(px(480.))
+                                .max_w(px(EMPTY_TEXT_MAX_WIDTH))
                                 .text_align(TextAlign::Center)
                                 .text_size(type_size(LABEL_SIZE))
                                 .text_color(rgb(TEXT_SECONDARY))

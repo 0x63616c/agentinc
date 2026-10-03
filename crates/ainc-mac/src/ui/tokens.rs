@@ -216,6 +216,68 @@ pub const LANE_HEADER_HEIGHT: f32 = 38.;
 pub const EMPTY_LANE_HEIGHT: f32 = 64.;
 /// Badges, status pills and the square priority chip beside them.
 pub const PILL_HEIGHT: f32 = 22.;
+/// The gap between a pill's dot and its label.
+pub const PILL_GAP: f32 = 6.;
+/// The dot in a status pill, a tag or beside "Working".
+pub const STATUS_DOT_SIZE: f32 = 6.;
+/// The unread count bubble.
+pub const COUNT_BADGE_SIZE: f32 = 18.;
+/// Keyboard hints (`⌘K`) and the count bubble share one side inset.
+pub const KBD_HEIGHT: f32 = 20.;
+pub const KBD_INSET_X: f32 = 5.;
+/// The gap between a keyboard hint and its action.
+pub const KBD_HINT_GAP: f32 = 6.;
+/// The slot a palette row keeps for its Return hint.
+pub const PALETTE_ENTER_SLOT: f32 = 24.;
+/// A sidebar item's glyph.
+pub const NAV_ICON_SIZE: f32 = 17.;
+/// The empty state's icon tile and its text's widest line.
+pub const EMPTY_ICON_TILE: f32 = 40.;
+pub const EMPTY_TEXT_MAX_WIDTH: f32 = 480.;
+/// A multiline field's minimum height.
+pub const TEXTAREA_MIN_HEIGHT: f32 = 96.;
+/// A form select's width, and a short numeric field's.
+pub const SELECT_WIDTH: f32 = 240.;
+pub const SHORT_FIELD_WIDTH: f32 = 180.;
+/// The Assistant's chat column, a reply's measure and a sent message's.
+pub const READING_WIDTH: f32 = 900.;
+pub const CHAT_REPLY_WIDTH: f32 = 680.;
+pub const CHAT_MESSAGE_WIDTH: f32 = 620.;
+/// Fixed columns in the Temporal work table.
+pub const WORK_STATUS_WIDTH: f32 = 150.;
+pub const WORK_STARTED_WIDTH: f32 = 170.;
+pub const WORK_DURATION_WIDTH: f32 = 90.;
+/// Monospace text (durations, ids).
+pub const FONT_MONO: &str = "SF Mono";
+/// The current-space tab in the header: its face, the slot it sits in and the
+/// contour painted around it. The face is `TAB_FACE_HEIGHT` tall inside a
+/// contour `TAB_HEIGHT` tall whose last pixels overlap the panel border.
+pub const TAB_WIDTH: f32 = 142.;
+pub const TAB_HEIGHT: f32 = 40.;
+pub const TAB_FACE_HEIGHT: f32 = 38.;
+pub const TAB_RADIUS: f32 = 10.;
+pub const TAB_SLOT_WIDTH: f32 = 170.;
+pub const TAB_SLOT_HEIGHT: f32 = 42.;
+/// How far the slot sinks below the header so the tab meets the panel.
+pub const TAB_SLOT_SINK: f32 = 2.;
+/// The inverse shoulder where the tab meets the panel; the contour extends one
+/// shoulder past the face on each side.
+pub const TAB_CONTOUR_SHOULDER: f32 = 12.;
+pub const TAB_CONTOUR_WIDTH: f32 = TAB_WIDTH + 2. * TAB_CONTOUR_SHOULDER;
+/// The tab's label sits this far above the face's centre line, an optical
+/// lift that offsets the contour's 2px overlap, plus its side inset and gap.
+pub const TAB_LABEL_LIFT: f32 = 2.;
+pub const TAB_LABEL_INSET: f32 = 14.;
+pub const TAB_LABEL_GAP: f32 = 7.;
+pub const TAB_ICON_SIZE: f32 = 14.;
+pub const HEADER_CONTROLS_INSET: f32 = 9.;
+/// How much wider than the sidebar the header's left controls run.
+pub const HEADER_LEFT_EXTRA: f32 = 60.;
+/// The segmented track's inset around its segments and the gap between them.
+pub const SEGMENT_TRACK_INSET: f32 = 3.;
+pub const SEGMENT_GAP: f32 = 2.;
+/// The bar under the selected tab.
+pub const TAB_UNDERLINE: f32 = 2.;
 /// The empty side of a small icon-only button around its glyph; a trailing one
 /// bleeds by it so its glyph, not its hit area, ends on the column's edge.
 pub const TRAILING_ICON_BLEED: f32 = (CONTROL_HEIGHT_SM - ICON_SIZE_SM) / 2.;

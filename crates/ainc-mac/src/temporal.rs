@@ -48,9 +48,11 @@ fn kind_label(kind: WorkKind) -> &'static str {
 fn columns() -> [TableColumn; 4] {
     [
         TableColumn::new("Workflow"),
-        TableColumn::new("Status").width(150.),
-        TableColumn::new("Started").width(170.),
-        TableColumn::new("Duration").width(90.).right(),
+        TableColumn::new("Status").width(WORK_STATUS_WIDTH),
+        TableColumn::new("Started").width(WORK_STARTED_WIDTH),
+        TableColumn::new("Duration")
+            .width(WORK_DURATION_WIDTH)
+            .right(),
     ]
 }
 
@@ -62,13 +64,6 @@ pub struct TemporalPage {
     loading: Pending,
     loaded: bool,
     error: Option<String>,
-    hover: HoverFade,
-}
-
-impl HoverHost for TemporalPage {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
 }
 
 impl TemporalPage {
@@ -81,7 +76,6 @@ impl TemporalPage {
             loading: Pending::default(),
             loaded: false,
             error: None,
-            hover: HoverFade::default(),
         };
         cx.spawn(async move |this, cx| {
             loop {
@@ -178,7 +172,7 @@ impl TemporalPage {
         );
     }
 
-    fn table(&self, now: i64, cx: &mut Context<Self>) -> Div {
+    fn table(&self, now: i64, ui: &mut Ui<Self>) -> Div {
         let columns = columns();
         let rows = self
             .rows
@@ -218,7 +212,7 @@ impl TemporalPage {
                         .child(caption(time::absolute(execution.started_at / 1000)))
                         .into_any_element(),
                     div()
-                        .font_family("SF Mono")
+                        .font_family(FONT_MONO)
                         .text_size(type_size(LABEL_SIZE))
                         .text_color(rgb(TEXT))
                         .child(time::duration(
@@ -226,18 +220,10 @@ impl TemporalPage {
                         ))
                         .into_any_element(),
                 ];
-                table_row(
-                    SharedString::from(selector.clone()),
-                    id,
-                    &columns,
-                    cells,
-                    false,
-                    &self.hover,
-                    |_, _, _| {},
-                    cx,
-                )
-                .debug_selector(move || selector.clone())
-                .py(px(SPACE_2))
+                TableRow::new(SharedString::from(selector.clone()), id, &columns, cells)
+                    .build(ui, |_, _, _| {})
+                    .debug_selector(move || selector.clone())
+                    .py(px(SPACE_2))
             })
             .collect::<Vec<_>>();
         table_container()
@@ -259,7 +245,7 @@ impl Page for TemporalPage {
 
 impl Render for TemporalPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.hover.animate(window);
+        let ui = &mut Ui::new(window, cx);
         let now = time::now();
         let filters = filters();
         let filter = filters
@@ -272,46 +258,31 @@ impl Render for TemporalPage {
             )
             .actions(
                 Button::new("temporal.refresh", "Refresh")
-                    .icon("refresh")
+                    .icon(Icon::Refresh)
                     .icon_only()
                     .secondary()
                     .enabled(!self.loading.busy())
-                    .build(&self.hover, |this, _, cx| this.load(false, cx), cx),
+                    .build(ui, |this, _, cx| this.load(false, cx)),
             );
-        let mut content = column()
-            .w_full()
-            .gap(px(SPACE_5))
-            .child(row().child(segmented(
-                "temporal.filter",
-                filters.iter().map(|(_, label)| *label),
-                filter,
-                !self.loading.busy(),
-                &self.hover,
-                |this, index, _, cx| {
-                    this.filter = self::filters()[index].0;
-                    this.load(false, cx);
-                },
-                cx,
-            )));
-        if let Some(error) = &self.error {
-            content = content.child(
-                banner(Tone::Danger, error.clone())
-                    .id("temporal.error")
-                    .accessibility_id("temporal.error")
-                    .debug_selector(|| "temporal.error".into()),
-            );
-        }
-        if !self.loaded {
-            content = content.child(
-                div()
-                    .id("temporal.loading")
-                    .accessibility_id("temporal.loading")
-                    .child(skeleton_rows("temporal.loading", SKELETON_ROWS)),
-            );
-        } else if self.rows.is_empty() && self.error.is_none() {
-            content = content.child(
-                EmptyState::new(
-                    "temporal",
+        let mut content = column().w_full().gap(px(SPACE_5)).child(
+            row().child(
+                Segmented::new("temporal.filter", filters.iter().map(|(_, label)| *label))
+                    .selected(filter)
+                    .enabled(!self.loading.busy())
+                    .build(ui, |this, index, _, cx| {
+                        this.filter = self::filters()[index].0;
+                        this.load(false, cx);
+                    }),
+            ),
+        );
+        let state = LoadState::local(self.loaded, self.error.clone());
+        content = content.children(page_frame("temporal", &state, SKELETON_ROWS, ui, |ui| {
+            if self.rows.is_empty() {
+                if self.error.is_some() {
+                    return div().into_any_element();
+                }
+                return EmptyState::new(
+                    Icon::Temporal,
                     if self.filter.is_none() {
                         "No work yet."
                     } else {
@@ -324,19 +295,18 @@ impl Render for TemporalPage {
                     "Try another status or refresh the list."
                 })
                 .selector("temporal.empty")
-                .build(),
-            );
-        }
-        if !self.rows.is_empty() {
-            content = content.child(self.table(now, cx));
-        }
+                .build()
+                .into_any_element();
+            }
+            self.table(now, ui).into_any_element()
+        }));
         if self.next_page.is_some() {
             content = content.child(
                 row().child(
                     Button::new("temporal.more", "Load More")
                         .secondary()
                         .enabled(!self.loading.busy())
-                        .build(&self.hover, |this, _, cx| this.load(true, cx), cx),
+                        .build(ui, |this, _, cx| this.load(true, cx)),
                 ),
             );
         }

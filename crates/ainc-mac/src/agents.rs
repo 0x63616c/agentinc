@@ -31,13 +31,7 @@ pub struct AgentsPage {
     pending: Pending,
     cancel_focus: FocusHandle,
     submit_focus: FocusHandle,
-    hover: HoverFade,
     _subscriptions: Vec<Subscription>,
-}
-impl HoverHost for AgentsPage {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
 }
 impl EventEmitter<Destination> for AgentsPage {}
 
@@ -82,7 +76,6 @@ impl AgentsPage {
             pending: Pending::default(),
             cancel_focus: cx.focus_handle(),
             submit_focus: cx.focus_handle(),
-            hover: HoverFade::default(),
             _subscriptions: subscriptions,
         };
         this.reload();
@@ -144,21 +137,16 @@ impl AgentsPage {
             },
         );
     }
-    fn add_button(
-        &self,
-        id: &'static str,
-        secondary: bool,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
+    fn add_button(&self, id: &'static str, secondary: bool, ui: &mut Ui<Self>) -> Stateful<Div> {
         let button = Button::new(id, "New Agent")
-            .icon("plus")
+            .icon(Icon::Plus)
             .enabled(!self.pending.busy());
         if secondary {
             button.secondary()
         } else {
             button.primary()
         }
-        .build(&self.hover, Self::open_add, cx)
+        .build(ui, Self::open_add)
     }
     fn agent_row(
         &self,
@@ -197,7 +185,10 @@ impl AgentsPage {
         .when(index + 1 < count, |s| {
             s.border_b_1().border_color(rgb(BORDER_SUBTLE))
         })
-        .child(agent_avatar(&name, AVATAR_SIZE))
+        .child(assignee_avatar(
+            &AssigneeFace::agent(name.clone()),
+            AVATAR_SIZE,
+        ))
         .child(
             column()
                 .flex_1()
@@ -207,9 +198,9 @@ impl AgentsPage {
                 .child(caption(subtitle)),
         )
         .child(if running {
-            status_pill("Running", Tone::Info)
+            badge("Running", Tone::Info)
         } else {
-            status_pill("Idle", Tone::Neutral)
+            badge("Idle", Tone::Neutral)
         })
     }
 }
@@ -218,36 +209,36 @@ impl Page for AgentsPage {
     const ROUTE: Route = Route::Agents;
     fn overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.overlays.active()?;
+        let ui = &mut Ui::new(window, cx);
         let body = column_gap(FORM_STACK_GAP)
-            .child(text_field("Name", self.name.clone(), window, cx))
+            .child(text_field("Name", self.name.clone(), ui))
             .child(
                 Field::new(self.instructions.clone())
                     .label("Instructions")
                     .multiline()
-                    .build(window, cx),
+                    .build(ui),
             )
             .child(
                 Field::new(self.model.clone())
                     .label("Model")
                     .hint("Leave empty to use the connection default.")
-                    .build(window, cx),
+                    .build(ui),
             )
             .when_some(self.form_error.clone(), |s, error| {
                 s.child(error_text(error))
             });
         let footer = DialogFooter::new(Verb::Create)
             .ids("agents.cancel", "agents.submit")
-            .enabled(!self.name.read(cx).content.trim().is_empty())
+            .enabled(!self.name.read(ui.cx).content.trim().is_empty())
             .pending(self.pending.busy())
             .focus(&self.cancel_focus, &self.submit_focus)
             .build(
-                &self.hover,
+                ui,
                 |this: &mut Self, window, cx| {
                     this.overlays.dismiss(window, cx);
                     cx.notify();
                 },
                 |this: &mut Self, _, cx| this.register(cx),
-                cx,
             );
         Some(dialog_shell("New Agent", body, footer).into_any_element())
     }
@@ -280,7 +271,6 @@ impl Page for AgentsPage {
 
 impl Render for AgentsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.hover.animate(window);
         let agents: Vec<_> = self
             .state
             .assignees
@@ -289,14 +279,10 @@ impl Render for AgentsPage {
             .cloned()
             .collect();
         let sync = self.sync.read(cx);
-        let (loaded, error, reconnecting, loading_started, fetching) = (
-            sync.loaded,
-            sync.message(),
-            sync.reconnecting(),
-            sync.loading_started,
-            sync.fetching(),
-        );
+        let state = sync.load_state();
+        let fetching = sync.fetching();
         let count = agents.len();
+        let ui = &mut Ui::new(window, cx);
         PageFrame::document(
             PageHeader::new(self.title())
                 .description("Agents pick up the Tickets you assign to them.")
@@ -304,47 +290,46 @@ impl Render for AgentsPage {
                     row_gap(CONTROL_GAP)
                         .child(
                             Button::new("agents.refresh", "Refresh")
-                                .icon("refresh")
+                                .icon(Icon::Refresh)
                                 .icon_only()
                                 .secondary()
                                 .enabled(!fetching)
-                                .build(
-                                    &self.hover,
-                                    |this, _, cx| this.sync.update(cx, |sync, cx| sync.wake(cx)),
-                                    cx,
-                                ),
+                                .build(ui, |this, _, cx| {
+                                    this.sync.update(cx, |sync, cx| sync.wake(cx))
+                                }),
                         )
-                        .child(self.add_button("agents.create", false, cx)),
+                        .child(self.add_button("agents.create", false, ui)),
                 ),
         )
-        .child(
-            column()
-                .gap(px(SPACE_4))
-                .when_some(error.clone(), |s, error| s.child(banner(Tone::Danger, error)))
-                .when(reconnecting, |s| {
-                    s.child(LoadingFrame::new(loading_started, window).inline("Reconnecting…"))
-                })
-                .when(!loaded && error.is_none(), |s| {
-                    s.child(skeleton_rows("agents.loading", SKELETON_ROWS))
-                })
-                .when(loaded && agents.is_empty() && error.is_none(), |s| {
-                    s.child(
-                        EmptyState::new("agents", "No Agents yet.")
+        .child(column().gap(px(SPACE_4)).children(page_frame(
+            "agents",
+            &state,
+            SKELETON_ROWS,
+            ui,
+            |ui| {
+                if agents.is_empty() {
+                    return match state.error {
+                        Some(_) => div().into_any_element(),
+                        None => EmptyState::new(Icon::Agents, "No Agents yet.")
                             .description("Register an agent with instructions and a model, then assign Tickets to it.")
                             .selector("agents.empty")
-                            .action(self.add_button("agents.create.empty", true, cx))
-                            .build(),
-                    )
-                })
-                .when(!agents.is_empty(), |s| {
-                    s.child(card().p(px(SPACE_1)).gap_0().children(
+                            .action(self.add_button("agents.create.empty", true, ui))
+                            .build()
+                            .into_any_element(),
+                    };
+                }
+                card()
+                    .p(px(SPACE_1))
+                    .gap_0()
+                    .children(
                         agents
                             .iter()
                             .enumerate()
                             .map(|(index, agent)| self.agent_row(index, count, agent)),
-                    ))
-                }),
-        )
+                    )
+                    .into_any_element()
+            },
+        )))
         .build()
     }
 }

@@ -61,12 +61,6 @@ pub struct UpdateView {
     changelog: bool,
     failure: Option<Retry>,
     before_install: Option<BeforeInstall>,
-    hover: HoverFade,
-}
-impl HoverHost for UpdateView {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
 }
 impl UpdateView {
     fn new(cx: &mut Context<Self>) -> Self {
@@ -163,7 +157,6 @@ impl UpdateView {
             changelog: false,
             failure: None,
             before_install: None,
-            hover: HoverFade::default(),
         }
     }
     /// The shell flushes its state and drafts here before an install.
@@ -463,7 +456,7 @@ impl UpdateView {
         }
     }
     pub fn settings(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        self.hover.animate(window);
+        let ui = &mut Ui::new(window, cx);
         let frequency = if self.preferences.interval_hours == 24 {
             0
         } else {
@@ -477,70 +470,50 @@ impl UpdateView {
                     self.message.clone(),
                     Button::new("updates.check", "Check Now")
                         .secondary()
-                        .icon("refresh")
+                        .icon(Icon::Refresh)
                         .enabled(!self.busy.busy())
-                        .build(
-                            &self.hover,
-                            |this: &mut Self, _, cx| {
-                                this.visible = true;
-                                this.changelog = false;
-                                this.check(true, cx);
-                            },
-                            cx,
-                        ),
+                        .build(ui, |this: &mut Self, _, cx| {
+                            this.visible = true;
+                            this.changelog = false;
+                            this.check(true, cx);
+                        }),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Automatic checks",
                     "Check for new versions in the background.",
-                    toggle(
-                        "updates.auto",
-                        "Automatic checks",
-                        self.preferences.automatic_checks,
-                        true,
-                        |this: &mut Self, _, cx| {
+                    Toggle::new("updates.auto", "Automatic checks")
+                        .on(self.preferences.automatic_checks)
+                        .build(ui, |this: &mut Self, _, cx| {
                             this.preferences.automatic_checks = !this.preferences.automatic_checks;
                             this.save();
                             cx.notify();
-                        },
-                        cx,
-                    ),
+                        }),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Check frequency",
                     "How often AgentInc checks for updates.",
-                    segmented(
-                        "updates.frequency",
-                        ["Daily", "Weekly"],
-                        frequency,
-                        true,
-                        &self.hover,
-                        |this: &mut Self, index, _, cx| {
+                    Segmented::new("updates.frequency", ["Daily", "Weekly"])
+                        .selected(frequency)
+                        .build(ui, |this: &mut Self, index, _, cx| {
                             this.preferences.interval_hours = if index == 0 { 24 } else { 168 };
                             this.save();
                             cx.notify();
-                        },
-                        cx,
-                    ),
+                        }),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Automatic download",
                     "Download new versions when they become available.",
-                    toggle(
-                        "updates.download",
-                        "Automatic download",
-                        self.preferences.automatic_download,
-                        true,
-                        |this: &mut Self, _, cx| {
+                    Toggle::new("updates.download", "Automatic download")
+                        .on(self.preferences.automatic_download)
+                        .build(ui, |this: &mut Self, _, cx| {
                             this.preferences.automatic_download =
                                 !this.preferences.automatic_download;
                             this.save();
                             cx.notify();
-                        },
-                        cx,
-                    ),
+                        }),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
@@ -548,7 +521,7 @@ impl UpdateView {
                     "Browse the full release history.",
                     Button::new("updates.notes", "View Release Notes")
                         .secondary()
-                        .build(&self.hover, |_: &mut Self, _, cx| open_changelog(cx), cx),
+                        .build(ui, |_: &mut Self, _, cx| open_changelog(cx)),
                 )),
         )
         .into_any_element()

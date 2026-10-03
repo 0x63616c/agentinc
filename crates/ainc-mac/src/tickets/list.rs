@@ -16,26 +16,22 @@ fn columns() -> [TableColumn; 3] {
 }
 
 impl TicketsPage {
-    pub(super) fn list(&self, visible: &[Ticket], cx: &mut Context<Self>) -> Div {
+    pub(super) fn list(&self, visible: &[Ticket], ui: &mut Ui<Self>) -> Div {
         if visible.is_empty() {
-            return EmptyState::new("search", "No matching Tickets.")
+            return EmptyState::new(Icon::Search, "No matching Tickets.")
                 .description("Try another search, or clear the filters to see every Ticket.")
                 .selector("tickets.list.empty")
                 .action(
                     Button::new("tickets.list.clear", "Clear Filters")
                         .secondary()
-                        .build(
-                            &self.hover,
-                            |this: &mut Self, _, cx| {
-                                this.filters = Filters::default();
-                                this.search.update(cx, |input, cx| {
-                                    input.reset();
-                                    cx.notify();
-                                });
+                        .build(ui, |this: &mut Self, _, cx| {
+                            this.filters = Filters::default();
+                            this.search.update(cx, |input, cx| {
+                                input.reset();
                                 cx.notify();
-                            },
-                            cx,
-                        ),
+                            });
+                            cx.notify();
+                        }),
                 )
                 .build();
         }
@@ -61,17 +57,7 @@ impl TicketsPage {
                     .bg(rgb(SURFACE))
                     .border_b_1()
                     .border_color(rgb(BORDER_SUBTLE))
-                    .child(
-                        icon(status_icon(status), ICON_SIZE_SM)
-                            .text_color(rgb(status_color(status))),
-                    )
-                    .child(
-                        div()
-                            .text_size(type_size(LABEL_SIZE))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(status_name(status)),
-                    )
-                    .child(hint(tickets.len().to_string()))
+                    .child(status_group_header(status, tickets.len()))
                     .child(div().flex_1())
                     .child(
                         Button::new(
@@ -80,21 +66,17 @@ impl TicketsPage {
                         )
                         .ghost()
                         .small()
-                        .icon("plus")
+                        .icon(Icon::Plus)
                         .icon_only()
                         .tint(TEXT_TERTIARY)
                         .enabled(!self.pending.busy())
-                        .build(
-                            &self.hover,
-                            move |this: &mut Self, window, cx| {
-                                this.open_create(Some(status), window, cx)
-                            },
-                            cx,
-                        ),
+                        .build(ui, move |this: &mut Self, window, cx| {
+                            this.open_create(Some(status), window, cx)
+                        }),
                     ),
             );
             for ticket in tickets {
-                table = table.child(self.list_row(ticket, &columns, now, cx));
+                table = table.child(self.list_row(ticket, &columns, now, ui));
             }
         }
         column().w_full().child(table)
@@ -105,7 +87,7 @@ impl TicketsPage {
         ticket: &Ticket,
         columns: &[TableColumn],
         now: i64,
-        cx: &mut Context<Self>,
+        ui: &mut Ui<Self>,
     ) -> Stateful<Div> {
         let id = ticket.id;
         let blockers = open_blockers(&self.state.tickets, &self.state.links, id);
@@ -132,14 +114,7 @@ impl TicketsPage {
                     .text_size(type_size(BODY_SIZE))
                     .child(ticket.title.clone()),
             )
-            .when(self.running(ticket), |s| {
-                s.child(
-                    row()
-                        .gap(px(SPACE_1))
-                        .child(status_dot(Tone::Info))
-                        .child(hint("Working")),
-                )
-            })
+            .when(self.running(ticket), |s| s.child(working_indicator()))
             .when(!blockers.is_empty(), |s| {
                 s.child(self.blockers_marker(&blockers))
             })
@@ -152,7 +127,10 @@ impl TicketsPage {
             );
         let assignee = row()
             .gap(px(SPACE_2))
-            .child(self.assignee_avatar(&ticket.assignee_id, AVATAR_SIZE_SM))
+            .child(assignee_avatar(
+                &self.assignee_face(&ticket.assignee_id),
+                AVATAR_SIZE_SM,
+            ))
             .child(
                 div()
                     .truncate()
@@ -160,7 +138,7 @@ impl TicketsPage {
                     .text_color(rgb(TEXT_SECONDARY))
                     .child(self.assignee_name(&ticket.assignee_id)),
             );
-        table_row(
+        TableRow::new(
             ElementId::NamedInteger("ticket".into(), id as u64),
             format!("{} {}", ticket_key(id), ticket.title),
             columns,
@@ -169,10 +147,7 @@ impl TicketsPage {
                 assignee.into_any_element(),
                 hint(time::relative(ticket.updated_at, now)).into_any_element(),
             ],
-            true,
-            &self.hover,
-            move |this: &mut Self, _, cx| this.select(id, cx),
-            cx,
         )
+        .build(ui, move |this: &mut Self, _, cx| this.select(id, cx))
     }
 }

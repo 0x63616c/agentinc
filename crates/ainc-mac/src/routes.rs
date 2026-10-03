@@ -1,5 +1,6 @@
 //! Navigation vocabulary: the Routes, the page catalogue behind them, the
 //! Router's history and the one Destination event pages send the shell.
+use crate::ui::Icon;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -23,7 +24,7 @@ pub enum Route {
 pub struct PageSpec {
     pub route: Route,
     pub title: &'static str,
-    pub icon: &'static str,
+    pub icon: Icon,
     pub in_sidebar: bool,
 }
 
@@ -31,55 +32,55 @@ pub const PAGES: &[PageSpec] = &[
     PageSpec {
         route: Route::Tickets,
         title: "Tickets",
-        icon: "tickets",
+        icon: Icon::Tasks,
         in_sidebar: true,
     },
     PageSpec {
         route: Route::Assistant,
         title: "Assistant",
-        icon: "evee-outline",
+        icon: Icon::EveeOutline,
         in_sidebar: true,
     },
     PageSpec {
         route: Route::Agents,
         title: "Agents",
-        icon: "agents",
+        icon: Icon::Agents,
         in_sidebar: true,
     },
     PageSpec {
         route: Route::Automations,
         title: "Automations",
-        icon: "repeat",
+        icon: Icon::Repeat,
         in_sidebar: true,
     },
     PageSpec {
         route: Route::Terminal,
         title: "Terminal",
-        icon: "terminal",
+        icon: Icon::Terminal,
         in_sidebar: true,
     },
     PageSpec {
         route: Route::Temporal,
         title: "Temporal",
-        icon: "temporal",
+        icon: Icon::Temporal,
         in_sidebar: true,
     },
     PageSpec {
         route: Route::Settings,
         title: "Settings",
-        icon: "settings",
+        icon: Icon::Settings,
         in_sidebar: false,
     },
     PageSpec {
         route: Route::Connections,
         title: "Connections",
-        icon: "link",
+        icon: Icon::Link,
         in_sidebar: false,
     },
     PageSpec {
         route: Route::Components,
         title: "Components",
-        icon: "command",
+        icon: Icon::Command,
         in_sidebar: false,
     },
 ];
@@ -106,7 +107,7 @@ impl Route {
     pub fn label(self) -> &'static str {
         self.spec().title
     }
-    pub fn icon(self) -> &'static str {
+    pub fn icon(self) -> Icon {
         self.spec().icon
     }
     /// The stable lower-case name used in saved files and palette ids.

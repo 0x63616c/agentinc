@@ -5,49 +5,53 @@ use crate::{
     action::{Failure, Pending, Run},
     assistant,
     daemon::Daemon,
-    page::Page,
+    overlay::Overlay,
+    page::{Page, PageOverlays},
     routes::{Destination, Route},
-    ui::*,
+    ui::{OverlayHost, *},
 };
 use ainc_client::types::Command;
 use gpui::{prelude::*, *};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
+
+const MODEL_SELECT: &str = "codex-model-select";
 
 pub struct ConnectionsPage {
     daemon: Arc<Daemon>,
     signed_in_as: Option<String>,
     models: Vec<assistant::Model>,
     model: Option<String>,
-    model_menu_open: bool,
+    overlays: PageOverlays<()>,
     credentials: Pending,
     login_cancel: Option<Arc<AtomicBool>>,
     connection_error: Option<String>,
     pending: Pending,
-    hover: HoverFade,
-}
-impl HoverHost for ConnectionsPage {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
 }
 impl EventEmitter<Destination> for ConnectionsPage {}
 
 impl ConnectionsPage {
-    pub fn new(daemon: Arc<Daemon>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        daemon: Arc<Daemon>,
+        overlays: Rc<RefCell<OverlayHost<Overlay>>>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let mut this = Self {
             daemon,
             signed_in_as: None,
             models: vec![],
             model: None,
-            model_menu_open: false,
+            overlays: PageOverlays::new(overlays, Route::Connections),
             credentials: Pending::default(),
             login_cancel: None,
             connection_error: None,
             pending: Pending::default(),
-            hover: HoverFade::default(),
         };
         this.reload_model();
         this.refresh_connection(cx);
@@ -122,7 +126,7 @@ impl ConnectionsPage {
         self.connection(assistant::logout, cx);
     }
     fn select_model(&mut self, model: Option<String>, cx: &mut Context<Self>) {
-        self.model_menu_open = false;
+        self.overlays.close_popover();
         let daemon = self.daemon.clone();
         cx.run(
             &self.pending.clone(),
@@ -161,7 +165,7 @@ impl ConnectionsPage {
         ];
         cx.notify();
     }
-    fn chatgpt_section(&self, cx: &mut Context<Self>) -> Div {
+    fn chatgpt_section(&self, ui: &mut Ui<Self>) -> Div {
         let enabled = !self.credentials.busy() && !self.turn_active();
         let state = if self.credentials.busy() {
             if self.login_cancel.is_some() {
@@ -196,17 +200,13 @@ impl ConnectionsPage {
                         Button::new("codex-sign-in", "Sign Out")
                             .secondary()
                             .enabled(enabled)
-                            .build(
-                                &self.hover,
-                                |this: &mut Self, _, cx| this.disconnect(cx),
-                                cx,
-                            )
+                            .build(ui, |this: &mut Self, _, cx| this.disconnect(cx))
                     } else {
                         Button::new("codex-sign-in", "Sign in with ChatGPT")
                             .primary()
-                            .icon("openai")
+                            .icon(Icon::OpenAi)
                             .enabled(enabled)
-                            .build(&self.hover, |this: &mut Self, _, cx| this.connect(cx), cx)
+                            .build(ui, |this: &mut Self, _, cx| this.connect(cx))
                     },
                 ))
                 .when(self.login_cancel.is_some(), |s| {
@@ -214,14 +214,13 @@ impl ConnectionsPage {
                         "Sign-in in progress",
                         "Waiting for your browser to complete sign-in.",
                         Button::new("cancel-sign-in", "Cancel").secondary().build(
-                            &self.hover,
+                            ui,
                             |this: &mut Self, _, cx| {
                                 if let Some(cancel) = &this.login_cancel {
                                     cancel.store(true, Ordering::Relaxed);
                                 }
                                 cx.notify();
                             },
-                            cx,
                         ),
                     ))
                 })
@@ -229,15 +228,15 @@ impl ConnectionsPage {
                     s.child(settings_divider()).child(settings_row(
                         "Model",
                         "The Codex model Evee replies with.",
-                        Select::new("codex-model-select", options)
+                        Select::new(MODEL_SELECT, options)
                             .value(Some(model_index))
-                            .open(self.model_menu_open)
+                            .open(self.overlays.popover_open(MODEL_SELECT))
                             .enabled(enabled && !self.pending.busy())
-                            .width(240.)
+                            .width(SELECT_WIDTH)
                             .build(
-                                &self.hover,
+                                ui,
                                 |this: &mut Self, _, cx| {
-                                    this.model_menu_open = !this.model_menu_open;
+                                    this.overlays.toggle_popover(MODEL_SELECT);
                                     cx.notify();
                                 },
                                 |this: &mut Self, index, _, cx| {
@@ -247,7 +246,6 @@ impl ConnectionsPage {
                                         .map(|model| model.id.clone());
                                     this.select_model(model, cx);
                                 },
-                                cx,
                             ),
                     ))
                 })
@@ -257,13 +255,9 @@ impl ConnectionsPage {
                     "Refresh your ChatGPT account and available models.",
                     Button::new("codex-refresh", "Refresh")
                         .secondary()
-                        .icon("refresh")
+                        .icon(Icon::Refresh)
                         .enabled(enabled)
-                        .build(
-                            &self.hover,
-                            |this: &mut Self, _, cx| this.refresh_connection(cx),
-                            cx,
-                        ),
+                        .build(ui, |this: &mut Self, _, cx| this.refresh_connection(cx)),
                 )),
         )
     }
@@ -271,19 +265,11 @@ impl ConnectionsPage {
 
 impl Page for ConnectionsPage {
     const ROUTE: Route = Route::Connections;
-    fn dismiss_menus(&mut self, cx: &mut Context<Self>) -> bool {
-        let was_open = self.model_menu_open;
-        self.model_menu_open = false;
-        if was_open {
-            cx.notify();
-        }
-        was_open
-    }
 }
 
 impl Render for ConnectionsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.hover.animate(window);
+        let ui = &mut Ui::new(window, cx);
         PageFrame::document(
             PageHeader::new(self.title())
                 .description("External accounts whose capabilities Evee and your agents can use."),
@@ -294,7 +280,7 @@ impl Render for ConnectionsPage {
                 .when_some(self.connection_error.clone(), |s, error| {
                     s.child(banner(Tone::Danger, error))
                 })
-                .child(self.chatgpt_section(cx)),
+                .child(self.chatgpt_section(ui)),
         )
         .build()
     }

@@ -35,7 +35,7 @@ impl Shell {
                 ),
             )
     }
-    pub(super) fn update_required(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn update_required(&self, ui: &mut Ui<Self>) -> AnyElement {
         column()
             .size_full()
             .items_center()
@@ -56,7 +56,7 @@ impl Shell {
                 Button::new("required-update", "Check for Updates")
                     .primary()
                     .large()
-                    .build(&self.hover, |_, _, cx| crate::updates::open(cx, true), cx),
+                    .build(ui, |_, _, cx| crate::updates::open(cx, true)),
             )
             .into_any_element()
     }
@@ -174,14 +174,8 @@ impl Shell {
     }
 
     /// The sidebar beside the content card, under the title bar.
-    pub(super) fn body(
-        &self,
-        sidebar: AnyElement,
-        content: AnyElement,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let visible = self.sidebar_visible.min(self.sidebar_limit(window));
+    pub(super) fn body(&self, sidebar: AnyElement, content: AnyElement, ui: &mut Ui<Self>) -> Div {
+        let visible = self.sidebar_visible.min(self.sidebar_limit(ui.window));
         let saved = self.ui_state.sidebar.width;
         row()
             .relative()
@@ -214,7 +208,7 @@ impl Shell {
             )
             .when(self.ui_state.sidebar.open && visible > 0., |body| {
                 body.child(
-                    self.resize_handle(cx)
+                    self.resize_handle(ui.cx)
                         .absolute()
                         .left(px(visible - 5.))
                         .top(px(TITLEBAR_HEIGHT))

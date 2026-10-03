@@ -1,6 +1,9 @@
 //! Native loading states, animated only while they are visible.
 use super::{
+    badge::Tone,
+    banner::banner,
     layout::{column, row},
+    motion::Ui,
     reduced_motion,
     tokens::*,
 };
@@ -132,9 +135,11 @@ pub fn skeleton(id: impl Into<ElementId>, width: Option<f32>, height: f32) -> im
 pub const SKELETON_ROWS: usize = 4;
 
 /// A stack of skeleton rows standing in for a list or table.
-pub fn skeleton_rows(id: &'static str, count: usize) -> Div {
+pub fn skeleton_rows(id: impl Into<SharedString>, count: usize) -> Div {
+    let id: SharedString = id.into();
+    let selector = id.clone();
     column()
-        .debug_selector(move || id.into())
+        .debug_selector(move || selector.to_string())
         .w_full()
         .gap(px(SPACE_3))
         .children((0..count).map(|index| {
@@ -162,6 +167,71 @@ pub fn skeleton_rows(id: &'static str, count: usize) -> Div {
                         )),
                 )
         }))
+}
+
+/// Where a page's data stands: still loading, failed, or reconnecting after a
+/// failure.
+#[derive(Clone)]
+pub struct LoadState {
+    pub loaded: bool,
+    pub error: Option<String>,
+    pub reconnecting: bool,
+    /// When loading started, to animate the reconnecting hint.
+    pub started: Instant,
+}
+
+impl LoadState {
+    /// For a page that owns its own load, with no reconnecting hint.
+    pub fn local(loaded: bool, error: Option<String>) -> Self {
+        Self {
+            loaded,
+            error,
+            reconnecting: false,
+            started: Instant::now(),
+        }
+    }
+}
+
+/// The loading frame every data page shares, as the children to put under its
+/// header: the failure banner (`{id}.error`), the "Reconnecting…" hint, and
+/// then either `skeleton_rows` rows (`{id}.loading`) while the first load is
+/// in flight or the page's own `body`.
+pub fn page_frame<V: 'static>(
+    id: &'static str,
+    state: &LoadState,
+    skeleton_rows_count: usize,
+    ui: &mut Ui<V>,
+    body: impl FnOnce(&mut Ui<V>) -> AnyElement,
+) -> Vec<AnyElement> {
+    let mut frame = Vec::new();
+    if let Some(error) = &state.error {
+        frame.push(
+            banner(Tone::Danger, error.clone())
+                .id(SharedString::from(format!("{id}.error")))
+                .accessibility_id(format!("{id}.error"))
+                .debug_selector(move || format!("{id}.error"))
+                .into_any_element(),
+        );
+    }
+    if state.reconnecting {
+        frame.push(
+            LoadingFrame::new(state.started, ui.window)
+                .inline("Reconnecting…")
+                .into_any_element(),
+        );
+    }
+    if state.loaded || state.error.is_some() {
+        frame.push(body(ui));
+    } else {
+        frame.push(
+            div()
+                .id(SharedString::from(format!("{id}.loading")))
+                .accessibility_id(format!("{id}.loading"))
+                .child(skeleton_rows(format!("{id}.loading"), skeleton_rows_count))
+                .into_any_element(),
+        );
+    }
+    frame
 }
 
 /// A short handoff after the first shell frame; the main UI remains ready underneath.

@@ -8,7 +8,7 @@
 use crate::{
     action::{Failure, Pending, Run},
     daemon::Daemon,
-    ui::is_active,
+    ui::{LoadState, is_active},
 };
 use gpui::{BackgroundExecutor, Context, EventEmitter};
 use std::{pin::Pin, rc::Rc, sync::Arc, time::Duration, time::Instant};
@@ -137,6 +137,15 @@ impl Sync {
     /// A fetch set is in flight after a failure.
     pub fn reconnecting(&self) -> bool {
         self.error.is_some() && self.pending.busy()
+    }
+    /// How the page frame shows this data: loading, failed or reconnecting.
+    pub fn load_state(&self) -> LoadState {
+        LoadState {
+            loaded: self.loaded,
+            error: self.message(),
+            reconnecting: self.reconnecting(),
+            started: self.loading_started,
+        }
     }
     /// The load error, worded for a banner.
     pub fn message(&self) -> Option<String> {

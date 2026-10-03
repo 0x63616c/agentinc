@@ -1,11 +1,11 @@
 //! The command palette surface: grouped, fuzzy-matched results with keyboard
 //! navigation, highlighted matches and shortcut hints. Hosts own the items.
-use super::{button::*, display::*, layout::*, motion::*, tokens::*};
+use super::{button::*, display::*, icon::Icon, layout::*, motion::*, tokens::*};
 use gpui::{prelude::*, *};
 
 pub struct PaletteEntry {
     pub id: SharedString,
-    pub icon: Option<&'static str>,
+    pub icon: Option<Icon>,
     /// A color that carries meaning, such as a Ticket's status; plain icons
     /// stay gray and brighten with the selection.
     pub icon_color: Option<u32>,
@@ -28,7 +28,7 @@ impl PaletteEntry {
             shortcut: None,
         }
     }
-    pub fn icon(mut self, icon: &'static str) -> Self {
+    pub fn icon(mut self, icon: Icon) -> Self {
         self.icon = Some(icon);
         self
     }
@@ -119,16 +119,57 @@ fn highlighted(label: &SharedString, positions: &[usize], window: &Window) -> An
         .into_any_element()
 }
 
-pub struct PaletteView<'a> {
-    pub input: AnyElement,
-    pub icon: &'static str,
-    pub groups: &'a [PaletteGroup],
-    pub selected: usize,
-    pub empty: SharedString,
-    pub result_focus: &'a [FocusHandle],
-    pub close_focus: &'a FocusHandle,
-    pub scroll: &'a ScrollHandle,
-    pub aria_label: &'static str,
+/// The palette over a host's groups: its search input, the highlighted row,
+/// the focus ring for its rows and the copy for an empty result.
+pub struct Palette<'a> {
+    input: AnyElement,
+    icon: Icon,
+    groups: &'a [PaletteGroup],
+    selected: usize,
+    empty: SharedString,
+    result_focus: &'a [FocusHandle],
+    close_focus: &'a FocusHandle,
+    scroll: &'a ScrollHandle,
+    aria_label: &'static str,
+}
+
+impl<'a> Palette<'a> {
+    pub fn new(
+        groups: &'a [PaletteGroup],
+        input: impl IntoElement,
+        result_focus: &'a [FocusHandle],
+        close_focus: &'a FocusHandle,
+        scroll: &'a ScrollHandle,
+    ) -> Self {
+        Self {
+            input: input.into_any_element(),
+            icon: Icon::Search,
+            groups,
+            selected: 0,
+            empty: SharedString::default(),
+            result_focus,
+            close_focus,
+            scroll,
+            aria_label: "Search",
+        }
+    }
+    pub fn icon(mut self, icon: Icon) -> Self {
+        self.icon = icon;
+        self
+    }
+    pub fn selected(mut self, selected: usize) -> Self {
+        self.selected = selected;
+        self
+    }
+    /// The line under "No matches".
+    pub fn empty(mut self, empty: impl Into<SharedString>) -> Self {
+        self.empty = empty.into();
+        self
+    }
+    pub fn aria_label(mut self, aria_label: &'static str) -> Self {
+        self.aria_label = aria_label;
+        self
+    }
 }
 
 /// The palette's frame: a search row, a body and a footer of hints, on the
@@ -177,13 +218,12 @@ pub fn palette_frame(
 }
 
 /// The palette's search-row contents: a leading icon, the input and a close hint.
-pub fn palette_header<V: HoverHost>(
-    icon_name: &'static str,
+pub fn palette_header<V: 'static>(
+    icon_name: Icon,
     content: impl IntoElement,
     close_focus: &FocusHandle,
-    hover: &HoverFade,
+    ui: &mut Ui<V>,
     on_close: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-    cx: &mut Context<V>,
 ) -> Div {
     row()
         .flex_1()
@@ -193,189 +233,190 @@ pub fn palette_header<V: HoverHost>(
         .child(div().flex_1().min_w_0().child(content))
         .child(
             Button::new("palette-close", "Close")
-                .icon("close")
+                .icon(Icon::Close)
                 .icon_only()
                 .ghost()
                 .small()
                 .track_focus(close_focus)
-                .build(hover, on_close, cx),
+                .build(ui, on_close),
         )
 }
 
-/// Renders the palette; the host supplies the items and answers choices.
-pub fn render_palette<V: HoverHost>(
-    view: PaletteView<'_>,
-    hover: &HoverFade,
-    on_choose: impl Fn(&mut V, usize, &mut Window, &mut Context<V>) + Clone + 'static,
-    on_hover: impl Fn(&mut V, usize, &mut Context<V>) + Clone + 'static,
-    on_close: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
-    window: &Window,
-    cx: &mut Context<V>,
-) -> Stateful<Div> {
-    let PaletteView {
-        input,
-        icon: leading,
-        groups,
-        selected,
-        empty,
-        result_focus,
-        close_focus,
-        scroll,
-        aria_label,
-    } = view;
-    let total = palette_len(groups);
-    // Keep the whole palette above the content card's status bar.
-    let reserved = PALETTE_TOP
-        + PALETTE_HEADER_HEIGHT
-        + PALETTE_FOOTER_HEIGHT
-        + STATUS_BAR_HEIGHT
-        + PANEL_GAP
-        + SPACE_4;
-    // Whole rows only: the list never cuts a row in half at its bottom edge.
-    let available = (f32::from(window.viewport_size().height) - reserved)
-        .clamp(PALETTE_ROW_HEIGHT * 3., PALETTE_RESULTS_MAX_HEIGHT);
-    let results_height = ((available - SPACE_2 * 2.) / PALETTE_ROW_HEIGHT).floor()
-        * PALETTE_ROW_HEIGHT
-        + SPACE_2 * 2.;
-    let mut results = column()
-        .id("palette-results")
-        .track_scroll(scroll)
-        .p(px(SPACE_2))
-        .max_h(px(results_height))
-        .overflow_y_scroll();
-    if total == 0 {
-        results = results.child(
-            column()
-                .debug_selector(|| "palette.empty".into())
-                .items_center()
-                .py(px(SPACE_8))
-                .gap(px(SPACE_1))
-                .child(div().text_color(rgb(TEXT)).child("No matches"))
-                .child(caption(empty)),
-        );
-    }
-    let mut flat = 0;
-    for group in groups {
-        if group.entries.is_empty() {
-            continue;
+impl Palette<'_> {
+    /// Renders the palette; the host answers choices, pointer highlights and Close.
+    pub fn build<V: 'static>(
+        self,
+        ui: &mut Ui<V>,
+        on_choose: impl Fn(&mut V, usize, &mut Window, &mut Context<V>) + Clone + 'static,
+        on_hover: impl Fn(&mut V, usize, &mut Context<V>) + Clone + 'static,
+        on_close: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
+    ) -> Stateful<Div> {
+        let Self {
+            input,
+            icon: leading,
+            groups,
+            selected,
+            empty,
+            result_focus,
+            close_focus,
+            scroll,
+            aria_label,
+        } = self;
+        let total = palette_len(groups);
+        // Keep the whole palette above the content card's status bar.
+        let reserved = PALETTE_TOP
+            + PALETTE_HEADER_HEIGHT
+            + PALETTE_FOOTER_HEIGHT
+            + STATUS_BAR_HEIGHT
+            + PANEL_GAP
+            + SPACE_4;
+        // Whole rows only: the list never cuts a row in half at its bottom edge.
+        let available = (f32::from(ui.window.viewport_size().height) - reserved)
+            .clamp(PALETTE_ROW_HEIGHT * 3., PALETTE_RESULTS_MAX_HEIGHT);
+        let results_height = ((available - SPACE_2 * 2.) / PALETTE_ROW_HEIGHT).floor()
+            * PALETTE_ROW_HEIGHT
+            + SPACE_2 * 2.;
+        let mut results = column()
+            .id("palette-results")
+            .track_scroll(scroll)
+            .p(px(SPACE_2))
+            .max_h(px(results_height))
+            .overflow_y_scroll();
+        if total == 0 {
+            results = results.child(
+                column()
+                    .debug_selector(|| "palette.empty".into())
+                    .items_center()
+                    .py(px(SPACE_8))
+                    .gap(px(SPACE_1))
+                    .child(div().text_color(rgb(TEXT)).child("No matches"))
+                    .child(caption(empty)),
+            );
         }
-        results = results.child(
-            div()
-                .flex_shrink_0()
-                .px(px(SPACE_2))
-                .pt(px(SPACE_2))
-                .pb(px(SPACE_1))
-                .child(eyebrow(group.title.clone())),
-        );
-        for entry in &group.entries {
-            let index = flat;
-            flat += 1;
-            let is_selected = index == selected;
-            let on_choose = on_choose.clone();
-            let on_hover = on_hover.clone();
-            let row_id: SharedString = format!("{}.{}", group.key, entry.id).into();
-            let selector = format!("palette.result.{row_id}");
-            let label = highlighted(&entry.label, &entry.positions, window);
-            let on_hover = cx.listener(move |view: &mut V, over: &bool, _, cx| {
-                if *over {
-                    on_hover(view, index, cx);
-                    cx.notify();
-                }
-            });
-            results = results.child(action_button(
-                ButtonSpec {
-                    id: ElementId::Name(entry.id.clone()),
-                    label: entry.label.clone(),
-                    enabled: true,
-                },
-                |button| {
-                    button
-                        .debug_selector(move || selector.clone())
-                        .when_some(result_focus.get(index), |s, focus| s.track_focus(focus))
-                        .on_hover(on_hover)
-                        .w_full()
-                        .h(px(PALETTE_ROW_HEIGHT))
-                        .flex_shrink_0()
-                        .px(px(SPACE_2))
-                        .gap(px(SPACE_3))
-                        .rounded(px(RADIUS_MD))
-                        .when(is_selected, |s| s.bg(rgb(SELECTED_STRONG)))
-                        .child(match entry.icon {
-                            Some(name) => icon(name, ICON_SIZE_LG)
-                                .when(is_selected, |s| s.text_color(rgb(TEXT)))
-                                .when_some(entry.icon_color, |s, color| s.text_color(rgb(color)))
-                                .into_any_element(),
-                            None => div().w(px(ICON_SIZE_LG)).into_any_element(),
-                        })
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .text_size(type_size(BODY_SIZE))
-                                .text_color(rgb(TEXT))
-                                .child(label),
-                        )
-                        .when_some(entry.detail.clone(), |s, detail| {
-                            s.child(
-                                div()
-                                    .flex_shrink_0()
-                                    .text_size(type_size(CAPTION_SIZE))
-                                    .text_color(rgb(TEXT_TERTIARY))
-                                    .child(detail),
-                            )
-                        })
-                        .when_some(entry.shortcut.clone(), |s, shortcut| {
-                            s.child(
-                                row()
-                                    .gap(px(SPACE_1))
-                                    .children(shortcut.split(' ').map(|key| kbd(key.to_owned()))),
-                            )
-                        })
-                        .child(
-                            div()
-                                .w(px(24.))
+        let mut flat = 0;
+        for group in groups {
+            if group.entries.is_empty() {
+                continue;
+            }
+            results = results.child(
+                div()
+                    .flex_shrink_0()
+                    .px(px(SPACE_2))
+                    .pt(px(SPACE_2))
+                    .pb(px(SPACE_1))
+                    .child(eyebrow(group.title.clone())),
+            );
+            for entry in &group.entries {
+                let index = flat;
+                flat += 1;
+                let is_selected = index == selected;
+                let on_choose = on_choose.clone();
+                let on_hover = on_hover.clone();
+                let row_id: SharedString = format!("{}.{}", group.key, entry.id).into();
+                let selector = format!("palette.result.{row_id}");
+                let label = highlighted(&entry.label, &entry.positions, ui.window);
+                let on_hover = ui.cx.listener(move |view: &mut V, over: &bool, _, cx| {
+                    if *over {
+                        on_hover(view, index, cx);
+                        cx.notify();
+                    }
+                });
+                results =
+                    results.child(action_button(
+                        ButtonSpec {
+                            id: ElementId::Name(entry.id.clone()),
+                            label: entry.label.clone(),
+                            enabled: true,
+                        },
+                        |button| {
+                            button
+                                .debug_selector(move || selector.clone())
+                                .when_some(result_focus.get(index), |s, focus| s.track_focus(focus))
+                                .on_hover(on_hover)
+                                .w_full()
+                                .h(px(PALETTE_ROW_HEIGHT))
                                 .flex_shrink_0()
-                                .when(is_selected, |s| s.child(kbd("↵"))),
-                        )
-                },
-                move |view, window, cx| on_choose(view, index, window, cx),
-                cx,
-            ));
+                                .px(px(SPACE_2))
+                                .gap(px(SPACE_3))
+                                .rounded(px(RADIUS_MD))
+                                .when(is_selected, |s| s.bg(rgb(SELECTED_STRONG)))
+                                .child(match entry.icon {
+                                    Some(name) => icon(name, ICON_SIZE_LG)
+                                        .when(is_selected, |s| s.text_color(rgb(TEXT)))
+                                        .when_some(entry.icon_color, |s, color| {
+                                            s.text_color(rgb(color))
+                                        })
+                                        .into_any_element(),
+                                    None => div().w(px(ICON_SIZE_LG)).into_any_element(),
+                                })
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .text_size(type_size(BODY_SIZE))
+                                        .text_color(rgb(TEXT))
+                                        .child(label),
+                                )
+                                .when_some(entry.detail.clone(), |s, detail| {
+                                    s.child(
+                                        div()
+                                            .flex_shrink_0()
+                                            .text_size(type_size(CAPTION_SIZE))
+                                            .text_color(rgb(TEXT_TERTIARY))
+                                            .child(detail),
+                                    )
+                                })
+                                .when_some(entry.shortcut.clone(), |s, shortcut| {
+                                    s.child(row().gap(px(SPACE_1)).children(
+                                        shortcut.split(' ').map(|key| kbd(key.to_owned())),
+                                    ))
+                                })
+                                .child(
+                                    div()
+                                        .w(px(PALETTE_ENTER_SLOT))
+                                        .flex_shrink_0()
+                                        .when(is_selected, |s| s.child(kbd("↵"))),
+                                )
+                        },
+                        move |view, window, cx| on_choose(view, index, window, cx),
+                        ui.cx,
+                    ));
+            }
         }
-    }
-    // Rows that continue below the list fade out rather than being cut in half.
-    let overflows = (groups.iter().filter(|g| !g.entries.is_empty()).count() as f32)
-        * (SPACE_2 + SPACE_1 + f32::from(type_size(CAPTION_SIZE)) * BODY_LINE_HEIGHT)
-        + total as f32 * PALETTE_ROW_HEIGHT
-        + SPACE_2 * 2.
-        > results_height;
-    let results = div().relative().child(results).when(overflows, |s| {
-        s.child(
-            div()
-                .absolute()
-                .bottom_0()
-                .left_0()
-                .right_0()
-                .h(px(PALETTE_ROW_HEIGHT * 0.75))
-                .bg(linear_gradient(
-                    180.,
-                    linear_color_stop(rgba(SURFACE_OVERLAY << 8), 0.),
-                    linear_color_stop(rgb(SURFACE_OVERLAY), 1.),
-                )),
+        // Rows that continue below the list fade out rather than being cut in half.
+        let overflows = (groups.iter().filter(|g| !g.entries.is_empty()).count() as f32)
+            * (SPACE_2 + SPACE_1 + f32::from(type_size(CAPTION_SIZE)) * BODY_LINE_HEIGHT)
+            + total as f32 * PALETTE_ROW_HEIGHT
+            + SPACE_2 * 2.
+            > results_height;
+        let results = div().relative().child(results).when(overflows, |s| {
+            s.child(
+                div()
+                    .absolute()
+                    .bottom_0()
+                    .left_0()
+                    .right_0()
+                    .h(px(PALETTE_ROW_HEIGHT * 0.75))
+                    .bg(linear_gradient(
+                        180.,
+                        linear_color_stop(rgba(SURFACE_OVERLAY << 8), 0.),
+                        linear_color_stop(rgb(SURFACE_OVERLAY), 1.),
+                    )),
+            )
+        });
+        palette_frame(
+            aria_label,
+            palette_header(leading, input, close_focus, ui, on_close),
+            results,
+            row()
+                .flex_1()
+                .gap(px(SPACE_4))
+                .child(kbd_hint("↑ ↓", "Navigate"))
+                .child(kbd_hint("↵", "Open"))
+                .child(div().flex_1())
+                .child(kbd_hint(super::shortcuts::DISMISS.glyph, "Close")),
         )
-    });
-    palette_frame(
-        aria_label,
-        palette_header(leading, input, close_focus, hover, on_close, cx),
-        results,
-        row()
-            .flex_1()
-            .gap(px(SPACE_4))
-            .child(kbd_hint("↑ ↓", "Navigate"))
-            .child(kbd_hint("↵", "Open"))
-            .child(div().flex_1())
-            .child(kbd_hint(super::shortcuts::DISMISS.glyph, "Close")),
-    )
+    }
 }
 
 #[cfg(test)]

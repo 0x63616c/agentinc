@@ -8,24 +8,24 @@ impl Shell {
         move |this, window, cx| this.dispatch(control.clone(), window, cx)
     }
 
-    pub(super) fn user_menu(&self, support: bool, cx: &mut Context<Self>) -> Deferred {
-        let update_ready = cx
+    pub(super) fn user_menu(&self, support: bool, ui: &mut Ui<Self>) -> Deferred {
+        let update_ready = ui
+            .cx
             .try_global::<crate::updates::Updates>()
-            .is_some_and(|updates| updates.0.read(cx).is_ready());
+            .is_some_and(|updates| updates.0.read(ui.cx).is_ready());
         let support = column()
             .relative()
             .child(
                 MenuEntry::new("user-menu.support", "Support")
-                    .icon("help")
+                    .icon(Icon::Help)
                     .trailing(
                         row()
                             .debug_selector(|| "user-menu.support.chevron".into())
                             .w(px(ICON_SIZE))
                             .flex_none()
-                            .child(icon("chevronRight", ICON_SIZE)),
+                            .child(icon(Icon::ChevronRight, ICON_SIZE)),
                     )
-                    .selector("user-menu.support")
-                    .build(&self.hover, Self::menu_action(Control::SupportMenu), cx)
+                    .build(ui, Self::menu_action(Control::SupportMenu))
                     .when(support, |s| s.bg(rgb(SELECTED))),
             )
             .when(support, |s| {
@@ -35,21 +35,18 @@ impl Shell {
                         .gap(px(MENU_INSET))
                         .child(
                             MenuEntry::new("user-menu.help", "Help Center")
-                                .selector("user-menu.help")
-                                .icon("arrowUpRight")
-                                .build(&self.hover, Self::menu_action(Control::HelpCenter), cx),
+                                .icon(Icon::ArrowUpRight)
+                                .build(ui, Self::menu_action(Control::HelpCenter)),
                         )
                         .child(
                             MenuEntry::new("user-menu.feedback", "Send Feedback")
-                                .selector("user-menu.feedback")
-                                .icon("feedback")
-                                .build(&self.hover, Self::menu_action(Control::SendFeedback), cx),
+                                .icon(Icon::Feedback)
+                                .build(ui, Self::menu_action(Control::SendFeedback)),
                         )
                         .child(
                             MenuEntry::new("user-menu.about", "About AgentInc")
-                                .selector("user-menu.about")
-                                .icon("info")
-                                .build(&self.hover, Self::menu_action(Control::About), cx),
+                                .icon(Icon::Info)
+                                .build(ui, Self::menu_action(Control::About)),
                         ),
                     Anchor::TopLeft,
                     point(px(POPOVER_WIDTH - CHIP_GAP), px(-MENU_INSET)),
@@ -92,7 +89,7 @@ impl Shell {
                         .child(
                             row()
                                 .gap(px(SPACE_2))
-                                .child(icon("download", ICON_SIZE_SM).text_color(rgb(TEXT)))
+                                .child(icon(Icon::Download, ICON_SIZE_SM).text_color(rgb(TEXT)))
                                 .child(
                                     div()
                                         .text_size(type_size(LABEL_SIZE))
@@ -105,7 +102,7 @@ impl Shell {
                                 .primary()
                                 .small()
                                 .full_width()
-                                .build(&self.hover, Self::menu_action(Control::InstallUpdate), cx),
+                                .build(ui, Self::menu_action(Control::InstallUpdate)),
                         ),
                 )
             })
@@ -115,19 +112,16 @@ impl Shell {
                     .gap(px(MENU_INSET))
                     .child(
                         MenuEntry::new("user-menu.updates", "Check for Updates")
-                            .selector("user-menu.updates")
-                            .icon("download")
-                            .build(&self.hover, Self::menu_action(Control::CheckForUpdates), cx),
+                            .icon(Icon::Download)
+                            .build(ui, Self::menu_action(Control::CheckForUpdates)),
                     )
                     .child(
                         MenuEntry::new("user-menu.settings", "Settings")
-                            .selector("user-menu.settings")
-                            .icon("settings")
+                            .icon(Icon::Settings)
                             .shortcut(shortcuts::SETTINGS.glyph)
                             .build(
-                                &self.hover,
+                                ui,
                                 Self::menu_action(Control::Go(Destination::Page(Route::Settings))),
-                                cx,
                             ),
                     )
                     .child(support),

@@ -51,18 +51,19 @@ impl Shell {
                     "Show Sidebar"
                 },
             )
-            .icon("panel")
+            .icon(Icon::Panel)
             .shortcut(shortcuts::TOGGLE_SIDEBAR.glyph),
             control: Control::Sidebar,
         });
         items.push(PaletteCandidate {
             group: "Actions",
-            entry: PaletteEntry::new("action.new-ticket", "New Ticket").icon("plus"),
+            entry: PaletteEntry::new("action.new-ticket", "New Ticket").icon(Icon::Plus),
             control: Control::Go(Destination::NewTicket),
         });
         items.push(PaletteCandidate {
             group: "Actions",
-            entry: PaletteEntry::new("action.check-updates", "Check for Updates").icon("download"),
+            entry: PaletteEntry::new("action.check-updates", "Check for Updates")
+                .icon(Icon::Download),
             control: Control::CheckForUpdates,
         });
         let appearance = self.appearance.get();
@@ -74,7 +75,7 @@ impl Shell {
             items.push(PaletteCandidate {
                 group: "Actions",
                 entry: PaletteEntry::new("action.font-size.larger", "Increase Font Size")
-                    .icon("plus")
+                    .icon(Icon::Plus)
                     .detail(*label),
                 control: Control::Appearance(Appearance {
                     font_size: *size,
@@ -86,7 +87,7 @@ impl Shell {
             items.push(PaletteCandidate {
                 group: "Actions",
                 entry: PaletteEntry::new("action.font-size.smaller", "Decrease Font Size")
-                    .icon("settings")
+                    .icon(Icon::Settings)
                     .detail(*label),
                 control: Control::Appearance(Appearance {
                     font_size: *size,
@@ -197,25 +198,22 @@ impl Shell {
         self.selected = self.selected.min(results.len().saturating_sub(1));
         self.palette_scroll
             .scroll_to_item(palette_child_index(&results.groups, self.selected));
-        let empty: SharedString = "Try a page, an action or a Ticket.".into();
-        render_palette(
-            PaletteView {
-                input: self.input.clone().into_any_element(),
-                icon: "search",
-                groups: &results.groups,
-                selected: self.selected,
-                empty,
-                result_focus: &self.picker_result_focus,
-                close_focus: &self.picker_close_focus,
-                scroll: &self.palette_scroll,
-                aria_label: "Go to pages, actions and Tickets",
-            },
-            &self.hover,
+        Palette::new(
+            &results.groups,
+            self.input.clone(),
+            &self.picker_result_focus,
+            &self.picker_close_focus,
+            &self.palette_scroll,
+        )
+        .icon(Icon::Search)
+        .selected(self.selected)
+        .empty("Try a page, an action or a Ticket.")
+        .aria_label("Go to pages, actions and Tickets")
+        .build(
+            &mut Ui::new(window, cx),
             |this: &mut Self, index, window, cx| this.choose_palette(index, window, cx),
             |this: &mut Self, index, _| this.selected = index,
             |this: &mut Self, window, cx| this.dispatch(Control::Dismiss, window, cx),
-            window,
-            cx,
         )
         .into_any_element()
     }

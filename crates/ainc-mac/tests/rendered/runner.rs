@@ -659,7 +659,6 @@ fn release(suite: &mut Suite, position: Point<Pixels>) {
 /// The board, a real pointer drag between and within lanes, filters, the
 /// list, a rich detail, its menus and dialogs, and ⌘K Tickets.
 fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
-    use crate::tickets::Menu;
     use ainc_client::types::TicketStatus;
     let page = suite
         .window
@@ -786,7 +785,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     );
     // Filters, then the list over the same Tickets.
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::FilterPriority), cx)
+        page.fixture_menu(Some("tickets.filter.priority"), cx)
     });
     suite.capture("tickets-filter-menu", Route::Tickets, None, false)?;
     suite.bounds("tickets.filter.priority.menu")?;
@@ -816,17 +815,17 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.bounds("tickets.timeline")?;
     suite.bounds("tickets.description.text")?;
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::Assignee), cx)
+        page.fixture_menu(Some("tickets.detail.assignee"), cx)
     });
     suite.capture("ticket-assignee-photo-menu", Route::Tickets, None, false)?;
     suite.check_assignee_photo("tickets.detail.assignee.option.0", true)?;
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::Status), cx)
+        page.fixture_menu(Some("tickets.detail.status"), cx)
     });
     suite.capture("ticket-status-menu", Route::Tickets, None, false)?;
     suite.bounds("tickets.detail.status.menu")?;
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::Labels), cx)
+        page.fixture_menu(Some("tickets.labels"), cx)
     });
     suite.capture("ticket-labels-menu", Route::Tickets, None, false)?;
     suite.bounds("tickets.labels.menu")?;
@@ -909,7 +908,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     page.update(&mut suite.cx, |page, cx| page.fixture_menu(None, cx));
     suite.click_selector("Title.input")?;
     page.update(&mut suite.cx, |page, cx| {
-        page.fixture_menu(Some(Menu::DraftStatus), cx)
+        page.fixture_menu(Some("tickets.draft.status"), cx)
     });
     suite.capture(
         "ticket-create-status-menu",

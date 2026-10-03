@@ -246,8 +246,11 @@ impl TicketsPage {
         self.selected = None;
         cx.notify();
     }
-    pub(crate) fn fixture_menu(&mut self, menu: Option<Menu>, cx: &mut Context<Self>) {
-        self.menu = menu;
+    pub(crate) fn fixture_menu(&mut self, menu: Option<&'static str>, cx: &mut Context<Self>) {
+        self.overlays.close_popover();
+        if let Some(id) = menu {
+            self.overlays.toggle_popover(id);
+        }
         cx.notify();
     }
     pub(crate) fn fixture_ticket_id(&self, title: &str) -> Option<i64> {

@@ -1,5 +1,6 @@
 //! Page headings, icons, keyboard hints and the embedded asset catalogue.
 use super::{
+    icon::Icon,
     layout::{column, row},
     tokens::*,
 };
@@ -118,26 +119,26 @@ pub fn caption(text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
-pub fn icon(name: &'static str, size: f32) -> Svg {
+pub fn icon(name: Icon, size: f32) -> Svg {
     svg()
-        .path(format!("{name}.svg"))
+        .path(name.path())
         .size(px(size))
         .text_color(rgb(TEXT_SECONDARY))
         .flex_shrink_0()
 }
 pub fn nav_icon(
-    name: &'static str,
+    name: Icon,
     selected: bool,
     tint: u32,
     hover_group: impl Into<SharedString>,
 ) -> Svg {
     svg()
         .path(if selected {
-            format!("selected/{name}.svg")
+            name.selected_path()
         } else {
-            format!("{name}.svg")
+            name.path().into()
         })
-        .size(px(17.))
+        .size(px(NAV_ICON_SIZE))
         .text_color(rgb(tint))
         .group_hover(hover_group, |s| s.text_color(rgb(TEXT)))
         .flex_shrink_0()
@@ -146,9 +147,9 @@ pub fn nav_icon(
 /// A keyboard shortcut hint from `ui::shortcuts`: `⌘K`, `↵`, `⎋`.
 pub fn kbd(label: impl Into<SharedString>) -> Div {
     row()
-        .h(px(20.))
-        .min_w(px(20.))
-        .px(px(5.))
+        .h(px(KBD_HEIGHT))
+        .min_w(px(KBD_HEIGHT))
+        .px(px(KBD_INSET_X))
         .justify_center()
         .flex_shrink_0()
         .rounded(px(RADIUS_XS))
@@ -165,7 +166,7 @@ pub fn kbd(label: impl Into<SharedString>) -> Div {
 /// A row of hints such as `↑↓ Navigate  ↵ Open`.
 pub fn kbd_hint(keys: impl Into<SharedString>, action: impl Into<SharedString>) -> Div {
     row()
-        .gap(px(6.))
+        .gap(px(KBD_HINT_GAP))
         .text_size(type_size(CAPTION_SIZE))
         .text_color(rgb(TEXT_TERTIARY))
         .child(kbd(keys))
@@ -186,67 +187,13 @@ impl AssetSource for Assets {
                 })
             });
         }
-        let data: &'static [u8] = match path {
-            "refresh.svg" => include_bytes!("../../assets/icons/refresh.svg"),
-            "temporal.svg" => include_bytes!("../../assets/icons/temporal.svg"),
-            "check.svg" => include_bytes!("../../assets/icons/check.svg"),
-            "chevronDown.svg" => include_bytes!("../../assets/icons/chevronDown.svg"),
-            "chevronUpDown.svg" => include_bytes!("../../assets/icons/chevronUpDown.svg"),
-            "more.svg" => include_bytes!("../../assets/icons/more.svg"),
-            "user.svg" => include_bytes!("../../assets/icons/user.svg"),
-            "users.svg" => include_bytes!("../../assets/icons/users.svg"),
-            "help.svg" => include_bytes!("../../assets/icons/help.svg"),
-            "feedback.svg" => include_bytes!("../../assets/icons/feedback.svg"),
-            "download.svg" => include_bytes!("../../assets/icons/download.svg"),
-            "inbox.svg" => include_bytes!("../../assets/icons/inbox.svg"),
-            "warning.svg" => include_bytes!("../../assets/icons/warning.svg"),
-            "info.svg" => include_bytes!("../../assets/icons/info.svg"),
-            "copy.svg" => include_bytes!("../../assets/icons/copy.svg"),
-            "trash.svg" => include_bytes!("../../assets/icons/trash.svg"),
-            "edit.svg" => include_bytes!("../../assets/icons/edit.svg"),
-            "play.svg" => include_bytes!("../../assets/icons/play.svg"),
-            "pause.svg" => include_bytes!("../../assets/icons/pause.svg"),
-            "stop.svg" => include_bytes!("../../assets/icons/stop.svg"),
-            "history.svg" => include_bytes!("../../assets/icons/history.svg"),
-            "repeat.svg" => include_bytes!("../../assets/icons/repeat.svg"),
-            "command.svg" => include_bytes!("../../assets/icons/command.svg"),
-            "status-backlog.svg" => include_bytes!("../../assets/icons/status-backlog.svg"),
-            "status-todo.svg" => include_bytes!("../../assets/icons/status-todo.svg"),
-            "status-progress.svg" => include_bytes!("../../assets/icons/status-progress.svg"),
-            "status-blocked.svg" => include_bytes!("../../assets/icons/status-blocked.svg"),
-            "status-done.svg" => include_bytes!("../../assets/icons/status-done.svg"),
-            "status-cancelled.svg" => include_bytes!("../../assets/icons/status-cancelled.svg"),
-            "priority-urgent.svg" => include_bytes!("../../assets/icons/priority-urgent.svg"),
-            "priority-high.svg" => include_bytes!("../../assets/icons/priority-high.svg"),
-            "priority-medium.svg" => include_bytes!("../../assets/icons/priority-medium.svg"),
-            "priority-low.svg" => include_bytes!("../../assets/icons/priority-low.svg"),
-            "priority-none.svg" => include_bytes!("../../assets/icons/priority-none.svg"),
-            "dot.svg" => include_bytes!("../../assets/icons/dot.svg"),
-            "link.svg" => include_bytes!("../../assets/icons/link.svg"),
-            "tag.svg" => include_bytes!("../../assets/icons/tag.svg"),
-            "filter.svg" => include_bytes!("../../assets/icons/filter.svg"),
-            "board.svg" => include_bytes!("../../assets/icons/board.svg"),
-            "list.svg" => include_bytes!("../../assets/icons/list.svg"),
-            "send.svg" => include_bytes!("../../assets/send.svg"),
-            "openai.svg" => include_bytes!("../../assets/openai.svg"),
-            "agents.svg" => include_bytes!("../../assets/agents.svg"),
-            "arrowRight.svg" => include_bytes!("../../assets/arrowRight.svg"),
-            "arrowUpRight.svg" => include_bytes!("../../assets/arrowUpRight.svg"),
-            "chevronLeft.svg" => include_bytes!("../../assets/chevronLeft.svg"),
-            "chevronRight.svg" => include_bytes!("../../assets/chevronRight.svg"),
-            "close.svg" => include_bytes!("../../assets/close.svg"),
-            "evee.png" => include_bytes!("../../assets/evee.png"),
-            "evee-outline.svg" => include_bytes!("../../assets/evee-outline.svg"),
-            "panel.svg" => include_bytes!("../../assets/panel.svg"),
-            "plus.svg" => include_bytes!("../../assets/plus.svg"),
-            "search.svg" => include_bytes!("../../assets/search.svg"),
-            "settings.svg" => include_bytes!("../../assets/settings.svg"),
-            "spark.svg" => include_bytes!("../../assets/spark.svg"),
-            "tickets.svg" => include_bytes!("../../assets/tickets.svg"),
-            "terminal.svg" => include_bytes!("../../assets/terminal.svg"),
-            _ => return Ok(None),
-        };
-        Ok(Some(Cow::Borrowed(data)))
+        if path == "evee.png" {
+            return Ok(Some(Cow::Borrowed(include_bytes!("../../assets/evee.png"))));
+        }
+        match Icon::from_path(path) {
+            Some(icon) => Ok(Some(Cow::Borrowed(icon.bytes()))),
+            None => anyhow::bail!("no embedded asset at {path}"),
+        }
     }
     fn list(&self, _: &str) -> anyhow::Result<Vec<SharedString>> {
         Ok(vec![])

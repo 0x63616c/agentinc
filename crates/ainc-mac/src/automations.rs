@@ -45,15 +45,9 @@ pub struct AutomationsPage {
     name: Entity<TextInput>,
     prompt: Entity<TextInput>,
     minutes: Entity<TextInput>,
-    hover: HoverFade,
     _subscriptions: Vec<Subscription>,
 }
 impl EventEmitter<Destination> for AutomationsPage {}
-impl HoverHost for AutomationsPage {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
-}
 fn automation_state(automation: &Automation) -> (&'static str, Tone) {
     if automation.error.is_some() {
         ("Needs attention", Tone::Danger)
@@ -123,7 +117,6 @@ impl AutomationsPage {
             name,
             prompt,
             minutes,
-            hover: HoverFade::default(),
             _subscriptions: subscriptions,
         };
         this.reload();
@@ -220,15 +213,15 @@ impl AutomationsPage {
             cx,
         );
     }
-    fn dialog(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn dialog(&self, ui: &mut Ui<Self>) -> Option<AnyElement> {
         self.overlays.active()?;
         let agents = self.agents.clone();
         let enabled = !self.pending.busy();
-        let valid = !self.name.read(cx).content.trim().is_empty()
-            && !self.prompt.read(cx).content.trim().is_empty()
+        let valid = !self.name.read(ui.cx).content.trim().is_empty()
+            && !self.prompt.read(ui.cx).content.trim().is_empty()
             && self
                 .minutes
-                .read(cx)
+                .read(ui.cx)
                 .content
                 .trim()
                 .parse::<i64>()
@@ -245,22 +238,22 @@ impl AutomationsPage {
         };
         let body =
             column_gap(FORM_STACK_GAP)
-                .child(text_field("Name", self.name.clone(), window, cx))
+                .child(text_field("Name", self.name.clone(), ui))
                 .child(
                     Field::new(self.prompt.clone())
                         .label("Ticket prompt")
                         .multiline()
                         .hint("Each firing creates a Ticket with this prompt and assigns it.")
-                        .build(window, cx),
+                        .build(ui),
                 )
                 .child(
-                    div().w(px(180.)).child(
+                    div().w(px(SHORT_FIELD_WIDTH)).child(
                         Field::new(self.minutes.clone())
                             .label("Repeat every")
                             .selector("Every (minutes)")
                             .suffix("min")
                             .error(self.minutes_error)
-                            .build(window, cx),
+                            .build(ui),
                     ),
                 )
                 .child(
@@ -278,8 +271,8 @@ impl AutomationsPage {
                                 Select::new("automations.agent", vec![])
                                     .placeholder("No agents yet")
                                     .enabled(false)
-                                    .width(240.)
-                                    .build(&self.hover, |_, _, _| {}, |_, _, _, _| {}, cx),
+                                    .width(SELECT_WIDTH)
+                                    .build(ui, |_, _, _| {}, |_, _, _, _| {}),
                             )
                             .child(caption("Register an agent on the Agents page first."))
                         })
@@ -287,18 +280,16 @@ impl AutomationsPage {
                             agents.into_iter().map(|a| {
                                 let id = a.id.clone();
                                 let selected = self.agent.as_ref() == Some(&a.id);
-                                chip(
+                                Chip::new(
                                     SharedString::from(format!("automations.agent.{}", a.id)),
                                     a.name,
-                                    selected,
-                                    enabled,
-                                    &self.hover,
-                                    move |this, _, cx| {
-                                        this.agent = Some(id.clone());
-                                        cx.notify();
-                                    },
-                                    cx,
                                 )
+                                .selected(selected)
+                                .enabled(enabled)
+                                .build(ui, move |this, _, cx| {
+                                    this.agent = Some(id.clone());
+                                    cx.notify();
+                                })
                             }),
                         ))
                         .when_some(self.agent_error, |s, error| s.child(error_text(error))),
@@ -313,11 +304,11 @@ impl AutomationsPage {
         .enabled(valid)
         .pending(!enabled)
         .focus(&self.cancel_focus, &self.submit_focus)
-        .build(&self.hover, close, |this, _, cx| this.save(cx), cx);
+        .build(ui, close, |this, _, cx| this.save(cx));
         Some(dialog_shell(title, body, footer).into_any_element())
     }
 
-    fn detail_header(&self, automation: &Automation, cx: &mut Context<Self>) -> PageHeader {
+    fn detail_header(&self, automation: &Automation, ui: &mut Ui<Self>) -> PageHeader {
         let edit = automation.clone();
         let pause = automation.clone();
         let run = automation.clone();
@@ -328,16 +319,12 @@ impl AutomationsPage {
                 Button::new("automations.back", "Automations")
                     .ghost()
                     .small()
-                    .icon("chevronLeft")
+                    .icon(Icon::ChevronLeft)
                     .tint(TEXT_SECONDARY)
-                    .build(
-                        &self.hover,
-                        |this, _, cx| {
-                            this.selected = None;
-                            cx.notify();
-                        },
-                        cx,
-                    )
+                    .build(ui, |this, _, cx| {
+                        this.selected = None;
+                        cx.notify();
+                    })
                     .ml(px(-CONTROL_INSET_X_SM)),
             )
             .description(format!("{} · {state}", every(automation.every_minutes)))
@@ -346,13 +333,11 @@ impl AutomationsPage {
                     .child(
                         Button::new("automations.edit", "Edit")
                             .secondary()
-                            .icon("edit")
+                            .icon(Icon::Edit)
                             .enabled(enabled)
-                            .build(
-                                &self.hover,
-                                move |this, window, cx| this.edit(Some(edit.clone()), window, cx),
-                                cx,
-                            ),
+                            .build(ui, move |this, window, cx| {
+                                this.edit(Some(edit.clone()), window, cx)
+                            }),
                     )
                     .child(
                         Button::new(
@@ -360,46 +345,42 @@ impl AutomationsPage {
                             if automation.paused { "Resume" } else { "Pause" },
                         )
                         .secondary()
-                        .icon(if automation.paused { "play" } else { "pause" })
+                        .icon(if automation.paused {
+                            Icon::Play
+                        } else {
+                            Icon::Pause
+                        })
                         .enabled(enabled)
-                        .build(
-                            &self.hover,
-                            move |this, _, cx| {
-                                this.command(
-                                    AutomationCommand::Pause {
-                                        id: pause.id.clone(),
-                                        revision: pause.revision,
-                                        paused: !pause.paused,
-                                    },
-                                    cx,
-                                )
-                            },
-                            cx,
-                        ),
+                        .build(ui, move |this, _, cx| {
+                            this.command(
+                                AutomationCommand::Pause {
+                                    id: pause.id.clone(),
+                                    revision: pause.revision,
+                                    paused: !pause.paused,
+                                },
+                                cx,
+                            )
+                        }),
                     )
                     .child(
                         Button::new("automations.run", "Run Now")
                             .primary()
-                            .icon("play")
+                            .icon(Icon::Play)
                             .enabled(enabled)
-                            .build(
-                                &self.hover,
-                                move |this, _, cx| {
-                                    this.command(
-                                        AutomationCommand::RunNow {
-                                            id: run.id.clone(),
-                                            revision: run.revision,
-                                        },
-                                        cx,
-                                    )
-                                },
-                                cx,
-                            ),
+                            .build(ui, move |this, _, cx| {
+                                this.command(
+                                    AutomationCommand::RunNow {
+                                        id: run.id.clone(),
+                                        revision: run.revision,
+                                    },
+                                    cx,
+                                )
+                            }),
                     ),
             )
     }
 
-    fn detail(&self, automation: Automation, cx: &mut Context<Self>) -> Div {
+    fn detail(&self, automation: Automation, ui: &mut Ui<Self>) -> Div {
         let (state, tone) = automation_state(&automation);
         column()
             .gap(px(SECTION_GAP))
@@ -466,12 +447,8 @@ impl AutomationsPage {
                                                 )
                                                 .ghost()
                                                 .small()
-                                                .trailing(icon("arrowRight", ICON_SIZE_SM))
-                                                .build(
-                                                    &self.hover,
-                                                    move |_, _, cx| cx.emit(Destination::Ticket(id)),
-                                                    cx,
-                                                ),
+                                                .trailing(icon(Icon::ArrowRight, ICON_SIZE_SM))
+                                                .build(ui, move |_, _, cx| cx.emit(Destination::Ticket(id))),
                                             )
                                         })
                                 }),
@@ -494,7 +471,7 @@ impl AutomationsPage {
             )
     }
 
-    fn list(&self, cx: &mut Context<Self>) -> Div {
+    fn list(&self, ui: &mut Ui<Self>) -> Div {
         column()
             .gap(px(SPACE_HALF))
             .children(self.state.rules.iter().map(|r| {
@@ -510,22 +487,17 @@ impl AutomationsPage {
                     row()
                         .gap(px(SPACE_2))
                         .child(badge(state, tone))
-                        .child(icon("chevronRight", ICON_SIZE_SM)),
+                        .child(icon(Icon::ChevronRight, ICON_SIZE_SM)),
                 )
-                .build(
-                    &self.hover,
-                    move |this, _, cx| {
-                        this.selected = Some(id.clone());
-                        cx.notify();
-                    },
-                    cx,
-                )
+                .build(ui, move |this, _, cx| {
+                    this.selected = Some(id.clone());
+                    cx.notify();
+                })
             }))
     }
 }
 impl Render for AutomationsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.hover.animate(window);
         if std::mem::take(&mut self.reopen) {
             let focus = self.name.focus_handle(cx);
             self.overlays.open_dialog(Dialog::Edit, focus, window, cx);
@@ -540,94 +512,76 @@ impl Render for AutomationsPage {
             .iter()
             .find(|r| Some(&r.id) == self.selected.as_ref())
             .cloned();
-        let create = |this: &Self, id: &'static str, cx: &mut Context<Self>| {
+        let create = |this: &Self, id: &'static str, ui: &mut Ui<Self>| {
             Button::new(id, "New Automation")
                 .primary()
-                .icon("plus")
+                .icon(Icon::Plus)
                 .enabled(!this.pending.busy())
-                .build(
-                    &this.hover,
-                    |this, window, cx| this.edit(None, window, cx),
-                    cx,
-                )
+                .build(ui, |this, window, cx| this.edit(None, window, cx))
         };
         let sync = self.sync.read(cx);
-        let (loaded, load_error, reconnecting, loading_started, fetching) = (
-            sync.loaded,
-            sync.message(),
-            sync.reconnecting(),
-            sync.loading_started,
-            sync.fetching(),
-        );
+        let (mut state, fetching) = (sync.load_state(), sync.fetching());
+        let ui = &mut Ui::new(window, cx);
         let header = match &selected {
-            Some(automation) => self.detail_header(automation, cx),
+            Some(automation) => self.detail_header(automation, ui),
             None => PageHeader::new(self.title())
                 .description("Automations that create and assign Tickets on a schedule.")
                 .actions(
                     row_gap(CONTROL_GAP)
                         .child(
                             Button::new("automations.refresh", "Refresh")
-                                .icon("refresh")
+                                .icon(Icon::Refresh)
                                 .icon_only()
                                 .secondary()
                                 .enabled(!fetching)
-                                .build(
-                                    &self.hover,
-                                    |this, _, cx| this.sync.update(cx, |sync, cx| sync.wake(cx)),
-                                    cx,
-                                ),
+                                .build(ui, |this, _, cx| {
+                                    this.sync.update(cx, |sync, cx| sync.wake(cx))
+                                }),
                         )
                         .child(
-                            create(self, "automations.create", cx)
+                            create(self, "automations.create", ui)
                                 .debug_selector(|| "automations.create".into()),
                         ),
                 ),
         };
-        let mut content = column().gap(px(SECTION_GAP)).w_full();
-        let dialog_open = self.overlays.active().is_some();
-        if let Some(error) = load_error
-            .as_ref()
-            .or(self.error.as_ref().filter(|_| !dialog_open))
-        {
-            content = content.child(
-                banner(Tone::Danger, error.clone())
-                    .id("automations.error")
-                    .accessibility_id("automations.error"),
-            );
-        }
-        if reconnecting {
-            content =
-                content.child(LoadingFrame::new(loading_started, window).inline("Reconnecting…"));
-        }
-        if !loaded && load_error.is_none() {
-            content = content.child(skeleton_rows("automations.loading", SKELETON_ROWS));
-        }
-        if let Some(automation) = selected {
-            content = content.child(self.detail(automation, cx));
-        } else {
-            if loaded && self.state.rules.is_empty() && load_error.is_none() {
-                content = content.child(
-                    EmptyState::new("repeat", "No Automations yet.")
-                        .description(
-                            "An Automation creates and assigns a Ticket to an agent on a schedule.",
+        // A change that failed shows in the same banner as a load that did.
+        let load_failed = state.error.is_some();
+        state.error = state.error.take().or(self
+            .error
+            .clone()
+            .filter(|_| self.overlays.active().is_none()));
+        let content = column().gap(px(SECTION_GAP)).w_full().children(page_frame(
+            "automations",
+            &state,
+            SKELETON_ROWS,
+            ui,
+            |ui| {
+                if let Some(automation) = selected {
+                    return self.detail(automation, ui).into_any_element();
+                }
+                column()
+                    .gap(px(SECTION_GAP))
+                    .when(self.state.rules.is_empty() && !load_failed, |s| {
+                        s.child(
+                            EmptyState::new(Icon::Repeat, "No Automations yet.")
+                                .description(
+                                    "An Automation creates and assigns a Ticket to an agent on a schedule.",
+                                )
+                                .selector("automations.empty")
+                                .action(
+                                    Button::new("automations.create.empty", "New Automation")
+                                        .secondary()
+                                        .icon(Icon::Plus)
+                                        .enabled(!self.pending.busy())
+                                        .build(ui, |this, window, cx| this.edit(None, window, cx)),
+                                )
+                                .build(),
                         )
-                        .selector("automations.empty")
-                        .action(
-                            Button::new("automations.create.empty", "New Automation")
-                                .secondary()
-                                .icon("plus")
-                                .enabled(!self.pending.busy())
-                                .build(
-                                    &self.hover,
-                                    |this, window, cx| this.edit(None, window, cx),
-                                    cx,
-                                ),
-                        )
-                        .build(),
-                );
-            }
-            content = content.child(self.list(cx));
-        }
+                    })
+                    .child(self.list(ui))
+                    .into_any_element()
+            },
+        ));
         PageFrame::document(header)
             .child(
                 div()
@@ -645,7 +599,7 @@ impl Render for AutomationsPage {
 impl Page for AutomationsPage {
     const ROUTE: Route = Route::Automations;
     fn overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        self.dialog(window, cx)
+        self.dialog(&mut Ui::new(window, cx))
     }
     fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
         vec![

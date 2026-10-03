@@ -1,7 +1,9 @@
 //! Shared chrome around the native text editing engine.
 use super::{
     display::{hint, icon},
+    icon::Icon,
     layout::{column_gap, row},
+    motion::Ui,
     tokens::*,
 };
 use crate::input::TextInput;
@@ -22,7 +24,7 @@ pub struct Field {
     label: Option<&'static str>,
     hint: Option<SharedString>,
     error: Option<SharedString>,
-    leading: Option<&'static str>,
+    leading: Option<Icon>,
     suffix: Option<SharedString>,
     selector: Option<&'static str>,
     multiline: bool,
@@ -61,7 +63,7 @@ impl Field {
         self.error = error.map(Into::into);
         self
     }
-    pub fn leading_icon(mut self, name: &'static str) -> Self {
+    pub fn leading_icon(mut self, name: Icon) -> Self {
         self.leading = Some(name);
         self
     }
@@ -75,8 +77,12 @@ impl Field {
         self
     }
 
-    pub fn build(self, window: &Window, cx: &App) -> Div {
-        let focused = self.input.read(cx).focus_handle(cx).is_focused(window);
+    pub fn build<V: 'static>(self, ui: &mut Ui<V>) -> Div {
+        let focused = self
+            .input
+            .read(ui.cx)
+            .focus_handle(ui.cx)
+            .is_focused(ui.window);
         let selector = self.selector;
         let has_error = self.error.is_some();
         let border = if has_error {
@@ -100,7 +106,9 @@ impl Field {
                     .w_full()
                     .min_h(px(FIELD_HEIGHT))
                     .when(self.multiline, |s| {
-                        s.items_start().min_h(px(96.)).py(px(SPACE_2))
+                        s.items_start()
+                            .min_h(px(TEXTAREA_MIN_HEIGHT))
+                            .py(px(SPACE_2))
                     })
                     .px(px(FIELD_INSET_X))
                     .gap(px(SPACE_2))
@@ -127,6 +135,10 @@ impl Field {
 }
 
 /// The labeled single-line field used by Ticket and Automation forms.
-pub fn text_field(label: &'static str, input: Entity<TextInput>, window: &Window, cx: &App) -> Div {
-    Field::new(input).label(label).build(window, cx)
+pub fn text_field<V: 'static>(
+    label: &'static str,
+    input: Entity<TextInput>,
+    ui: &mut Ui<V>,
+) -> Div {
+    Field::new(input).label(label).build(ui)
 }

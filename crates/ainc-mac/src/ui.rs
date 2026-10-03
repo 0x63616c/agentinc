@@ -18,6 +18,8 @@ mod empty;
 mod field;
 #[path = "ui/fuzzy.rs"]
 mod fuzzy;
+#[path = "ui/icon.rs"]
+mod icon;
 #[path = "ui/layout.rs"]
 mod layout;
 #[path = "ui/loading.rs"]
@@ -59,6 +61,7 @@ pub use display::*;
 pub use empty::*;
 pub use field::*;
 pub use fuzzy::*;
+pub use icon::*;
 pub use layout::*;
 pub use loading::*;
 pub use menu::*;

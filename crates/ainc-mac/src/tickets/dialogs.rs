@@ -16,15 +16,15 @@ fn dialog_content_width() -> f32 {
 }
 
 impl TicketsPage {
-    pub(super) fn dialog(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn dialog(&self, ui: &mut Ui<Self>) -> Option<AnyElement> {
         let active = self.overlays.active()?;
         let (title, body, enabled, footer): (String, AnyElement, bool, DialogFooter) = match active
         {
             Dialog::Add => (
                 "New Ticket".into(),
-                self.create_form(window, cx).into_any_element(),
-                !self.input.read(cx).content.trim().is_empty()
-                    && Self::title_error(&self.input.read(cx).content).is_none(),
+                self.create_form(ui).into_any_element(),
+                !self.input.read(ui.cx).content.trim().is_empty()
+                    && Self::title_error(&self.input.read(ui.cx).content).is_none(),
                 DialogFooter::new(Verb::Create),
             ),
             Dialog::Rename(_) => (
@@ -32,15 +32,15 @@ impl TicketsPage {
                 Field::new(self.rename.clone())
                     .label("Title")
                     .error(self.form_error.clone())
-                    .build(window, cx)
+                    .build(ui)
                     .into_any_element(),
-                !self.rename.read(cx).content.trim().is_empty()
-                    && Self::title_error(&self.rename.read(cx).content).is_none(),
+                !self.rename.read(ui.cx).content.trim().is_empty()
+                    && Self::title_error(&self.rename.read(ui.cx).content).is_none(),
                 DialogFooter::new(Verb::Save),
             ),
             Dialog::Link(id) => (
                 format!("Relate {}", ticket_key(id)),
-                self.link_form(id, window, cx).into_any_element(),
+                self.link_form(id, ui).into_any_element(),
                 self.link_target.is_some(),
                 DialogFooter::new(Verb::Add).label("Add Relationship"),
             ),
@@ -70,14 +70,13 @@ impl TicketsPage {
             .pending(self.pending.busy())
             .focus(&self.cancel_focus, &self.submit_focus)
             .build(
-                &self.hover,
+                ui,
                 |this: &mut Self, window, cx| {
-                    this.menu = None;
+                    this.overlays.close_popover();
                     this.overlays.dismiss(window, cx);
                     cx.notify();
                 },
                 move |this: &mut Self, _, cx| this.submit(active, cx),
-                cx,
             );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
@@ -98,7 +97,7 @@ impl TicketsPage {
     }
 
     fn submit(&mut self, active: Dialog, cx: &mut Context<Self>) {
-        self.menu = None;
+        self.overlays.close_popover();
         match active {
             Dialog::Add => self.create(cx),
             Dialog::Rename(_) => self.rename_ticket(cx),
@@ -123,7 +122,7 @@ impl TicketsPage {
             }
         }
     }
-    fn create_form(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn create_form(&self, ui: &mut Ui<Self>) -> Div {
         let full = dialog_content_width();
         let half = (full - SPACE_3) / 2.;
         let status = Select::new(
@@ -133,20 +132,19 @@ impl TicketsPage {
                 .into(),
         )
         .value(STATUSES.iter().position(|s| *s == self.draft.status))
-        .open(self.menu == Some(Menu::DraftStatus))
+        .open(self.overlays.popover_open("tickets.draft.status"))
         .width(half)
         .below()
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::DraftStatus, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.draft.status", cx),
             |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 if let Some(status) = STATUSES.get(index) {
                     this.draft.status = *status;
                 }
                 cx.notify();
             },
-            cx,
         );
         let priority = Select::new(
             "tickets.draft.priority",
@@ -157,20 +155,19 @@ impl TicketsPage {
                 .into(),
         )
         .value(PRIORITIES.iter().position(|p| *p == self.draft.priority))
-        .open(self.menu == Some(Menu::DraftPriority))
+        .open(self.overlays.popover_open("tickets.draft.priority"))
         .width(half)
         .below()
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::DraftPriority, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.draft.priority", cx),
             |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 if let Some(priority) = PRIORITIES.get(index) {
                     this.draft.priority = *priority;
                 }
                 cx.notify();
             },
-            cx,
         );
         let assignees = self.state.assignees.clone();
         let chosen = self.draft.assignee.as_deref().unwrap_or("owner");
@@ -182,18 +179,17 @@ impl TicketsPage {
                 .collect(),
         )
         .value(assignees.iter().position(|a| a.id == chosen))
-        .open(self.menu == Some(Menu::DraftAssignee))
+        .open(self.overlays.popover_open("tickets.draft.assignee"))
         .width(full)
         .below()
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::DraftAssignee, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.draft.assignee", cx),
             move |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 this.draft.assignee = assignees.get(index).map(|a| a.id.clone());
                 cx.notify();
             },
-            cx,
         );
         let starts_work = actionable(self.draft.status)
             && self
@@ -206,13 +202,13 @@ impl TicketsPage {
                 Field::new(self.input.clone())
                     .label("Title")
                     .error(self.form_error.clone())
-                    .build(window, cx),
+                    .build(ui),
             )
             .child(
                 Field::new(self.draft_description.clone())
                     .label("Description")
                     .multiline()
-                    .build(window, cx),
+                    .build(ui),
             )
             .child(
                 row()
@@ -240,7 +236,7 @@ impl TicketsPage {
             .child(
                 column_gap(FIELD_LABEL_GAP)
                     .child(field_label("Labels"))
-                    .child(self.label_picker(&self.draft.labels, Menu::DraftLabels, window, cx)),
+                    .child(self.label_picker(&self.draft.labels, "tickets.draft.labels", ui)),
             )
     }
 
@@ -273,30 +269,29 @@ impl TicketsPage {
         candidates
     }
 
-    fn link_form(&self, id: i64, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn link_form(&self, id: i64, ui: &mut Ui<Self>) -> Div {
         let full = dialog_content_width();
         let relation = Select::new(
             "tickets.link.relation",
             Relation::ALL.map(|r| SelectOption::new(r.name())).into(),
         )
         .value(Relation::ALL.iter().position(|r| *r == self.link_relation))
-        .open(self.menu == Some(Menu::Relation))
+        .open(self.overlays.popover_open("tickets.link.relation"))
         .width(full)
         .below()
         .build(
-            &self.hover,
-            |this: &mut Self, _, cx| this.toggle_menu(Menu::Relation, cx),
+            ui,
+            |this: &mut Self, _, cx| this.toggle_menu("tickets.link.relation", cx),
             |this: &mut Self, index, _, cx| {
-                this.menu = None;
+                this.overlays.close_popover();
                 if let Some(relation) = Relation::ALL.get(index) {
                     this.link_relation = *relation;
                     this.link_target = None;
                 }
                 cx.notify();
             },
-            cx,
         );
-        let candidates = self.link_candidates(id, cx);
+        let candidates = self.link_candidates(id, ui.cx);
         let count = candidates.len();
         column_gap(FORM_STACK_GAP)
             .child(
@@ -307,8 +302,8 @@ impl TicketsPage {
             .child(
                 Field::new(self.link_search.clone())
                     .label("Ticket")
-                    .leading_icon("search")
-                    .build(window, cx),
+                    .leading_icon(Icon::Search)
+                    .build(ui),
             )
             // The list keeps room for every candidate, so the dialog does not
             // jump as a search narrows it.
@@ -353,17 +348,16 @@ impl TicketsPage {
                                 ))
                                 .selected(self.link_target == Some(other))
                                 .trailing(
-                                    icon("check", ICON_SIZE_SM)
+                                    icon(Icon::Check, ICON_SIZE_SM)
                                         .text_color(rgb(TEXT))
                                         .when(self.link_target != Some(other), |s| s.opacity(0.)),
                                 )
                                 .build(
-                                    &self.hover,
+                                    ui,
                                     move |this: &mut Self, _, cx| {
                                         this.link_target = Some(other);
                                         cx.notify();
                                     },
-                                    cx,
                                 ),
                             )
                     }))

@@ -40,7 +40,7 @@ impl TicketsPage {
             cx.notify();
             return;
         }
-        self.menu = None;
+        self.overlays.close_popover();
         let Some(ticket) = self.selected.and_then(|id| self.ticket(id)) else {
             return;
         };
@@ -58,12 +58,11 @@ impl TicketsPage {
     pub(super) fn label_picker(
         &self,
         applied: &[String],
-        menu_kind: Menu,
-        window: &Window,
-        cx: &mut Context<Self>,
+        menu_id: &'static str,
+        ui: &mut Ui<Self>,
     ) -> Div {
-        let open = self.menu == Some(menu_kind);
-        let typed = self.label_input.read(cx).content.trim().to_owned();
+        let open = self.overlays.popover_open(menu_id);
+        let typed = self.label_input.read(ui.cx).content.trim().to_owned();
         let known = all_labels(&self.state.tickets);
         let exists = known
             .iter()
@@ -74,9 +73,9 @@ impl TicketsPage {
             .child(
                 div().p(px(SPACE_1)).child(
                     Field::new(self.label_input.clone())
-                        .leading_icon("tag")
+                        .leading_icon(Icon::Tag)
                         .selector("tickets.label")
-                        .build(window, cx),
+                        .build(ui),
                 ),
             );
         let mut offered = known;
@@ -96,25 +95,21 @@ impl TicketsPage {
                     SharedString::from(format!("tickets.labels.add.{label}")),
                     label.clone(),
                 )
-                .glyph("dot", label_color(&label))
+                .glyph(Icon::Dot, label_color(&label))
                 .checked(checked)
-                .build(
-                    &self.hover,
-                    move |this: &mut Self, _, cx| this.toggle_label(chosen.clone(), cx),
-                    cx,
-                ),
+                .build(ui, move |this: &mut Self, _, cx| {
+                    this.toggle_label(chosen.clone(), cx)
+                }),
             );
         }
         if !typed.is_empty() && !exists {
             let created = typed.clone();
             menu = menu.child(
                 MenuEntry::new("tickets.labels.create", format!("Create “{typed}”"))
-                    .icon("plus")
-                    .build(
-                        &self.hover,
-                        move |this: &mut Self, _, cx| this.toggle_label(created.clone(), cx),
-                        cx,
-                    ),
+                    .icon(Icon::Plus)
+                    .build(ui, move |this: &mut Self, _, cx| {
+                        this.toggle_label(created.clone(), cx)
+                    }),
             );
         }
         row()
@@ -132,15 +127,13 @@ impl TicketsPage {
                         )
                         .ghost()
                         .small()
-                        .icon("close")
+                        .icon(Icon::Close)
                         .icon_only()
                         .tint(TEXT_TERTIARY)
                         .enabled(!self.pending.busy())
-                        .build(
-                            &self.hover,
-                            move |this: &mut Self, _, cx| this.toggle_label(removed.clone(), cx),
-                            cx,
-                        )
+                        .build(ui, move |this: &mut Self, _, cx| {
+                            this.toggle_label(removed.clone(), cx)
+                        })
                         .size(px(PILL_REMOVE_SIZE))
                         .rounded_full(),
                     )
@@ -158,20 +151,19 @@ impl TicketsPage {
                         let add = Button::new("tickets.labels.open", "Add Label")
                             .ghost()
                             .small()
-                            .icon("plus")
+                            .icon(Icon::Plus)
                             .tint(TEXT_SECONDARY)
                             .selected(open)
                             .enabled(!self.pending.busy() && applied.len() < 10);
                         let compact = !applied.is_empty();
                         if compact { add.icon_only() } else { add }.build(
-                            &self.hover,
+                            ui,
                             move |this: &mut Self, window, cx| {
-                                this.toggle_menu(menu_kind, cx);
-                                if this.menu == Some(menu_kind) {
+                                this.toggle_menu(menu_id, cx);
+                                if this.overlays.popover_open(menu_id) {
                                     window.focus(&this.label_input.focus_handle(cx), cx);
                                 }
                             },
-                            cx,
                         )
                     })
                     .when(open, |s| {

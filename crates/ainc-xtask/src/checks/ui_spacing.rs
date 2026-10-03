@@ -1,4 +1,4 @@
-//! Warn when migrated native UI files gain raw numeric spacing calls.
+//! Fail when migrated native UI files gain raw numeric spacing calls.
 //! Counts per `method:value` are ratcheted by `scripts/ui-spacing-baseline.json`.
 use anyhow::Result;
 use regex::Regex;
@@ -39,18 +39,22 @@ pub fn run(app: &Path) -> Result<()> {
     let baseline: Baseline = serde_json::from_str(&fs::read_to_string(
         app.join("scripts/ui-spacing-baseline.json"),
     )?)?;
-    let mut warnings = 0;
+    let mut failures = 0;
     for (name, allowed) in &baseline {
         for (n, method, value) in new_literals(&fs::read_to_string(app.join(name))?, allowed) {
-            warnings += 1;
+            failures += 1;
             println!(
-                "::warning file=crates/ainc-mac/{name},line={n}::Raw {method} spacing {value}px; \
+                "::error file=crates/ainc-mac/{name},line={n}::Raw {method} spacing {value}px; \
                  prefer {} from ui/tokens.rs. Name an optical exception there if needed.",
                 preferred(&method)
             );
         }
     }
-    println!("UI spacing ratchet: {warnings} new raw literal warning(s)");
+    anyhow::ensure!(
+        failures == 0,
+        "UI spacing ratchet: {failures} new raw spacing literal(s); use tokens from ui/tokens.rs"
+    );
+    println!("UI spacing ratchet passed");
     Ok(())
 }
 

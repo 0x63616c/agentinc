@@ -112,15 +112,9 @@ pub struct Shell {
     grip_animation: Option<(Instant, f32, f32)>,
     sidebar_visible: f32,
     sidebar_animation: Option<(Instant, f32, f32)>,
-    hover: HoverFade,
     toasts: Toasts,
     #[cfg(test)]
     titlebar_zoom_requests: usize,
-}
-impl HoverHost for Shell {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
 }
 /// A page emitted a destination; the shell takes it at the next render.
 fn queue(shell: &mut Shell, to: Destination, cx: &mut Context<Shell>) {
@@ -276,11 +270,17 @@ impl Shell {
             ),
             PageHandle::new(settings, cx, queue),
             PageHandle::new(
-                cx.new(|cx| crate::connections::ConnectionsPage::new(daemon.clone(), cx)),
+                cx.new(|cx| {
+                    crate::connections::ConnectionsPage::new(daemon.clone(), overlays.clone(), cx)
+                }),
                 cx,
                 queue,
             ),
-            PageHandle::new(cx.new(crate::components::ComponentsPage::new), cx, queue),
+            PageHandle::new(
+                cx.new(|cx| crate::components::ComponentsPage::new(overlays.clone(), cx)),
+                cx,
+                queue,
+            ),
         ];
         debug_assert!(
             PAGES
@@ -321,7 +321,6 @@ impl Shell {
             },
             sidebar_visible,
             sidebar_animation: None,
-            hover: HoverFade::default(),
             toasts: Toasts::default(),
             #[cfg(test)]
             titlebar_zoom_requests: 0,
@@ -514,14 +513,6 @@ impl Shell {
             page.open(&to, window, cx);
         }
     }
-    /// Close any page menu; returns whether one was open.
-    fn dismiss_menus(&mut self, cx: &mut Context<Self>) -> bool {
-        let mut closed = false;
-        for page in &self.pages {
-            closed |= page.dismiss_menus(cx);
-        }
-        closed
-    }
     pub(crate) fn dispatch(
         &mut self,
         control: Control,
@@ -650,9 +641,8 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.daemon.update_required() {
-            return self.update_required(cx);
+            return self.update_required(&mut Ui::new(window, cx));
         }
-        self.hover.animate(window);
         self.sync_save_toast();
         self.animate_sidebar(window);
         if reduced_motion() {
@@ -702,6 +692,7 @@ impl Render for Shell {
         let update_ready = cx
             .try_global::<crate::updates::Updates>()
             .is_some_and(|updates| updates.0.read(cx).is_ready());
+        let ui = &mut Ui::new(window, cx);
         column()
             .id("shell")
             .relative()
@@ -713,86 +704,101 @@ impl Render for Shell {
             .line_height(relative(BODY_LINE_HEIGHT))
             .track_focus(&self.focus)
             .key_context("Control")
-            .on_click(cx.listener(|this, _, window, cx| {
-                let active = this.overlays.borrow().active();
-                if active.is_some_and(Overlay::is_popover) {
+            .on_click(ui.cx.listener(|this, _, window, cx| {
+                // A click outside closes a select, a menu or a shell popover.
+                let overlays = this.overlays.borrow();
+                let floating = overlays.popover().is_some()
+                    || overlays.active().is_some_and(Overlay::is_popover);
+                drop(overlays);
+                if floating {
                     this.overlays.borrow_mut().dismiss(window, cx);
                     cx.notify();
                 }
-                this.dismiss_menus(cx);
             }))
-            .on_key_down(cx.listener(Self::keys))
+            .on_key_down(ui.cx.listener(Self::keys))
             // Observe snapshots before a focused input consumes the event. These
             // also recover from a modifier release missed during navigation.
-            .capture_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+            .capture_key_down(ui.cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 this.set_command_held(event.keystroke.modifiers.platform, cx);
             }))
-            .capture_key_up(cx.listener(|this, event: &KeyUpEvent, _, cx| {
+            .capture_key_up(ui.cx.listener(|this, event: &KeyUpEvent, _, cx| {
                 this.set_command_held(event.keystroke.modifiers.platform, cx);
             }))
-            .capture_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, _, cx| {
+            .capture_any_mouse_down(ui.cx.listener(|this, event: &MouseDownEvent, _, cx| {
                 set_focus_visible(false);
                 this.set_command_held(event.modifiers.platform, cx);
             }))
-            .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
-                this.set_command_held(event.modifiers.platform, cx);
-            }))
-            .on_action(cx.listener(|this, action: &NavigateRoute, w, cx| {
+            .on_modifiers_changed(
+                ui.cx
+                    .listener(|this, event: &ModifiersChangedEvent, _, cx| {
+                        this.set_command_held(event.modifiers.platform, cx);
+                    }),
+            )
+            .on_action(ui.cx.listener(|this, action: &NavigateRoute, w, cx| {
                 if let Some(route) = Route::from_shortcut(action.0) {
                     this.dispatch(Control::Go(Destination::Page(route)), w, cx);
                 }
             }))
-            .on_action(cx.listener(|this, _: &OpenSettings, w, cx| {
+            .on_action(ui.cx.listener(|this, _: &OpenSettings, w, cx| {
                 this.dispatch(Control::Go(Destination::Page(Route::Settings)), w, cx);
             }))
             .on_mouse_move(
-                cx.listener(move |this, event: &MouseMoveEvent, window, cx| {
-                    if this.resizing {
-                        if event.dragging() {
-                            this.resize_from_pointer(event.position, window);
-                            cx.notify();
-                        } else {
-                            this.resizing = false;
-                            this.save(cx);
+                ui.cx
+                    .listener(move |this, event: &MouseMoveEvent, window, cx| {
+                        if this.resizing {
+                            if event.dragging() {
+                                this.resize_from_pointer(event.position, window);
+                                cx.notify();
+                            } else {
+                                this.resizing = false;
+                                this.save(cx);
+                            }
                         }
-                    }
-                }),
+                    }),
             )
             .on_mouse_up(
                 MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
+                ui.cx.listener(|this, _, _, cx| {
                     if std::mem::take(&mut this.resizing) {
                         this.save(cx);
                     }
                 }),
             )
-            .on_action(cx.listener(|this, _: &GoBack, w, cx| this.dispatch(Control::Back, w, cx)))
             .on_action(
-                cx.listener(|this, _: &GoForward, w, cx| this.dispatch(Control::Forward, w, cx)),
+                ui.cx
+                    .listener(|this, _: &GoBack, w, cx| this.dispatch(Control::Back, w, cx)),
             )
-            .on_action(cx.listener(|this, _: &GoTo, w, cx| {
+            .on_action(
+                ui.cx
+                    .listener(|this, _: &GoForward, w, cx| this.dispatch(Control::Forward, w, cx)),
+            )
+            .on_action(ui.cx.listener(|this, _: &GoTo, w, cx| {
                 cx.stop_propagation();
                 this.dispatch(Control::GoTo, w, cx);
             }))
             .on_action(
-                cx.listener(|this, _: &ToggleSidebar, w, cx| {
+                ui.cx.listener(|this, _: &ToggleSidebar, w, cx| {
                     this.dispatch(Control::Sidebar, w, cx)
                 }),
             )
-            .on_action(cx.listener(|this, _: &Escape, w, cx| {
-                let closed_menu = this.dismiss_menus(cx);
-                if !this.overlays.borrow_mut().dismiss(w, cx) && !closed_menu {
+            .on_action(ui.cx.listener(|this, _: &Escape, w, cx| {
+                if !this.overlays.borrow_mut().dismiss(w, cx) {
                     w.focus(&this.focus, cx);
                 }
                 cx.notify();
             }))
-            .on_action(cx.listener(|this, _: &FocusNext, w, cx| this.cycle_focus(false, w, cx)))
-            .on_action(cx.listener(|this, _: &FocusPrevious, w, cx| this.cycle_focus(true, w, cx)))
+            .on_action(
+                ui.cx
+                    .listener(|this, _: &FocusNext, w, cx| this.cycle_focus(false, w, cx)),
+            )
+            .on_action(
+                ui.cx
+                    .listener(|this, _: &FocusPrevious, w, cx| this.cycle_focus(true, w, cx)),
+            )
             .child(self.body(
-                self.sidebar(cx).into_any_element(),
+                self.sidebar(ui).into_any_element(),
                 self.main_area(content).into_any_element(),
-                window,
-                cx,
+                ui,
             ))
             // Header paints after panels so the current Page tab covers the top border.
             .child(
@@ -801,7 +807,7 @@ impl Render for Shell {
                     .top_0()
                     .left_0()
                     .right_0()
-                    .child(self.header(cx)),
+                    .child(self.header(ui)),
             )
             .when(update_ready, |view| {
                 view.child(
@@ -813,8 +819,8 @@ impl Render for Shell {
                             Button::new("update-ready", "Update ready · Install")
                                 .primary()
                                 .small()
-                                .icon("download")
-                                .build(&self.hover, |_, _, cx| crate::updates::open(cx, false), cx)
+                                .icon(Icon::Download)
+                                .build(ui, |_, _, cx| crate::updates::open(cx, false))
                                 .accessibility_id("updates.ready")
                                 .shadow(shadow_toast()),
                         ),
@@ -838,7 +844,7 @@ impl Render for Shell {
                         .on_mouse_move(|_, _, cx| cx.stop_propagation())
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .on_click(cx.listener(|this, _, window, cx| {
+                        .on_click(ui.cx.listener(|this, _, window, cx| {
                             cx.stop_propagation();
                             this.overlays.borrow_mut().dismiss(window, cx);
                             cx.notify();
@@ -854,20 +860,18 @@ impl Render for Shell {
                 )
             })
             .when(!self.toasts.is_empty(), |s| {
-                s.child(self.toasts.render(
-                    &self.hover,
-                    PANEL_GAP + PAGE_X,
-                    PANEL_GAP + STATUS_BAR_HEIGHT + PAGE_X,
-                    |this: &mut Self, id, window, cx| {
-                        this.dispatch(Control::DismissToast(id), window, cx)
-                    },
-                    cx,
-                ))
+                s.child(
+                    self.toasts
+                        .stack(PANEL_GAP + PAGE_X, PANEL_GAP + STATUS_BAR_HEIGHT + PAGE_X)
+                        .build(ui, |this: &mut Self, id, window, cx| {
+                            this.dispatch(Control::DismissToast(id), window, cx)
+                        }),
+                )
             })
             .when_some(
                 launch_overlay(
                     *self.launch_started.get_or_insert_with(Instant::now),
-                    window,
+                    ui.window,
                 ),
                 |s, overlay| s.child(overlay),
             )

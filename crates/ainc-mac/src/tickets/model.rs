@@ -43,14 +43,14 @@ pub fn status_key(status: TicketStatus) -> &'static str {
         TicketStatus::Cancelled => "cancelled",
     }
 }
-pub fn status_icon(status: TicketStatus) -> &'static str {
+pub fn status_icon(status: TicketStatus) -> Icon {
     match status {
-        TicketStatus::Backlog => "status-backlog",
-        TicketStatus::ToDo => "status-todo",
-        TicketStatus::InProgress => "status-progress",
-        TicketStatus::Blocked => "status-blocked",
-        TicketStatus::Done => "status-done",
-        TicketStatus::Cancelled => "status-cancelled",
+        TicketStatus::Backlog => Icon::StatusBacklog,
+        TicketStatus::ToDo => Icon::StatusTodo,
+        TicketStatus::InProgress => Icon::StatusProgress,
+        TicketStatus::Blocked => Icon::StatusBlocked,
+        TicketStatus::Done => Icon::StatusDone,
+        TicketStatus::Cancelled => Icon::StatusCancelled,
     }
 }
 /// Status glyphs stay gray until work is moving, stuck or finished.
@@ -91,13 +91,13 @@ pub fn priority_key(priority: TicketPriority) -> &'static str {
         TicketPriority::None => "none",
     }
 }
-pub fn priority_icon(priority: TicketPriority) -> &'static str {
+pub fn priority_icon(priority: TicketPriority) -> Icon {
     match priority {
-        TicketPriority::Urgent => "priority-urgent",
-        TicketPriority::High => "priority-high",
-        TicketPriority::Medium => "priority-medium",
-        TicketPriority::Low => "priority-low",
-        TicketPriority::None => "priority-none",
+        TicketPriority::Urgent => Icon::PriorityUrgent,
+        TicketPriority::High => Icon::PriorityHigh,
+        TicketPriority::Medium => Icon::PriorityMedium,
+        TicketPriority::Low => Icon::PriorityLow,
+        TicketPriority::None => Icon::PriorityNone,
     }
 }
 /// Only urgent work takes a color; the bars carry the rest.

@@ -26,10 +26,6 @@ pub trait Page: Render + EventEmitter<Destination> + Sized + 'static {
     fn focus_handles(&self, _cx: &App) -> Vec<FocusHandle> {
         Vec::new()
     }
-    /// Close any floating menu; returns whether one was open.
-    fn dismiss_menus(&mut self, _cx: &mut Context<Self>) -> bool {
-        false
-    }
     /// What the person was typing, kept across an update install. Err refuses
     /// the install while a change is in flight.
     fn drafts(&self, _cx: &App) -> anyhow::Result<Drafts> {
@@ -69,11 +65,14 @@ impl Drafts {
 
 /// A page's own dialogs and popovers, registered with the window's one
 /// [`OverlayHost`] under the page's route. `active()` is `None` once the shell
-/// dismissed the surface, however the page's record of it reads.
+/// dismissed the surface, however the page's record of it reads. Popovers
+/// (selects and menus) are keyed by the control's id, so one is open at a time
+/// and the shell closes it on Escape or a click outside.
 pub struct PageOverlays<D: Copy> {
     host: Rc<RefCell<OverlayHost<Overlay>>>,
     route: Route,
     open: Option<D>,
+    popover: Option<SharedString>,
 }
 impl<D: Copy> PageOverlays<D> {
     pub fn new(host: Rc<RefCell<OverlayHost<Overlay>>>, route: Route) -> Self {
@@ -81,14 +80,42 @@ impl<D: Copy> PageOverlays<D> {
             host,
             route,
             open: None,
+            popover: None,
         }
     }
     pub fn active(&self) -> Option<D> {
         let shown = matches!(
             self.host.borrow().active(),
-            Some(Overlay::Dialog(route) | Overlay::Popover(route)) if route == self.route
+            Some(Overlay::Dialog(route)) if route == self.route
         );
         self.open.filter(|_| shown)
+    }
+    /// Whether the select or menu with this id is the open popover.
+    pub fn popover_open(&self, id: &str) -> bool {
+        self.host.borrow().popover() == Some(Overlay::Popover(self.route))
+            && self.popover.as_deref() == Some(id)
+    }
+    /// Open the popover with this id, or close it when it is the open one.
+    /// Returns whether it is open afterwards.
+    pub fn toggle_popover(&mut self, id: impl Into<SharedString>) -> bool {
+        let id = id.into();
+        if self.popover_open(&id) {
+            self.close_popover();
+            return false;
+        }
+        let mut host = self.host.borrow_mut();
+        // A shell popover (the user menu) gives way to a page's.
+        if host.active().is_some_and(Overlay::is_popover) {
+            host.close();
+        }
+        host.open_popover(Overlay::Popover(self.route));
+        self.popover = Some(id);
+        true
+    }
+    pub fn close_popover(&mut self) {
+        if self.popover.take().is_some() {
+            self.host.borrow_mut().close_popover();
+        }
     }
     /// A modal dialog on the shell's scrim, with its first focus target.
     pub fn open_dialog(
@@ -103,20 +130,18 @@ impl<D: Copy> PageOverlays<D> {
             .borrow_mut()
             .open(Overlay::Dialog(self.route), window, cx, Some(focus));
     }
-    /// A light surface the page draws itself; the shell closes it on a click outside.
-    pub fn open_popover(&mut self, popover: D, window: &mut Window, cx: &mut App) {
-        self.open = Some(popover);
-        self.host
-            .borrow_mut()
-            .open(Overlay::Popover(self.route), window, cx, None);
-    }
     pub fn close(&mut self) {
         self.open = None;
+        self.popover = None;
         self.host.borrow_mut().close();
     }
+    /// Close the dialog and any popover over it, returning focus.
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut App) {
         self.open = None;
-        self.host.borrow_mut().dismiss(window, cx);
+        self.popover = None;
+        let mut host = self.host.borrow_mut();
+        host.close_popover();
+        host.dismiss(window, cx);
     }
 }
 
@@ -167,9 +192,6 @@ impl PageHandle {
     pub fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
         self.ops.focus_handles(cx)
     }
-    pub fn dismiss_menus(&self, cx: &mut App) -> bool {
-        self.ops.dismiss_menus(cx)
-    }
     pub fn drafts(&self, cx: &App) -> anyhow::Result<Drafts> {
         self.ops.drafts(cx)
     }
@@ -191,7 +213,6 @@ impl PageHandle {
 trait PageOps {
     fn overlay(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement>;
     fn focus_handles(&self, cx: &App) -> Vec<FocusHandle>;
-    fn dismiss_menus(&self, cx: &mut App) -> bool;
     fn drafts(&self, cx: &App) -> anyhow::Result<Drafts>;
     fn restore(&self, drafts: Drafts, cx: &mut App);
     fn open(&self, to: &Destination, window: &mut Window, cx: &mut App);
@@ -204,9 +225,6 @@ impl<P: Page> PageOps for Entity<P> {
     }
     fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
         self.read(cx).focus_handles(cx)
-    }
-    fn dismiss_menus(&self, cx: &mut App) -> bool {
-        self.update(cx, |page, cx| page.dismiss_menus(cx))
     }
     fn drafts(&self, cx: &App) -> anyhow::Result<Drafts> {
         self.read(cx).drafts(cx)

@@ -2,7 +2,7 @@
 use super::*;
 
 impl Shell {
-    fn sidebar_item(&self, route: Route, index: usize, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn sidebar_item(&self, route: Route, index: usize, ui: &mut Ui<Self>) -> Stateful<Div> {
         let selected = self.ui_state.current() == route;
         let tint = if selected { TEXT } else { TEXT_SECONDARY };
         let hover_group = format!("sidebar-item-{index}");
@@ -10,7 +10,7 @@ impl Shell {
             ("nav", index),
             route.label(),
             Control::Go(Destination::Page(route)),
-            cx,
+            ui,
         )
         .group(hover_group.clone())
         .accessibility_id(format!(
@@ -45,10 +45,10 @@ impl Shell {
         })
     }
 
-    pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn sidebar(&self, ui: &mut Ui<Self>) -> impl IntoElement {
         let mut nav = column().gap(px(2.));
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
-            nav = nav.child(self.sidebar_item(page.route, index + 1, cx));
+            nav = nav.child(self.sidebar_item(page.route, index + 1, ui));
         }
         let user_menu = match self.overlays.borrow().active() {
             Some(Overlay::UserMenu { support }) => Some(support),
@@ -67,7 +67,7 @@ impl Shell {
                     "shell.search",
                     shortcuts::GO_TO.labelled("Go to…"),
                     Control::GoTo,
-                    cx,
+                    ui,
                 )
                 .debug_selector(|| "shell.search".into())
                 .w_full()
@@ -86,7 +86,7 @@ impl Shell {
                 .border_color(rgb(BORDER))
                 .text_color(rgb(TEXT_SECONDARY))
                 .text_size(type_size(LABEL_SIZE))
-                .child(icon("search", ICON_SIZE_SM))
+                .child(icon(Icon::Search, ICON_SIZE_SM))
                 .child(div().flex_1().min_w_0().truncate().child("Go to…"))
                 .child(
                     kbd(shortcuts::GO_TO.glyph).debug_selector(|| "sidebar-search-shortcut".into()),
@@ -100,7 +100,7 @@ impl Shell {
                     .relative()
                     .w_full()
                     .child(
-                        self.button("profile", "Profile menu", Control::UserMenu, cx)
+                        self.button("profile", "Profile menu", Control::UserMenu, ui)
                             .h(px(44.))
                             .flex_shrink_0()
                             .w_full()
@@ -136,11 +136,11 @@ impl Shell {
                                 ),
                             )
                             .child(
-                                icon("chevronUpDown", ICON_SIZE_SM)
+                                icon(Icon::ChevronUpDown, ICON_SIZE_SM)
                                     .debug_selector(|| "sidebar-profile-chevron".into()),
                             ),
                     )
-                    .when_some(user_menu, |s, support| s.child(self.user_menu(support, cx))),
+                    .when_some(user_menu, |s, support| s.child(self.user_menu(support, ui))),
             )
     }
 }

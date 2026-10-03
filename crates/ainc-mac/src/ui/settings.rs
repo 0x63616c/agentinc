@@ -8,14 +8,8 @@ pub fn settings_section(title: &'static str, rows: impl IntoElement) -> Div {
         .gap(px(SPACE_2))
         .debug_selector(move || format!("settings.section.{title}"))
         .child(div().px(px(SPACE_HALF)).child(eyebrow(title)))
-        .child(
-            column()
-                .rounded(px(RADIUS_LG))
-                .border_1()
-                .border_color(rgb(BORDER))
-                .bg(rgb(SURFACE_RAISED))
-                .child(rows),
-        )
+        // The same raised card as every grouped surface; rows carry their own inset.
+        .child(card().p_0().gap_0().child(rows))
 }
 
 /// One label and description on the left, with its control aligned on the right.

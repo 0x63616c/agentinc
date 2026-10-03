@@ -2,12 +2,15 @@
 //! same code the app uses. Reachable from the command palette as "Components".
 use crate::{
     input::TextInput,
-    page::Page,
+    overlay::Overlay,
+    page::{Page, PageOverlays},
     routes::{Destination, Route},
     ui::*,
 };
 use gpui::{prelude::*, *};
-use std::time::Instant;
+use std::{cell::RefCell, rc::Rc, time::Instant};
+
+const SELECT_ID: &str = "components.select";
 
 pub const SECTIONS: [&str; 4] = ["Buttons", "Inputs", "Data", "Overlays"];
 
@@ -18,21 +21,14 @@ pub struct ComponentsPage {
     segment: usize,
     chip: usize,
     select_value: Option<usize>,
-    select_open: bool,
+    overlays: PageOverlays<()>,
     text: Entity<TextInput>,
     error_text: Entity<TextInput>,
     search: Entity<TextInput>,
     area: Entity<TextInput>,
     toasts: Toasts,
     started: Instant,
-    hover: HoverFade,
     _subscriptions: Vec<Subscription>,
-}
-
-impl HoverHost for ComponentsPage {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
 }
 
 fn specimen(title: &'static str, note: &'static str, content: impl IntoElement) -> Div {
@@ -58,7 +54,8 @@ fn columns() -> [TableColumn; 3] {
 }
 
 impl ComponentsPage {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(overlays: Rc<RefCell<OverlayHost<Overlay>>>, cx: &mut Context<Self>) -> Self {
+        let overlays = PageOverlays::new(overlays, Route::Components);
         let text =
             cx.new(|cx| TextInput::field("Ticket title", false, cx).identified("components.text"));
         let error_text = cx.new(|cx| {
@@ -92,14 +89,13 @@ impl ComponentsPage {
             segment: 1,
             chip: 0,
             select_value: Some(0),
-            select_open: false,
+            overlays,
             text,
             error_text,
             search,
             area,
             toasts,
             started: Instant::now(),
-            hover: HoverFade::default(),
             _subscriptions: subscriptions,
         }
     }
@@ -108,18 +104,21 @@ impl ComponentsPage {
     #[allow(dead_code)]
     pub(crate) fn fixture_section(&mut self, section: usize, cx: &mut Context<Self>) {
         self.section = section.min(SECTIONS.len() - 1);
-        self.select_open = false;
+        self.overlays.close_popover();
         cx.notify();
     }
 
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
     pub(crate) fn fixture_select_open(&mut self, open: bool, cx: &mut Context<Self>) {
-        self.select_open = open;
+        self.overlays.close_popover();
+        if open {
+            self.overlays.toggle_popover(SELECT_ID);
+        }
         cx.notify();
     }
 
-    fn buttons(&self, cx: &mut Context<Self>) -> Div {
+    fn buttons(&self, ui: &mut Ui<Self>) -> Div {
         let noop = |_: &mut Self, _: &mut Window, _: &mut Context<Self>| {};
         column()
             .gap(px(SECTION_GAP))
@@ -127,35 +126,35 @@ impl ComponentsPage {
                 "Variants",
                 "One white primary per surface. Secondary beside it, ghost for quiet rows, destructive only when something is removed.",
                 row().flex_wrap().gap(px(CONTROL_GAP))
-                    .child(Button::new("components.primary", "Primary").primary().build(&self.hover, noop, cx))
-                    .child(Button::new("components.secondary", "Secondary").secondary().build(&self.hover, noop, cx))
-                    .child(Button::new("components.ghost", "Ghost").ghost().build(&self.hover, noop, cx))
-                    .child(Button::new("components.destructive", "Delete").destructive().build(&self.hover, noop, cx)),
+                    .child(Button::new("components.primary", "Primary").primary().build(ui, noop))
+                    .child(Button::new("components.secondary", "Secondary").secondary().build(ui, noop))
+                    .child(Button::new("components.ghost", "Ghost").ghost().build(ui, noop))
+                    .child(Button::new("components.destructive", "Delete").destructive().build(ui, noop)),
             ))
             .child(specimen(
                 "Sizes and icons",
                 "Small for dense rows, regular everywhere else, large for the one action on an empty page.",
                 row().flex_wrap().items_center().gap(px(CONTROL_GAP))
-                    .child(Button::new("components.small", "Small").secondary().small().icon("plus").build(&self.hover, noop, cx))
-                    .child(Button::new("components.regular", "New Ticket").primary().icon("plus").build(&self.hover, noop, cx))
-                    .child(Button::new("components.large", "Get Started").primary().large().build(&self.hover, noop, cx))
-                    .child(Button::new("components.icon-ghost", "More").icon("more").icon_only().ghost().build(&self.hover, noop, cx))
-                    .child(Button::new("components.icon-secondary", "Refresh").icon("refresh").icon_only().secondary().build(&self.hover, noop, cx))
-                    .child(Button::new("components.icon-primary", "Send").icon("send").icon_only().primary().build(&self.hover, noop, cx).rounded_full()),
+                    .child(Button::new("components.small", "Small").secondary().small().icon(Icon::Plus).build(ui, noop))
+                    .child(Button::new("components.regular", "New Ticket").primary().icon(Icon::Plus).build(ui, noop))
+                    .child(Button::new("components.large", "Get Started").primary().large().build(ui, noop))
+                    .child(Button::new("components.icon-ghost", "More").icon(Icon::More).icon_only().ghost().build(ui, noop))
+                    .child(Button::new("components.icon-secondary", "Refresh").icon(Icon::Refresh).icon_only().secondary().build(ui, noop))
+                    .child(Button::new("components.icon-primary", "Send").icon(Icon::Send).icon_only().primary().build(ui, noop).rounded_full()),
             ))
             .child(specimen(
                 "States",
                 "Disabled controls keep their layout at reduced opacity. Selected ghosts and secondaries pick up the selected surface.",
                 row().flex_wrap().gap(px(CONTROL_GAP))
-                    .child(Button::new("components.disabled-primary", "Primary").primary().enabled(false).build(&self.hover, noop, cx))
-                    .child(Button::new("components.disabled-secondary", "Secondary").secondary().enabled(false).build(&self.hover, noop, cx))
-                    .child(Button::new("components.selected-secondary", "Selected").secondary().selected(true).build(&self.hover, noop, cx))
-                    .child(Button::new("components.selected-ghost", "Selected Ghost").ghost().selected(true).build(&self.hover, noop, cx))
-                    .child(Button::new("components.trailing", "Go to…").secondary().icon("search").trailing(kbd(shortcuts::GO_TO.glyph)).build(&self.hover, noop, cx)),
+                    .child(Button::new("components.disabled-primary", "Primary").primary().enabled(false).build(ui, noop))
+                    .child(Button::new("components.disabled-secondary", "Secondary").secondary().enabled(false).build(ui, noop))
+                    .child(Button::new("components.selected-secondary", "Selected").secondary().selected(true).build(ui, noop))
+                    .child(Button::new("components.selected-ghost", "Selected Ghost").ghost().selected(true).build(ui, noop))
+                    .child(Button::new("components.trailing", "Go to…").secondary().icon(Icon::Search).trailing(kbd(shortcuts::GO_TO.glyph)).build(ui, noop)),
             ))
     }
 
-    fn inputs(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn inputs(&self, ui: &mut Ui<Self>) -> Div {
         column()
             .gap(px(SECTION_GAP))
             .child(specimen(
@@ -169,7 +168,7 @@ impl ComponentsPage {
                             Field::new(self.text.clone())
                                 .label("Title")
                                 .hint("Say what needs doing.")
-                                .build(window, cx),
+                                .build(ui),
                         ),
                     )
                     .child(
@@ -177,15 +176,15 @@ impl ComponentsPage {
                             Field::new(self.error_text.clone())
                                 .label("Every (minutes)")
                                 .error(Some("Enter an interval in whole minutes."))
-                                .build(window, cx),
+                                .build(ui),
                         ),
                     )
                     .child(
                         div().flex_1().child(
                             Field::new(self.search.clone())
                                 .label("Search")
-                                .leading_icon("search")
-                                .build(window, cx),
+                                .leading_icon(Icon::Search)
+                                .build(ui),
                         ),
                     ),
             ))
@@ -195,7 +194,7 @@ impl ComponentsPage {
                 Field::new(self.area.clone())
                     .label("Instructions")
                     .multiline()
-                    .build(window, cx),
+                    .build(ui),
             ))
             .child(specimen(
                 "Select",
@@ -205,7 +204,7 @@ impl ComponentsPage {
                     .items_center()
                     .child(
                         Select::new(
-                            "components.select",
+                            SELECT_ID,
                             vec![
                                 SelectOption::new("Codex Default"),
                                 SelectOption::new("Codex One").description("Fast"),
@@ -213,20 +212,19 @@ impl ComponentsPage {
                             ],
                         )
                         .value(self.select_value)
-                        .open(self.select_open)
-                        .width(240.)
+                        .open(self.overlays.popover_open(SELECT_ID))
+                        .width(SELECT_WIDTH)
                         .build(
-                            &self.hover,
+                            ui,
                             |this, _, cx| {
-                                this.select_open = !this.select_open;
+                                this.overlays.toggle_popover(SELECT_ID);
                                 cx.notify();
                             },
                             |this, index, _, cx| {
                                 this.select_value = Some(index);
-                                this.select_open = false;
+                                this.overlays.close_popover();
                                 cx.notify();
                             },
-                            cx,
                         ),
                     )
                     .child(
@@ -236,12 +234,7 @@ impl ComponentsPage {
                         )
                         .placeholder("Choose an agent")
                         .width(200.)
-                        .build(
-                            &self.hover,
-                            |_, _, _| {},
-                            |_, _, _, _| {},
-                            cx,
-                        ),
+                        .build(ui, |_, _, _| {}, |_, _, _, _| {}),
                     )
                     .child(caption("Selects show a check beside the current option.")),
             ))
@@ -254,17 +247,14 @@ impl ComponentsPage {
                     .child(
                         row()
                             .gap(px(SPACE_3))
-                            .child(toggle(
-                                "components.toggle",
-                                "Automatic checks",
-                                self.toggle_on,
-                                true,
-                                |this, _, cx| {
-                                    this.toggle_on = !this.toggle_on;
-                                    cx.notify();
-                                },
-                                cx,
-                            ))
+                            .child(
+                                Toggle::new("components.toggle", "Automatic checks")
+                                    .on(self.toggle_on)
+                                    .build(ui, |this, _, cx| {
+                                        this.toggle_on = !this.toggle_on;
+                                        cx.notify();
+                                    }),
+                            )
                             .child(
                                 div()
                                     .text_size(type_size(LABEL_SIZE))
@@ -274,73 +264,61 @@ impl ComponentsPage {
                     .child(
                         row()
                             .gap(px(SPACE_3))
-                            .child(toggle(
-                                "components.toggle-off",
-                                "Off",
-                                false,
-                                true,
-                                |_, _, _| {},
-                                cx,
-                            ))
+                            .child(
+                                Toggle::new("components.toggle-off", "Off").build(ui, |_, _, _| {}),
+                            )
                             .child(div().text_size(type_size(LABEL_SIZE)).child("Off")),
                     )
-                    .child(checkbox(
-                        "components.checkbox",
-                        "Include done Tickets",
-                        self.checked,
-                        true,
-                        |this, _, cx| {
-                            this.checked = !this.checked;
-                            cx.notify();
-                        },
-                        cx,
-                    ))
-                    .child(checkbox(
-                        "components.checkbox-disabled",
-                        "Disabled",
-                        false,
-                        false,
-                        |_, _, _| {},
-                        cx,
-                    )),
+                    .child(
+                        Checkbox::new("components.checkbox", "Include done Tickets")
+                            .checked(self.checked)
+                            .build(ui, |this, _, cx| {
+                                this.checked = !this.checked;
+                                cx.notify();
+                            }),
+                    )
+                    .child(
+                        Checkbox::new("components.checkbox-disabled", "Disabled")
+                            .enabled(false)
+                            .build(ui, |_, _, _| {}),
+                    ),
             ))
             .child(specimen(
                 "Segmented control and chips",
                 "Segments switch views or scales; chips pick one value from a short set.",
                 column()
                     .gap(px(SPACE_3))
-                    .child(segmented(
-                        "components.segmented",
-                        ["Small", "Default", "Large", "Larger"],
-                        self.segment,
-                        true,
-                        &self.hover,
-                        |this, index, _, cx| {
+                    .child(
+                        Segmented::new(
+                            "components.segmented",
+                            ["Small", "Default", "Large", "Larger"],
+                        )
+                        .selected(self.segment)
+                        .build(ui, |this, index, _, cx| {
                             this.segment = index;
                             cx.notify();
-                        },
-                        cx,
-                    ))
+                        }),
+                    )
                     .child(
                         row().flex_wrap().gap(px(CHIP_GAP)).children(
                             ["Backlog", "To do", "In progress", "Done"]
                                 .into_iter()
                                 .enumerate()
                                 .map(|(index, label)| {
-                                    chip(
+                                    Chip::new(
                                         ElementId::NamedInteger(
                                             "components.chip".into(),
                                             index as u64,
                                         ),
                                         label,
-                                        index == self.chip,
-                                        true,
-                                        &self.hover,
+                                    )
+                                    .selected(index == self.chip)
+                                    .build(
+                                        ui,
                                         move |this, _, cx| {
                                             this.chip = index;
                                             cx.notify();
                                         },
-                                        cx,
                                     )
                                 }),
                         ),
@@ -348,7 +326,7 @@ impl ComponentsPage {
             ))
     }
 
-    fn data(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn data(&self, ui: &mut Ui<Self>) -> Div {
         let columns = columns();
         let rows = [
             ("Reconcile weekly budget", "Running", Tone::Info, "2m"),
@@ -394,8 +372,8 @@ impl ComponentsPage {
                 "List rows",
                 "Title, subtitle and a trailing element. Rows fade to their hover surface.",
                 column().gap(px(SPACE_HALF))
-                    .child(ListRow::new("components.row.1", "Reconcile weekly budget and receipts").leading(status_dot(Tone::Info)).subtitle("Evee").trailing(badge("Running", Tone::Info)).build(&self.hover, |_, _, _| {}, cx))
-                    .child(ListRow::new("components.row.2", "Plan the week").leading(status_dot(Tone::Neutral)).subtitle("Unassigned").trailing(icon("chevronRight", ICON_SIZE_SM)).selected(true).build(&self.hover, |_, _, _| {}, cx)),
+                    .child(ListRow::new("components.row.1", "Reconcile weekly budget and receipts").leading(status_dot(Tone::Info)).subtitle("Evee").trailing(badge("Running", Tone::Info)).build(ui, |_, _, _| {}))
+                    .child(ListRow::new("components.row.2", "Plan the week").leading(status_dot(Tone::Neutral)).subtitle("Unassigned").trailing(icon(Icon::ChevronRight, ICON_SIZE_SM)).selected(true).build(ui, |_, _, _| {})),
             ))
             .child(specimen(
                 "Table",
@@ -403,7 +381,7 @@ impl ComponentsPage {
                 table_container()
                     .child(table_header(&columns))
                     .children(rows.into_iter().enumerate().map(|(index, (name, status, tone, when))| {
-                        table_row(
+                        TableRow::new(
                             ElementId::NamedInteger("components.table".into(), index as u64),
                             name,
                             &columns,
@@ -412,25 +390,22 @@ impl ComponentsPage {
                                 row().child(status_pill(status, tone)).into_any_element(),
                                 caption(when).into_any_element(),
                             ],
-                            true,
-                            &self.hover,
-                            |_, _, _| {},
-                            cx,
                         )
+                        .build(ui, |_, _, _| {})
                     })),
             ))
             .child(specimen(
                 "Empty and loading",
                 "Empty states offer the one next action. Skeletons hold the layout while data loads.",
                 column().gap(px(SPACE_4))
-                    .child(EmptyState::new("tickets", "No Tickets yet.").description("Create a Ticket and assign it to an agent to start work.").action(Button::new("components.empty-action", "New Ticket").primary().icon("plus").build(&self.hover, |_, _, _| {}, cx)).build())
+                    .child(EmptyState::new(Icon::Tasks, "No Tickets yet.").description("Create a Ticket and assign it to an agent to start work.").action(Button::new("components.empty-action", "New Ticket").primary().icon(Icon::Plus).build(ui, |_, _, _| {})).build())
                     .child(skeleton_rows("components.skeleton", SKELETON_ROWS))
-                    .child(row().gap(px(SPACE_6)).child(LoadingFrame::new(self.started, window).inline("Evee is thinking…")))
-                    .child(LoadingFrame::new(self.started, window).page("Loading Tickets…")),
+                    .child(row().gap(px(SPACE_6)).child(LoadingFrame::new(self.started, ui.window).inline("Evee is thinking…")))
+                    .child(LoadingFrame::new(self.started, ui.window).page("Loading Tickets…")),
             ))
     }
 
-    fn overlays(&self, cx: &mut Context<Self>) -> Div {
+    fn overlays(&self, ui: &mut Ui<Self>) -> Div {
         let noop = |_: &mut Self, _: &mut Window, _: &mut Context<Self>| {};
         column()
             .gap(px(SECTION_GAP))
@@ -441,8 +416,8 @@ impl ComponentsPage {
                     copy::confirm_delete("Plan the week", "This Ticket, its Comments and its relationships").0,
                     caption(copy::confirm_delete("Plan the week", "This Ticket, its Comments and its relationships").1),
                     row_gap(CONTROL_GAP).justify_end()
-                        .child(Button::new("components.dialog-cancel", "Cancel").secondary().build(&self.hover, noop, cx))
-                        .child(Button::new("components.dialog-confirm", "Delete").destructive().build(&self.hover, noop, cx)),
+                        .child(Button::new("components.dialog-cancel", "Cancel").secondary().build(ui, noop))
+                        .child(Button::new("components.dialog-confirm", "Delete").destructive().build(ui, noop)),
                 )),
             ))
             .child(specimen(
@@ -453,8 +428,8 @@ impl ComponentsPage {
                         "Edit Automation",
                         column().gap(px(SPACE_3)).child(caption("Sheets keep the page visible beside them.")),
                         row_gap(CONTROL_GAP).justify_end()
-                            .child(Button::new("components.sheet-cancel", "Cancel").secondary().build(&self.hover, noop, cx))
-                            .child(Button::new("components.sheet-save", "Save").primary().build(&self.hover, noop, cx)),
+                            .child(Button::new("components.sheet-cancel", "Cancel").secondary().build(ui, noop))
+                            .child(Button::new("components.sheet-save", "Save").primary().build(ui, noop)),
                     )),
                 ),
             ))
@@ -465,41 +440,33 @@ impl ComponentsPage {
                     .child(popover_shell(POPOVER_WIDTH)
                         .child(row().px(px(SPACE_2)).py(px(SPACE_2)).gap(px(SPACE_3)).child(avatar("Calum", None, AVATAR_SIZE_LG)).child(column().child(div().text_size(type_size(HEADING_SIZE)).font_weight(FontWeight::MEDIUM).child("Calum")).child(caption("@calum"))))
                         .child(menu_divider())
-                        .child(MenuEntry::new("components.menu.updates", "Check for Updates").icon("refresh").build(&self.hover, noop, cx))
-                        .child(MenuEntry::new("components.menu.settings", "Settings").icon("settings").shortcut(shortcuts::SETTINGS.glyph).build(&self.hover, noop, cx))
-                        .child(MenuEntry::new("components.menu.support", "Support").icon("help").trailing(icon("chevronRight", ICON_SIZE_SM)).build(&self.hover, noop, cx))
+                        .child(MenuEntry::new("components.menu.updates", "Check for Updates").icon(Icon::Refresh).build(ui, noop))
+                        .child(MenuEntry::new("components.menu.settings", "Settings").icon(Icon::Settings).shortcut(shortcuts::SETTINGS.glyph).build(ui, noop))
+                        .child(MenuEntry::new("components.menu.support", "Support").icon(Icon::Help).trailing(icon(Icon::ChevronRight, ICON_SIZE_SM)).build(ui, noop))
                         .child(menu_divider())
-                        .child(MenuEntry::new("components.menu.delete", "Delete").icon("trash").destructive().build(&self.hover, noop, cx)))
-                    .child(MenuButton::new("components.menu-button", "Priority").icon("filter").active(true).build(&self.hover, vec![], noop, cx))
+                        .child(MenuEntry::new("components.menu.delete", "Delete").icon(Icon::Trash).destructive().build(ui, noop)))
+                    .child(MenuButton::new("components.menu-button", "Priority").icon(Icon::Filter).active(true).build(ui, vec![], noop))
                     .child(menu_shell(MENU_WIDTH)
                         .child(menu_label("Model"))
-                        .child(MenuEntry::new("components.menu.default", "Codex Default").checked(true).build(&self.hover, noop, cx))
-                        .child(MenuEntry::new("components.menu.one", "Codex One").build(&self.hover, noop, cx))
-                        .child(MenuEntry::new("components.menu.two", "Codex Two").enabled(false).build(&self.hover, noop, cx))),
+                        .child(MenuEntry::new("components.menu.default", "Codex Default").checked(true).build(ui, noop))
+                        .child(MenuEntry::new("components.menu.one", "Codex One").build(ui, noop))
+                        .child(MenuEntry::new("components.menu.two", "Codex Two").enabled(false).build(ui, noop))),
             ))
             .child(specimen(
                 "Toasts",
                 "Transient notices stack above the status bar and slide in; sticky ones wait to be dismissed.",
                 column().gap(px(SPACE_3))
-                    .child(row().child(Button::new("components.toast", "Show a Toast").secondary().build(
-                        &self.hover,
-                        |this, _, cx| {
+                    .child(row().child(Button::new("components.toast", "Show a Toast").secondary().build(ui, |this, _, cx| {
                             let id = this.toasts.push("Saved", Some("Your changes are on the daemon.".into()), Tone::Info);
                             Toasts::dismiss_later(id, |this: &mut Self| &mut this.toasts, cx);
                             cx.notify();
-                        },
-                        cx,
-                    )))
-                    .child(div().relative().w_full().h(px(200.)).child(self.toasts.render(
-                        &self.hover,
-                        SPACE_4,
-                        SPACE_4,
-                        |this, id, _, cx| {
+                        })))
+                    .child(div().relative().w_full().h(px(200.)).child(
+                        self.toasts.stack(SPACE_4, SPACE_4).build(ui, |this, id, _, cx| {
                             this.toasts.dismiss(id);
                             cx.notify();
-                        },
-                        cx,
-                    ))),
+                        }),
+                    )),
             ))
     }
 }
@@ -507,24 +474,16 @@ impl ComponentsPage {
 impl EventEmitter<Destination> for ComponentsPage {}
 impl Page for ComponentsPage {
     const ROUTE: Route = Route::Components;
-    fn dismiss_menus(&mut self, cx: &mut Context<Self>) -> bool {
-        let was_open = self.select_open;
-        self.select_open = false;
-        if was_open {
-            cx.notify();
-        }
-        was_open
-    }
 }
 
 impl Render for ComponentsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.hover.animate(window);
+        let ui = &mut Ui::new(window, cx);
         let body = match self.section {
-            0 => self.buttons(cx),
-            1 => self.inputs(window, cx),
-            2 => self.data(window, cx),
-            _ => self.overlays(cx),
+            0 => self.buttons(ui),
+            1 => self.inputs(ui),
+            2 => self.data(ui),
+            _ => self.overlays(ui),
         };
         PageFrame::document(PageHeader::new("Components").description(
             "The AgentInc design system, rendered by the app itself. See docs/design-system.md.",
@@ -533,17 +492,14 @@ impl Render for ComponentsPage {
             column()
                 .id("components.page")
                 .gap(px(SECTION_GAP))
-                .child(tabs(
-                    "components.tabs",
-                    SECTIONS,
-                    self.section,
-                    &self.hover,
-                    |this, index, _, cx| {
-                        this.section = index;
-                        cx.notify();
-                    },
-                    cx,
-                ))
+                .child(
+                    Tabs::new("components.tabs", SECTIONS)
+                        .selected(self.section)
+                        .build(ui, |this, index, _, cx| {
+                            this.section = index;
+                            cx.notify();
+                        }),
+                )
                 .child(body),
         )
         .build()

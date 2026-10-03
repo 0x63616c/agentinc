@@ -13,12 +13,6 @@ use std::{cell::Cell, rc::Rc};
 pub struct SettingsPage {
     /// Shared with the shell, which applies and saves it.
     appearance: Rc<Cell<Appearance>>,
-    hover: HoverFade,
-}
-impl HoverHost for SettingsPage {
-    fn hover_fade(&mut self) -> &mut HoverFade {
-        &mut self.hover
-    }
 }
 impl EventEmitter<Destination> for SettingsPage {}
 /// The person changed a type preference on this page.
@@ -26,17 +20,14 @@ impl EventEmitter<Appearance> for SettingsPage {}
 
 impl SettingsPage {
     pub fn new(appearance: Rc<Cell<Appearance>>, _: &mut Context<Self>) -> Self {
-        Self {
-            appearance,
-            hover: HoverFade::default(),
-        }
+        Self { appearance }
     }
     fn change(&mut self, appearance: Appearance, cx: &mut Context<Self>) {
         self.appearance.set(appearance);
         cx.emit(appearance);
         cx.notify();
     }
-    fn appearance_section(&self, cx: &mut Context<Self>) -> Div {
+    fn appearance_section(&self, ui: &mut Ui<Self>) -> Div {
         let current = self.appearance.get();
         let font = match current.font {
             FontChoice::System => 0,
@@ -52,13 +43,9 @@ impl SettingsPage {
                 .child(settings_row(
                     "Font",
                     "The typeface used throughout AgentInc.",
-                    segmented(
-                        "font",
-                        ["System · SF Pro", "Helvetica Neue"],
-                        font,
-                        true,
-                        &self.hover,
-                        |this: &mut Self, index, _, cx| {
+                    Segmented::new("font", ["System · SF Pro", "Helvetica Neue"])
+                        .selected(font)
+                        .build(ui, |this: &mut Self, index, _, cx| {
                             let font = if index == 0 {
                                 FontChoice::System
                             } else {
@@ -69,33 +56,25 @@ impl SettingsPage {
                                 ..this.appearance.get()
                             };
                             this.change(appearance, cx)
-                        },
-                        cx,
-                    ),
+                        }),
                 ))
                 .child(settings_divider())
                 .child(settings_row(
                     "Font size",
                     "The scale of text across the app.",
-                    segmented(
-                        "font-size",
-                        FontSize::ALL.iter().map(|(_, label)| *label),
-                        size,
-                        true,
-                        &self.hover,
-                        |this: &mut Self, index, _, cx| {
+                    Segmented::new("font-size", FontSize::ALL.iter().map(|(_, label)| *label))
+                        .selected(size)
+                        .build(ui, |this: &mut Self, index, _, cx| {
                             let appearance = Appearance {
                                 font_size: FontSize::ALL[index].0,
                                 ..this.appearance.get()
                             };
                             this.change(appearance, cx)
-                        },
-                        cx,
-                    ),
+                        }),
                 )),
         )
     }
-    fn connections_section(&self, cx: &mut Context<Self>) -> Div {
+    fn connections_section(&self, ui: &mut Ui<Self>) -> Div {
         settings_section(
             "Connections",
             settings_row(
@@ -103,12 +82,10 @@ impl SettingsPage {
                 "The ChatGPT account Evee replies through, and its model.",
                 Button::new("settings.connections", "Open Connections")
                     .secondary()
-                    .trailing(icon("arrowRight", ICON_SIZE_SM))
-                    .build(
-                        &self.hover,
-                        |_: &mut Self, _, cx| cx.emit(Destination::Page(Route::Connections)),
-                        cx,
-                    ),
+                    .trailing(icon(Icon::ArrowRight, ICON_SIZE_SM))
+                    .build(ui, |_: &mut Self, _, cx| {
+                        cx.emit(Destination::Page(Route::Connections))
+                    }),
             ),
         )
     }
@@ -138,8 +115,8 @@ impl Page for SettingsPage {
 
 impl Render for SettingsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.hover.animate(window);
         let updates = cx.try_global::<crate::updates::Updates>().cloned();
+        let mut ui = Ui::new(window, cx);
         PageFrame::document(
             PageHeader::new(self.title())
                 .description("Appearance, updates, connections and shortcuts."),
@@ -147,11 +124,15 @@ impl Render for SettingsPage {
         .child(
             column()
                 .gap(px(SECTION_GAP))
-                .child(self.appearance_section(cx))
+                .child(self.appearance_section(&mut ui))
                 .when_some(updates, |view, updates| {
-                    view.child(updates.0.update(cx, |this, cx| this.settings(window, cx)))
+                    view.child(
+                        updates
+                            .0
+                            .update(ui.cx, |this, cx| this.settings(ui.window, cx)),
+                    )
                 })
-                .child(self.connections_section(cx))
+                .child(self.connections_section(&mut ui))
                 .child(self.shortcuts_section()),
         )
         .build()
