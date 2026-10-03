@@ -604,8 +604,15 @@ static NSString *acquireFence(NSURL *url, NSString *version) {
     NSData *data = [NSPropertyListSerialization dataWithPropertyList:@{@"version":version, @"phase":@"preparing"} format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
     return writePrivateData(data, url);
 }
-static NSString *armFence(NSURL *url, NSString *version) {
-    NSData *data = [NSPropertyListSerialization dataWithPropertyList:@{@"version":version, @"phase":@"armed"} format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
+// Each signed appcast is published beside its release's immutable assets, so
+// an interrupted target remains reachable after the latest feed advances.
+static NSString *pinnedFeed(SUAppcastItem *item) {
+    return [item.fileURL.URLByDeletingLastPathComponent URLByAppendingPathComponent:@"appcast.xml"].absoluteString;
+}
+static NSString *armFence(NSURL *url, NSString *version, NSString *feed) {
+    NSMutableDictionary *record = [@{@"version":version, @"phase":@"armed"} mutableCopy];
+    if (feed) record[@"feed"] = feed;
+    NSData *data = [NSPropertyListSerialization dataWithPropertyList:record format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
     return writePrivateData(data, url);
 }
 static NSString *restoreFence(NSURL *url, NSString *version) {
@@ -722,6 +729,14 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     if (!identity) return nil;
     NSString *name = [NSString stringWithFormat:@"%@-%@", digestName(identity), self.item.fileURL.lastPathComponent];
     return [self.cacheDirectory URLByAppendingPathComponent:name];
+}
+- (void)pruneArchives {
+    NSFileManager *files = NSFileManager.defaultManager;
+    if (!self.cacheDirectory || self.download || (self.fenceURL && [files fileExistsAtPath:self.fenceURL.path])) return;
+    NSString *current = [self cachedArchive].lastPathComponent;
+    for (NSURL *entry in [files contentsOfDirectoryAtURL:self.cacheDirectory includingPropertiesForKeys:nil options:0 error:nil]) {
+        if (![entry.lastPathComponent isEqualToString:current]) [files removeItemAtURL:entry error:nil];
+    }
 }
 - (BOOL)hasCachedArchive {
     NSURL *archive = [self cachedArchive];
@@ -1122,8 +1137,11 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     self.backgroundDownload = NO;
     self.installRequested = NO;
     self.userVisible = NO;
+    [self pruneArchives];
 }
 - (NSString *)feedURLStringForUpdater:(SPUUpdater *)updater {
+    NSDictionary *fence = readFence(self.fenceURL);
+    if ([fence[@"phase"] isEqualToString:@"armed"] && [fence[@"feed"] isKindOfClass:NSString.class]) return fence[@"feed"];
 #ifdef AINC_UPGRADE_TEST
     const char *feed = getenv("AINC_UPGRADE_TEST_SPARKLE_FEED_URL");
     return feed ? [NSString stringWithUTF8String:feed] : nil;
@@ -1226,6 +1244,7 @@ bool ainc_sparkle_start(const char *legacy, const char *version) {
     sparkle.defaults = [[NSUserDefaults alloc] initWithSuiteName:domain];
     sparkle.fenceURL = installationFenceURL(host);
     sparkle.cacheDirectory = [[relaunchProfileURL(host) URLByDeletingPathExtension] URLByAppendingPathComponent:@"Archives" isDirectory:YES];
+    [sparkle pruneArchives];
     // Sparkle's automatic-download switch also consents to install-on-quit.
     // AgentInc has a download-only setting, implemented through user-driver
     // an inert archive cache instead.
@@ -1270,7 +1289,7 @@ void ainc_sparkle_setting(int setting, bool enabled) {
 void ainc_sparkle_prepared(const char *error) {
     NSString *failure = error ? [NSString stringWithUTF8String:error] : nil;
     if (!failure && sparkle.started) failure = saveRelaunchProfile(relaunchProfileURL(NSBundle.mainBundle), sparkle.item.versionString);
-    if (!failure) failure = armFence(sparkle.fenceURL, sparkle.item.versionString);
+    if (!failure) failure = armFence(sparkle.fenceURL, sparkle.item.versionString, pinnedFeed(sparkle.item));
     [sparkle preparedWithError:failure];
     if (failure && ![readFence(sparkle.fenceURL)[@"phase"] isEqualToString:@"armed"]) ainc_update_action(9, false);
 }
