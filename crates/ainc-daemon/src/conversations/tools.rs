@@ -146,13 +146,19 @@ impl CommandFamily for Automations {
 
 /// The Conversation a tool call speaks for, if it is still active.
 async fn origin<F: CommandFamily>(pool: &PgPool, session_id: &str) -> Result<Actor, ToolError> {
-    let origin: Option<(String, i64)> = sqlx::query_as("SELECT c.workspace_id,c.id FROM conversation_sessions s JOIN conversations c ON c.id=s.conversation_id WHERE s.id=$1 AND s.state='active'").bind(session_id).fetch_optional(pool).await.map_err(|_| ToolError::Failed(format!("{} service unavailable", F::LABEL)))?;
-    let Some((workspace, conversation)) = origin else {
+    let origin = sqlx::query!(
+        "SELECT c.workspace_id,c.id FROM conversation_sessions s JOIN conversations c ON c.id=s.conversation_id WHERE s.id=$1 AND s.state='active'",
+        session_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| ToolError::Failed(format!("{} service unavailable", F::LABEL)))?;
+    let Some(origin) = origin else {
         return Err(ToolError::InvalidArguments(
             "Conversation is no longer active".into(),
         ));
     };
-    Ok(F::actor(workspace, conversation))
+    Ok(F::actor(origin.workspace_id, origin.id))
 }
 
 /// Applies one of a family's commands on behalf of a Conversation.

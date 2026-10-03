@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO assistant_settings(workspace_id,key,value) VALUES ($1,'selected_conversation',$2) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "62851395bdfe3e93fcccf0bb3966021117c76cc15a6704d6bc81b9b070233dc5"
+}
