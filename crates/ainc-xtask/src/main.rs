@@ -412,11 +412,52 @@ fn generate(root: &Path, check: bool) -> Result<()> {
     Ok(())
 }
 
+/// The static gate: everything CI checks that needs no database and no test run.
+/// `just check`, the pre-commit hook and CI all come through here.
+fn check(root: &Path) -> Result<()> {
+    let steps: [&[&str]; 6] = [
+        &["cargo", "fmt", "--all", "--", "--check"],
+        &["python3", "crates/ainc-mac/scripts/check-colors.py"],
+        &[
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "crates/ainc-mac/scripts",
+            "-p",
+            "test_check_colors.py",
+        ],
+        &["python3", "crates/ainc-mac/scripts/check-ui-spacing.py"],
+        &["python3", "crates/ainc-mac/scripts/check-ui-core.py"],
+        &[
+            "cargo",
+            "clippy",
+            "--locked",
+            "--workspace",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    ];
+    for step in steps {
+        println!("$ {}", step.join(" "));
+        let status = Command::new(step[0])
+            .args(&step[1..])
+            .current_dir(root)
+            .status()
+            .with_context(|| format!("could not run {}", step[0]))?;
+        anyhow::ensure!(status.success(), "check failed: {}", step.join(" "));
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args
         .next()
-        .ok_or_else(|| anyhow!("usage: cargo xtask dev|down|doctor|generate"))?;
+        .ok_or_else(|| anyhow!("usage: cargo xtask dev|down|doctor|check|generate"))?;
     let root = root()?;
     let instance = identity(&root)?;
     match operation.as_str() {
@@ -428,6 +469,7 @@ fn main() -> Result<()> {
             anyhow::ensure!(status.success(), "release preparation failed");
             Ok(())
         }
+        "check" => check(&root),
         "generate" => generate(&root, args.next().as_deref() == Some("--check")),
         "dev" => {
             let mut instance = write_instance(&instance)?;

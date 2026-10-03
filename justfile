@@ -1,14 +1,22 @@
-# The three things you do here.
+# The things you do here. Every recipe first points git at the tracked hooks in .githooks.
 
 _default:
     @just --list
 
 # Run everything: Postgres, Temporal, the daemon and the Mac app, all rebuilding on save. Needs Docker running.
-dev:
+dev: _hooks
     cargo xtask dev
 
+# Point git at the tracked hooks. Idempotent, so every recipe can depend on it.
+_hooks:
+    @git rev-parse --git-dir >/dev/null 2>&1 && [ "$(git config core.hooksPath)" = .githooks ] || git config core.hooksPath .githooks 2>/dev/null || true
+
+# The fast static gate, no database and no tests: fmt, clippy and the native UI checks. Runs on every commit.
+check: _hooks
+    cargo xtask check
+
 # Run every check CI runs. Starts a throwaway Postgres in Docker unless DATABASE_URL is set.
-test:
+test: check
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "${DATABASE_URL:-}" ]; then
@@ -18,18 +26,12 @@ test:
         port=$(docker port "$container" 5432/tcp | head -1 | sed 's/.*://')
         export DATABASE_URL="postgres://postgres:test@127.0.0.1:$port/postgres"
     fi
-    cargo fmt --all -- --check
-    python3 crates/ainc-mac/scripts/check-colors.py
-    python3 -m unittest discover -s crates/ainc-mac/scripts -p 'test_check_colors.py'
-    python3 crates/ainc-mac/scripts/check-ui-spacing.py
-    python3 crates/ainc-mac/scripts/check-ui-core.py
     python3 -m unittest discover -s scripts/release -p 'test_*.py'
     # The xtask workspace test checks generation using the same compiled dependency graph.
-    cargo clippy --locked --workspace --all-targets -- -D warnings
     cargo test --locked --workspace
 
 # Bump to the next version (patch, minor, major, or an explicit one of those) and commit; pushing to main ships it.
-release bump:
+release bump: _hooks
     #!/usr/bin/env python3
     import re, subprocess, sys
     run = lambda *cmd: subprocess.run(cmd, check=True)
