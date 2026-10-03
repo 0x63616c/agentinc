@@ -14,22 +14,23 @@ use std::{
 
 pub mod ci_gate;
 pub mod distribute;
+pub mod prepare;
 pub mod version_changed;
 
 /// The subcommands this module serves, for the xtask usage string.
-pub const NAMES: &str = "release-ci-gate|release-distribute|release-version-changed";
+pub const NAMES: &str = "release|release-ci-gate|release-distribute|release-version-changed";
 
 pub fn handles(operation: &str) -> bool {
     matches!(
         operation,
-        "release-ci-gate" | "release-distribute" | "release-version-changed"
+        "release" | "release-ci-gate" | "release-distribute" | "release-version-changed"
     )
 }
 
 /// Run one release subcommand. Like the scripts did, a failure prints its message and exits 1.
 pub fn run(operation: &str, args: Vec<String>, root: &Path) -> Result<()> {
-    let _ = root;
     let result = match operation {
+        "release" => prepare::cli(root, &args),
         "release-ci-gate" => ci_gate::cli(&args),
         "release-distribute" => distribute::cli(&args),
         "release-version-changed" => version_changed::cli(&args),

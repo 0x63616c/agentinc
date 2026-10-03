@@ -132,12 +132,12 @@ jobs:
           openssl genpkey -algorithm ED25519 -out .local/upgrade-input/test-key.pem
           public=$(openssl pkey -in .local/upgrade-input/test-key.pem -pubout -outform DER | tail -c 32 | base64 | tr -d '\n')
           export AINC_UPGRADE_TEST_PUBLIC_KEY="$public"
-          python3 scripts/release/prepare.py
+          cargo xtask release
           mv ".local/release/$commit/unsigned.tar.gz" .local/upgrade-input/upgrade-candidate-unsigned.tar.gz
           candidate_version=$(python3 -c 'import json,subprocess; print(next(p["version"] for p in json.loads(subprocess.check_output(["cargo","metadata","--no-deps","--format-version=1"]))["packages"] if p["name"]=="ainc-release"))')
           next_version=$(python3 -c 'import sys; a,b,c=map(int,sys.argv[1].split(".")); print(f"{a}.{b}.{c+1}")' "$candidate_version")
           export AINC_UPGRADE_TEST_VERSION="$next_version"
-          python3 scripts/release/prepare.py
+          cargo xtask release
           mv ".local/release/$commit/unsigned.tar.gz" .local/upgrade-input/upgrade-newer-unsigned.tar.gz
           cp "$CARGO_TARGET_DIR/release/ainc-release-manifest" .local/upgrade-input/ainc-release-manifest
           unset AINC_UPGRADE_TEST_VERSION
@@ -153,7 +153,7 @@ jobs:
             prior_dir=".local/upgrade-prior/$tag"
             git clone --shared --quiet --no-checkout . "$prior_dir"
             git -C "$prior_dir" checkout --quiet "$tag"
-            (cd "$prior_dir" && python3 scripts/release/prepare.py)
+            (cd "$prior_dir" && cargo xtask release)
             mv "$prior_dir/.local/release/$(git -C "$prior_dir" rev-parse HEAD)/unsigned.tar.gz" ".local/upgrade-input/upgrade-prior-$prior_version-unsigned.tar.gz"
             rm -rf "$prior_dir"
           done

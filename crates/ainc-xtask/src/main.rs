@@ -467,14 +467,6 @@ fn main() -> Result<()> {
     let root = root()?;
     let instance = identity(&root)?;
     match operation.as_str() {
-        "release" => {
-            let status = Command::new("python3")
-                .arg(root.join("scripts/release/prepare.py"))
-                .args(args)
-                .status()?;
-            anyhow::ensure!(status.success(), "release preparation failed");
-            Ok(())
-        }
         op if release::handles(op) => release::run(op, args.collect(), &root),
         "check" => check(&root),
         "check-ui" => check_ui(&root),

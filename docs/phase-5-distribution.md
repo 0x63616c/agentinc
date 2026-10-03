@@ -72,7 +72,7 @@ directory, and never passed as secret values on command lines. Required secrets:
 
 The Apple Silicon bundle (macOS 15 or later) includes portable Postgres 16.15, the Temporal CLI's persistent local server and the
 Codex executable. Postgres comes from the pinned Theseus 16.15.0 archive and SHA-256 in
-`scripts/release/prepare.py`. Temporal and Codex are taken from the build machine and
+`crates/ainc-xtask/src/release/prepare.rs`. Temporal and Codex are taken from the build machine and
 recorded by hash in the handoff. Required portable libraries travel with Postgres;
 development headers and test executables are excluded. Every Mach-O is audited with
 `otool -L` before packaging: only system paths, `@loader_path` and `@rpath` are allowed.
