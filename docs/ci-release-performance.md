@@ -89,4 +89,35 @@ automatic pinned-toolchain installation in each command step. Test execution ros
 from the baseline's ~45s to ~63s; this run also contains additional regression
 tests and uses unoptimized dependencies. This is an observed comparison between
 two release commits, not an isolated attribution of savings to each change.
-No completed Distribution timing or publication result is claimed here.
+Distribution timing and publication are recorded separately below.
+
+## Measured Distribution follow-up — 2026-10-03
+
+[Distribution 37082618503](https://github.com/0x63616c/agentinc/actions/runs/37082618503)
+completed successfully for the same `27a7a2e81fdf342a556c01a13214c5994500d399`
+commit. GitHub also confirms [v0.4.0](https://github.com/0x63616c/agentinc/releases/tag/v0.4.0)
+is public (`isDraft=false`), published at **01:02:01 UTC** after the upgrade gate
+and exact-commit CI recheck.
+
+| Measurement | Observed result |
+| --- | --- |
+| Whole workflow | **27m52s** (00:34:12–01:02:04 UTC), versus 39m17s: **11m25s / 29.1% less elapsed time**. |
+| Native job | **15m01s**; production handoff 3m49s, fixtures **10m33s**. Cargo release builds: production 2m56s, candidate 2m34s, newer 1m36s, prior 0.3.3 1m51s, **added prior 0.3.5 1m55s**. |
+| Distribution job | **6m29s**, versus 22m03s; signing/staging step **5m06s**. CI had already finished before the native job completed, so no idle CI wait occurred; this run does not measure CI/signing overlap. |
+| Five bundles' elapsed times | Production **166.2s**, candidate **158.3s**, newer **156.7s**, prior 0.3.3 **157.0s**, prior 0.3.5 **112.1s**. First four overlapped; the fifth used the next available slot. Overall signing interval **~4m39s** (00:50:51–00:55:30), versus ~8m for four serial baseline bundles. |
+| Manifest / Apple | Manifest cache missed; Cargo build **2m31s**, completed during the first signing batch. All five Apple submissions accepted; logged polling durations **41–51s**, with stapling retained. |
+| Artifact transfer | Unsigned input **918,361,068 bytes / 1m02s** download. Upgrade tools **717,034 bytes / 2s**, versus ~33s for the unnecessary unsigned-bundle download before; signed upgrade fixtures downloaded in **33s**. Larger handoffs/additional fixtures and network variability prevent attributing net savings to gzip alone. |
+| Upgrade / publication | Upgrade job **5m57s**, gate **5m12s**, versus 4m10s / 2m49s baseline. Publish job **6s**. |
+
+Coverage expanded, not reduced: manual **and** automatic upgrades passed for
+**0.3.3 → 0.4.0**, **0.3.5 → 0.4.0**, and **0.4.0 → 0.4.1** (synthetic newer
+fixture). That is six exercises versus four in the baseline, including all twelve
+new/restored terminal checks.
+Published-predecessor signature/Gatekeeper verification remained intact.
+
+Remaining bottlenecks are historical/native fixture preparation and the expanded
+upgrade gate. Future work should measure build/fixture reuse bound to the exact
+commit, test key and pinned inputs, and artifact/extraction costs—not skip
+predecessors, upgrade modes or verification. Warm-cache release savings remain
+unmeasured; this achieved result is a two-release comparison, not isolated proof
+of each optimization's contribution.
