@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE ticket_runs SET state=$2,error=$3 WHERE run_id=$1 AND state='running'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "df53b534405bce2c8a139d128c6872d49de17b03ad60c040a30ad4bfa02e1cfd"
+}

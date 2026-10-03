@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tickets SET revision=revision+1 WHERE id=$1 AND generation=$2 AND status=$3 AND status<>$4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "22929b8b8b8cef16da47ef2c7f148655dc78cadee421de907e353237404224fe"
+}

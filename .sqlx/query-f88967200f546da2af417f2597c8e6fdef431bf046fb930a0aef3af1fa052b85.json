@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT r.run_id,r.ticket_id,r.generation,r.agent_id,r.model,r.instructions,r.prompt,t.workspace_id FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id WHERE r.state='running'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "run_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "ticket_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "generation",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "agent_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "model",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "instructions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "prompt",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "workspace_id",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f88967200f546da2af417f2597c8e6fdef431bf046fb930a0aef3af1fa052b85"
+}

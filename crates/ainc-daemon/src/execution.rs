@@ -9,7 +9,7 @@ use crate::{
     worker::{Leased, Reconcile, Tasks},
 };
 use futures::future::BoxFuture;
-use sqlx::{FromRow, PgPool};
+use sqlx::PgPool;
 use std::{sync::Arc, time::Duration};
 use turnkeel::{Agent, AgentSource, Model, ModelError, RunId, Runtime, RuntimeConfig};
 
@@ -19,7 +19,18 @@ pub trait ModelCatalog: Send + Sync + 'static {
     fn resolve(&self, id: &str) -> Result<Arc<dyn Model>, ModelError>;
 }
 
-const DEFINITION_SQL: &str = "SELECT r.run_id,r.ticket_id,r.generation,r.agent_id,r.model,r.instructions,r.prompt,t.workspace_id FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id";
+/// `query_as!` of a [`Definition`]: its columns and the run's Ticket, then `$tail`
+/// (a literal starting at `WHERE`), then the query's arguments.
+macro_rules! select_definition {
+    ($tail:literal $(, $arg:expr)* $(,)?) => {
+        sqlx::query_as!(
+            Definition,
+            "SELECT r.run_id,r.ticket_id,r.generation,r.agent_id,r.model,r.instructions,r.prompt,t.workspace_id FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id "
+                + $tail
+            $(, $arg)*
+        )
+    };
+}
 
 /// Every Ticket run acts through its own agent definition, named after the run so the
 /// tools it carries know which assignment they work for. The runtime asks for the
@@ -45,12 +56,10 @@ impl AgentSource for TicketAgents {
             let Some(run_id) = run_id else {
                 return Ok(None);
             };
-            let definition: Option<Definition> =
-                sqlx::query_as(&format!("{DEFINITION_SQL} WHERE r.run_id=$1"))
-                    .bind(&run_id)
-                    .fetch_optional(&this.pool)
-                    .await
-                    .map_err(|error| turnkeel::Error::Other(error.into()))?;
+            let definition = select_definition!("WHERE r.run_id=$1", run_id)
+                .fetch_optional(&this.pool)
+                .await
+                .map_err(|error| turnkeel::Error::Other(error.into()))?;
             definition
                 .map(|d| d.agent(&this.pool, this.models.as_ref(), &this.policy))
                 .transpose()
@@ -58,7 +67,7 @@ impl AgentSource for TicketAgents {
         })
     }
 }
-#[derive(Clone, FromRow)]
+#[derive(Clone)]
 struct Definition {
     run_id: String,
     ticket_id: i64,
@@ -174,10 +183,9 @@ impl Runner {
 impl Reconcile for Dispatcher {
     async fn reconcile(&mut self, tasks: &mut Tasks) -> anyhow::Result<()> {
         self.dispatch().await?;
-        let definitions: Vec<Definition> =
-            sqlx::query_as(&format!("{DEFINITION_SQL} WHERE r.state='running'"))
-                .fetch_all(&self.pool)
-                .await?;
+        let definitions = select_definition!("WHERE r.state='running'")
+            .fetch_all(&self.pool)
+            .await?;
         for definition in definitions {
             let runtime = self.runtime.clone();
             let pool = self.pool.clone();
@@ -205,17 +213,23 @@ impl Reconcile for Dispatcher {
 }
 impl Dispatcher {
     async fn dispatch(&self) -> anyhow::Result<()> {
-        sqlx::query("INSERT INTO worker_health(id,last_seen) VALUES('tickets',extract(epoch FROM clock_timestamp())::bigint) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen")
+        sqlx::query!("INSERT INTO worker_health(id,last_seen) VALUES('tickets',extract(epoch FROM clock_timestamp())::bigint) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen")
             .execute(&self.pool).await?;
-        let rows: Vec<(i64, String, String)> = sqlx::query_as(
-            "SELECT id,action,run_id FROM dispatch_outbox WHERE NOT dispatched ORDER BY id",
+        let rows = sqlx::query!(
+            "SELECT id,action,run_id FROM dispatch_outbox WHERE NOT dispatched ORDER BY id"
         )
         .fetch_all(&self.pool)
         .await?;
-        for (id, action, run_id) in rows {
-            if action == "cancel" {
+        for row in rows {
+            let (id, run_id) = (row.id, row.run_id);
+            if row.action == "cancel" {
                 // A queued start can have been cancelled before any SDK run existed.
-                let started:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM dispatch_outbox WHERE run_id=$1 AND action='start' AND dispatched)").bind(&run_id).fetch_one(&self.pool).await?;
+                let started = sqlx::query_scalar!(
+                    r#"SELECT EXISTS(SELECT 1 FROM dispatch_outbox WHERE run_id=$1 AND action='start' AND dispatched) AS "started!""#,
+                    run_id
+                )
+                .fetch_one(&self.pool)
+                .await?;
                 if started {
                     match self.runtime.run_by_id(RunId::new(&run_id)).cancel().await {
                         Ok(()) | Err(turnkeel::Error::NotFound) => {}
@@ -223,7 +237,12 @@ impl Dispatcher {
                     }
                 }
             } else {
-                let definition:Option<Definition>=sqlx::query_as(&format!("{DEFINITION_SQL} AND t.generation=r.generation WHERE r.run_id=$1 AND r.state IN ('queued','running')")).bind(&run_id).fetch_optional(&self.pool).await?;
+                let definition = select_definition!(
+                    "WHERE t.generation=r.generation AND r.run_id=$1 AND r.state IN ('queued','running')",
+                    run_id
+                )
+                .fetch_optional(&self.pool)
+                .await?;
                 if let Some(definition) = definition {
                     let agent = definition.agent(&self.pool, self.models.as_ref(), &self.policy)?;
                     // Mark running before dispatch so tools can pass their authorization
@@ -250,10 +269,10 @@ impl Dispatcher {
                         )
                         .await?;
                     }
-                    sqlx::query(
+                    sqlx::query!(
                         "UPDATE ticket_runs SET state='running' WHERE run_id=$1 AND state='queued'",
+                        run_id
                     )
-                    .bind(&run_id)
                     .execute(&mut *tx)
                     .await?;
                     tx.commit().await?;
@@ -263,8 +282,7 @@ impl Dispatcher {
                 }
             }
             // If the process dies after dispatch, the same stable ID is submitted again.
-            sqlx::query("UPDATE dispatch_outbox SET dispatched=true WHERE id=$1")
-                .bind(id)
+            sqlx::query!("UPDATE dispatch_outbox SET dispatched=true WHERE id=$1", id)
                 .execute(&self.pool)
                 .await?;
         }
@@ -281,13 +299,13 @@ async fn advance(
     from: TicketStatus,
     to: TicketStatus,
 ) -> Result<bool, sqlx::Error> {
-    let moved = sqlx::query(
+    let moved = sqlx::query!(
         "UPDATE tickets SET revision=revision+1 WHERE id=$1 AND generation=$2 AND status=$3 AND status<>$4",
+        definition.ticket_id,
+        definition.generation,
+        from.as_str(),
+        to.as_str()
     )
-    .bind(definition.ticket_id)
-    .bind(definition.generation)
-    .bind(from)
-    .bind(to)
     .execute(&mut **tx)
     .await?
     .rows_affected()
@@ -341,14 +359,15 @@ async fn project(
     )
     .await
     .map_err(|error| anyhow::anyhow!("result Comment refused: {error:?}"))?;
-    let changed =
-        sqlx::query("UPDATE ticket_runs SET state=$2,error=$3 WHERE run_id=$1 AND state='running'")
-            .bind(&definition.run_id)
-            .bind(state)
-            .bind(error)
-            .execute(&mut *tx)
-            .await?
-            .rows_affected();
+    let changed = sqlx::query!(
+        "UPDATE ticket_runs SET state=$2,error=$3 WHERE run_id=$1 AND state='running'",
+        definition.run_id,
+        state,
+        error
+    )
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
     if changed == 0 {
         return Ok(());
     }
@@ -360,10 +379,12 @@ async fn project(
     )
     .await?;
     if state == "completed" {
-        let previous: TicketStatus = sqlx::query_scalar("SELECT status FROM tickets WHERE id=$1")
-            .bind(definition.ticket_id)
-            .fetch_one(&mut *tx)
-            .await?;
+        let previous = sqlx::query_scalar!(
+            r#"SELECT status AS "status: TicketStatus" FROM tickets WHERE id=$1"#,
+            definition.ticket_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
         if advance(&mut tx, definition, previous, TicketStatus::Done).await? {
             tickets::record(
                 &mut tx,
@@ -374,11 +395,13 @@ async fn project(
             .await?;
         }
     }
-    sqlx::query("SELECT pg_notify($1,$2)")
-        .bind(coordination::RESULTS)
-        .bind(&definition.run_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query!(
+        "SELECT pg_notify($1,$2)",
+        coordination::RESULTS,
+        definition.run_id
+    )
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -441,7 +464,7 @@ mod tests {
             },
         )
         .await;
-        sqlx::query_as(DEFINITION_SQL)
+        select_definition!("")
             .fetch_one(pool)
             .await
             .unwrap()

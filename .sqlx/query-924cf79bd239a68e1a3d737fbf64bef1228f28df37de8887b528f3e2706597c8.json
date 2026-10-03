@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO worker_health(id,last_seen) VALUES('tickets',extract(epoch FROM clock_timestamp())::bigint) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "924cf79bd239a68e1a3d737fbf64bef1228f28df37de8887b528f3e2706597c8"
+}

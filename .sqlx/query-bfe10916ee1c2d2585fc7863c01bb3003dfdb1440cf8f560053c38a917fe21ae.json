@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE dispatch_outbox SET dispatched=true WHERE id=$1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bfe10916ee1c2d2585fc7863c01bb3003dfdb1440cf8f560053c38a917fe21ae"
+}
