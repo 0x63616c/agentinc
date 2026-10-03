@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS(SELECT 1 FROM legacy_imports WHERE source=$1) AS \"imported!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "imported!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "7ad9d36a299fe7aeed7cf6f22421bfd0256fd8cb48049df7db5eda11083a4f21"
+}

@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT tool,arguments,result FROM tool_effects WHERE run_id=$1 AND effect_key=$2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tool",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "arguments",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 2,
+        "name": "result",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "69db3b2f6e7c25d83226b5bee55f40818edf7245b28c605fe691a2930bbae086"
+}

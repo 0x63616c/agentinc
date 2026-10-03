@@ -133,27 +133,27 @@ impl CodingTool {
             .await
             .map_err(failed)?
             .ok_or_else(|| invalid("The Ticket assignment is no longer active."))?;
-        let prior: Option<(String, Value, Option<Value>)> = sqlx::query_as(
+        let prior = sqlx::query!(
             "SELECT tool,arguments,result FROM tool_effects WHERE run_id=$1 AND effect_key=$2",
+            self.run_id,
+            ctx.idempotency_key()
         )
-        .bind(&self.run_id)
-        .bind(ctx.idempotency_key())
         .fetch_optional(&mut *tx)
         .await
         .map_err(failed)?;
-        if let Some((tool, old, result)) = prior {
-            if tool != self.name() || old != args {
+        if let Some(prior) = prior {
+            if prior.tool != self.name() || prior.arguments != args {
                 return Err(invalid("This effect key belongs to a different command."));
             }
-            return result.ok_or_else(||invalid("The previous tool outcome is unknown. Inspect the workspace before taking another action."));
+            return prior.result.ok_or_else(||invalid("The previous tool outcome is unknown. Inspect the workspace before taking another action."));
         }
-        sqlx::query(
+        sqlx::query!(
             "INSERT INTO tool_effects(run_id,effect_key,tool,arguments) VALUES ($1,$2,$3,$4)",
+            self.run_id,
+            ctx.idempotency_key(),
+            self.name(),
+            args
         )
-        .bind(&self.run_id)
-        .bind(ctx.idempotency_key())
-        .bind(self.name())
-        .bind(&args)
         .execute(&mut *tx)
         .await
         .map_err(failed)?;
@@ -171,7 +171,15 @@ impl CodingTool {
         let live = LiveAssignment::try_lock(&mut tx, &self.actor)
             .await
             .map_err(failed)?;
-        sqlx::query("UPDATE tool_effects SET result=$3 WHERE run_id=$1 AND effect_key=$2 AND result IS NULL").bind(&self.run_id).bind(ctx.idempotency_key()).bind(&result).execute(&mut *tx).await.map_err(failed)?;
+        sqlx::query!(
+            "UPDATE tool_effects SET result=$3 WHERE run_id=$1 AND effect_key=$2 AND result IS NULL",
+            self.run_id,
+            ctx.idempotency_key(),
+            result
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(failed)?;
         // Historical receipts survive reassignment; stale agents cannot project Comments.
         if live.is_some() {
             self.comment(

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO tickets(id,title,status) VALUES ($1,$2,CASE WHEN $3 THEN 'done' ELSE 'to_do' END)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "42ac8d7b6b179d728c49098da22254ade098e2702d9ee1571df1a00100220d0c"
+}

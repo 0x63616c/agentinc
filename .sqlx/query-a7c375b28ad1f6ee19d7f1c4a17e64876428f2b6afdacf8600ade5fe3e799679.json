@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tool_effects SET result=$3 WHERE run_id=$1 AND effect_key=$2 AND result IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a7c375b28ad1f6ee19d7f1c4a17e64876428f2b6afdacf8600ade5fe3e799679"
+}

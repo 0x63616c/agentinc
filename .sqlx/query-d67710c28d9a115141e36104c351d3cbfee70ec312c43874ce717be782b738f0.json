@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT c.workspace_id,r.agent_id,r.ticket_id,r.generation FROM agent_credentials c JOIN ticket_runs r ON r.run_id=c.run_id WHERE c.token_hash=$1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "workspace_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "agent_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "ticket_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "generation",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d67710c28d9a115141e36104c351d3cbfee70ec312c43874ce717be782b738f0"
+}

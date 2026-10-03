@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO assistant_settings(key,value) VALUES ($1,$2) ON CONFLICT(workspace_id,key) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c354415427a4ddc04ceeb94dac8f3ae39918e1fe87669da41536aa2e9dc48430"
+}
