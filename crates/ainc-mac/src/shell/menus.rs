@@ -112,6 +112,7 @@ impl Shell {
             )
             .child(
                 MenuEntry::new("user-menu.settings", "Settings")
+                    .selector("user-menu.settings")
                     .icon("settings")
                     .shortcut("⌘,")
                     .build(

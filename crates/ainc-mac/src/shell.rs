@@ -1518,10 +1518,10 @@ mod interaction_tests {
         });
         assert_sidebar_hints(cx, true);
         // No release event: AppKit may have sent it to a different responder.
-        let settings = cx.debug_bounds("sidebar-settings").unwrap().center();
-        cx.simulate_click(settings, Modifiers::default());
+        let agents = cx.debug_bounds("sidebar-nav-3").unwrap().center();
+        cx.simulate_click(agents, Modifiers::default());
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Settings);
+            assert_eq!(shell.session.current(), Route::Agents);
             assert!(!shell.command_held);
         });
         assert_sidebar_hints(cx, false);
@@ -1677,10 +1677,20 @@ mod interaction_tests {
         });
         cx.simulate_keystrokes("cmd-1");
         cx.update(|window, cx| window.draw(cx).clear(cx));
-        let settings = cx.debug_bounds("sidebar-settings").unwrap().center();
+        assert!(cx.debug_bounds("sidebar-settings").is_none());
+        let profile = cx.debug_bounds("sidebar-profile").unwrap().center();
+        cx.simulate_click(profile, Modifiers::default());
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(
+                shell.overlays.borrow().active(),
+                Some(Overlay::UserMenu { support: false })
+            );
+        });
+        let settings = cx.debug_bounds("user-menu.settings").unwrap().center();
         cx.simulate_click(settings, Modifiers::default());
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.session.current(), Route::Settings)
+            assert_eq!(shell.session.current(), Route::Settings);
+            assert_eq!(shell.overlays.borrow().active(), None);
         });
     }
 

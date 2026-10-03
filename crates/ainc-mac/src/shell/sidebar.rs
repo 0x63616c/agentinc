@@ -1,67 +1,49 @@
 use super::*;
 
 impl Shell {
-    fn sidebar_item(
-        &self,
-        route: Route,
-        index: Option<usize>,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
+    fn sidebar_item(&self, route: Route, index: usize, cx: &mut Context<Self>) -> Stateful<Div> {
         let selected = self.session.current() == route;
         let tint = if selected { TEXT } else { TEXT_SECONDARY };
-        let hover_group = format!("sidebar-item-{}", index.unwrap_or(0));
-        self.button(
-            ("nav", index.unwrap_or(0)),
-            route.label(),
-            Control::Navigate(route),
-            cx,
-        )
-        .group(hover_group.clone())
-        .accessibility_id(format!(
-            "nav.{}",
-            route.label().to_lowercase().replace(' ', "-")
-        ))
-        .h(px(CONTROL_HEIGHT))
-        .when(route == Route::Agents, |s| s.mt(px(SPACE_6)))
-        .px(px(SPACE_2))
-        .gap(px(SIDEBAR_TEXT_GAP))
-        .rounded(px(RADIUS_MD))
-        .debug_selector(move || match index {
-            Some(index) => format!("sidebar-nav-{index}"),
-            None => "sidebar-settings".into(),
-        })
-        .text_size(type_size(LABEL_SIZE))
-        .text_color(rgb(tint))
-        .when(selected, |s| {
-            s.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM)
-        })
-        .child(nav_icon(route.icon(), selected, tint, hover_group))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .truncate()
-                .when_some(index, |s, index| {
-                    s.debug_selector(move || format!("sidebar-label-{index}"))
-                })
-                .child(route.label()),
-        )
-        .when_some(index.filter(|_| self.command_held), |s, index| {
-            s.child(
-                kbd(format!("⌘{}", index % 10))
-                    .debug_selector(move || format!("sidebar-badge-{index}")),
+        let hover_group = format!("sidebar-item-{index}");
+        self.button(("nav", index), route.label(), Control::Navigate(route), cx)
+            .group(hover_group.clone())
+            .accessibility_id(format!(
+                "nav.{}",
+                route.label().to_lowercase().replace(' ', "-")
+            ))
+            .h(px(CONTROL_HEIGHT))
+            .when(route == Route::Agents, |s| s.mt(px(SPACE_6)))
+            .px(px(SPACE_2))
+            .gap(px(SIDEBAR_TEXT_GAP))
+            .rounded(px(RADIUS_MD))
+            .debug_selector(move || format!("sidebar-nav-{index}"))
+            .text_size(type_size(LABEL_SIZE))
+            .text_color(rgb(tint))
+            .when(selected, |s| {
+                s.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM)
+            })
+            .child(nav_icon(route.icon(), selected, tint, hover_group))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .debug_selector(move || format!("sidebar-label-{index}"))
+                    .child(route.label()),
             )
-        })
-        .when(index.is_none() && self.command_held, |s| s.child(kbd("⌘,")))
+            .when(self.command_held, |s| {
+                s.child(
+                    kbd(format!("⌘{}", index % 10))
+                        .debug_selector(move || format!("sidebar-badge-{index}")),
+                )
+            })
     }
 
     pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut nav = column().gap(px(2.));
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
-            nav = nav.child(self.sidebar_item(page.route, Some(index + 1), cx));
+            nav = nav.child(self.sidebar_item(page.route, index + 1, cx));
         }
-        // Settings closes the navigation as its own group; the user menu repeats it.
-        nav = nav.child(self.sidebar_item(Route::Settings, None, cx).mt(px(SPACE_6)));
         let user_menu = match self.overlays.borrow().active() {
             Some(Overlay::UserMenu { support }) => Some(support),
             _ => None,
