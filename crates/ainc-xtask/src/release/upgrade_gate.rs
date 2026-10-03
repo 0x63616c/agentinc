@@ -249,6 +249,29 @@ fn sparkle_feed(
     Ok(())
 }
 
+fn verify_runtime(profile: &Path, version: &str) -> Result<()> {
+    let url = read_to_string(&profile.join("daemon/api-url"))?;
+    let identity: Value = serde_json::from_slice(&http::request(
+        &format!("{}/version", url.trim()),
+        "GET",
+        &[],
+        None,
+        Duration::from_secs(10),
+    )?)?;
+    anyhow::ensure!(
+        identity["version"] == version,
+        "running daemon must match installed app"
+    );
+    http::request(
+        &format!("{}/health/ready", url.trim()),
+        "GET",
+        &[],
+        None,
+        Duration::from_secs(10),
+    )?;
+    Ok(())
+}
+
 fn exercise(
     mode: &str,
     payload: Payload,
@@ -303,6 +326,8 @@ fn exercise(
     let profile = root.join("profile");
     fs::create_dir(&profile)?;
     let marker = root.join("relaunch.txt");
+    let downloaded = root.join("downloaded.txt");
+    let preparation = root.join("preparation.txt");
     let stderr_path = root.join("app.stderr.log");
     let mut command = Command::new(app.join("Contents/MacOS/AgentInc"));
     command
@@ -317,6 +342,8 @@ fn exercise(
         )
         .env("AINC_UPGRADE_TEST_FROM", &old_version)
         .env("AINC_UPGRADE_TEST_SUCCESS_FILE", &marker)
+        .env("AINC_UPGRADE_TEST_DOWNLOADED_FILE", &downloaded)
+        .env("AINC_UPGRADE_TEST_PREPARATION_FILE", &preparation)
         .env("AGENTINC_SESSION_PATH", profile.join("sessions.json"))
         .env("AINC_DISCOVERY_FILE", profile.join("daemon/api-url"))
         .env("AINC_LEGACY_DIR", profile.join("legacy"))
@@ -325,6 +352,42 @@ fn exercise(
         .stderr(fs::File::create(&stderr_path)?);
     let mut process = ManagedChild::spawn(command)?;
     let result = (|| -> Result<()> {
+        if mode == "download-only" {
+            use std::os::unix::process::ExitStatusExt;
+            wait_for(
+                root,
+                || downloaded.is_file(),
+                240,
+                "background update was not cached",
+            )?;
+            anyhow::ensure!(
+                !preparation.exists(),
+                "background download armed Sparkle installation before consent"
+            );
+            verify_runtime(&profile, &old_version)?;
+            process.kill();
+            let status = process.wait_timeout(Duration::from_secs(30))?;
+            anyhow::ensure!(
+                status.signal() == Some(libc::SIGKILL),
+                "crash gate did not kill the actual UI process"
+            );
+            anyhow::ensure!(
+                !preparation.exists(),
+                "background update prepared an installer before UI death"
+            );
+            anyhow::ensure!(
+                field(&release_json(&app)?, "version")? == old_version,
+                "download-only crash replaced the app"
+            );
+            verify_app(&app)?;
+            verify_runtime(&profile, &old_version)?;
+            terminal_smoke::check(&app, &profile)?;
+            payload.verify(&server.requests())?;
+            println!(
+                "PASS download-only {payload:?}: UI SIGKILL left {old_version} and its runtime intact; no Sparkle preparation"
+            );
+            return Ok(());
+        }
         let status = process.wait_timeout(Duration::from_secs(240))?;
         let stderr = fs::read(&stderr_path)?;
         if !status.success() {
@@ -370,25 +433,7 @@ fn exercise(
             return Err(std::io::Error::last_os_error().into());
         }
         verify_app(&app)?;
-        let url = read_to_string(&profile.join("daemon/api-url"))?;
-        let identity: Value = serde_json::from_slice(&http::request(
-            &format!("{}/version", url.trim()),
-            "GET",
-            &[],
-            None,
-            Duration::from_secs(10),
-        )?)?;
-        anyhow::ensure!(
-            identity["version"] == next_version,
-            "restarted daemon must match installed app"
-        );
-        http::request(
-            &format!("{}/health/ready", url.trim()),
-            "GET",
-            &[],
-            None,
-            Duration::from_secs(10),
-        )?;
+        verify_runtime(&profile, &next_version)?;
         terminal_smoke::check(&app, &profile)?;
         if uses_sparkle {
             let requests = server.requests();
@@ -579,8 +624,18 @@ pub fn cli(args: &[String]) -> Result<()> {
         )?;
     }
     for payload in [Payload::Delta, Payload::BrokenDelta] {
-        exercise("manual", payload, &candidate, &newer, &key, &manifest_tool)?;
+        for mode in ["manual", "automatic"] {
+            exercise(mode, payload, &candidate, &newer, &key, &manifest_tool)?;
+        }
     }
+    exercise(
+        "download-only",
+        Payload::Delta,
+        &candidate,
+        &newer,
+        &key,
+        &manifest_tool,
+    )?;
     Ok(())
 }
 
