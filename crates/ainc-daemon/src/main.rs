@@ -121,7 +121,10 @@ async fn run() -> Result<()> {
         serde_json::from_str(&env::var("AINC_TOOL_ALLOW").unwrap_or_else(|_| "[]".into()))
             .context("AINC_TOOL_ALLOW must be a JSON list of read_file, write_file, shell, git")?;
     let policy = ainc_daemon::coding::WorkspacePolicy::new(workspace, allowed)?;
-    let models = std::sync::Arc::new(ainc_daemon::inference::CodexModels::local()?);
+    let connection = ainc_daemon::connection::Connection::local();
+    let models = std::sync::Arc::new(ainc_daemon::inference::CodexModels::new(
+        connection.clone(),
+    )?);
     let runner =
         ainc_daemon::conversations::Runner::start(pool.clone(), config.clone(), models.clone())
             .await?;
@@ -156,7 +159,7 @@ async fn run() -> Result<()> {
         async {
             axum::serve(
                 listener,
-                ainc_daemon::product_router(product.clone())
+                ainc_daemon::product_router_with(product.clone(), connection)
                     .merge(ainc_daemon::temporal::router(product, config, ui_url))
                     .route("/internal/drain", drain),
             )

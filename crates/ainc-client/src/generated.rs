@@ -945,12 +945,6 @@ pub mod types {
     ///    "signing_in"
     ///  ],
     ///  "properties": {
-    ///    "account": {
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
     ///    "auth_url": {
     ///      "type": [
     ///        "string",
@@ -969,6 +963,13 @@ pub mod types {
     ///        "$ref": "#/components/schemas/Model"
     ///      }
     ///    },
+    ///    "signed_in_as": {
+    ///      "description": "Who is signed in, as \"email · plan\", or `None`.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "signing_in": {
     ///      "type": "boolean"
     ///    }
@@ -979,12 +980,13 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
     pub struct ConnectionStatus {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub account: ::std::option::Option<::std::string::String>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub auth_url: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub error: ::std::option::Option<::std::string::String>,
         pub models: ::std::vec::Vec<Model>,
+        ///Who is signed in, as "email · plan", or `None`.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub signed_in_as: ::std::option::Option<::std::string::String>,
         pub signing_in: bool,
     }
     impl ConnectionStatus {
@@ -3810,10 +3812,6 @@ pub mod types {
         }
         #[derive(Clone, Debug)]
         pub struct ConnectionStatus {
-            account: ::std::result::Result<
-                ::std::option::Option<::std::string::String>,
-                ::std::string::String,
-            >,
             auth_url: ::std::result::Result<
                 ::std::option::Option<::std::string::String>,
                 ::std::string::String,
@@ -3823,30 +3821,24 @@ pub mod types {
                 ::std::string::String,
             >,
             models: ::std::result::Result<::std::vec::Vec<super::Model>, ::std::string::String>,
+            signed_in_as: ::std::result::Result<
+                ::std::option::Option<::std::string::String>,
+                ::std::string::String,
+            >,
             signing_in: ::std::result::Result<bool, ::std::string::String>,
         }
         impl ::std::default::Default for ConnectionStatus {
             fn default() -> Self {
                 Self {
-                    account: Ok(Default::default()),
                     auth_url: Ok(Default::default()),
                     error: Ok(Default::default()),
                     models: Err("no value supplied for models".to_string()),
+                    signed_in_as: Ok(Default::default()),
                     signing_in: Err("no value supplied for signing_in".to_string()),
                 }
             }
         }
         impl ConnectionStatus {
-            pub fn account<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.account = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for account: {e}"));
-                self
-            }
             pub fn auth_url<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
@@ -3877,6 +3869,16 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for models: {e}"));
                 self
             }
+            pub fn signed_in_as<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<::std::string::String>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.signed_in_as = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for signed_in_as: {e}"));
+                self
+            }
             pub fn signing_in<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<bool>,
@@ -3894,10 +3896,10 @@ pub mod types {
                 value: ConnectionStatus,
             ) -> ::std::result::Result<Self, super::error::ConversionError> {
                 Ok(Self {
-                    account: value.account?,
                     auth_url: value.auth_url?,
                     error: value.error?,
                     models: value.models?,
+                    signed_in_as: value.signed_in_as?,
                     signing_in: value.signing_in?,
                 })
             }
@@ -3905,10 +3907,10 @@ pub mod types {
         impl ::std::convert::From<super::ConnectionStatus> for ConnectionStatus {
             fn from(value: super::ConnectionStatus) -> Self {
                 Self {
-                    account: Ok(value.account),
                     auth_url: Ok(value.auth_url),
                     error: Ok(value.error),
                     models: Ok(value.models),
+                    signed_in_as: Ok(value.signed_in_as),
                     signing_in: Ok(value.signing_in),
                 }
             }

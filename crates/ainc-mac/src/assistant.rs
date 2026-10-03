@@ -16,7 +16,7 @@ pub fn status(daemon: Option<&Daemon>) -> Result<(Option<String>, Vec<Model>)> {
     if let Some(error) = status.error {
         bail!("{error}");
     }
-    Ok((status.account, status.models))
+    Ok((status.signed_in_as, status.models))
 }
 /// Blocks until sign-in finishes or is cancelled; run it on the background executor.
 pub fn login(

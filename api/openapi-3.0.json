@@ -510,10 +510,6 @@
       },
       "ConnectionStatus": {
         "properties": {
-          "account": {
-            "nullable": true,
-            "type": "string"
-          },
           "auth_url": {
             "nullable": true,
             "type": "string"
@@ -527,6 +523,11 @@
               "$ref": "#/components/schemas/Model"
             },
             "type": "array"
+          },
+          "signed_in_as": {
+            "description": "Who is signed in, as \"email · plan\", or `None`.",
+            "nullable": true,
+            "type": "string"
           },
           "signing_in": {
             "type": "boolean"

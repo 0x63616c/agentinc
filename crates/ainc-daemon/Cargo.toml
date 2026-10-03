@@ -25,6 +25,7 @@ sha2 = "0.10"
 turnkeel.workspace = true
 futures.workspace = true
 reqwest = { version = "0.13", features = ["json", "stream"] }
+eventsource-stream = "0.2"
 anyhow.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 serde.workspace = true

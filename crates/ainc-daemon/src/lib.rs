@@ -1,7 +1,6 @@
 pub mod automations;
-mod codex;
 pub mod coding;
-mod connection;
+pub mod connection;
 mod conversation_tools;
 pub mod conversations;
 pub mod execution;
@@ -133,10 +132,18 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     sqlx::migrate!().run(pool).await
 }
 
+/// The product API with its own Connection; the daemon shares one with its models.
 pub fn product_router(product: product::Product) -> Router {
+    product_router_with(product, connection::Connection::local())
+}
+
+pub fn product_router_with(
+    product: product::Product,
+    connection: connection::Connection,
+) -> Router {
     router(product.pool.clone())
         .merge(product::router(product.clone()))
-        .merge(connection::router(product.clone()))
+        .merge(connection::router(product.clone(), connection))
         .merge(tickets::router(product.clone()))
         .merge(automations::router(product.clone()))
         .merge(terminal_sessions::router(product.clone()))

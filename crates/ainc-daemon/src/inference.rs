@@ -1,9 +1,10 @@
-//! Personal subscription model steps. OAuth remains owned by the official Codex
-//! sign-in client; the Responses request and agent loop are ours.
-use futures::{StreamExt, future::BoxFuture};
-use serde::Deserialize;
+//! Personal subscription model steps. Credentials come from the Connection; the
+//! Responses request and agent loop are ours.
+use crate::connection::{Connection, Tokens};
+use eventsource_stream::Eventsource;
+use futures::{Stream, StreamExt, future::BoxFuture};
 use serde_json::{Value, json};
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 use turnkeel::{Content, Model, ModelError, ModelRequest, ModelResponse, Role, StopReason};
 
 const ENDPOINT: &str = "https://chatgpt.com/backend-api/codex/responses";
@@ -13,25 +14,18 @@ const MAX_RESPONSE: usize = 4 * 1024 * 1024;
 #[derive(Clone)]
 pub struct CodexModel {
     model: String,
-    connection: Arc<CodexModels>,
+    shared: CodexModels,
 }
 
 /// One personal Connection shared across selected models and agent definitions.
 #[derive(Clone)]
 pub struct CodexModels {
-    profile: PathBuf,
+    connection: Connection,
     endpoint: String,
     http: reqwest::Client,
-    auth_lock: Arc<tokio::sync::Mutex<()>>,
 }
 impl CodexModels {
-    pub fn local() -> Result<Self, ModelError> {
-        Self::new(
-            crate::codex::home()
-                .map_err(|_| ModelError::fatal("Connection profile unavailable."))?,
-        )
-    }
-    pub fn new(profile: PathBuf) -> Result<Self, ModelError> {
+    pub fn new(connection: Connection) -> Result<Self, ModelError> {
         let endpoint = ENDPOINT.to_owned();
         #[cfg(debug_assertions)]
         let endpoint = if let Ok(value) = std::env::var("AINC_TEST_RESPONSES_URL") {
@@ -51,94 +45,31 @@ impl CodexModels {
             endpoint
         };
         Ok(Self {
-            profile,
+            connection,
             endpoint,
             http: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .map_err(|_| ModelError::fatal("Could not create model transport."))?,
-            auth_lock: Arc::default(),
+        })
+    }
+    fn model(&self, id: &str) -> Result<CodexModel, ModelError> {
+        if id.trim().is_empty() {
+            return Err(ModelError::fatal("Select a model before starting work."));
+        }
+        Ok(CodexModel {
+            model: id.into(),
+            shared: self.clone(),
         })
     }
 }
 impl crate::execution::ModelCatalog for CodexModels {
     fn resolve(&self, id: &str) -> Result<Arc<dyn Model>, ModelError> {
-        if id.trim().is_empty() {
-            return Err(ModelError::fatal("Select a model before starting work."));
-        }
-        Ok(Arc::new(CodexModel {
-            model: id.into(),
-            connection: Arc::new(self.clone()),
-        }))
+        Ok(Arc::new(self.model(id)?))
     }
-}
-
-#[derive(Deserialize)]
-struct AuthFile {
-    tokens: Tokens,
-}
-#[derive(Deserialize)]
-struct Tokens {
-    access_token: String,
-    account_id: String,
 }
 
 impl CodexModel {
-    pub fn new(model: String, profile: PathBuf) -> Result<Self, ModelError> {
-        if model.trim().is_empty() {
-            return Err(ModelError::fatal("Select a model before starting work."));
-        }
-        Ok(Self {
-            model,
-            connection: Arc::new(CodexModels::new(profile)?),
-        })
-    }
-
-    async fn credentials(&self) -> Result<(Tokens, String), ModelError> {
-        let guard = self.connection.auth_lock.clone().lock_owned().await;
-        let profile = self.connection.profile.clone();
-        let mut selected_model = self.model.clone();
-        tokio::task::spawn_blocking(move || {
-            let _guard = guard;
-            let mut client = crate::codex::Client::start_at(&profile).map_err(|_| {
-                ModelError::fatal("Codex sign-in is unavailable. Refresh the Connection.")
-            })?;
-            let account = client
-                .call("account/read", json!({"refreshToken":true}))
-                .map_err(|_| ModelError::fatal("Refresh the ChatGPT Connection in Settings."))?;
-            if account["account"]["type"] != "chatgpt" {
-                return Err(ModelError::fatal(
-                    "Sign in with a ChatGPT subscription in Settings.",
-                ));
-            }
-            let data = std::fs::read(profile.join("auth.json")).map_err(|_| {
-                ModelError::fatal("Sign in with a Codex file credential store for this profile.")
-            })?;
-            let auth: AuthFile = serde_json::from_slice(&data).map_err(|_| {
-                ModelError::fatal("ChatGPT Connection credentials are unavailable.")
-            })?;
-            if auth.tokens.access_token.is_empty() || auth.tokens.account_id.is_empty() {
-                return Err(ModelError::fatal("Sign in to ChatGPT in Settings."));
-            }
-            if selected_model == "connection-default" {
-                let models = client
-                    .call("model/list", json!({"limit":100}))
-                    .map_err(|_| {
-                        ModelError::fatal("Could not read the Connection's default model.")
-                    })?;
-                selected_model = models["data"]
-                    .as_array()
-                    .and_then(|items| items.iter().find(|m| m["isDefault"] == true))
-                    .and_then(|m| m["model"].as_str())
-                    .ok_or_else(|| ModelError::fatal("Select a model in Settings."))?
-                    .into();
-            }
-            Ok((auth.tokens, selected_model))
-        })
-        .await
-        .map_err(|_| ModelError::fatal("Connection refresh stopped."))?
-    }
-
     async fn request(
         &self,
         endpoint: &str,
@@ -146,7 +77,7 @@ impl CodexModel {
         request: ModelRequest,
     ) -> Result<ModelResponse, ModelError> {
         let response = self
-            .connection
+            .shared
             .http
             .post(endpoint)
             .bearer_auth(tokens.access_token)
@@ -168,19 +99,10 @@ impl CodexModel {
                 ))
             });
         }
-        let mut stream = response.bytes_stream();
-        let mut data = Vec::new();
-        while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|_| ModelError::retryable("Model response was interrupted."))?;
-            if data.len() + chunk.len() > MAX_RESPONSE {
-                return Err(ModelError::fatal(
-                    "Model response exceeded the supported size.",
-                ));
-            }
-            data.extend_from_slice(&chunk);
-        }
-        parse_stream(&data)
+        parse_stream(response.bytes_stream().map(|chunk| {
+            chunk.map_err(|_| ModelError::retryable("Model response was interrupted."))
+        }))
+        .await
     }
 }
 
@@ -194,9 +116,14 @@ impl Model for CodexModel {
     ) -> BoxFuture<'static, Result<ModelResponse, ModelError>> {
         let mut model = self.clone();
         Box::pin(async move {
-            let (tokens, selected) = model.credentials().await?;
+            let connection = model.shared.connection.clone();
+            let requested = model.model.clone();
+            let (tokens, selected) =
+                tokio::task::spawn_blocking(move || connection.credentials(&requested))
+                    .await
+                    .map_err(|_| ModelError::fatal("Connection refresh stopped."))??;
             model.model = selected;
-            if model.connection.endpoint != ENDPOINT
+            if model.shared.endpoint != ENDPOINT
                 && (tokens.access_token != "fixture-access-token"
                     || tokens.account_id != "fixture-account")
             {
@@ -204,9 +131,7 @@ impl Model for CodexModel {
                     "Fixture transport refuses real credentials.",
                 ));
             }
-            model
-                .request(&model.connection.endpoint, tokens, request)
-                .await
+            model.request(&model.shared.endpoint, tokens, request).await
         })
     }
 }
@@ -230,21 +155,34 @@ fn request_body(model: &str, request: ModelRequest) -> Result<Value, ModelError>
     )
 }
 
-fn parse_stream(bytes: &[u8]) -> Result<ModelResponse, ModelError> {
-    let body = std::str::from_utf8(bytes)
-        .map_err(|_| ModelError::fatal("Model response was not UTF-8."))?;
-    let normalized = body.replace("\r\n", "\n");
+/// Read a Responses SSE stream event by event until the response completes.
+async fn parse_stream<B: AsRef<[u8]>>(
+    body: impl Stream<Item = Result<B, ModelError>>,
+) -> Result<ModelResponse, ModelError> {
+    let mut seen = 0usize;
+    let events = body
+        .map(move |chunk| {
+            let chunk = chunk?;
+            seen += chunk.as_ref().len();
+            if seen > MAX_RESPONSE {
+                return Err(ModelError::fatal(
+                    "Model response exceeded the supported size.",
+                ));
+            }
+            Ok(chunk)
+        })
+        .eventsource();
+    let mut events = std::pin::pin!(events);
     let mut output = Vec::new();
-    for event in normalized.split("\n\n") {
-        let data = event
-            .lines()
-            .filter_map(|line| line.strip_prefix("data:").map(str::trim_start))
-            .collect::<Vec<_>>()
-            .join("\n");
-        if data.is_empty() || data == "[DONE]" {
+    while let Some(event) = events.next().await {
+        let event = event.map_err(|error| match error {
+            eventsource_stream::EventStreamError::Transport(error) => error,
+            _ => ModelError::fatal("Model response was not a valid event stream."),
+        })?;
+        if event.data.is_empty() || event.data == "[DONE]" {
             continue;
         }
-        let value: Value = serde_json::from_str(&data)
+        let value: Value = serde_json::from_str(&event.data)
             .map_err(|_| ModelError::fatal("Model sent an invalid event."))?;
         match value["type"].as_str() {
             Some("response.output_item.done") => {
@@ -352,6 +290,16 @@ mod tests {
     use std::sync::Mutex;
     use turnkeel::{Agent, Event, Message, Runtime, tool};
 
+    fn parsed(bytes: &[u8]) -> Result<ModelResponse, ModelError> {
+        futures::executor::block_on(parse_stream(futures::stream::iter([Ok(bytes)])))
+    }
+    fn fixture_model(dir: &tempfile::TempDir) -> CodexModel {
+        let connection = Connection::new(dir.path().into(), dir.path().join("absent"));
+        CodexModels::new(connection)
+            .unwrap()
+            .model("fixture")
+            .unwrap()
+    }
     fn tokens() -> Tokens {
         Tokens {
             access_token: "fixture-secret".into(),
@@ -403,11 +351,11 @@ mod tests {
             json!({"status":"completed"}),
             json!({"status":"completed","output":output}),
         ] {
-            let actual = parse_stream(streamed(output.clone(), response).as_bytes()).unwrap();
+            let actual = parsed(streamed(output.clone(), response).as_bytes()).unwrap();
             assert_eq!(actual.content, expected.content);
             assert_eq!(actual.stop_reason, StopReason::ToolUse);
         }
-        let reply = parse_stream(
+        let reply = parsed(
             streamed(
                 text_output("héllo"),
                 json!({"status":"completed","output":[]}),
@@ -431,41 +379,39 @@ mod tests {
             "data: {}\n\n",
             json!({"type":"response.output_item.done","item":text_output("partial")[0]})
         );
-        assert!(parse_stream(item.as_bytes()).unwrap_err().retryable);
+        assert!(parsed(item.as_bytes()).unwrap_err().retryable);
         for kind in ["response.failed", "response.incomplete", "error"] {
             let stream = format!(
                 "{item}data: {}\n\n",
                 json!({"type":kind,"error":"fixture-secret"})
             );
-            let error = parse_stream(stream.as_bytes()).unwrap_err();
+            let error = parsed(stream.as_bytes()).unwrap_err();
             assert!(!error.retryable);
             assert!(!error.message.contains("fixture-secret"));
         }
         assert!(
-            parse_stream(
-                streamed(text_output("partial"), json!({"status":"incomplete"})).as_bytes()
-            )
-            .is_err()
+            parsed(streamed(text_output("partial"), json!({"status":"incomplete"})).as_bytes())
+                .is_err()
         );
         let added = format!(
             "data: {}\n\n{}",
             json!({"type":"response.output_item.added","item":text_output("partial")[0]}),
             completed(json!([]))
         );
-        assert!(parse_stream(added.as_bytes()).is_err());
-        assert!(parse_stream(b"data: {\"type\":\"response.output_item.done\"}\n\n").is_err());
+        assert!(parsed(added.as_bytes()).is_err());
+        assert!(parsed(b"data: {\"type\":\"response.output_item.done\"}\n\n").is_err());
     }
 
     #[test]
     fn stream_failures_are_typed_and_do_not_expose_provider_secrets() {
-        assert!(!parse_stream(b"data: not-json\n\n").unwrap_err().retryable);
+        assert!(!parsed(b"data: not-json\n\n").unwrap_err().retryable);
         assert!(
-            parse_stream(b"data: {\"type\":\"response.created\"}\n\n")
+            parsed(b"data: {\"type\":\"response.created\"}\n\n")
                 .unwrap_err()
                 .retryable
         );
         let error =
-            parse_stream(b"data: {\"type\":\"response.failed\",\"error\":\"fixture-secret\"}\n\n")
+            parsed(b"data: {\"type\":\"response.failed\",\"error\":\"fixture-secret\"}\n\n")
                 .unwrap_err();
         assert!(!error.message.contains("fixture-secret"));
         assert!(!error.retryable);
@@ -474,7 +420,7 @@ mod tests {
             parse_output(&json!({"status":"incomplete","output":text_output("partial")})).is_err()
         );
         assert_eq!(
-            parse_stream(
+            parsed(
                 completed(text_output("héllo"))
                     .replace('\n', "\r\n")
                     .as_bytes()
@@ -545,7 +491,7 @@ mod tests {
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let dir = tempfile::tempdir()?;
         let model = FixtureModel {
-            model: CodexModel::new("fixture".into(), dir.path().into())?,
+            model: fixture_model(&dir),
             endpoint,
         };
         let agent = Agent::builder("responses-fixture-v1")
@@ -619,7 +565,7 @@ mod tests {
         let url = format!("http://{}", listener.local_addr()?);
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let dir = tempfile::tempdir()?;
-        let model = CodexModel::new("fixture".into(), dir.path().into())?;
+        let model = fixture_model(&dir);
         for (path, retryable) in [
             ("unauthorized", false),
             ("limited", true),
