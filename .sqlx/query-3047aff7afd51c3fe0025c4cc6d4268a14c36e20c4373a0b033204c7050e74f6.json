@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO occurrences(id,automation_id,revision,manual) VALUES($1,$2,$3,true)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3047aff7afd51c3fe0025c4cc6d4268a14c36e20c4373a0b033204c7050e74f6"
+}

@@ -111,10 +111,28 @@ pub(crate) async fn snapshot(
     actor: &Actor,
 ) -> Result<AutomationSnapshot, CommandError> {
     let mut tx = crate::pg::snapshot_tx(pool).await?;
-    let automations = sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id").bind(&actor.workspace).fetch_all(&mut *tx).await?;
+    let automations = sqlx::query_as!(
+        Automation,
+        "SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id",
+        actor.workspace
+    )
+    .fetch_all(&mut *tx)
+    .await?;
     // An Occurrence shows the run of its Ticket's current generation, whichever that is.
-    let occurrences = sqlx::query_as("SELECT o.id,o.automation_id,o.ticket_id,CASE WHEN r.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM worker_health WHERE id='tickets' AND last_seen > extract(epoch FROM clock_timestamp())::bigint-5) THEN 'worker_unavailable' ELSE COALESCE(r.state,o.state) END AS state,o.detail,o.scheduled_at FROM occurrences o JOIN automations a ON a.id=o.automation_id LEFT JOIN tickets t ON t.id=o.ticket_id LEFT JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE a.workspace_id=$1 ORDER BY o.scheduled_at DESC,o.id").bind(&actor.workspace).fetch_all(&mut *tx).await?;
-    let history = sqlx::query_as("SELECT h.id,h.automation_id,h.kind,h.count,h.observed_at FROM automation_history h JOIN automations a ON a.id=h.automation_id WHERE a.workspace_id=$1 ORDER BY h.id DESC").bind(&actor.workspace).fetch_all(&mut *tx).await?;
+    let occurrences = sqlx::query_as!(
+        OccurrenceView,
+        r#"SELECT o.id,o.automation_id,o.ticket_id,CASE WHEN r.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM worker_health WHERE id='tickets' AND last_seen > extract(epoch FROM clock_timestamp())::bigint-5) THEN 'worker_unavailable' ELSE COALESCE(r.state,o.state) END AS "state!",o.detail,o.scheduled_at FROM occurrences o JOIN automations a ON a.id=o.automation_id LEFT JOIN tickets t ON t.id=o.ticket_id LEFT JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE a.workspace_id=$1 ORDER BY o.scheduled_at DESC,o.id"#,
+        actor.workspace
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let history = sqlx::query_as!(
+        HistoryEntry,
+        "SELECT h.id,h.automation_id,h.kind,h.count,h.observed_at FROM automation_history h JOIN automations a ON a.id=h.automation_id WHERE a.workspace_id=$1 ORDER BY h.id DESC",
+        actor.workspace
+    )
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(AutomationSnapshot {
         automations,
@@ -158,18 +176,30 @@ pub(crate) async fn execute(
                             "Use a name (1–120 characters), prompt (1–500 characters), and interval of 1–525600 minutes.",
                         ));
                     }
-                    let valid: bool = sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM agents WHERE workspace_id=$1 AND id=$2)",
+                    let valid = sqlx::query_scalar!(
+                        r#"SELECT EXISTS(SELECT 1 FROM agents WHERE workspace_id=$1 AND id=$2) AS "valid!""#,
+                        actor.workspace,
+                        proposal.agent_id
                     )
-                    .bind(&actor.workspace)
-                    .bind(&proposal.agent_id)
                     .fetch_one(&mut **tx)
                     .await?;
                     if !valid {
                         return Err(invalid("Choose a registered agent."));
                     }
                     if let Some(id) = id {
-                        let changed=sqlx::query("UPDATE automations SET name=$4,prompt=$5,agent_id=$6,every_minutes=$7,revision=revision+1,error=NULL WHERE id=$1 AND workspace_id=$2 AND revision=$3").bind(&id).bind(&actor.workspace).bind(revision).bind(name.trim()).bind(proposal.title.trim()).bind(proposal.agent_id).bind(every_minutes).execute(&mut **tx).await?.rows_affected();
+                        let changed = sqlx::query!(
+                            "UPDATE automations SET name=$4,prompt=$5,agent_id=$6,every_minutes=$7,revision=revision+1,error=NULL WHERE id=$1 AND workspace_id=$2 AND revision=$3",
+                            id,
+                            actor.workspace,
+                            revision,
+                            name.trim(),
+                            proposal.title.trim(),
+                            proposal.agent_id,
+                            every_minutes
+                        )
+                        .execute(&mut **tx)
+                        .await?
+                        .rows_affected();
                         if changed == 0 {
                             return Err(CommandError::conflict());
                         }
@@ -179,7 +209,17 @@ pub(crate) async fn execute(
                             return Err(invalid("New rules have no revision."));
                         }
                         let id = uuid::Uuid::new_v4().to_string();
-                        sqlx::query("INSERT INTO automations(id,workspace_id,name,prompt,agent_id,every_minutes) VALUES($1,$2,$3,$4,$5,$6)").bind(&id).bind(&actor.workspace).bind(name.trim()).bind(proposal.title.trim()).bind(proposal.agent_id).bind(every_minutes).execute(&mut **tx).await?;
+                        sqlx::query!(
+                            "INSERT INTO automations(id,workspace_id,name,prompt,agent_id,every_minutes) VALUES($1,$2,$3,$4,$5,$6)",
+                            id,
+                            actor.workspace,
+                            name.trim(),
+                            proposal.title.trim(),
+                            proposal.agent_id,
+                            every_minutes
+                        )
+                        .execute(&mut **tx)
+                        .await?;
                         id
                     }
                 }
@@ -188,18 +228,27 @@ pub(crate) async fn execute(
                     revision,
                     paused,
                 } => {
-                    let changed=sqlx::query("UPDATE automations SET paused=$4,revision=revision+1,error=NULL WHERE id=$1 AND workspace_id=$2 AND revision=$3").bind(&id).bind(&actor.workspace).bind(revision).bind(paused).execute(&mut **tx).await?.rows_affected();
+                    let changed = sqlx::query!(
+                        "UPDATE automations SET paused=$4,revision=revision+1,error=NULL WHERE id=$1 AND workspace_id=$2 AND revision=$3",
+                        id,
+                        actor.workspace,
+                        revision,
+                        paused
+                    )
+                    .execute(&mut **tx)
+                    .await?
+                    .rows_affected();
                     if changed == 0 {
                         return Err(CommandError::conflict());
                     }
                     id
                 }
                 AutomationCommand::RunNow { id, revision } => {
-                    let current: Option<i64> = sqlx::query_scalar(
+                    let current = sqlx::query_scalar!(
                         "SELECT revision FROM automations WHERE id=$1 AND workspace_id=$2 FOR UPDATE",
+                        id,
+                        actor.workspace
                     )
-                    .bind(&id)
-                    .bind(&actor.workspace)
                     .fetch_optional(&mut **tx)
                     .await?;
                     if current.is_none() {
@@ -209,19 +258,18 @@ pub(crate) async fn execute(
                         return Err(CommandError::conflict());
                     }
                     let occurrence = format!("manual-{operation_id}");
-                    sqlx::query(
+                    sqlx::query!(
                         "INSERT INTO occurrences(id,automation_id,revision,manual) VALUES($1,$2,$3,true)",
+                        occurrence,
+                        id,
+                        revision
                     )
-                    .bind(&occurrence)
-                    .bind(id)
-                    .bind(revision)
                     .execute(&mut **tx)
                     .await?;
                     occurrence
                 }
             };
-            sqlx::query("SELECT pg_notify($1,'')")
-                .bind(coordination::AUTOMATIONS)
+            sqlx::query!("SELECT pg_notify($1,'')", coordination::AUTOMATIONS)
                 .execute(&mut **tx)
                 .await?;
             Ok(result_id)
@@ -293,33 +341,55 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
         .ok_or_else(|| anyhow::anyhow!("missing rule revision"))?;
     let manual = occurrence.input["manual"].as_bool().unwrap_or(false);
     let mut tx = pool.begin().await?;
-    let rule:(String,String,String,i64,bool)=sqlx::query_as("SELECT workspace_id,prompt,agent_id,revision,paused FROM automations WHERE id=$1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
-    sqlx::query("INSERT INTO occurrences(id,automation_id,revision,manual,dispatched) VALUES($1,$2,$3,$4,true) ON CONFLICT(id) DO NOTHING").bind(&occurrence.id).bind(id).bind(revision).bind(manual).execute(&mut *tx).await?;
-    let (mut ticket, state): (Option<i64>, String) =
-        sqlx::query_as("SELECT ticket_id,state FROM occurrences WHERE id=$1")
-            .bind(&occurrence.id)
-            .fetch_one(&mut *tx)
-            .await?;
-    if ticket.is_none() && state == "waiting_for_worker" {
-        let overlap:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM occurrences o JOIN ticket_runs r ON r.ticket_id=o.ticket_id WHERE o.automation_id=$1 AND r.state IN ('queued','running'))").bind(id).fetch_one(&mut *tx).await?;
+    let rule = sqlx::query!(
+        "SELECT workspace_id,prompt,agent_id,revision,paused FROM automations WHERE id=$1 FOR UPDATE",
+        id
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    sqlx::query!(
+        "INSERT INTO occurrences(id,automation_id,revision,manual,dispatched) VALUES($1,$2,$3,$4,true) ON CONFLICT(id) DO NOTHING",
+        occurrence.id,
+        id,
+        revision,
+        manual
+    )
+    .execute(&mut *tx)
+    .await?;
+    let current = sqlx::query!(
+        "SELECT ticket_id,state FROM occurrences WHERE id=$1",
+        occurrence.id
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    let mut ticket = current.ticket_id;
+    if ticket.is_none() && current.state == "waiting_for_worker" {
+        let overlap = sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT 1 FROM occurrences o JOIN ticket_runs r ON r.ticket_id=o.ticket_id WHERE o.automation_id=$1 AND r.state IN ('queued','running')) AS "overlap!""#,
+            id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
         let admission = admit(
             Rule {
-                revision: rule.3,
-                paused: rule.4,
+                revision: rule.revision,
+                paused: rule.paused,
             },
             revision,
             manual,
             overlap,
         );
         if let Err(refusal) = admission {
-            sqlx::query("UPDATE occurrences SET state=$2 WHERE id=$1")
-                .bind(&occurrence.id)
-                .bind(refusal.as_str())
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query!(
+                "UPDATE occurrences SET state=$2 WHERE id=$1",
+                occurrence.id,
+                refusal.as_str()
+            )
+            .execute(&mut *tx)
+            .await?;
         } else {
             let operation_id = OperationId::from_idempotency_key(&occurrence.id).to_string();
-            let actor = Actor::owner_in(rule.0);
+            let actor = Actor::owner_in(rule.workspace_id);
             ticket = tickets::execute_in(
                 &mut tx,
                 &actor,
@@ -327,8 +397,8 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
                     operation_id,
                     command: TicketCommand::CreateAssigned {
                         proposal: TicketProposal {
-                            title: rule.1,
-                            agent_id: rule.2,
+                            title: rule.prompt,
+                            agent_id: rule.agent_id,
                         },
                     },
                 },
@@ -336,11 +406,13 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
             .await
             .map_err(|e| anyhow::anyhow!("Ticket proposal refused: {e}"))?
             .result_id;
-            sqlx::query("UPDATE occurrences SET ticket_id=$2,state='queued' WHERE id=$1")
-                .bind(&occurrence.id)
-                .bind(ticket)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query!(
+                "UPDATE occurrences SET ticket_id=$2,state='queued' WHERE id=$1",
+                occurrence.id,
+                ticket
+            )
+            .execute(&mut *tx)
+            .await?;
         }
     }
     tx.commit().await?;
@@ -351,7 +423,12 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
         listener.listen(coordination::DISPATCH).await?;
         loop {
             // Work is live while the Ticket's current generation, whichever it is, has a run.
-            let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id AND t.generation=r.generation WHERE t.id=$1 AND r.state IN ('queued','running'))").bind(ticket).fetch_one(pool).await?;
+            let active = sqlx::query_scalar!(
+                r#"SELECT EXISTS(SELECT 1 FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id AND t.generation=r.generation WHERE t.id=$1 AND r.state IN ('queued','running')) AS "active!""#,
+                ticket
+            )
+            .fetch_one(pool)
+            .await?;
             if !active {
                 break;
             }
@@ -402,42 +479,54 @@ impl Reconcile for Rules {
         Ok(())
     }
     async fn reconcile(&mut self, _tasks: &mut Tasks) -> anyhow::Result<()> {
-        let rules:Vec<Automation>=sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations ORDER BY id").fetch_all(&self.pool).await?;
-        for rule in rules {
-            if let Err(error) = self.reconcile_rule(&rule).await {
-                sqlx::query("UPDATE automations SET error=$2 WHERE id=$1")
-                    .bind(&rule.id)
-                    .bind(error.to_string())
-                    .execute(&self.pool)
-                    .await?;
-            }
-        }
-        let manual: Vec<(String, String, i64)> = sqlx::query_as(
-            "SELECT id,automation_id,revision FROM occurrences WHERE manual AND NOT dispatched",
+        let rules = sqlx::query_as!(
+            Automation,
+            "SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations ORDER BY id"
         )
         .fetch_all(&self.pool)
         .await?;
-        for (id, rule, revision) in manual {
+        for rule in rules {
+            if let Err(error) = self.reconcile_rule(&rule).await {
+                sqlx::query!(
+                    "UPDATE automations SET error=$2 WHERE id=$1",
+                    rule.id,
+                    error.to_string()
+                )
+                .execute(&self.pool)
+                .await?;
+            }
+        }
+        let manual = sqlx::query!(
+            "SELECT id,automation_id,revision FROM occurrences WHERE manual AND NOT dispatched"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        for pending in manual {
+            let id = pending.id;
             match self
                 .runtime
                 .run_occurrence(Occurrence {
                     id: id.clone(),
-                    input: json!({"id":rule,"revision":revision,"manual":true}),
+                    input: json!({"id":pending.automation_id,"revision":pending.revision,"manual":true}),
                 })
                 .await
             {
                 Ok(()) => {
-                    sqlx::query("UPDATE occurrences SET dispatched=true,detail=NULL WHERE id=$1")
-                        .bind(id)
-                        .execute(&self.pool)
-                        .await?;
+                    sqlx::query!(
+                        "UPDATE occurrences SET dispatched=true,detail=NULL WHERE id=$1",
+                        id
+                    )
+                    .execute(&self.pool)
+                    .await?;
                 }
                 Err(error) => {
-                    sqlx::query("UPDATE occurrences SET detail=$2 WHERE id=$1")
-                        .bind(id)
-                        .bind(format!("Waiting for runtime: {error}"))
-                        .execute(&self.pool)
-                        .await?;
+                    sqlx::query!(
+                        "UPDATE occurrences SET detail=$2 WHERE id=$1",
+                        id,
+                        format!("Waiting for runtime: {error}")
+                    )
+                    .execute(&self.pool)
+                    .await?;
                 }
             }
         }
@@ -455,17 +544,19 @@ impl Rules {
                     input: json!({"id":rule.id,"revision":rule.revision}),
                 })
                 .await?;
-            sqlx::query(
+            sqlx::query!(
                 "UPDATE automations SET applied_revision=$2,error=NULL WHERE id=$1 AND revision=$2",
+                rule.id,
+                rule.revision
             )
-            .bind(&rule.id)
-            .bind(rule.revision)
             .execute(&self.pool)
             .await?;
-            sqlx::query("SELECT pg_notify($1,'')")
-                .bind(coordination::AUTOMATIONS_APPLIED)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query!(
+                "SELECT pg_notify($1,'')",
+                coordination::AUTOMATIONS_APPLIED
+            )
+            .execute(&self.pool)
+            .await?;
         }
         let observed = self.runtime.recurring_state(&rule.id).await?;
         let mut tx = self.pool.begin().await?;
@@ -478,30 +569,40 @@ impl Rules {
             ),
         ] {
             if count > old {
-                sqlx::query(
+                sqlx::query!(
                     "INSERT INTO automation_history(automation_id,kind,count) VALUES($1,$2,$3)",
+                    rule.id,
+                    kind,
+                    count - old
                 )
-                .bind(&rule.id)
-                .bind(kind)
-                .bind(count - old)
                 .execute(&mut *tx)
                 .await?;
             }
         }
         for recent in observed.recent {
-            sqlx::query("INSERT INTO occurrences(id,automation_id,revision,dispatched,scheduled_at) VALUES($1,$2,$3,true,$4) ON CONFLICT(id) DO UPDATE SET scheduled_at=excluded.scheduled_at").bind(recent.id).bind(&rule.id).bind(rule.revision).bind(recent.scheduled_at).execute(&mut *tx).await?;
+            sqlx::query!(
+                "INSERT INTO occurrences(id,automation_id,revision,dispatched,scheduled_at) VALUES($1,$2,$3,true,$4) ON CONFLICT(id) DO UPDATE SET scheduled_at=excluded.scheduled_at",
+                recent.id,
+                rule.id,
+                rule.revision,
+                recent.scheduled_at
+            )
+            .execute(&mut *tx)
+            .await?;
         }
-        sqlx::query("UPDATE automations SET missed=$2,overlap_skipped=$3,error=$4 WHERE id=$1")
-            .bind(&rule.id)
-            .bind(observed.missed)
-            .bind(observed.overlap_skipped)
-            .bind(if observed.paused != rule.paused {
+        sqlx::query!(
+            "UPDATE automations SET missed=$2,overlap_skipped=$3,error=$4 WHERE id=$1",
+            rule.id,
+            observed.missed,
+            observed.overlap_skipped,
+            if observed.paused != rule.paused {
                 Some("Rule pause state differs from the applied definition")
             } else {
                 None
-            })
-            .execute(&mut *tx)
-            .await?;
+            }
+        )
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(())
     }

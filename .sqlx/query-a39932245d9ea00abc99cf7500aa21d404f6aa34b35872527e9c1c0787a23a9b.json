@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO occurrences(id,automation_id,revision,dispatched,scheduled_at) VALUES($1,$2,$3,true,$4) ON CONFLICT(id) DO UPDATE SET scheduled_at=excluded.scheduled_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a39932245d9ea00abc99cf7500aa21d404f6aa34b35872527e9c1c0787a23a9b"
+}

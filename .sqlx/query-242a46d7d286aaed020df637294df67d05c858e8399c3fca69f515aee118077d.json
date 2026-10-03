@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO occurrences(id,automation_id,revision,manual,dispatched) VALUES($1,$2,$3,$4,true) ON CONFLICT(id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "242a46d7d286aaed020df637294df67d05c858e8399c3fca69f515aee118077d"
+}

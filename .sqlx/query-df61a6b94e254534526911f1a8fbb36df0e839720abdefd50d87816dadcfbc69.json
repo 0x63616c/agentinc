@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS(SELECT 1 FROM occurrences o JOIN ticket_runs r ON r.ticket_id=o.ticket_id WHERE o.automation_id=$1 AND r.state IN ('queued','running')) AS \"overlap!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "overlap!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "df61a6b94e254534526911f1a8fbb36df0e839720abdefd50d87816dadcfbc69"
+}

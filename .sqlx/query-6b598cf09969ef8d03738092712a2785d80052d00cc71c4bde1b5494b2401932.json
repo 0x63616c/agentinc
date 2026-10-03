@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "prompt",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "agent_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "every_minutes",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "paused",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "revision",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "applied_revision",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "error",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "missed",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "overlap_skipped",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "6b598cf09969ef8d03738092712a2785d80052d00cc71c4bde1b5494b2401932"
+}

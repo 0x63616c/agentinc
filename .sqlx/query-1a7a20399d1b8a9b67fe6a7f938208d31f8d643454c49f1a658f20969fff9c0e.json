@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE occurrences SET dispatched=true,detail=NULL WHERE id=$1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1a7a20399d1b8a9b67fe6a7f938208d31f8d643454c49f1a658f20969fff9c0e"
+}

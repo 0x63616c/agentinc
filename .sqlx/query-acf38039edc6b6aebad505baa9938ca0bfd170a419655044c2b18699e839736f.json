@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE automations SET applied_revision=$2,error=NULL WHERE id=$1 AND revision=$2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "acf38039edc6b6aebad505baa9938ca0bfd170a419655044c2b18699e839736f"
+}
