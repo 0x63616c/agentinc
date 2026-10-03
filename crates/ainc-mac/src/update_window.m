@@ -344,6 +344,7 @@ static BOOL sendBytes(int socket, const void *bytes, size_t remaining) {
 @interface AincArchiveServer : NSObject
 @property(strong) dispatch_source_t listener;
 @property(strong) NSURL *url;
+@property(strong) NSURL *archive;
 - (instancetype)initWithArchive:(NSURL *)archive;
 - (void)stop;
 @end
@@ -353,6 +354,7 @@ static BOOL sendBytes(int socket, const void *bytes, size_t remaining) {
     if (!self) return nil;
     int socketFD = socket(AF_INET, SOCK_STREAM, 0);
     if (socketFD < 0) return nil;
+    self.archive = archive;
     fcntl(socketFD, F_SETFD, FD_CLOEXEC);
     fcntl(socketFD, F_SETFL, O_NONBLOCK);
     struct sockaddr_in address = {.sin_len = sizeof(address), .sin_family = AF_INET,
@@ -744,7 +746,8 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     NSURL *archive = [self cachedArchive];
     struct stat attributes;
     return archive && lstat(archive.fileSystemRepresentation, &attributes) == 0
-        && S_ISREG(attributes.st_mode) && attributes.st_size > 0 && attributes.st_uid == geteuid();
+        && S_ISREG(attributes.st_mode) && attributes.st_size > 0 && attributes.st_uid == geteuid()
+        && (!self.item.contentLength || (uint64_t)attributes.st_size == self.item.contentLength);
 }
 - (void)cacheCompleted {
     self.ready = YES;
@@ -790,6 +793,10 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
         if (!strong || strong.download != flight) return;
         strong.download = nil;
         strong.cancellation = nil;
+        if (!error && ![strong hasCachedArchive]) {
+            [NSFileManager.defaultManager removeItemAtURL:destination error:nil];
+            error = [NSError errorWithDomain:@"AgentInc.Cache" code:3 userInfo:@{NSLocalizedDescriptionKey:@"The downloaded update does not match its release size."}];
+        }
         if (error) {
             strong.ready = NO;
             strong.cacheFailed = YES;
@@ -1134,6 +1141,7 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     self.prepared = NO;
     self.extractionStarted = NO;
     self.cancellationRequested = NO;
+    if (error && self.archiveServer) [NSFileManager.defaultManager removeItemAtURL:self.archiveServer.archive error:nil];
     [self.archiveServer stop];
     self.archiveServer = nil;
     if (error) { self.ready = NO; self.installArmed = NO; }

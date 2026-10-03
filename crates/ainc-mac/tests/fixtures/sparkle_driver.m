@@ -27,6 +27,7 @@ void ainc_update_free_notes(char *text) { free(text); }
 @property(strong) NSURL *infoURL;
 @property(strong) NSURL *fileURL;
 @property(strong) NSDictionary *propertiesDictionary;
+@property uint64_t contentLength;
 - (BOOL)isInformationOnlyUpdate;
 @end
 @implementation TestItem
