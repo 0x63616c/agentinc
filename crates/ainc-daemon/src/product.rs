@@ -202,10 +202,7 @@ pub async fn snapshot(pool: &PgPool) -> Result<Snapshot, sqlx::Error> {
 }
 
 pub async fn snapshot_in(pool: &PgPool, workspace: &str) -> Result<Snapshot, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .execute(&mut *tx)
-        .await?;
+    let mut tx = crate::pg::snapshot_tx(pool).await?;
     let conversations = sqlx::query_as("SELECT c.id,c.title,COALESCE((SELECT COALESCE(response,prompt) FROM turns WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1),'') AS snippet,to_char(to_timestamp(c.updated_at),'YYYY-MM-DD HH24:MI') AS updated,c.updated_at FROM conversations c WHERE workspace_id=$1 ORDER BY updated_at DESC,id DESC").bind(workspace).fetch_all(&mut *tx).await?;
     let turns = sqlx::query_as("SELECT t.id,conversation_id,prompt,response,error,state FROM turns t JOIN conversations c ON c.id=t.conversation_id WHERE c.workspace_id=$1 ORDER BY t.id").bind(workspace).fetch_all(&mut *tx).await?;
     let todos = sqlx::query_as("SELECT id,title,(status IN ('done','cancelled')) AS completed FROM tickets WHERE workspace_id=$1 ORDER BY (status IN ('done','cancelled')),id DESC").bind(workspace).fetch_all(&mut *tx).await?;

@@ -413,10 +413,7 @@ async fn fence_read(tx: &mut Transaction<'_, Postgres>, actor: &Actor) -> Result
 
 pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<TicketSnapshot, ApiError> {
     let ticket = actor.assignment.map(|a| a.0);
-    let mut tx = pool.begin().await?;
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .execute(&mut *tx)
-        .await?;
+    let mut tx = crate::pg::snapshot_tx(pool).await?;
     fence_read(&mut tx, actor).await?;
     let tickets = sqlx::query_as(&format!("SELECT {TICKET_COLUMNS} FROM tickets WHERE workspace_id=$1 AND ($2::bigint IS NULL OR id=$2) ORDER BY array_position($3::text[],status),position,id DESC"))
         .bind(&actor.workspace)

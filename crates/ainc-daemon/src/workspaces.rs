@@ -78,10 +78,7 @@ pub async fn current(pool: &PgPool) -> Result<String, sqlx::Error> {
 }
 
 pub async fn snapshot(pool: &PgPool) -> Result<WorkspaceState, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .execute(&mut *tx)
-        .await?;
+    let mut tx = crate::pg::snapshot_tx(pool).await?;
     let current_id =
         sqlx::query_scalar("SELECT workspace_id FROM selected_workspace WHERE owner_id='owner'")
             .fetch_one(&mut *tx)

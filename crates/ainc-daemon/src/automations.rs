@@ -113,9 +113,12 @@ pub async fn command(
     Ok(Json(execute(&product.pool, &actor, request).await?))
 }
 pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<AutomationSnapshot, ApiError> {
-    let rules = sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id").bind(&actor.workspace).fetch_all(pool).await?;
-    let occurrences = sqlx::query_as("SELECT o.id,o.automation_id,o.ticket_id,CASE WHEN r.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM worker_health WHERE id='tickets' AND last_seen > extract(epoch FROM clock_timestamp())::bigint-5) THEN 'worker_unavailable' ELSE COALESCE(r.state,o.state) END AS state,o.detail,o.scheduled_at FROM occurrences o JOIN automations a ON a.id=o.automation_id LEFT JOIN ticket_runs r ON r.ticket_id=o.ticket_id AND r.generation=1 WHERE a.workspace_id=$1 ORDER BY o.scheduled_at DESC,o.id").bind(&actor.workspace).fetch_all(pool).await?;
-    let history = sqlx::query_as("SELECT h.id,h.automation_id,h.kind,h.count,h.observed_at FROM automation_history h JOIN automations a ON a.id=h.automation_id WHERE a.workspace_id=$1 ORDER BY h.id DESC").bind(&actor.workspace).fetch_all(pool).await?;
+    let mut tx = crate::pg::snapshot_tx(pool).await?;
+    let rules = sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id").bind(&actor.workspace).fetch_all(&mut *tx).await?;
+    // An Occurrence shows the run of its Ticket's current generation, whichever that is.
+    let occurrences = sqlx::query_as("SELECT o.id,o.automation_id,o.ticket_id,CASE WHEN r.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM worker_health WHERE id='tickets' AND last_seen > extract(epoch FROM clock_timestamp())::bigint-5) THEN 'worker_unavailable' ELSE COALESCE(r.state,o.state) END AS state,o.detail,o.scheduled_at FROM occurrences o JOIN automations a ON a.id=o.automation_id LEFT JOIN tickets t ON t.id=o.ticket_id LEFT JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE a.workspace_id=$1 ORDER BY o.scheduled_at DESC,o.id").bind(&actor.workspace).fetch_all(&mut *tx).await?;
+    let history = sqlx::query_as("SELECT h.id,h.automation_id,h.kind,h.count,h.observed_at FROM automation_history h JOIN automations a ON a.id=h.automation_id WHERE a.workspace_id=$1 ORDER BY h.id DESC").bind(&actor.workspace).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
     Ok(AutomationSnapshot {
         rules,
         occurrences,

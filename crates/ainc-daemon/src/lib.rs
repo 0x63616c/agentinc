@@ -7,6 +7,7 @@ pub mod conversations;
 pub mod execution;
 pub mod inference;
 pub mod legacy;
+mod pg;
 pub mod product;
 pub mod receipts;
 pub mod temporal;
