@@ -4,12 +4,25 @@ use std::{fs, path::PathBuf, process::Command};
 
 #[test]
 fn sparkle_driver_callbacks_complete_replies_and_preserve_native_ownership() {
+    check_driver(false);
+}
+
+#[test]
+fn upgrade_fixture_handoff_survives_relaunch_without_editing_signed_bundles() {
+    check_driver(true);
+}
+
+fn check_driver(upgrade_test: bool) {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let scratch = crate_dir.join("../../.local/update-window-tests");
     fs::create_dir_all(&scratch).unwrap();
     let directory = tempfile::tempdir_in(scratch).unwrap();
     let executable = directory.path().join("sparkle-driver");
-    let compile = Command::new("clang")
+    let mut compile = Command::new("clang");
+    if upgrade_test {
+        compile.arg("-DAINC_UPGRADE_TEST");
+    }
+    let compile = compile
         .args([
             "-fobjc-arc",
             "-fblocks",

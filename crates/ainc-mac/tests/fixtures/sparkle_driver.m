@@ -5,6 +5,10 @@
 
 static int event;
 void ainc_update_action(int action, bool automatic) { event = action; }
+// Rust's renderer is tested through native_update::tests. These callbacks keep
+// this standalone Objective-C protocol/lifetime harness independent of Rust.
+char *ainc_update_format_notes(const char *markdown, const char *current, bool history) { return strdup(markdown); }
+void ainc_update_free_notes(char *text) { free(text); }
 static NSApplicationTerminateReply refuseQuit(id self, SEL selector, NSApplication *application) { return NSTerminateCancel; }
 
 @interface TestUpdater : NSObject
@@ -239,7 +243,12 @@ int main(void) {
         setenv("AINC_UPGRADE_TEST_SPARKLE_FEED_URL", "https://test-only.invalid/feed", 1);
         NSCAssert(!saveRelaunchProfile(record, @"2"), @"save production relaunch profile");
         NSDictionary *savedRecord = [NSPropertyListSerialization propertyListWithData:[NSData dataWithContentsOfURL:record] options:0 format:nil error:nil];
+#ifdef AINC_UPGRADE_TEST
+        NSCAssert([savedRecord[@"environment"][@"AINC_UPGRADE_TEST_SPARKLE_FEED_URL"] isEqualToString:@"https://test-only.invalid/feed"], @"fixture record preserves test feed without changing a signed plist");
+        unsetenv("AINC_UPGRADE_TEST_SPARKLE_FEED_URL");
+#else
         NSCAssert(!savedRecord[@"environment"][@"AINC_UPGRADE_TEST_SPARKLE_FEED_URL"], @"production record excludes test feed overrides");
+#endif
         NSDictionary *permissions = [NSFileManager.defaultManager attributesOfItemAtPath:record.path error:nil];
         NSCAssert([permissions[NSFilePosixPermissions] unsignedShortValue] == 0600, @"credentials are owner-only");
         unsetenv("AGENTINC_SESSION_PATH");
@@ -248,6 +257,9 @@ int main(void) {
         setenv("AINC_DISCOVERY_FILE", "/explicit/new-launch/api-url", 1);
         NSCAssert(!restoreRelaunchProfile(record, @"1") && !getenv("AGENTINC_SESSION_PATH"), @"old-version launch does not consume a failed update's profile");
         NSCAssert(!restoreRelaunchProfile(record, @"2"), @"restore replacement profile");
+#ifdef AINC_UPGRADE_TEST
+        NSCAssert(strcmp(getenv("AINC_UPGRADE_TEST_SPARKLE_FEED_URL"), "https://test-only.invalid/feed") == 0, @"fixture feed survives LaunchServices relaunch");
+#endif
         NSCAssert(strcmp(getenv("AGENTINC_SESSION_PATH"), "/isolated/profile/sessions.json") == 0, @"session path survives LaunchServices relaunch");
         NSCAssert(strcmp(getenv("DATABASE_URL"), "postgres://fixture/password") == 0, @"external database configuration survives");
         NSCAssert(strcmp(getenv("AINC_RUNTIME_CONFIG"), "{\"endpoint\":\"fixture\"}") == 0, @"companion runtime override survives");

@@ -1,7 +1,7 @@
 //! AgentInc's custom Sparkle user driver. Calls run on the app's main thread.
 #[cfg(all(feature = "automation", target_os = "macos"))]
 use ainc_release::Manifest;
-#[cfg(any(test, all(feature = "automation", target_os = "macos")))]
+#[cfg(any(test, target_os = "macos"))]
 use pulldown_cmark::{Event, Options, Parser, html};
 #[cfg(target_os = "macos")]
 use std::ffi::{CStr, CString};
@@ -30,8 +30,6 @@ unsafe extern "C" {
     fn ainc_sparkle_state() -> u32;
     fn ainc_sparkle_setting(setting: i32, enabled: bool);
     fn ainc_sparkle_prepared(error: *const i8);
-    #[cfg(ainc_upgrade_test)]
-    fn ainc_sparkle_restore_test_environment();
     #[cfg(feature = "automation")]
     fn ainc_update_offer(
         version: *const i8,
@@ -52,7 +50,7 @@ unsafe extern "C" {
 }
 
 /// Restore supported production overrides before threads or profile reads.
-/// The native handoff excludes all upgrade-test feed/key variables.
+/// The shipping native handoff excludes all upgrade-test feed/key variables.
 pub fn restore_relaunch_environment() -> anyhow::Result<()> {
     #[cfg(target_os = "macos")]
     {
@@ -130,15 +128,6 @@ pub fn prepared(error: Option<&str>) {
     let _ = error;
 }
 
-/// Called before any threads or profile reads in upgrade-test builds only.
-#[cfg(ainc_upgrade_test)]
-pub fn restore_upgrade_test_environment() {
-    #[cfg(target_os = "macos")]
-    unsafe {
-        ainc_sparkle_restore_test_environment()
-    };
-}
-
 #[unsafe(no_mangle)]
 extern "C" fn ainc_update_action(action: i32, automatic: bool) {
     ACTIONS
@@ -156,7 +145,7 @@ fn cstring(text: &str) -> CString {
     CString::new(text.replace('\0', "")).expect("NUL stripped")
 }
 
-#[cfg(any(test, all(feature = "automation", target_os = "macos")))]
+#[cfg(any(test, target_os = "macos"))]
 pub fn notes_html(markdown: &str) -> String {
     let parser =
         Parser::new_ext(markdown, Options::ENABLE_STRIKETHROUGH).map(|event| match event {
@@ -174,6 +163,44 @@ pub fn notes_html(markdown: &str) -> String {
     format!(
         "<html><body style=\"font: 13px -apple-system; color: -apple-system-label;\">{body}</body></html>"
     )
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn sparkle_notes(markdown: &str, current: &str, history: bool) -> String {
+    let selected = if !history {
+        ainc_release::notes::parse_changelog(markdown).and_then(|mut releases| {
+            let installed = current.parse().ok()?;
+            releases.retain(|release| release.version > installed);
+            Some(ainc_release::notes::changelog(&releases))
+        })
+    } else {
+        None
+    };
+    let markdown = selected.as_deref().unwrap_or(markdown);
+    notes_html(
+        markdown
+            .strip_prefix("# AgentInc changelog\n\n")
+            .unwrap_or(markdown),
+    )
+}
+
+// AppKit copies the returned UTF-8 string, then returns ownership to Rust.
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn ainc_update_format_notes(
+    markdown: *const i8,
+    current: *const i8,
+    history: bool,
+) -> *mut i8 {
+    let markdown = unsafe { CStr::from_ptr(markdown) }.to_string_lossy();
+    let current = unsafe { CStr::from_ptr(current) }.to_string_lossy();
+    cstring(&sparkle_notes(&markdown, &current, history)).into_raw()
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn ainc_update_free_notes(text: *mut i8) {
+    drop(unsafe { CString::from_raw(text) });
 }
 
 #[cfg(any(test, all(feature = "automation", target_os = "macos")))]
@@ -254,6 +281,16 @@ mod tests {
         assert!(html.contains("<p>• <strong>Fast</strong> updates</p>"));
         assert!(html.contains("&lt;script&gt;"));
         assert!(!html.contains("<script>"));
+    }
+
+    #[test]
+    fn sparkle_markdown_history_keeps_formatting_and_filters_installed_releases() {
+        let markdown = "# AgentInc changelog\n\n## AgentInc 0.6.0\n\n- **Delta** updates\n\n## AgentInc 0.5.0\n\n- Old change\n";
+        let offer = sparkle_notes(markdown, "0.5.0", false);
+        assert!(offer.contains("<strong>Delta</strong>"));
+        assert!(offer.contains("<h2>AgentInc 0.6.0</h2>"));
+        assert!(!offer.contains("Old change"));
+        assert!(sparkle_notes(markdown, "0.5.0", true).contains("Old change"));
     }
 
     #[test]
