@@ -5,7 +5,10 @@ mod activity;
 mod board;
 mod links;
 
-use crate::product::{ApiError, ErrorBody, Product};
+use crate::{
+    product::{ApiError, ErrorBody, Product},
+    receipts::{self, OperationId, Scope},
+};
 pub use activity::{ActivityKind, TicketActivity};
 pub(crate) use activity::{Entry, record};
 use axum::{
@@ -17,7 +20,6 @@ use axum::{
 pub(crate) use board::{enter_column, lock as lock_board};
 pub use links::{LinkKind, TicketLink};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use utoipa::ToSchema;
@@ -493,9 +495,7 @@ pub(crate) async fn execute_in(
     actor: &Actor,
     request: TicketCommandRequest,
 ) -> Result<TicketReceipt, ApiError> {
-    if uuid::Uuid::parse_str(&request.operation_id).is_err() {
-        return Err(invalid("Use a UUID operation ID."));
-    }
+    let operation_id = OperationId::parse(&request.operation_id)?;
     if actor.assignment.is_some()
         && !matches!(
             request.command,
@@ -508,40 +508,32 @@ pub(crate) async fn execute_in(
     {
         return Err(denied());
     }
-    let payload =
-        serde_json::to_value(&request.command).map_err(|_| invalid("Invalid command."))?;
     // Every command may move Tickets or relate them; one writer per board.
     board::lock(tx, &actor.workspace).await?;
     // Fence even receipt reads after reassignment, within the same transaction.
     if let Some((id, _)) = actor.assignment {
         lock_ticket(tx, actor, id, None).await?;
     }
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
-        .bind(format!(
-            "{}/{}/{}",
-            actor.workspace, actor.id, request.operation_id
-        ))
-        .execute(&mut **tx)
-        .await?;
-    let prior:Option<(Value,Option<i64>)>=sqlx::query_as("SELECT command,result_id FROM ticket_receipts WHERE workspace_id=$1 AND actor_id=$2 AND operation_id=$3")
-        .bind(&actor.workspace).bind(&actor.id).bind(&request.operation_id).fetch_optional(&mut **tx).await?;
-    if let Some((old, result_id)) = prior {
-        if old != payload {
-            return Err(ApiError::conflict());
-        }
-        return Ok(TicketReceipt {
-            operation_id: request.operation_id,
-            result_id,
-        });
-    }
-    let result_id = apply(tx, actor, request.command).await?;
-    sqlx::query("INSERT INTO ticket_receipts(workspace_id,actor_id,operation_id,command,result_id) VALUES ($1,$2,$3,$4,$5)").bind(&actor.workspace).bind(&actor.id).bind(&request.operation_id).bind(payload).bind(result_id).execute(&mut **tx).await?;
-    sqlx::query("SELECT pg_notify('agentinc_dispatch','')")
-        .execute(&mut **tx)
-        .await?;
+    let scope = Scope::Ticket {
+        workspace: actor.workspace.clone(),
+        actor: actor.id.clone(),
+    };
+    let TicketCommandRequest { command, .. } = request;
+    let payload = serde_json::to_value(&command).map_err(|_| invalid("Invalid command."))?;
+    let actor = actor.clone();
+    let receipt = receipts::execute(tx, scope, operation_id, &payload, |tx| {
+        Box::pin(async move {
+            let result_id = apply(tx, &actor, command).await?;
+            sqlx::query("SELECT pg_notify('agentinc_dispatch','')")
+                .execute(&mut **tx)
+                .await?;
+            Ok(result_id)
+        })
+    })
+    .await?;
     Ok(TicketReceipt {
-        operation_id: request.operation_id,
-        result_id,
+        operation_id: receipt.operation_id.to_string(),
+        result_id: receipt.result,
     })
 }
 

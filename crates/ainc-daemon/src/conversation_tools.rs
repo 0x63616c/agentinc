@@ -1,9 +1,11 @@
 //! Evee uses the same scoped commands as the owner UI. Coding effects remain on
 //! assigned Tickets; Conversations receive no file, shell or git capability.
-use crate::tickets::{self, Actor, TicketCommandRequest};
+use crate::{
+    receipts::OperationId,
+    tickets::{self, Actor, TicketCommandRequest},
+};
 use futures::future::BoxFuture;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use turnkeel::{Tool, ToolCtx, ToolError};
 
@@ -76,10 +78,8 @@ impl Tool for TicketsTool {
                 let command = serde_json::from_value(args["command"].clone()).map_err(|e| {
                     ToolError::InvalidArguments(format!("Invalid Ticket command: {e}"))
                 })?;
-                let digest = Sha256::digest(ctx.idempotency_key().as_bytes());
                 let operation_id =
-                    uuid::Uuid::from_bytes(digest[..16].try_into().expect("SHA-256 length"))
-                        .to_string();
+                    OperationId::from_idempotency_key(ctx.idempotency_key()).to_string();
                 let receipt=tickets::execute(&this.pool,&actor,TicketCommandRequest{operation_id,command}).await.map_err(|_|ToolError::InvalidArguments("Command refused. Read current Ticket revisions before retrying; verify the assignee and arguments.".into()))?;
                 Ok(json!(receipt))
             } else {
@@ -157,10 +157,8 @@ impl Tool for AutomationsTool {
                 let command = serde_json::from_value(args["command"].clone()).map_err(|e| {
                     ToolError::InvalidArguments(format!("Invalid Automation command: {e}"))
                 })?;
-                let digest = Sha256::digest(ctx.idempotency_key().as_bytes());
                 let operation_id =
-                    uuid::Uuid::from_bytes(digest[..16].try_into().expect("SHA-256 length"))
-                        .to_string();
+                    OperationId::from_idempotency_key(ctx.idempotency_key()).to_string();
                 let receipt=crate::automations::execute(&this.pool,&actor,crate::automations::AutomationRequest{operation_id,command}).await.map_err(|_|ToolError::InvalidArguments("Command refused. Read current Automation revisions before retrying; verify the assignee and arguments.".into()))?;
                 Ok(json!(receipt))
             } else {

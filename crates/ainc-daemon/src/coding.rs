@@ -354,7 +354,6 @@ impl Tool for CommentTool {
         json!({"type":"object","properties":{"body":{"type":"string"}},"required":["body"],"additionalProperties":false})
     }
     fn call(&self, ctx: ToolCtx, args: Value) -> BoxFuture<'static, Result<Value, ToolError>> {
-        use sha2::{Digest, Sha256};
         let tool = self.clone();
         Box::pin(async move {
             let body = args["body"]
@@ -364,8 +363,7 @@ impl Tool for CommentTool {
                 .actor
                 .assignment
                 .ok_or_else(|| invalid("Comments require an assignment."))?;
-            let digest = Sha256::digest(ctx.idempotency_key().as_bytes());
-            let id = uuid::Uuid::from_bytes(digest[..16].try_into().expect("SHA-256 has 32 bytes"));
+            let id = crate::receipts::OperationId::from_idempotency_key(ctx.idempotency_key());
             let receipt = crate::tickets::execute(
                 &tool.pool,
                 &tool.actor,

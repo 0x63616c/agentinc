@@ -1228,3 +1228,20 @@ async fn deleting_a_ticket_leaves_the_relationship_in_the_other_history(pool: Pg
     assert_eq!(last.from_value.as_deref(), Some("blocked_by"));
     assert_eq!(last.to_value, Some(gone.to_string()));
 }
+
+#[sqlx::test]
+async fn a_malformed_operation_id_is_refused_with_one_code(pool: PgPool) {
+    let app = app(&pool);
+    let bad = Request {
+        operation_id: "not-a-uuid".into(),
+        command: Command::Create {
+            title: "Never created".into(),
+        },
+    };
+    let (status, body) = command(&app, "owner-fixture", &bad).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["code"], "invalid_operation");
+    let (status, body) = snapshot(&app, "owner-fixture").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["tickets"].as_array().unwrap().is_empty());
+}

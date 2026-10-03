@@ -8,6 +8,7 @@ pub mod execution;
 pub mod inference;
 pub mod legacy;
 pub mod product;
+pub mod receipts;
 pub mod temporal;
 pub mod terminal_sessions;
 pub mod tickets;
