@@ -730,12 +730,13 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     NSString *name = [NSString stringWithFormat:@"%@-%@", digestName(identity), self.item.fileURL.lastPathComponent];
     return [self.cacheDirectory URLByAppendingPathComponent:name];
 }
-- (void)pruneArchives {
+- (void)pruneArchives:(BOOL)resolved {
     NSFileManager *files = NSFileManager.defaultManager;
     if (!self.cacheDirectory || self.download || (self.fenceURL && [files fileExistsAtPath:self.fenceURL.path])) return;
     NSString *current = [self cachedArchive].lastPathComponent;
     for (NSURL *entry in [files contentsOfDirectoryAtURL:self.cacheDirectory includingPropertiesForKeys:nil options:0 error:nil]) {
-        if (![entry.lastPathComponent isEqualToString:current]) [files removeItemAtURL:entry error:nil];
+        BOOL abandoned = [[NSUUID alloc] initWithUUIDString:entry.pathExtension] != nil;
+        if (abandoned || (resolved && ![entry.lastPathComponent isEqualToString:current])) [files removeItemAtURL:entry error:nil];
     }
 }
 - (BOOL)hasCachedArchive {
@@ -1137,7 +1138,10 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     self.backgroundDownload = NO;
     self.installRequested = NO;
     self.userVisible = NO;
-    [self pruneArchives];
+    BOOL resolved = check != SPUUpdateCheckUpdateInformation
+        && (!error || ([error.domain isEqualToString:@"SUSparkleErrorDomain"] && error.code == SUNoUpdateError));
+    if (resolved && error) self.item = nil;
+    [self pruneArchives:resolved];
 }
 - (NSString *)feedURLStringForUpdater:(SPUUpdater *)updater {
     NSDictionary *fence = readFence(self.fenceURL);
@@ -1244,7 +1248,7 @@ bool ainc_sparkle_start(const char *legacy, const char *version) {
     sparkle.defaults = [[NSUserDefaults alloc] initWithSuiteName:domain];
     sparkle.fenceURL = installationFenceURL(host);
     sparkle.cacheDirectory = [[relaunchProfileURL(host) URLByDeletingPathExtension] URLByAppendingPathComponent:@"Archives" isDirectory:YES];
-    [sparkle pruneArchives];
+    [sparkle pruneArchives:NO];
     // Sparkle's automatic-download switch also consents to install-on-quit.
     // AgentInc has a download-only setting, implemented through user-driver
     // an inert archive cache instead.
