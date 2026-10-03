@@ -102,6 +102,67 @@ fn uses(name: &'static str) -> impl Fn(&Value) -> bool {
 }
 
 #[test]
+fn upgrade_fixture_environment_satisfies_the_real_release_build_guard() {
+    let release = workflow("release");
+    let fixture = only(&release["jobs"]["native"], |step| {
+        step["name"] == "Build isolated upgrade fixtures"
+    });
+    let channel = fixture["env"]["AINC_CHANNEL"].as_str().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let executable = directory.path().join("release-build-guard");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../ainc-release/build.rs");
+    assert!(
+        Command::new("rustc")
+            .arg("--edition=2024")
+            .arg(source)
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .unwrap()
+            .success()
+    );
+    // Execute the same guard Cargo runs, with the workflow's declared channel.
+    for version in [None, Some("0.5.1")] {
+        let mut command = Command::new(&executable);
+        command
+            .env("AINC_CHANNEL", channel)
+            .env("AINC_UPGRADE_TEST_PUBLIC_KEY", "fixture-key")
+            .env_remove("AINC_UPGRADE_TEST_VERSION")
+            .env("AINC_COMMIT", "a".repeat(40));
+        if let Some(version) = version {
+            command.env("AINC_UPGRADE_TEST_VERSION", version);
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let output = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            output
+                .lines()
+                .any(|line| line == "cargo:rustc-cfg=ainc_production")
+        );
+        assert!(
+            output
+                .lines()
+                .any(|line| line == "cargo:rustc-cfg=ainc_upgrade_test")
+        );
+    }
+    assert!(
+        !Command::new(executable)
+            .env_remove("AINC_CHANNEL")
+            .env("AINC_UPGRADE_TEST_PUBLIC_KEY", "fixture-key")
+            .env_remove("AINC_UPGRADE_TEST_VERSION")
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+}
+
+#[test]
 fn historical_publication_uses_the_workflow_revision_gate() {
     let release = workflow("release");
     let publish = &release["jobs"]["publish"];

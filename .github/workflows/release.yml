@@ -124,6 +124,10 @@ jobs:
           test "$(git rev-parse HEAD)" = '${{ inputs.commit || github.sha }}'
           cargo run --locked -p ainc-xtask -- release-measure-build cargo xtask release
       - name: Build isolated upgrade fixtures
+        env:
+          # Cargo now builds the Rust xtask's release dependency before xtask runs.
+          # Test feed keys are permitted only in production-channel fixtures.
+          AINC_CHANNEL: production
         run: |
           set -euo pipefail
           commit='${{ inputs.commit || github.sha }}'
