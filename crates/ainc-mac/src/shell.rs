@@ -1270,8 +1270,8 @@ pub fn bind_keys(cx: &mut App) {
         (0..=9).map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateRoute(n), Some("Control"))),
     );
     cx.bind_keys([
-        KeyBinding::new("cmd-alt-left", GoBack, Some("Control")),
-        KeyBinding::new("cmd-alt-right", GoForward, Some("Control")),
+        KeyBinding::new("cmd-[", GoBack, Some("Control")),
+        KeyBinding::new("cmd-]", GoForward, Some("Control")),
         KeyBinding::new("cmd-k", Search, None),
         KeyBinding::new("cmd-,", OpenSettings, Some("Control")),
         KeyBinding::new("cmd-b", ToggleSidebar, Some("Control")),
@@ -1663,11 +1663,11 @@ mod interaction_tests {
                 )
             });
         }
-        cx.simulate_keystrokes("cmd-alt-left");
+        cx.simulate_keystrokes("cmd-[");
         shell.read_with(cx, |shell, _| {
             assert_eq!(shell.session.current(), Route::Automations)
         });
-        cx.simulate_keystrokes("cmd-alt-right");
+        cx.simulate_keystrokes("cmd-]");
         shell.read_with(cx, |shell, _| {
             assert_eq!(shell.session.current(), Route::Terminal)
         });

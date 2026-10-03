@@ -2,12 +2,12 @@ use super::*;
 use crate::ui::*;
 
 const SHORTCUTS: &[(&str, &str)] = &[
-    ("Go to…", "⌘ K"),
-    ("Toggle sidebar", "⌘ B"),
-    ("Back / Forward", "⌘ ⌥ ← →"),
-    ("Tickets, Assistant, Agents…", "⌘1–6"),
-    ("Settings", "⌘ ,"),
-    ("Dismiss", "esc"),
+    ("Go to…", "⌘ + K"),
+    ("Toggle sidebar", "⌘ + B"),
+    ("Back / Forward", "⌘ + [ / ⌘ + ]"),
+    ("Tickets, Assistant, Agents…", "⌘ + 1–6"),
+    ("Settings", "⌘ + ,"),
+    ("Dismiss", "ESC"),
 ];
 
 impl Shell {
@@ -141,11 +141,7 @@ impl Shell {
                     .justify_between()
                     .gap(px(SPACE_4))
                     .child(div().text_size(type_size(BODY_SIZE)).child(*action))
-                    .child(
-                        row()
-                            .gap(px(SPACE_1))
-                            .children(keys.split(' ').map(|key| kbd(key.to_owned()))),
-                    ),
+                    .child(kbd(*keys).debug_selector(move || keys.to_string())),
             );
         }
         settings_section("Keyboard shortcuts", rows)
@@ -181,5 +177,34 @@ impl Shell {
             );
         }
         page.build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SHORTCUTS, Shell};
+    use crate::model::Route;
+    use gpui::{TestAppContext, px};
+
+    #[gpui::test]
+    fn settings_shortcuts_each_use_one_complete_pill(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        shell.update(cx, |shell, cx| {
+            shell.session.navigate(Route::Settings);
+            cx.notify();
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        assert_eq!(
+            SHORTCUTS.iter().map(|(_, keys)| *keys).collect::<Vec<_>>(),
+            ["⌘ + K", "⌘ + B", "⌘ + [ / ⌘ + ]", "⌘ + 1–6", "⌘ + ,", "ESC"]
+        );
+        for (_, keys) in SHORTCUTS {
+            let pill = cx.debug_bounds(keys).unwrap();
+            assert_eq!(pill.size.height, px(20.));
+            assert!(pill.size.width > px(20.));
+        }
     }
 }

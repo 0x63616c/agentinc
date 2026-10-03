@@ -382,7 +382,7 @@ impl ComponentsPage {
                 "Initials stand in for a photo. Shortcut hints sit inside buttons, rows and footers.",
                 row().gap(px(SPACE_6)).items_center()
                     .child(row().gap(px(SPACE_2)).child(avatar("Calum Webb", None, AVATAR_SIZE)).child(avatar("Evee", None, AVATAR_SIZE_LG)).child(agent_avatar("Scout", AVATAR_SIZE)))
-                    .child(row().gap(px(SPACE_2)).child(kbd("⌘K")).child(kbd("↵")).child(kbd("esc")))
+                    .child(row().gap(px(SPACE_2)).child(kbd("⌘K")).child(kbd("↵")).child(kbd("ESC")))
                     .child(kbd_hint("↑ ↓", "Navigate")),
             ))
             .child(specimen(
