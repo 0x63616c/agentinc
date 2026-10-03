@@ -172,6 +172,8 @@ pub const SIDEBAR_INSET: f32 = SPACE_3;
 /// The gap between a navigation icon and its label, chosen so every sidebar
 /// text edge (search, navigation, workspace, user) lands on one line.
 pub const SIDEBAR_TEXT_GAP: f32 = 11.;
+/// Even visible edge insets around the profile avatar and trailing chevron.
+pub const SIDEBAR_PROFILE_INSET: f32 = SPACE_2 - SPACE_HALF;
 
 pub const HEADER_CONTROL: f32 = 30.;
 /// The title bar's right inset, shared by the bell and the panel under it.
@@ -182,6 +184,9 @@ pub const ICON_SIZE: f32 = 16.;
 /// visible edge sit where a shortcut badge ends.
 pub const CHEVRON_GLYPH_INSET: f32 = 6.;
 pub const ICON_SIZE_SM: f32 = 14.;
+/// `chevronUpDown.svg` has a 24-point viewBox and rounded 1.5-point strokes
+/// ending at x=7 and x=17. Compensate for its transparent sides at small size.
+pub const CHEVRON_UP_DOWN_GLYPH_INSET: f32 = (7. - 1.5 / 2.) * ICON_SIZE_SM / 24.;
 /// Glyphs inside pills and card metadata.
 pub const ICON_SIZE_XS: f32 = 12.;
 pub const ICON_SIZE_LG: f32 = 18.;

@@ -56,7 +56,6 @@ impl Shell {
     }
 
     pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let wide = self.session.panes[0].width >= 210.;
         let mut nav = column().gap(px(2.));
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             nav = nav.child(self.sidebar_item(page.route, Some(index + 1), cx));
@@ -97,7 +96,7 @@ impl Shell {
                     .text_size(type_size(LABEL_SIZE))
                     .child(icon("search", ICON_SIZE_SM))
                     .child(div().flex_1().min_w_0().truncate().child("Go to…"))
-                    .when(wide, |s| s.child(kbd("⌘K"))),
+                    .child(kbd("⌘K").debug_selector(|| "sidebar-search-shortcut".into())),
             )
             .child(nav)
             .child(div().flex_1())
@@ -112,17 +111,24 @@ impl Shell {
                             .flex_shrink_0()
                             .w_full()
                             .items_center()
-                            .pl(px(SPACE_2 - 2.))
-                            .pr(px(SPACE_3 + 1.))
-                            .gap(px(SPACE_2 - 2.))
+                            .pl(px(SIDEBAR_PROFILE_INSET))
+                            // Align the visible glyph, not its transparent SVG box.
+                            .pr(px(SIDEBAR_PROFILE_INSET - CHEVRON_UP_DOWN_GLYPH_INSET))
+                            .gap(px(SIDEBAR_PROFILE_INSET))
                             .rounded(px(RADIUS_MD))
                             .when(user_menu_open, |s| s.bg(rgb(SELECTED)))
                             .debug_selector(|| "sidebar-profile".into())
-                            .child(avatar(
-                                &self.profile.name,
-                                self.profile.photo.clone(),
-                                AVATAR_SIZE,
-                            ))
+                            .child(
+                                div()
+                                    .size(px(AVATAR_SIZE))
+                                    .flex_shrink_0()
+                                    .debug_selector(|| "sidebar-profile-avatar".into())
+                                    .child(avatar(
+                                        &self.profile.name,
+                                        self.profile.photo.clone(),
+                                        AVATAR_SIZE,
+                                    )),
+                            )
                             .child(
                                 column().flex_1().min_w_0().child(
                                     div()
@@ -134,9 +140,108 @@ impl Shell {
                                         .child(self.profile.name.clone()),
                                 ),
                             )
-                            .child(icon("chevronUpDown", ICON_SIZE_SM)),
+                            .child(
+                                icon("chevronUpDown", ICON_SIZE_SM)
+                                    .debug_selector(|| "sidebar-profile-chevron".into()),
+                            ),
                     )
                     .when_some(user_menu, |s, support| s.child(self.user_menu(support, cx))),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::PANE_WIDTHS;
+    use gpui::{TestAppContext, VisualTestContext};
+
+    fn draw_sidebar(shell: &Entity<Shell>, width: f32, cx: &mut VisualTestContext) {
+        cx.update(|window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.session.panes[0].width = width;
+                shell.pane_visible[0] = width;
+                cx.notify();
+            });
+            window.draw(cx).clear(cx);
+        });
+    }
+
+    #[gpui::test]
+    fn search_shortcut_stays_visible_and_clickable_at_every_sidebar_width(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        cx.update(bind_keys);
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        for command_held in [false, true] {
+            shell.update(cx, |shell, _| shell.command_held = command_held);
+            for width in [
+                PANE_WIDTHS[0].0,
+                209.,
+                210.,
+                PANE_WIDTHS[0].2,
+                PANE_WIDTHS[0].1,
+            ] {
+                draw_sidebar(&shell, width, cx);
+                let search = cx.debug_bounds("shell.search").unwrap();
+                let shortcut = cx.debug_bounds("sidebar-search-shortcut").unwrap();
+                assert!(shortcut.size.width > px(0.));
+                assert!(shortcut.size.height > px(0.));
+                assert!(search.contains(&shortcut.origin));
+                assert!(search.contains(&shortcut.bottom_right()));
+            }
+        }
+        draw_sidebar(&shell, PANE_WIDTHS[0].0, cx);
+        cx.simulate_click(
+            cx.debug_bounds("sidebar-search-shortcut").unwrap().center(),
+            Modifiers::default(),
+        );
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+        });
+        cx.simulate_keystrokes("escape cmd-k");
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+        });
+    }
+
+    #[gpui::test]
+    fn profile_visible_edges_have_even_insets_with_a_long_name(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        shell.update(cx, |shell, _| {
+            shell.profile.name = "A deliberately long profile display name".into();
+        });
+        for width in [PANE_WIDTHS[0].0, PANE_WIDTHS[0].2, PANE_WIDTHS[0].1] {
+            draw_sidebar(&shell, width, cx);
+            let profile = cx.debug_bounds("sidebar-profile").unwrap();
+            let avatar = cx.debug_bounds("sidebar-profile-avatar").unwrap();
+            let chevron = cx.debug_bounds("sidebar-profile-chevron").unwrap();
+            let name = cx.debug_bounds("sidebar-profile-name").unwrap();
+            let left_inset = f32::from(avatar.origin.x - profile.origin.x);
+            // The glyph's rightmost rounded stroke is x=17.75 in its 24-point SVG.
+            let visible_chevron_right =
+                f32::from(chevron.origin.x) + f32::from(chevron.size.width) * 17.75 / 24.;
+            let right_inset = f32::from(profile.right()) - visible_chevron_right;
+            assert!((left_inset - SIDEBAR_PROFILE_INSET).abs() < 0.5);
+            assert!(
+                (right_inset - left_inset).abs() < 0.5,
+                "insets at width {width}: {left_inset} / {right_inset}"
+            );
+            assert!(name.right() <= chevron.origin.x);
+        }
+        cx.simulate_click(
+            cx.debug_bounds("sidebar-profile-chevron").unwrap().center(),
+            Modifiers::default(),
+        );
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(
+                shell.overlays.borrow().active(),
+                Some(Overlay::UserMenu { support: false })
+            );
+        });
     }
 }
