@@ -1,9 +1,11 @@
 #import <AppKit/AppKit.h>
-#import <objc/runtime.h>
 #import <CommonCrypto/CommonDigest.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <sys/file.h>
+#include <netinet/in.h>
 #import "SPUUpdater.h"
 #import "SPUUpdaterDelegate.h"
 #import "SPUUserDriver.h"
@@ -95,7 +97,7 @@ void ainc_update_offer(const char *version, const char *current, const char *htm
     icon.image = NSApp.applicationIconImage;
     [content addSubview:icon];
     [content addSubview:label(changelog ? @"AgentInc release history" : @"A new version of AgentInc is available!", NSMakeRect(108, 389, 486, 30), [NSFont boldSystemFontOfSize:17])];
-    NSString *question = ready ? @"Would you like to install it now?" : @"Would you like to download it now?";
+    NSString *question = ready ? @"Downloaded. Verify and install it now?" : @"Would you like to download and install it now?";
     NSString *description = changelog
         ? [NSString stringWithFormat:@"All published releases.\nYou have AgentInc %@.", installed]
         : [NSString stringWithFormat:@"AgentInc %@ is now available—you have %@.\n%@", next, installed, question];
@@ -288,8 +290,191 @@ void ainc_update_smoke_init(void) {
     [NSApp finishLaunching];
 }
 
-// Sparkle owns the update state machine, downloads, verification and installer.
-// This driver owns only presentation, replies, and the app's shutdown barrier.
+// The cache is inert: only Sparkle, after explicit consent and drain, verifies
+// and extracts archives. Neither the downloader nor its HTTP server installs.
+static NSString *digestName(NSData *data) {
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+    NSMutableString *name = [NSMutableString string];
+    for (NSUInteger i = 0; i < sizeof(digest); i++) [name appendFormat:@"%02x", digest[i]];
+    return name;
+}
+
+static NSString *writePrivateData(NSData *data, NSURL *url) {
+    if (!url) return nil; // Unbundled harness.
+    NSError *error = nil;
+    if (![NSFileManager.defaultManager createDirectoryAtURL:url.URLByDeletingLastPathComponent withIntermediateDirectories:YES
+        attributes:@{NSFilePosixPermissions:@0700} error:&error]) return error.localizedDescription;
+    char *temporary = strdup([[url.path stringByAppendingString:@".XXXXXX"] fileSystemRepresentation]);
+    if (!temporary) return @"Could not allocate update record.";
+    int fd = mkstemp(temporary);
+    if (fd < 0) { free(temporary); return @"Could not create update record."; }
+    const uint8_t *bytes = data.bytes;
+    NSUInteger remaining = data.length;
+    BOOL success = YES;
+    while (remaining) {
+        ssize_t written = write(fd, bytes, remaining);
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) { success = NO; break; }
+        bytes += written;
+        remaining -= (NSUInteger)written;
+    }
+    if (success && fsync(fd) != 0) success = NO;
+    if (close(fd) != 0) success = NO;
+    if (success && rename(temporary, url.fileSystemRepresentation) != 0) success = NO;
+    if (!success) unlink(temporary);
+    free(temporary);
+    int directory = open(url.URLByDeletingLastPathComponent.fileSystemRepresentation, O_RDONLY);
+    if (directory < 0 || fsync(directory) != 0) success = NO;
+    if (directory >= 0) close(directory);
+    return success ? nil : @"Could not persist update record.";
+}
+
+static BOOL sendBytes(int socket, const void *bytes, size_t remaining) {
+    while (remaining) {
+        ssize_t count = send(socket, bytes, remaining, 0);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) return NO;
+        bytes = (const char *)bytes + count;
+        remaining -= count;
+    }
+    return YES;
+}
+
+@interface AincArchiveServer : NSObject
+@property(strong) dispatch_source_t listener;
+@property(strong) NSURL *url;
+- (instancetype)initWithArchive:(NSURL *)archive;
+- (void)stop;
+@end
+@implementation AincArchiveServer
+- (instancetype)initWithArchive:(NSURL *)archive {
+    self = [super init];
+    if (!self) return nil;
+    int socketFD = socket(AF_INET, SOCK_STREAM, 0);
+    if (socketFD < 0) return nil;
+    fcntl(socketFD, F_SETFD, FD_CLOEXEC);
+    fcntl(socketFD, F_SETFL, O_NONBLOCK);
+    struct sockaddr_in address = {.sin_len = sizeof(address), .sin_family = AF_INET,
+        .sin_port = 0, .sin_addr.s_addr = htonl(INADDR_LOOPBACK)};
+    socklen_t size = sizeof(address);
+    if (bind(socketFD, (struct sockaddr *)&address, size) || listen(socketFD, 8)
+        || getsockname(socketFD, (struct sockaddr *)&address, &size)) { close(socketFD); return nil; }
+    NSString *route = [@"/" stringByAppendingString:NSUUID.UUID.UUIDString];
+    self.url = [[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%u%@/",
+        ntohs(address.sin_port), route]] URLByAppendingPathComponent:archive.lastPathComponent];
+    NSString *requestLine = [NSString stringWithFormat:@"GET %@ HTTP/1.", [NSURLComponents componentsWithURL:self.url resolvingAgainstBaseURL:NO].percentEncodedPath];
+    self.listener = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, socketFD, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    dispatch_source_set_cancel_handler(self.listener, ^{ close(socketFD); });
+    dispatch_source_set_event_handler(self.listener, ^{
+        int client;
+        while ((client = accept(socketFD, NULL, NULL)) >= 0) {
+            int connection = client;
+            fcntl(connection, F_SETFD, FD_CLOEXEC);
+            fcntl(connection, F_SETFL, 0);
+            int enabled = 1;
+            setsockopt(connection, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
+            struct timeval timeout = {.tv_sec = 30};
+            setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+            setsockopt(connection, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                @autoreleasepool {
+                    NSMutableData *request = [NSMutableData data];
+                    while (request.length < 16384) {
+                        char bytes[1024];
+                        ssize_t count = recv(connection, bytes, sizeof(bytes), 0);
+                        if (count <= 0) break;
+                        [request appendBytes:bytes length:(NSUInteger)count];
+                        if ([request rangeOfData:[@"\r\n\r\n" dataUsingEncoding:NSUTF8StringEncoding] options:0 range:NSMakeRange(0, request.length)].location != NSNotFound) break;
+                    }
+                    NSString *text = [[NSString alloc] initWithData:request encoding:NSUTF8StringEncoding];
+                    int file = [text hasPrefix:requestLine] ? open(archive.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW) : -1;
+                    struct stat attributes;
+                    if (file >= 0 && fstat(file, &attributes) == 0 && S_ISREG(attributes.st_mode)) {
+                        NSString *header = [NSString stringWithFormat:@"HTTP/1.1 200 OK\r\nContent-Length: %lld\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n", (long long)attributes.st_size];
+                        if (sendBytes(connection, header.UTF8String, strlen(header.UTF8String))) {
+                            char bytes[65536];
+                            ssize_t count;
+                            while ((count = read(file, bytes, sizeof(bytes))) > 0) if (!sendBytes(connection, bytes, (size_t)count)) break;
+                        }
+                    } else {
+                        const char *missing = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        sendBytes(connection, missing, strlen(missing));
+                    }
+                    if (file >= 0) close(file);
+                    close(connection);
+                }
+            });
+        }
+    });
+    dispatch_resume(self.listener);
+    return self;
+}
+- (void)stop { if (self.listener) { dispatch_source_cancel(self.listener); self.listener = nil; } }
+- (void)dealloc { [self stop]; }
+@end
+
+@interface AincArchiveDownload : NSObject <NSURLSessionDownloadDelegate>
+@property(strong) NSURLSession *session;
+@property(strong) NSURLSessionDownloadTask *task;
+@property(strong) NSURL *destination;
+@property(copy) void (^progress)(uint64_t, uint64_t);
+@property(copy) void (^completion)(NSError *);
+@property(strong) NSError *saveError;
+- (void)start:(NSURL *)url destination:(NSURL *)destination;
+- (void)cancel;
+@end
+@implementation AincArchiveDownload
+- (void)start:(NSURL *)url destination:(NSURL *)destination {
+    self.destination = destination;
+    NSOperationQueue *queue = [NSOperationQueue new];
+    queue.maxConcurrentOperationCount = 1;
+    self.session = [NSURLSession sessionWithConfiguration:NSURLSessionConfiguration.ephemeralSessionConfiguration
+        delegate:self delegateQueue:queue];
+    self.task = [self.session downloadTaskWithURL:url];
+    [self.task resume];
+}
+- (void)cancel { [self.task cancel]; }
+- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)task didWriteData:(int64_t)bytes totalBytesWritten:(int64_t)written totalBytesExpectedToWrite:(int64_t)expected {
+    void (^progress)(uint64_t, uint64_t) = self.progress;
+    if (progress) dispatch_async(dispatch_get_main_queue(), ^{ progress((uint64_t)MAX(0, written), (uint64_t)MAX(0, expected)); });
+}
+- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)task didFinishDownloadingToURL:(NSURL *)location {
+    NSHTTPURLResponse *response = (NSHTTPURLResponse *)task.response;
+    if (![response isKindOfClass:NSHTTPURLResponse.class] || response.statusCode != 200) {
+        self.saveError = [NSError errorWithDomain:@"AgentInc.Cache" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Update archive download was refused."}];
+        return;
+    }
+    NSFileManager *files = NSFileManager.defaultManager;
+    NSError *error = nil;
+    NSURL *temporary = [self.destination URLByAppendingPathExtension:NSUUID.UUID.UUIDString];
+    BOOL success = [files createDirectoryAtURL:self.destination.URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:&error]
+        && [files copyItemAtURL:location toURL:temporary error:&error];
+    int fd = success ? open(temporary.fileSystemRepresentation, O_RDWR | O_NOFOLLOW) : -1;
+    if (fd < 0 || fchmod(fd, 0600) || fsync(fd)) success = NO;
+    if (fd >= 0) close(fd);
+    if (success && rename(temporary.fileSystemRepresentation, self.destination.fileSystemRepresentation)) success = NO;
+    int directory = open(self.destination.URLByDeletingLastPathComponent.fileSystemRepresentation, O_RDONLY);
+    if (directory < 0 || fsync(directory)) success = NO;
+    if (directory >= 0) close(directory);
+    if (!success) {
+        [files removeItemAtURL:temporary error:nil];
+        self.saveError = error ?: [NSError errorWithDomain:@"AgentInc.Cache" code:2 userInfo:@{NSLocalizedDescriptionKey:@"Could not save downloaded update."}];
+    }
+}
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+    void (^complete)(NSError *) = self.completion;
+    self.completion = nil;
+    self.progress = nil;
+    [self.session finishTasksAndInvalidate];
+    self.session = nil;
+    self.task = nil;
+    if (error) [NSFileManager.defaultManager removeItemAtURL:self.destination error:nil];
+    NSError *failure = error ?: self.saveError;
+    if (complete) dispatch_async(dispatch_get_main_queue(), ^{ complete(failure); });
+}
+@end
+
 @interface AincSparkleDriver : NSObject <SPUUserDriver, SPUUpdaterDelegate>
 @property(strong) SPUUpdater *updater;
 @property(strong) SUAppcastItem *item;
@@ -306,8 +491,6 @@ void ainc_update_smoke_init(void) {
 @property BOOL installArmed;
 @property BOOL preparing;
 @property BOOL prepared;
-@property BOOL terminationWaiting;
-@property BOOL retryQuit;
 @property BOOL preparationFailed;
 @property BOOL changelog;
 @property BOOL historyRequested;
@@ -317,52 +500,26 @@ void ainc_update_smoke_init(void) {
 @property BOOL backgroundDownload;
 @property BOOL userVisible;
 @property BOOL installRequested;
-@property BOOL cancelBackgroundOnQuit;
-@property(strong) NSTimer *reminder;
+@property(strong) NSURL *cacheDirectory;
+@property(strong) NSURL *fenceURL;
+@property(strong) AincArchiveDownload *download;
+@property(strong) AincArchiveServer *archiveServer;
+@property BOOL cacheFailed;
+@property BOOL ownsInstallCycle;
+@property BOOL cancellationRequested;
+@property BOOL extractionStarted;
+@property BOOL recoveringArmedFence;
 @property uint64_t received;
 @property uint64_t expected;
 - (void)action:(int)action automatic:(BOOL)automatic;
 - (void)presentOffer;
 - (void)prepare;
 - (void)preparedWithError:(NSString *)error;
-- (void)cancelBackgroundInstallation;
+- (void)downloadArchive;
 - (void)requestHistory;
 @end
 
 static AincSparkleDriver *sparkle;
-static IMP originalShouldTerminate;
-
-static NSApplicationTerminateReply shouldTerminate(id self, SEL selector, NSApplication *application) {
-    NSApplicationTerminateReply original = originalShouldTerminate
-        ? ((NSApplicationTerminateReply (*)(id, SEL, NSApplication *))originalShouldTerminate)(self, selector, application)
-        : NSTerminateNow;
-    if (original != NSTerminateNow) return original;
-    if (sparkle.backgroundDownload && !sparkle.installRequested) {
-        // Download-only means quitting must not silently consent to installation.
-        // Wait for Sparkle to acknowledge cancellation before the host can exit.
-        sparkle.cancelBackgroundOnQuit = YES;
-        dispatch_async(dispatch_get_main_queue(), ^{ [sparkle cancelBackgroundInstallation]; });
-        return NSTerminateLater;
-    }
-    if (!sparkle.installArmed || sparkle.prepared) {
-        return NSTerminateNow;
-    }
-    // Keep GPUI's actual delegate in place: GPUI accesses its ivars on shutdown.
-    // AppKit will resume termination only after Rust flushes and drains off-thread.
-    sparkle.terminationWaiting = YES;
-    [sparkle prepare];
-    return NSTerminateLater;
-}
-
-static void installTerminationBarrier(void) {
-    Class delegate = object_getClass(NSApp.delegate);
-    SEL selector = @selector(applicationShouldTerminate:);
-    Method method = class_getInstanceMethod(delegate, selector);
-    originalShouldTerminate = method ? method_getImplementation(method) : NULL;
-    if (!class_addMethod(delegate, selector, (IMP)shouldTerminate, "Q@:@")) {
-        method_setImplementation(class_getInstanceMethod(delegate, selector), (IMP)shouldTerminate);
-    }
-}
 
 static NSString *escaped(NSString *text) {
     return [[[text stringByReplacingOccurrencesOfString:@"&" withString:@"&amp;"]
@@ -393,7 +550,8 @@ static NSArray<NSString *> *profileEnvironmentKeys(void) {
         @"AINC_WORKSPACE_DIR", @"AINC_TOOL_ALLOW"
 #ifdef AINC_UPGRADE_TEST
         , @"AINC_UPGRADE_TEST_MODE", @"AINC_UPGRADE_TEST_FROM", @"AINC_UPGRADE_TEST_SUCCESS_FILE",
-        @"AINC_UPGRADE_TEST_SPARKLE_FEED_URL", @"AINC_UPGRADE_TEST_FEED_URL"
+        @"AINC_UPGRADE_TEST_SPARKLE_FEED_URL", @"AINC_UPGRADE_TEST_FEED_URL",
+        @"AINC_UPGRADE_TEST_DOWNLOADED_FILE", @"AINC_UPGRADE_TEST_PREPARATION_FILE"
 #endif
     ];
 }
@@ -412,6 +570,71 @@ static NSURL *relaunchProfileURL(NSBundle *bundle) {
     return [directory URLByAppendingPathComponent:[name stringByAppendingPathExtension:@"plist"]];
 }
 
+static NSURL *installationFenceURL(NSBundle *bundle) {
+    return [relaunchProfileURL(bundle) URLByAppendingPathExtension:@"fence"];
+}
+static int fenceLease = -1;
+
+static NSDictionary *readFence(NSURL *url) {
+    return url ? [NSDictionary dictionaryWithContentsOfURL:url] : nil;
+}
+static void releaseFenceLease(void) {
+    if (fenceLease >= 0) { close(fenceLease); fenceLease = -1; }
+}
+static NSString *removeFence(NSURL *url) {
+    if (url && unlink(url.fileSystemRepresentation) != 0 && errno != ENOENT) return @"Could not clear the update startup fence.";
+    releaseFenceLease();
+    return nil;
+}
+static NSString *acquireFence(NSURL *url, NSString *version) {
+    if (!url) return nil;
+    NSDictionary *existing = readFence(url);
+    if (!existing && [NSFileManager.defaultManager fileExistsAtPath:url.path]) return @"The pending update fence is unreadable. Reinstall AgentInc before restarting the local runtime.";
+    if (existing && ![existing[@"version"] isEqualToString:version]) return @"An earlier update is still pending. Retry that update before starting the local runtime.";
+    if (fenceLease < 0) {
+        [NSFileManager.defaultManager createDirectoryAtURL:url.URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:nil];
+        NSURL *lease = [url URLByAppendingPathExtension:@"lock"];
+        fenceLease = open(lease.fileSystemRepresentation, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (fenceLease < 0 || flock(fenceLease, LOCK_EX | LOCK_NB) != 0) {
+            releaseFenceLease();
+            return @"Another AgentInc instance is preparing an update.";
+        }
+    }
+    if (existing) return nil; // Never downgrade an armed record during recovery.
+    NSData *data = [NSPropertyListSerialization dataWithPropertyList:@{@"version":version, @"phase":@"preparing"} format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
+    return writePrivateData(data, url);
+}
+static NSString *armFence(NSURL *url, NSString *version) {
+    NSData *data = [NSPropertyListSerialization dataWithPropertyList:@{@"version":version, @"phase":@"armed"} format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
+    return writePrivateData(data, url);
+}
+static NSString *restoreFence(NSURL *url, NSString *version) {
+    NSDictionary *record = readFence(url);
+    if (!record) return nil; // Unreadable existing files still fence startup below.
+    if ([record[@"version"] isEqualToString:version]) return removeFence(url);
+    if ([record[@"phase"] isEqualToString:@"preparing"]) {
+        // No Install reply can precede the durable transition to armed. Only
+        // recover a dead owner's pre-drain record; another live UI may own it.
+        NSURL *lease = [url URLByAppendingPathExtension:@"lock"];
+        int fd = open(lease.fileSystemRepresentation, O_RDWR | O_NOFOLLOW | O_CLOEXEC);
+        if (fd >= 0) {
+            if (flock(fd, LOCK_EX | LOCK_NB) == 0) {
+                NSString *error = removeFence(url);
+                close(fd);
+                return error;
+            }
+            close(fd);
+        }
+    }
+    return nil;
+}
+bool ainc_sparkle_installation_fenced(void) {
+    @autoreleasepool {
+        NSURL *url = installationFenceURL(NSBundle.mainBundle);
+        return url && [NSFileManager.defaultManager fileExistsAtPath:url.path];
+    }
+}
+
 static NSString *saveRelaunchProfile(NSURL *url, NSString *targetVersion) {
     if (!url) return nil;
     NSMutableDictionary *environment = [NSMutableDictionary dictionary];
@@ -427,31 +650,10 @@ static NSString *saveRelaunchProfile(NSURL *url, NSString *targetVersion) {
     NSData *data = [NSPropertyListSerialization dataWithPropertyList:@{@"version":targetVersion ?: @"", @"environment":environment}
         format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
     if (!data) return error.localizedDescription;
-    if (![NSFileManager.defaultManager createDirectoryAtURL:url.URLByDeletingLastPathComponent withIntermediateDirectories:YES
-        attributes:@{NSFilePosixPermissions:@0700} error:&error]) return error.localizedDescription;
-    char *temporary = strdup([[url.path stringByAppendingString:@".XXXXXX"] fileSystemRepresentation]);
-    if (!temporary) return @"Could not save the update relaunch profile.";
-    int fd = mkstemp(temporary); // Creates the potentially credential-bearing file mode 0600.
-    if (fd < 0) { free(temporary); return @"Could not save the update relaunch profile."; }
-    const uint8_t *bytes = data.bytes;
-    NSUInteger remaining = data.length;
-    BOOL success = YES;
-    while (remaining) {
-        ssize_t written = write(fd, bytes, remaining);
-        if (written < 0 && errno == EINTR) continue;
-        if (written <= 0) { success = NO; break; }
-        bytes += written;
-        remaining -= (NSUInteger)written;
-    }
-    if (success && fsync(fd) != 0) success = NO;
-    if (close(fd) != 0) success = NO;
-    if (success && rename(temporary, url.fileSystemRepresentation) != 0) success = NO;
-    if (!success) unlink(temporary);
-    free(temporary);
-    return success ? nil : @"Could not save the update relaunch profile.";
+    return writePrivateData(data, url);
 }
 
-static NSString *restoreRelaunchProfile(NSURL *url, NSString *version) {
+static NSString *restoreRelaunchProfileRecord(NSURL *url, NSString *version, BOOL consume) {
     if (!url) return nil;
     int fd = open(url.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW);
     if (fd < 0) return errno == ENOENT ? nil : @"Could not read the update relaunch profile.";
@@ -481,20 +683,128 @@ static NSString *restoreRelaunchProfile(NSURL *url, NSString *version) {
             return @"Could not restore the update relaunch profile.";
         }
     }
-    if (unlink(url.fileSystemRepresentation) != 0) return @"Could not consume the update relaunch profile.";
+    if (consume && unlink(url.fileSystemRepresentation) != 0) return @"Could not consume the update relaunch profile.";
     return nil;
 }
 
-const char *ainc_restore_relaunch_profile(void) {
+static NSString *restoreRelaunchProfile(NSURL *url, NSString *version) {
+    return restoreRelaunchProfileRecord(url, version, YES);
+}
+
+const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     static NSString *error;
     @autoreleasepool {
         NSBundle *bundle = NSBundle.mainBundle;
-        error = restoreRelaunchProfile(relaunchProfileURL(bundle), [bundle objectForInfoDictionaryKey:@"CFBundleVersion"]);
+        NSString *version = [bundle objectForInfoDictionaryKey:@"CFBundleVersion"];
+        NSDictionary *fence = readFence(installationFenceURL(bundle));
+        if ([fence[@"version"] isEqualToString:version]
+            && ![[bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] isEqualToString:[NSString stringWithUTF8String:executableVersion]]) {
+            error = @"The replacement bundle and running executable versions differ; local runtime startup remains fenced.";
+            return error.UTF8String;
+        }
+        if ([fence[@"phase"] isEqualToString:@"armed"] && ![fence[@"version"] isEqualToString:version]) {
+            // Recovery must return to the same profile too. Keep the handoff
+            // until a matching replacement consumes it, including repeat crashes.
+            error = restoreRelaunchProfileRecord(relaunchProfileURL(bundle), fence[@"version"], NO);
+        } else error = restoreRelaunchProfile(relaunchProfileURL(bundle), version);
+        if (!error) error = restoreFence(installationFenceURL(bundle), [bundle objectForInfoDictionaryKey:@"CFBundleVersion"]);
     }
     return error.UTF8String;
 }
 
 @implementation AincSparkleDriver
+- (NSURL *)cachedArchive {
+    if (!self.cacheDirectory || !self.item.fileURL) return nil;
+    // The user driver's item is Sparkle's selected item (including its selected
+    // delta), not the parent full release. Bind cache identity to its enclosure.
+    NSData *identity = [NSJSONSerialization dataWithJSONObject:@[self.item.fileURL.absoluteString, self.item.versionString, self.item.propertiesDictionary]
+        options:NSJSONWritingSortedKeys error:nil];
+    if (!identity) return nil;
+    NSString *name = [NSString stringWithFormat:@"%@-%@", digestName(identity), self.item.fileURL.lastPathComponent];
+    return [self.cacheDirectory URLByAppendingPathComponent:name];
+}
+- (BOOL)hasCachedArchive {
+    NSURL *archive = [self cachedArchive];
+    struct stat attributes;
+    return archive && lstat(archive.fileSystemRepresentation, &attributes) == 0
+        && S_ISREG(attributes.st_mode) && attributes.st_size > 0 && attributes.st_uid == geteuid();
+}
+- (void)cacheCompleted {
+    self.ready = YES;
+    self.cacheFailed = NO;
+    self.message = @"Update downloaded; verification occurs when you install";
+    if (!self.userVisible && [[self.defaults objectForKey:@"AINCUpdateRemindAfter"] timeIntervalSinceNow] > 0) {
+        void (^reply)(SPUUserUpdateChoice) = self.choice;
+        self.choice = nil;
+        if (reply) reply(SPUUserUpdateChoiceDismiss);
+        return;
+    }
+#ifdef AINC_UPGRADE_TEST
+    ainc_update_action(10, false); // Rust waits for the current daemon's readiness.
+    if (strcmp(getenv("AINC_UPGRADE_TEST_MODE") ?: "", "automatic") == 0) [self presentOffer];
+#endif
+    if (self.userVisible) [self presentOffer];
+}
+- (void)downloadArchive {
+    if (self.download) return;
+    if ([self hasCachedArchive]) { [self cacheCompleted]; return; }
+    NSURL *destination = [self cachedArchive];
+    if (!destination) {
+        self.message = @"The update archive cannot be cached.";
+        self.cacheFailed = YES;
+        return;
+    }
+    self.cacheFailed = NO;
+    self.message = @"Downloading update…";
+    self.received = 0;
+    self.expected = 0;
+    AincArchiveDownload *download = [AincArchiveDownload new];
+    self.download = download;
+    __weak AincSparkleDriver *driver = self;
+    __weak AincArchiveDownload *flight = download;
+    self.cancellation = ^{ [driver.download cancel]; };
+    download.progress = ^(uint64_t received, uint64_t expected) {
+        driver.received = received;
+        driver.expected = expected;
+        if (driver.userVisible) ainc_update_progress(driver.message.UTF8String, received, expected);
+    };
+    download.completion = ^(NSError *error) {
+        AincSparkleDriver *strong = driver;
+        if (!strong || strong.download != flight) return;
+        strong.download = nil;
+        strong.cancellation = nil;
+        if (error) {
+            strong.ready = NO;
+            strong.cacheFailed = YES;
+            strong.message = error.code == NSURLErrorCancelled ? @"Update download canceled" : error.localizedDescription;
+            if (strong.userVisible) ainc_update_status(strong.message.UTF8String, strong.current.UTF8String, 2);
+        } else [strong cacheCompleted];
+    };
+    [download start:self.item.fileURL destination:destination];
+}
+- (void)updater:(SPUUpdater *)updater willDownloadUpdate:(SUAppcastItem *)item withRequest:(NSMutableURLRequest *)request {
+    // A fallback item has a different original URL. Leave it untouched; Sparkle
+    // retains responsibility for selecting and verifying full/delta archives.
+    if ([item.fileURL isEqual:self.item.fileURL]
+        && [item.versionString isEqualToString:self.item.versionString]
+        && [item.propertiesDictionary isEqualToDictionary:self.item.propertiesDictionary]
+        && [self hasCachedArchive]) {
+        [self.archiveServer stop];
+        self.archiveServer = [[AincArchiveServer alloc] initWithArchive:[self cachedArchive]];
+        if (self.archiveServer) request.URL = self.archiveServer.url;
+    }
+}
+- (void)updater:(SPUUpdater *)updater willExtractUpdate:(SUAppcastItem *)item {
+    self.extractionStarted = YES;
+#ifdef AINC_UPGRADE_TEST
+    const char *marker = getenv("AINC_UPGRADE_TEST_PREPARATION_FILE");
+    if (marker) {
+        NSString *text = [NSString stringWithFormat:@"%@ prepared=%d fence=%@\n", item.versionString, self.prepared, readFence(self.fenceURL)[@"phase"] ?: @"missing"];
+        NSString *error = writePrivateData([text dataUsingEncoding:NSUTF8StringEncoding], [NSURL fileURLWithPath:[NSString stringWithUTF8String:marker]]);
+        NSCAssert(!error, @"%@", error);
+    }
+#endif
+}
 - (void)showUpdatePermissionRequest:(SPUUpdatePermissionRequest *)request reply:(void (^)(SUUpdatePermissionResponse *))reply {
     // Normally suppressed by the shipped SUEnableAutomaticChecks default.
     NSAlert *alert = [NSAlert new];
@@ -526,7 +836,8 @@ const char *ainc_restore_relaunch_profile(void) {
         }
     }
 #ifdef AINC_UPGRADE_TEST
-    if (getenv("AINC_UPGRADE_TEST_MODE") && !self.item.informationOnlyUpdate) {
+    const char *mode = getenv("AINC_UPGRADE_TEST_MODE") ?: "";
+    if ((strcmp(mode, "manual") == 0 || (strcmp(mode, "automatic") == 0 && self.ready)) && !self.item.informationOnlyUpdate) {
         // Exercise the real retained NSButton target/action, not a parallel path.
         NSWindow *offeredWindow = ui().offer;
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -538,25 +849,31 @@ const char *ainc_restore_relaunch_profile(void) {
 - (void)showUpdateFoundWithAppcastItem:(SUAppcastItem *)item state:(SPUUserUpdateState *)state reply:(void (^)(SPUUserUpdateChoice))reply {
     self.cancellation = nil;
     self.item = item;
+    self.cacheFailed = NO;
     self.choice = reply;
-    self.ready = state.stage != SPUUserUpdateStageNotDownloaded;
+    self.ready = state.stage != SPUUserUpdateStageNotDownloaded || [self hasCachedArchive];
     self.installArmed |= state.stage == SPUUserUpdateStageInstalling;
     self.message = [NSString stringWithFormat:@"AgentInc %@ is available", item.displayVersionString];
     self.backgroundDownload = !state.userInitiated && [self.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"] && !item.informationOnlyUpdate;
     if (self.backgroundDownload && state.stage == SPUUserUpdateStageNotDownloaded) {
+        [self downloadArchive];
+        return;
+    }
+    NSDate *reminder = [self.defaults objectForKey:@"AINCUpdateRemindAfter"];
+    if (!state.userInitiated && reminder.timeIntervalSinceNow > 0) {
         self.choice = nil;
-        reply(SPUUserUpdateChoiceInstall);
+        reply(SPUUserUpdateChoiceDismiss);
         return;
     }
     [self presentOffer];
 }
 - (void)showUpdateReleaseNotesWithDownloadData:(SPUDownloadData *)data {
     self.notes = [[NSString alloc] initWithData:data.data encoding:NSUTF8StringEncoding] ?: @"Release notes unavailable.";
-    if (self.choice && !self.changelog && (!self.backgroundDownload || self.userVisible)) [self presentOffer];
+    if (self.choice && !self.download && !self.changelog && (!self.backgroundDownload || self.userVisible)) [self presentOffer];
 }
 - (void)showUpdateReleaseNotesFailedToDownloadWithError:(NSError *)error {
     self.notes = escaped(error.localizedDescription);
-    if (self.choice && !self.changelog && (!self.backgroundDownload || self.userVisible)) [self presentOffer];
+    if (self.choice && !self.download && !self.changelog && (!self.backgroundDownload || self.userVisible)) [self presentOffer];
 }
 - (void)showUpdateNotFoundWithError:(NSError *)error acknowledgement:(void (^)(void))acknowledgement {
     self.cancellation = nil;
@@ -614,14 +931,7 @@ const char *ainc_restore_relaunch_profile(void) {
     self.installArmed = YES;
     self.choice = reply;
     self.message = @"Update verified and ready to install";
-    if (self.cancelBackgroundOnQuit) { [self cancelBackgroundInstallation]; return; }
     if (self.installRequested) { [self action:3 automatic:[self.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"]]; return; }
-    if (self.backgroundDownload && !self.userVisible) {
-#ifdef AINC_UPGRADE_TEST
-        if (getenv("AINC_UPGRADE_TEST_MODE")) [self presentOffer];
-#endif
-        return;
-    }
     [self presentOffer];
 }
 - (void)showInstallingUpdateWithApplicationTerminated:(BOOL)terminated retryTerminatingApplication:(void (^)(void))retry {
@@ -636,8 +946,6 @@ const char *ainc_restore_relaunch_profile(void) {
     acknowledgement();
 }
 - (void)dismissUpdateInstallation {
-    [self.reminder invalidate];
-    self.reminder = nil;
     self.choice = nil;
     self.cancellation = nil;
     self.acknowledgement = nil;
@@ -646,13 +954,16 @@ const char *ainc_restore_relaunch_profile(void) {
 }
 - (void)showUpdateInFocus {
     self.userVisible = YES;
-    [self.reminder invalidate];
-    self.reminder = nil;
-    if (self.preparationFailed) {
+    [self.defaults removeObjectForKey:@"AINCUpdateRemindAfter"];
+    if (self.preparationFailed || self.cacheFailed) {
         ainc_update_status(self.message.UTF8String, self.current.UTF8String, 2);
         return;
     }
-    if (ui().offer) [ui().offer makeKeyAndOrderFront:nil];
+    if (self.download) {
+        ainc_update_progress(self.message.UTF8String, self.received, self.expected);
+        ui().cancelButton.enabled = YES;
+    }
+    else if (ui().offer) [ui().offer makeKeyAndOrderFront:nil];
     else if (ui().progress) [ui().progress makeKeyAndOrderFront:nil];
     else if (self.choice) [self presentOffer];
     else if (self.backgroundDownload) {
@@ -663,6 +974,9 @@ const char *ainc_restore_relaunch_profile(void) {
 }
 - (void)prepare {
     if (self.preparing) return;
+    if (!self.ownsInstallCycle) self.recoveringArmedFence = [readFence(self.fenceURL)[@"phase"] isEqualToString:@"armed"];
+    NSString *error = acquireFence(self.fenceURL, self.item.versionString);
+    if (error) { [self preparedWithError:error]; return; }
     self.preparing = YES;
     self.prepared = NO;
     self.preparationFailed = NO;
@@ -677,11 +991,9 @@ const char *ainc_restore_relaunch_profile(void) {
     if (error) {
         self.preparationFailed = YES;
         self.message = error;
-        if (self.terminationWaiting) {
-            self.terminationWaiting = NO;
-            self.retryQuit = YES;
-            [NSApp replyToApplicationShouldTerminate:NO];
-        }
+        // No initial reply was released for a preparing record. Armed recovery
+        // remains fenced even if a later flush/drain attempt fails.
+        if (fenceLease >= 0 && [readFence(self.fenceURL)[@"phase"] isEqualToString:@"preparing"]) removeFence(self.fenceURL);
         ainc_update_status(error.UTF8String, self.current.UTF8String, 2);
         return;
     }
@@ -690,13 +1002,6 @@ const char *ainc_restore_relaunch_profile(void) {
     void (^continuation)(void) = self.continuation;
     self.continuation = nil;
     if (continuation) continuation();
-    if (self.terminationWaiting) {
-        self.terminationWaiting = NO;
-        [NSApp replyToApplicationShouldTerminate:YES];
-    } else if (self.retryQuit) {
-        self.retryQuit = NO;
-        [NSApp terminate:nil];
-    }
 }
 - (void)action:(int)action automatic:(BOOL)automatic {
     if (action == 5) { [self.defaults setBool:automatic forKey:@"AINCAutomaticallyDownloadUpdates"]; return; }
@@ -711,6 +1016,7 @@ const char *ainc_restore_relaunch_profile(void) {
         // Closing the error never resumes an un-drained installation.
         return;
     }
+    if (self.cacheFailed && action == 6) { [self downloadArchive]; return; }
     if (action == 6 && self.retryTermination) {
         self.continuation = self.retryTermination;
         [self prepare];
@@ -719,6 +1025,7 @@ const char *ainc_restore_relaunch_profile(void) {
     if ((action == 4 || action == 7) && self.cancellation) {
         void (^cancel)(void) = self.cancellation;
         self.cancellation = nil;
+        if (!self.download) self.cancellationRequested = YES;
         cancel();
         return;
     }
@@ -738,24 +1045,10 @@ const char *ainc_restore_relaunch_profile(void) {
     }
     if (self.choice && (action == 1 || action == 2 || action == 3 || action == 7)) {
         if (action != 7) [self.defaults setBool:automatic forKey:@"AINCAutomaticallyDownloadUpdates"];
-        if (self.backgroundDownload && (action == 2 || action == 7)) {
-            // Retain the ready reply. Dismiss would arm install-on-quit, which
-            // is not what the download-only setting promises.
-            self.userVisible = NO;
-            if (action == 2) {
-                [self.reminder invalidate];
-                __weak AincSparkleDriver *driver = self;
-                // Restore the existing one-day ready badge reminder. This is
-                // presentation only; Sparkle still owns checking/downloading.
-                self.reminder = [NSTimer scheduledTimerWithTimeInterval:86400 repeats:NO block:^(NSTimer *timer) {
-                    (void)timer;
-                    driver.reminder = nil;
-                }];
-            }
-            return;
-        }
+        if (action == 2) [self.defaults setObject:[NSDate dateWithTimeIntervalSinceNow:86400] forKey:@"AINCUpdateRemindAfter"];
         void (^reply)(SPUUserUpdateChoice) = self.choice;
         self.choice = nil;
+        self.cacheFailed = NO;
         SPUUserUpdateChoice choice = action == 1 ? SPUUserUpdateChoiceSkip
             : action == 3 ? SPUUserUpdateChoiceInstall : SPUUserUpdateChoiceDismiss;
         if (choice == SPUUserUpdateChoiceInstall && self.item.informationOnlyUpdate) {
@@ -764,39 +1057,35 @@ const char *ainc_restore_relaunch_profile(void) {
             choice = SPUUserUpdateChoiceDismiss;
         }
         if (choice == SPUUserUpdateChoiceSkip) {
-            // The ready-to-relaunch reply cancels installation but, unlike the
-            // initial offer reply, does not remember a skipped version. Keep
-            // this existing AgentInc button's meaning in Sparkle's own domain.
-            if (self.ready) [self.defaults setObject:self.item.versionString forKey:@"SUSkippedVersion"];
+            [self.download cancel];
+            self.download = nil;
+            self.cancellation = nil;
+            NSURL *archive = [self cachedArchive];
+            if (archive) [NSFileManager.defaultManager removeItemAtURL:archive error:nil];
             self.ready = NO;
             self.installArmed = NO;
         }
         if (choice == SPUUserUpdateChoiceDismiss) self.ready = NO;
-        if (choice == SPUUserUpdateChoiceInstall) self.installRequested = YES;
-        if (choice == SPUUserUpdateChoiceInstall && self.installArmed && !self.prepared) {
-            self.continuation = ^{ reply(SPUUserUpdateChoiceInstall); };
+        if (choice == SPUUserUpdateChoiceInstall) {
+            [self.download cancel];
+            self.download = nil;
+            self.cancellation = nil;
+            self.installRequested = YES;
+            self.userVisible = YES;
+        }
+        if (choice == SPUUserUpdateChoiceInstall && !self.prepared) {
+            __weak AincSparkleDriver *driver = self;
+            self.continuation = ^{
+                driver.ownsInstallCycle = YES;
+                reply(SPUUserUpdateChoiceInstall);
+            };
             [self prepare];
         } else reply(choice);
     }
 }
-- (void)cancelBackgroundInstallation {
-    if (self.choice) {
-        void (^reply)(SPUUserUpdateChoice) = self.choice;
-        self.choice = nil;
-        reply(SPUUserUpdateChoiceSkip);
-    } else if (self.cancellation) {
-        void (^cancel)(void) = self.cancellation;
-        self.cancellation = nil;
-        cancel();
-    } else if (self.acknowledgement) {
-        void (^acknowledge)(void) = self.acknowledgement;
-        self.acknowledgement = nil;
-        acknowledge();
-    }
-    // Extraction has no cancellation callback; showReady... will cancel it.
-}
 - (BOOL)updater:(SPUUpdater *)updater shouldPostponeRelaunchForUpdate:(SUAppcastItem *)item untilInvokingBlock:(void (^)(void))installHandler {
-    if (self.prepared) return NO;
+    // Download/extraction can take time. Repeat the UI flush immediately before
+    // Sparkle requests termination, retaining our already-held runtime locks.
     self.installArmed = YES;
     self.continuation = installHandler;
     [self prepare];
@@ -805,34 +1094,30 @@ const char *ainc_restore_relaunch_profile(void) {
 - (void)updater:(SPUUpdater *)updater willInstallUpdate:(SUAppcastItem *)item {
     self.installArmed = YES;
 }
-- (BOOL)updater:(SPUUpdater *)updater willInstallUpdateOnQuit:(SUAppcastItem *)item immediateInstallationBlock:(void (^)(void))installHandler {
-    self.item = item;
-    self.ready = YES;
-    self.installArmed = YES;
-    self.message = @"Update verified and ready to install";
-    // The ordinary-quit barrier also protects Sparkle's install-on-quit path.
-    return NO;
-}
 - (void)updater:(SPUUpdater *)updater didFinishUpdateCycleForUpdateCheck:(SPUUpdateCheck)check error:(NSError *)error {
     if (self.historyRequested && error) {
         self.historyRequested = NO;
         self.historyFailed = YES;
         [self showUpdaterError:error acknowledgement:^{}];
     }
-    if (self.cancelBackgroundOnQuit) {
-        self.cancelBackgroundOnQuit = NO;
-        self.backgroundDownload = NO;
-        self.installArmed = NO;
-        self.ready = NO;
-        [NSApp replyToApplicationShouldTerminate:YES];
-    }
-    if (error && self.prepared) {
+    // Before willExtractUpdate no installer has launched, so a completed abort
+    // proves it is safe to resume. After that callback Sparkle's public cycle
+    // completion is not proof its out-of-process installer exited. Stay fenced
+    // on ambiguous failures and recover by retrying the same target version.
+    if ((error || self.cancellationRequested) && self.ownsInstallCycle
+        && !self.extractionStarted && !self.recoveringArmedFence) {
         NSURL *profile = relaunchProfileURL(NSBundle.mainBundle);
         if (profile) [NSFileManager.defaultManager removeItemAtURL:profile error:nil];
         self.prepared = NO;
         self.installArmed = NO;
-        ainc_update_action(9, false);
+        if (!removeFence(self.fenceURL)) ainc_update_action(9, false);
     }
+    self.ownsInstallCycle = NO;
+    self.prepared = NO;
+    self.extractionStarted = NO;
+    self.cancellationRequested = NO;
+    [self.archiveServer stop];
+    self.archiveServer = nil;
     if (error) { self.ready = NO; self.installArmed = NO; }
     self.backgroundDownload = NO;
     self.installRequested = NO;
@@ -840,7 +1125,8 @@ const char *ainc_restore_relaunch_profile(void) {
 }
 - (NSString *)feedURLStringForUpdater:(SPUUpdater *)updater {
 #ifdef AINC_UPGRADE_TEST
-    return NSProcessInfo.processInfo.environment[@"AINC_UPGRADE_TEST_SPARKLE_FEED_URL"];
+    const char *feed = getenv("AINC_UPGRADE_TEST_SPARKLE_FEED_URL");
+    return feed ? [NSString stringWithUTF8String:feed] : nil;
 #else
     return nil;
 #endif
@@ -938,9 +1224,11 @@ bool ainc_sparkle_start(const char *legacy, const char *version) {
     migratePreferences(sparkle.updater, [NSString stringWithUTF8String:legacy], host);
     NSString *domain = [host objectForInfoDictionaryKey:@"SUDefaultsDomain"] ?: host.bundleIdentifier;
     sparkle.defaults = [[NSUserDefaults alloc] initWithSuiteName:domain];
+    sparkle.fenceURL = installationFenceURL(host);
+    sparkle.cacheDirectory = [[relaunchProfileURL(host) URLByDeletingPathExtension] URLByAppendingPathComponent:@"Archives" isDirectory:YES];
     // Sparkle's automatic-download switch also consents to install-on-quit.
     // AgentInc has a download-only setting, implemented through user-driver
-    // replies and explicit cancellation on ordinary quit instead.
+    // an inert archive cache instead.
     sparkle.updater.automaticallyDownloadsUpdates = NO;
     if (![sparkle.updater startUpdater:&error]) {
         sparkle.message = error.localizedDescription;
@@ -948,7 +1236,6 @@ bool ainc_sparkle_start(const char *legacy, const char *version) {
     }
     sparkle.started = YES;
     sparkle.message = [NSString stringWithFormat:@"AgentInc %@", sparkle.current];
-    installTerminationBarrier();
     return true;
 }
 
@@ -957,6 +1244,7 @@ void ainc_sparkle_check(bool background) {
         ainc_update_status((sparkle.message ?: @"Updates are available in production builds.").UTF8String,
             (sparkle.current ?: @"").UTF8String, 3);
     } else if (background) [sparkle.updater checkForUpdatesInBackground];
+    else if (sparkle.choice || sparkle.preparationFailed || sparkle.cacheFailed || sparkle.download) [sparkle showUpdateInFocus];
     else [sparkle.updater checkForUpdates];
 }
 
@@ -970,8 +1258,8 @@ unsigned int ainc_sparkle_state(void) {
     return (sparkle.updater.automaticallyChecksForUpdates ? 1 : 0)
         | ([sparkle.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"] ? 2 : 0)
         | (sparkle.updater.updateCheckInterval > 86400 ? 4 : 0)
-        | (sparkle.ready && !sparkle.reminder ? 8 : 0)
-        | (sparkle.updater.canCheckForUpdates ? 16 : 0)
+        | (sparkle.ready && [[sparkle.defaults objectForKey:@"AINCUpdateRemindAfter"] timeIntervalSinceNow] <= 0 ? 8 : 0)
+        | (sparkle.updater.canCheckForUpdates || sparkle.choice || sparkle.cacheFailed || sparkle.preparationFailed || sparkle.download ? 16 : 0)
         | (sparkle.started ? 32 : 0);
 }
 void ainc_sparkle_setting(int setting, bool enabled) {
@@ -982,5 +1270,7 @@ void ainc_sparkle_setting(int setting, bool enabled) {
 void ainc_sparkle_prepared(const char *error) {
     NSString *failure = error ? [NSString stringWithUTF8String:error] : nil;
     if (!failure && sparkle.started) failure = saveRelaunchProfile(relaunchProfileURL(NSBundle.mainBundle), sparkle.item.versionString);
+    if (!failure) failure = armFence(sparkle.fenceURL, sparkle.item.versionString);
     [sparkle preparedWithError:failure];
+    if (failure && ![readFence(sparkle.fenceURL)[@"phase"] isEqualToString:@"armed"]) ainc_update_action(9, false);
 }

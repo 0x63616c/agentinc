@@ -13,6 +13,23 @@ fn upgrade_fixture_handoff_survives_relaunch_without_editing_signed_bundles() {
 }
 
 fn check_driver(upgrade_test: bool) {
+    check_fixture(
+        upgrade_test,
+        "sparkle_driver.m",
+        b"Sparkle driver callbacks passed\n",
+    );
+}
+
+#[test]
+fn inert_cache_serves_selected_archive_through_public_download_hook() {
+    check_fixture(
+        false,
+        "sparkle_cache.m",
+        b"Sparkle inert HTTP cache passed\n",
+    );
+}
+
+fn check_fixture(upgrade_test: bool, fixture: &str, expected: &[u8]) {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let scratch = crate_dir.join("../../.local/update-window-tests");
     fs::create_dir_all(&scratch).unwrap();
@@ -32,7 +49,7 @@ fn check_driver(upgrade_test: bool) {
             "-I",
         ])
         .arg(crate_dir.join("../../vendor/sparkle/Headers"))
-        .arg(crate_dir.join("tests/fixtures/sparkle_driver.m"))
+        .arg(crate_dir.join("tests/fixtures").join(fixture))
         .arg("-o")
         .arg(&executable)
         .output()
@@ -48,7 +65,7 @@ fn check_driver(upgrade_test: bool) {
         "driver callbacks failed: {}",
         String::from_utf8_lossy(&result.stderr)
     );
-    assert_eq!(result.stdout, b"Sparkle driver callbacks passed\n");
+    assert_eq!(result.stdout, expected);
 }
 
 #[test]

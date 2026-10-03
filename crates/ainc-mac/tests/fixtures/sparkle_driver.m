@@ -9,7 +9,6 @@ void ainc_update_action(int action, bool automatic) { event = action; }
 // this standalone Objective-C protocol/lifetime harness independent of Rust.
 char *ainc_update_format_notes(const char *markdown, const char *current, bool history) { return strdup(markdown); }
 void ainc_update_free_notes(char *text) { free(text); }
-static NSApplicationTerminateReply refuseQuit(id self, SEL selector, NSApplication *application) { return NSTerminateCancel; }
 
 @interface TestUpdater : NSObject
 @property BOOL automaticallyDownloadsUpdates;
@@ -26,6 +25,8 @@ static NSApplicationTerminateReply refuseQuit(id self, SEL selector, NSApplicati
 @property(copy) NSString *itemDescriptionFormat;
 @property BOOL informationOnlyUpdate;
 @property(strong) NSURL *infoURL;
+@property(strong) NSURL *fileURL;
+@property(strong) NSDictionary *propertiesDictionary;
 - (BOOL)isInformationOnlyUpdate;
 @end
 @implementation TestItem
@@ -74,6 +75,7 @@ int main(void) {
         TestItem *item = [TestItem new];
         item.displayVersionString = @"1.1.0";
         item.itemDescription = @"<h2>AgentInc 1.1.0</h2><p>Native notes</p>";
+        item.propertiesDictionary = @{};
         TestState *state = [TestState new];
         state.userInitiated = YES;
         __block NSUInteger replies = 0;
@@ -95,6 +97,11 @@ int main(void) {
         [ui().automatic performClick:nil];
         NSCAssert(!sparkle.updater.automaticallyDownloadsUpdates && replies == 2, @"checkbox does not consume offer reply");
         [findButton(@"Install Update") performClick:nil];
+        NSCAssert(replies == 2 && event == 8 && sparkle.preparing, @"initial install waits for flush and drain BEFORE Sparkle download/preparation");
+        [sparkle preparedWithError:@"Daemon refused drain"];
+        NSCAssert(replies == 2 && !sparkle.prepared, @"failed initial drain cannot start Sparkle");
+        [ui() retry:nil];
+        [sparkle preparedWithError:nil];
         NSCAssert(replies == 3 && choice == SPUUserUpdateChoiceInstall, @"download begins through Sparkle reply");
 
         __block NSUInteger cancellations = 0;
@@ -115,6 +122,7 @@ int main(void) {
         NSCAssert([ui().bytes.stringValue isEqualToString:@"50%"], @"extraction has meaningful progress");
 
         sparkle.installRequested = NO;
+        sparkle.prepared = NO;
         [sparkle showReadyToInstallAndRelaunch:reply];
         [findButton(@"Install Update") performClick:nil];
         NSCAssert(event == 8 && sparkle.preparing && replies == 3, @"ready reply waits for real shutdown gate");
@@ -129,10 +137,10 @@ int main(void) {
         [sparkle preparedWithError:nil];
         NSCAssert(replies == 4 && choice == SPUUserUpdateChoiceInstall, @"successful drain resumes exactly once");
 
-        sparkle.prepared = NO;
+        sparkle.prepared = YES;
         __block NSUInteger installs = 0;
         BOOL postponed = [sparkle updater:sparkle.updater shouldPostponeRelaunchForUpdate:(SUAppcastItem *)item untilInvokingBlock:^{ installs++; }];
-        NSCAssert(postponed && installs == 0, @"delegate postpones relaunch");
+        NSCAssert(postponed && installs == 0 && sparkle.preparing, @"even a drained installation repeats the final draft flush");
         [sparkle preparedWithError:nil];
         NSCAssert(installs == 1, @"delegate resumes after drain");
 
@@ -142,16 +150,6 @@ int main(void) {
         NSCAssert(sparkle.preparing && !sparkle.prepared && terminationRetries == 0, @"retry quit flushes work again before invoking Sparkle");
         [sparkle preparedWithError:nil];
         NSCAssert(terminationRetries == 1, @"retry quit reaches Sparkle after the barrier");
-
-        sparkle.prepared = NO;
-        originalShouldTerminate = (IMP)refuseQuit;
-        event = 0;
-        NSCAssert(shouldTerminate(nil, @selector(applicationShouldTerminate:), NSApp) == NSTerminateCancel && event == 0, @"termination barrier respects existing delegate refusal");
-        originalShouldTerminate = NULL;
-        NSCAssert(shouldTerminate(nil, @selector(applicationShouldTerminate:), NSApp) == NSTerminateLater && event == 8, @"ordinary quit of an armed installer uses the same drain gate");
-        // The hook was called directly rather than by NSApplication in this test.
-        sparkle.terminationWaiting = NO;
-        sparkle.preparing = NO;
 
         sparkle.installArmed = NO;
         sparkle.prepared = NO;
@@ -177,33 +175,33 @@ int main(void) {
         [sparkle dismissUpdateInstallation];
         NSCAssert(!ui().offer && !ui().progress && !sparkle.choice, @"dismiss clears windows and callbacks");
 
-        // The automatic setting downloads through the same Sparkle reply but
-        // does not consent to installation or install-on-quit.
+        // A persisted cache never needs an Install reply to become ready.
         sparkle.installRequested = NO;
         sparkle.userVisible = NO;
         [sparkle.defaults setBool:YES forKey:@"AINCAutomaticallyDownloadUpdates"];
         state.userInitiated = NO;
+        NSString *cachePath = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+        sparkle.cacheDirectory = [NSURL fileURLWithPath:cachePath];
+        item.fileURL = [NSURL URLWithString:@"https://fixture.invalid/selected.delta"];
+        NSCAssert(!writePrivateData([@"delta bytes" dataUsingEncoding:NSUTF8StringEncoding], [sparkle cachedArchive]), @"seed inert cache");
         NSUInteger beforeAutomatic = replies;
         [sparkle showUpdateFoundWithAppcastItem:(SUAppcastItem *)item state:(SPUUserUpdateState *)state reply:reply];
-        NSCAssert(replies == beforeAutomatic + 1 && choice == SPUUserUpdateChoiceInstall && !ui().offer, @"automatic setting accepts background download");
-        [sparkle showDownloadInitiatedWithCancellation:^{ cancellations++; }];
-        NSCAssert(!ui().progress, @"background download stays unobtrusive");
-        [sparkle showDownloadDidStartExtractingUpdate];
-        [sparkle showReadyToInstallAndRelaunch:reply];
-        NSCAssert(sparkle.ready && sparkle.choice && replies == beforeAutomatic + 1 && !ui().offer, @"background preparation waits for explicit installation");
+        NSCAssert(replies == beforeAutomatic && sparkle.ready && sparkle.choice && !sparkle.installArmed && !ui().offer, @"cached background update is inert and ready without Install");
         [sparkle action:2 automatic:YES];
-        NSCAssert(!(ainc_sparkle_state() & 8) && replies == beforeAutomatic + 1, @"later suppresses the ready badge without arming install-on-quit");
+        NSCAssert(!(ainc_sparkle_state() & 8) && replies == beforeAutomatic + 1 && choice == SPUUserUpdateChoiceDismiss, @"later dismisses the initial offer and persists a reminder");
+        NSUserDefaults *reloaded = [[NSUserDefaults alloc] initWithSuiteName:driverDomain];
+        NSCAssert([[reloaded objectForKey:@"AINCUpdateRemindAfter"] timeIntervalSinceNow] > 0, @"reminder survives driver restart");
+        [sparkle showUpdateFoundWithAppcastItem:(SUAppcastItem *)item state:(SPUUserUpdateState *)state reply:reply];
+        NSCAssert(replies == beforeAutomatic + 2 && !sparkle.choice, @"persisted reminder dismisses background cycles so future checks keep scheduling");
+        state.userInitiated = YES;
+        [sparkle showUpdateFoundWithAppcastItem:(SUAppcastItem *)item state:(SPUUserUpdateState *)state reply:reply];
         [sparkle showUpdateInFocus];
         NSCAssert((ainc_sparkle_state() & 8) && ui().offer.visible, @"explicit check restores the held ready offer");
-        [sparkle cancelBackgroundInstallation];
-        NSCAssert(replies == beforeAutomatic + 2 && choice == SPUUserUpdateChoiceSkip, @"ordinary quit cancels prepared background install");
-        NSCAssert(![sparkle.defaults stringForKey:@"SUSkippedVersion"], @"ordinary quit does not skip future offers");
-        [sparkle dismissUpdateInstallation];
-        state.userInitiated = YES;
-        state.stage = SPUUserUpdateStageDownloaded;
-        offer(sparkle, item, state, reply);
         [findButton(@"Skip This Version") performClick:nil];
-        NSCAssert([[sparkle.defaults stringForKey:@"SUSkippedVersion"] isEqualToString:item.displayVersionString], @"explicit skip of a prepared update persists in Sparkle defaults");
+        NSCAssert(replies == beforeAutomatic + 3 && choice == SPUUserUpdateChoiceSkip, @"real initial Skip reply owns Sparkle skip persistence");
+        NSCAssert(![sparkle hasCachedArchive], @"skip discards cached archive");
+        [NSFileManager.defaultManager removeItemAtPath:cachePath error:nil];
+        [sparkle dismissUpdateInstallation];
 
         // One-time migration only touches this random test suite.
         TestBundle *bundle = [TestBundle new];
@@ -241,13 +239,18 @@ int main(void) {
         setenv("DATABASE_URL", "postgres://fixture/password", 1);
         setenv("AINC_RUNTIME_CONFIG", "{\"endpoint\":\"fixture\"}", 1);
         setenv("AINC_UPGRADE_TEST_SPARKLE_FEED_URL", "https://test-only.invalid/feed", 1);
+        setenv("AINC_UPGRADE_TEST_DOWNLOADED_FILE", "/isolated/downloaded", 1);
+        setenv("AINC_UPGRADE_TEST_PREPARATION_FILE", "/isolated/preparing", 1);
         NSCAssert(!saveRelaunchProfile(record, @"2"), @"save production relaunch profile");
         NSDictionary *savedRecord = [NSPropertyListSerialization propertyListWithData:[NSData dataWithContentsOfURL:record] options:0 format:nil error:nil];
 #ifdef AINC_UPGRADE_TEST
         NSCAssert([savedRecord[@"environment"][@"AINC_UPGRADE_TEST_SPARKLE_FEED_URL"] isEqualToString:@"https://test-only.invalid/feed"], @"fixture record preserves test feed without changing a signed plist");
+        NSCAssert([savedRecord[@"environment"][@"AINC_UPGRADE_TEST_DOWNLOADED_FILE"] isEqualToString:@"/isolated/downloaded"]
+            && [savedRecord[@"environment"][@"AINC_UPGRADE_TEST_PREPARATION_FILE"] isEqualToString:@"/isolated/preparing"], @"fixture record preserves both gate markers");
         unsetenv("AINC_UPGRADE_TEST_SPARKLE_FEED_URL");
 #else
         NSCAssert(!savedRecord[@"environment"][@"AINC_UPGRADE_TEST_SPARKLE_FEED_URL"], @"production record excludes test feed overrides");
+        NSCAssert(!savedRecord[@"environment"][@"AINC_UPGRADE_TEST_DOWNLOADED_FILE"] && !savedRecord[@"environment"][@"AINC_UPGRADE_TEST_PREPARATION_FILE"], @"production record excludes fixture marker overrides");
 #endif
         NSDictionary *permissions = [NSFileManager.defaultManager attributesOfItemAtPath:record.path error:nil];
         NSCAssert([permissions[NSFilePosixPermissions] unsignedShortValue] == 0600, @"credentials are owner-only");
@@ -268,6 +271,19 @@ int main(void) {
         NSURL *first = relaunchProfileURL(bundle);
         bundle.path = @"/another/AgentInc.app";
         NSCAssert(![first isEqual:relaunchProfileURL(bundle)], @"separate app copies cannot consume each other's handoff");
+        NSURL *fence = [record URLByAppendingPathExtension:@"fence"];
+        NSCAssert(!acquireFence(fence, @"2"), @"persist preparing fence before drain");
+        NSCAssert(!restoreFence(fence, @"1") && readFence(fence), @"live preparing owner cannot be unfenced by a second UI startup");
+        releaseFenceLease(); // Simulated owner crash before the initial reply.
+        NSCAssert(!restoreFence(fence, @"1") && !readFence(fence), @"interrupted pre-drain is recoverable without arming Sparkle");
+        NSCAssert(!acquireFence(fence, @"2") && !armFence(fence, @"2"), @"arm durably before replying Install");
+        releaseFenceLease();
+        NSCAssert(!restoreFence(fence, @"1") && readFence(fence), @"old UI restart stays fenced after armed crash");
+        NSCAssert(acquireFence(fence, @"3") != nil, @"different target cannot erase the pending installation");
+        NSCAssert(!acquireFence(fence, @"2") && [readFence(fence)[@"phase"] isEqualToString:@"armed"], @"same-target retry keeps the fence armed");
+        releaseFenceLease();
+        NSCAssert(!restoreFence(fence, @"2") && !readFence(fence), @"matching replacement clears the startup fence");
+        [NSFileManager.defaultManager removeItemAtURL:[fence URLByAppendingPathExtension:@"lock"] error:nil];
         [sparkle.defaults removePersistentDomainForName:driverDomain];
         sparkle = nil;
     }

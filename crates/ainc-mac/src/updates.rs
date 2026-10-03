@@ -9,7 +9,7 @@ static INSTALLATION_PENDING: AtomicBool = AtomicBool::new(false);
 static COMPANION_LAUNCHES: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
 
 pub(crate) fn installation_pending() -> bool {
-    INSTALLATION_PENDING.load(Ordering::Acquire)
+    INSTALLATION_PENDING.load(Ordering::Acquire) || native_update::installation_fenced()
 }
 
 /// Storage holds this across companion spawn and its readiness handshake. The
@@ -80,6 +80,8 @@ impl UpdateView {
                     self.shutdown_locks.clear();
                     INSTALLATION_PENDING.store(false, Ordering::Release);
                 }
+                #[cfg(ainc_upgrade_test)]
+                10 => publish_downloaded_marker(cx),
                 _ => {}
             }
         }
@@ -113,9 +115,17 @@ impl UpdateView {
         }
         self.draining = true;
         INSTALLATION_PENDING.store(true, Ordering::Release);
-        let request = cx
-            .background_executor()
-            .spawn(async move { crate::storage::background(drain_owned_runtime(&discovery)) });
+        let external = std::env::var_os("AINC_DAEMON_URL").is_some();
+        let request = cx.background_executor().spawn(async move {
+            crate::storage::background(async move {
+                if external {
+                    let _launches = COMPANION_LAUNCHES.write().await;
+                    Ok(Vec::new())
+                } else {
+                    drain_owned_runtime(&discovery).await
+                }
+            })
+        });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             let _ = this.update(cx, |this, cx| {
@@ -353,13 +363,49 @@ pub fn start_upgrade_test(cx: &mut App) {
     }
     match mode.as_str() {
         "manual" => native_update::check(false),
-        "automatic" => {
+        "automatic" | "download-only" => {
             native_update::setting(0, true);
             native_update::setting(1, true);
             native_update::check(true);
         }
         _ => panic!("unknown upgrade test mode"),
     }
+}
+
+#[cfg(ainc_upgrade_test)]
+fn publish_downloaded_marker(cx: &mut App) {
+    // Automatic mode may immediately begin drain; this marker is required only
+    // by the download-only gate, where the original runtime must remain usable.
+    if std::env::var("AINC_UPGRADE_TEST_MODE").as_deref() != Ok("download-only") {
+        return;
+    }
+    let marker = std::env::var("AINC_UPGRADE_TEST_DOWNLOADED_FILE").expect("download-only marker");
+    cx.background_executor()
+        .spawn(async move {
+            crate::storage::background(async move {
+                let client = crate::storage::client().await?;
+                let version = client.get_version().send().await?;
+                anyhow::ensure!(
+                    version.version == ainc_release::VERSION,
+                    "cached update must leave the current daemon running"
+                );
+                client.health_ready().send().await?;
+                let marker = std::path::PathBuf::from(marker);
+                let temporary = marker.with_extension("tmp");
+                std::fs::write(
+                    &temporary,
+                    format!(
+                        "{} {} downloaded-unverified\n",
+                        ainc_release::VERSION,
+                        std::process::id()
+                    ),
+                )?;
+                std::fs::rename(temporary, marker)?;
+                anyhow::Ok(())
+            })
+            .expect("current runtime must remain ready after inert download");
+        })
+        .detach();
 }
 
 #[cfg(test)]

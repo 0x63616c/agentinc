@@ -22,7 +22,8 @@ pub struct State {
 
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
-    fn ainc_restore_relaunch_profile() -> *const i8;
+    fn ainc_restore_relaunch_profile(version: *const i8) -> *const i8;
+    fn ainc_sparkle_installation_fenced() -> bool;
     fn ainc_sparkle_start(legacy: *const i8, version: *const i8) -> bool;
     fn ainc_sparkle_check(background: bool);
     fn ainc_sparkle_changelog();
@@ -49,12 +50,22 @@ unsafe extern "C" {
     fn ainc_update_smoke_init();
 }
 
+pub(crate) fn installation_fenced() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        unsafe { ainc_sparkle_installation_fenced() }
+    }
+    #[cfg(not(target_os = "macos"))]
+    false
+}
+
 /// Restore supported production overrides before threads or profile reads.
 /// The shipping native handoff excludes all upgrade-test feed/key variables.
 pub fn restore_relaunch_environment() -> anyhow::Result<()> {
     #[cfg(target_os = "macos")]
     {
-        let error = unsafe { ainc_restore_relaunch_profile() };
+        let version = cstring(ainc_release::VERSION);
+        let error = unsafe { ainc_restore_relaunch_profile(version.as_ptr()) };
         if !error.is_null() {
             anyhow::bail!("{}", unsafe { CStr::from_ptr(error) }.to_string_lossy());
         }
