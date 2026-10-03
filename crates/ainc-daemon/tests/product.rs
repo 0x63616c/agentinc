@@ -418,3 +418,68 @@ mod todo_adapter {
         );
     }
 }
+
+#[sqlx::test]
+async fn conversation_resource_endpoints_share_state_with_the_deprecated_ones(pool: PgPool) {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let app = ainc_daemon::product_router(Product::new(pool.clone(), "fixture".into()).unwrap());
+    let send = |request: Request<Body>| {
+        let app = app.clone();
+        async move {
+            let response = app.oneshot(request).await.unwrap();
+            let status = response.status();
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            (
+                status,
+                serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            )
+        }
+    };
+    let authorized = |builder: axum::http::request::Builder| {
+        builder
+            .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
+            .header("authorization", "Bearer fixture")
+            .header("content-type", "application/json")
+    };
+    let (status, receipt) = send(
+        authorized(Request::post("/v1/conversations/commands"))
+            .body(Body::from(
+                serde_json::json!({
+                    "operation_id": uuid::Uuid::new_v4().to_string(),
+                    "command": {"kind": "create"},
+                })
+                .to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let id = receipt["result_id"].as_i64().unwrap();
+    let (status, snapshot) = send(
+        authorized(Request::get("/v1/conversations"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(snapshot["conversations"][0]["id"], id);
+    assert!(snapshot["conversations"][0].get("updated").is_none());
+    // The deprecated snapshot shows the same Conversation.
+    assert_eq!(snapshot_of_state(&pool).await, vec![id]);
+    let api = ainc_daemon::openapi();
+    assert_eq!(api["paths"]["/v1/state"]["get"]["deprecated"], true);
+    assert_eq!(api["paths"]["/v1/commands"]["post"]["deprecated"], true);
+    assert!(api["paths"]["/v1/conversations"]["get"]["deprecated"].is_null());
+}
+async fn snapshot_of_state(pool: &PgPool) -> Vec<i64> {
+    snapshot(pool)
+        .await
+        .unwrap()
+        .conversations
+        .iter()
+        .map(|c| c.id)
+        .collect()
+}
