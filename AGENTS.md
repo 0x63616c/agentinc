@@ -133,8 +133,10 @@ Verify with `just test`, which runs every CI check and should be clean.
 
 Commit proactively. Every coherent step that builds and passes tests gets its own
 commit, without waiting to be asked. Small commits with a clear message beat one large
-one at the end. Push validated commits to the intended remote branch proactively;
-never force-push or publish unrelated changes. When work is delegated, workers commit
+one at the end. Push validated commits to the intended remote branch proactively.
+Do not create a pull request unless the user explicitly asks for one; a request to
+push is not a request for a PR. Do not invoke a PR-creating workflow by default.
+Never force-push or publish unrelated changes. When work is delegated, workers commit
 and report their SHAs; the main coordinator owns integration, validation and pushing.
 
 Recommend a release when validated changes warrant one, with the appropriate
