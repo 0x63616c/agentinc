@@ -123,7 +123,7 @@ impl Shell {
                         MenuEntry::new("user-menu.settings", "Settings")
                             .selector("user-menu.settings")
                             .icon("settings")
-                            .shortcut("⌘,")
+                            .shortcut(shortcuts::SETTINGS.glyph)
                             .build(
                                 &self.hover,
                                 Self::menu_action(Control::Navigate(Route::Settings)),

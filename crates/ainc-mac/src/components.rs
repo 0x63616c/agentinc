@@ -154,7 +154,7 @@ impl ComponentsPage {
                     .child(Button::new("components.disabled-secondary", "Secondary").secondary().enabled(false).build(&self.hover, noop, cx))
                     .child(Button::new("components.selected-secondary", "Selected").secondary().selected(true).build(&self.hover, noop, cx))
                     .child(Button::new("components.selected-ghost", "Selected ghost").ghost().selected(true).build(&self.hover, noop, cx))
-                    .child(Button::new("components.trailing", "Go to…").secondary().icon("search").trailing(kbd("⌘K")).build(&self.hover, noop, cx)),
+                    .child(Button::new("components.trailing", "Go to…").secondary().icon("search").trailing(kbd(shortcuts::SEARCH.glyph)).build(&self.hover, noop, cx)),
             ))
     }
 
@@ -382,7 +382,7 @@ impl ComponentsPage {
                 "Initials stand in for a photo. Shortcut hints sit inside buttons, rows and footers.",
                 row().gap(px(SPACE_6)).items_center()
                     .child(row().gap(px(SPACE_2)).child(avatar("Calum Webb", None, AVATAR_SIZE)).child(avatar("Evee", None, AVATAR_SIZE_LG)).child(agent_avatar("Scout", AVATAR_SIZE)))
-                    .child(row().gap(px(SPACE_2)).child(kbd("⌘K")).child(kbd("↵")).child(kbd("ESC")))
+                    .child(row().gap(px(SPACE_2)).child(kbd(shortcuts::SEARCH.glyph)).child(kbd(shortcuts::SEND.glyph)).child(kbd(shortcuts::DISMISS.glyph)))
                     .child(kbd_hint("↑ ↓", "Navigate")),
             ))
             .child(specimen(
@@ -469,7 +469,7 @@ impl ComponentsPage {
                         .child(row().px(px(SPACE_2)).py(px(SPACE_2)).gap(px(SPACE_3)).child(avatar("Calum", None, AVATAR_SIZE_LG)).child(column().child(div().text_size(type_size(HEADING_SIZE)).font_weight(FontWeight::MEDIUM).child("Calum")).child(caption("@calum"))))
                         .child(menu_divider())
                         .child(MenuEntry::new("components.menu.updates", "Check for Updates").icon("refresh").build(&self.hover, noop, cx))
-                        .child(MenuEntry::new("components.menu.settings", "Settings").icon("settings").shortcut("⌘,").build(&self.hover, noop, cx))
+                        .child(MenuEntry::new("components.menu.settings", "Settings").icon("settings").shortcut(shortcuts::SETTINGS.glyph).build(&self.hover, noop, cx))
                         .child(MenuEntry::new("components.menu.support", "Support").icon("help").trailing(icon("chevronRight", ICON_SIZE_SM)).build(&self.hover, noop, cx))
                         .child(menu_divider())
                         .child(MenuEntry::new("components.menu.delete", "Delete").icon("trash").destructive().build(&self.hover, noop, cx)))

@@ -62,14 +62,19 @@ Open **Assistant** in the sidebar to start, reopen, rename or delete conversatio
 
 Sidebar destinations and Search replace the destination in the single tab. Back and Forward navigate its history.
 
+<!-- shortcuts -->
 | Shortcut | Action |
 | --- | --- |
-| Cmd+K | Go to… pages, actions and workspaces |
-| Cmd+[ / Cmd+] | Back / forward |
-| Cmd+1…6 | Tickets, Assistant, Agents, Automations, Terminal, Temporal |
-| Cmd+, | Settings |
-| Cmd+B | Toggle sidebar |
-| Escape | Dismiss Search, Ticket dialogs or notifications |
+| ⌘K | Go to… |
+| ⌘[ | Back |
+| ⌘] | Forward |
+| ⌘1–6 | Tickets, Assistant, Agents… |
+| ⌘, | Settings |
+| ⌘B | Toggle sidebar |
+| ⎋ | Dismiss |
+| ↵ | Send |
+| ⇧↵ | New line |
+<!-- /shortcuts -->
 
 Go to… (⌘K) fuzzy-matches pages, actions and Tickets, groups the results, remembers your recent choices, and supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. The user row opens the account menu: check for or install an update, open Settings, reach Support (Help Center, Send Feedback, About) and, once local accounts land, switch users. Settings holds persisted font family and size controls that update the whole app immediately; default type is two points larger than the original Control scale. The notification bell opens the notification panel; transient notices appear as toasts above the status bar.
 

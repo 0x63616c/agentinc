@@ -1178,7 +1178,7 @@ impl Render for AssistantPage {
                                     row()
                                         .justify_between()
                                         .child(if has_draft {
-                                            caption("Return to send · Shift+Return for a new line")
+                                            caption(format!("{} to send · {} for a new line", shortcuts::SEND.glyph, shortcuts::NEW_LINE.glyph))
                                                 .into_any_element()
                                         } else {
                                             div().into_any_element()

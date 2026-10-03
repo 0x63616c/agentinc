@@ -17,6 +17,7 @@ mod palette;
 mod segmented;
 mod select;
 mod settings;
+pub mod shortcuts;
 mod table;
 #[cfg(target_os = "macos")]
 mod terminal;

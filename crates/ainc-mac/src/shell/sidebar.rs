@@ -33,7 +33,7 @@ impl Shell {
             )
             .when(self.command_held, |s| {
                 s.child(
-                    kbd(format!("⌘{}", index % 10))
+                    kbd(shortcuts::route(index).1)
                         .debug_selector(move || format!("sidebar-badge-{index}")),
                 )
             })
@@ -57,27 +57,35 @@ impl Shell {
             .px(px(SIDEBAR_INSET))
             .pt(px(SPACE_4))
             .child(
-                self.button("shell.search", "Search · ⌘ K", Control::Search, cx)
-                    .debug_selector(|| "shell.search".into())
-                    .w_full()
-                    .min_w_0()
-                    .h(px(CONTROL_HEIGHT))
-                    .mb(px(SPACE_4))
-                    // The magnifier centres on the navigation icon column and the
-                    // placeholder lands on the label rail.
-                    .pl(px(SPACE_2))
-                    .pr(px(HEADER_SEARCH_RIGHT_INSET))
-                    // One more than the label rail's gap: the field's border sits inside it.
-                    .gap(px(SPACE_3 + 1.))
-                    .rounded(px(RADIUS_MD))
-                    .bg(rgb(SURFACE_INPUT))
-                    .border_1()
-                    .border_color(rgb(BORDER))
-                    .text_color(rgb(TEXT_SECONDARY))
-                    .text_size(type_size(LABEL_SIZE))
-                    .child(icon("search", ICON_SIZE_SM))
-                    .child(div().flex_1().min_w_0().truncate().child("Go to…"))
-                    .child(kbd("⌘K").debug_selector(|| "sidebar-search-shortcut".into())),
+                self.button(
+                    "shell.search",
+                    shortcuts::SEARCH.labelled("Search"),
+                    Control::Search,
+                    cx,
+                )
+                .debug_selector(|| "shell.search".into())
+                .w_full()
+                .min_w_0()
+                .h(px(CONTROL_HEIGHT))
+                .mb(px(SPACE_4))
+                // The magnifier centres on the navigation icon column and the
+                // placeholder lands on the label rail.
+                .pl(px(SPACE_2))
+                .pr(px(HEADER_SEARCH_RIGHT_INSET))
+                // One more than the label rail's gap: the field's border sits inside it.
+                .gap(px(SPACE_3 + 1.))
+                .rounded(px(RADIUS_MD))
+                .bg(rgb(SURFACE_INPUT))
+                .border_1()
+                .border_color(rgb(BORDER))
+                .text_color(rgb(TEXT_SECONDARY))
+                .text_size(type_size(LABEL_SIZE))
+                .child(icon("search", ICON_SIZE_SM))
+                .child(div().flex_1().min_w_0().truncate().child("Go to…"))
+                .child(
+                    kbd(shortcuts::SEARCH.glyph)
+                        .debug_selector(|| "sidebar-search-shortcut".into()),
+                ),
             )
             .child(nav)
             .child(div().flex_1())

@@ -852,7 +852,7 @@ impl Shell {
     fn icon_button(
         &self,
         id: &'static str,
-        label: &'static str,
+        label: impl Into<SharedString>,
         name: &'static str,
         control: Control,
         cx: &mut Context<Self>,
@@ -1267,16 +1267,24 @@ pub fn bind_keys(cx: &mut App) {
             });
         }
     });
-    cx.bind_keys(
-        (0..=9).map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateRoute(n), Some("Control"))),
-    );
+    cx.bind_keys((0..=9).map(|n| {
+        KeyBinding::new(
+            &shortcuts::route(n as usize).0,
+            NavigateRoute(n),
+            Some("Control"),
+        )
+    }));
     cx.bind_keys([
-        KeyBinding::new("cmd-[", GoBack, Some("Control")),
-        KeyBinding::new("cmd-]", GoForward, Some("Control")),
-        KeyBinding::new("cmd-k", Search, None),
-        KeyBinding::new("cmd-,", OpenSettings, Some("Control")),
-        KeyBinding::new("cmd-b", ToggleSidebar, Some("Control")),
-        KeyBinding::new("escape", Escape, Some("Control")),
+        KeyBinding::new(shortcuts::BACK.keystroke, GoBack, Some("Control")),
+        KeyBinding::new(shortcuts::FORWARD.keystroke, GoForward, Some("Control")),
+        KeyBinding::new(shortcuts::SEARCH.keystroke, Search, None),
+        KeyBinding::new(shortcuts::SETTINGS.keystroke, OpenSettings, Some("Control")),
+        KeyBinding::new(
+            shortcuts::TOGGLE_SIDEBAR.keystroke,
+            ToggleSidebar,
+            Some("Control"),
+        ),
+        KeyBinding::new(shortcuts::DISMISS.keystroke, Escape, Some("Control")),
         KeyBinding::new("tab", FocusNext, Some("Control")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("Control")),
         KeyBinding::new("cmd-q", Quit, None),
