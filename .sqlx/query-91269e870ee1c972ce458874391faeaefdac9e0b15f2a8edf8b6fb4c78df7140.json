@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO conversation_sessions(id,conversation_id,model,history,state) VALUES ($1,$2,$3,$4,'active')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "91269e870ee1c972ce458874391faeaefdac9e0b15f2a8edf8b6fb4c78df7140"
+}

@@ -7,20 +7,31 @@ use crate::{
 };
 use anyhow::Result;
 use futures::{StreamExt, future::BoxFuture};
-use sqlx::{FromRow, PgPool};
+use sqlx::PgPool;
 use std::{sync::Arc, time::Duration};
 use turnkeel::{
     Agent, AgentSource, Content, Event, Message, Role, Runtime, RuntimeConfig, SessionId,
 };
 
-#[derive(Clone, FromRow)]
+#[derive(Clone)]
 struct StoredSession {
     id: String,
     model: String,
     history: sqlx::types::Json<Vec<Message>>,
     event_offset: i64,
 }
-const SESSION_SQL: &str = "SELECT id,model,history,event_offset FROM conversation_sessions";
+/// `query_as!` of a [`StoredSession`]: its columns, then `$tail` (a literal starting
+/// at the table), then the query's arguments.
+macro_rules! select_session {
+    ($tail:literal $(, $arg:expr)* $(,)?) => {
+        sqlx::query_as!(
+            StoredSession,
+            r#"SELECT id,model,history AS "history: sqlx::types::Json<Vec<Message>>",event_offset FROM conversation_sessions "#
+                + $tail
+            $(, $arg)*
+        )
+    };
+}
 
 /// Each Conversation session acts through its own agent definition, named after the
 /// session so its tools know which Conversation they speak for. Workers ask for the
@@ -46,12 +57,10 @@ impl AgentSource for ConversationAgents {
             let Some(session_id) = session_id else {
                 return Ok(None);
             };
-            let session: Option<StoredSession> =
-                sqlx::query_as(&format!("{SESSION_SQL} WHERE id=$1"))
-                    .bind(&session_id)
-                    .fetch_optional(&this.pool)
-                    .await
-                    .map_err(|error| turnkeel::Error::Other(error.into()))?;
+            let session = select_session!("WHERE id=$1", session_id)
+                .fetch_optional(&this.pool)
+                .await
+                .map_err(|error| turnkeel::Error::Other(error.into()))?;
             session
                 .map(|s| s.agent(&this.pool, this.models.as_ref()))
                 .transpose()
@@ -123,10 +132,9 @@ impl Runner {
 }
 impl Reconcile for Turns {
     async fn reconcile(&mut self, tasks: &mut Tasks) -> Result<()> {
-        let closed: Vec<StoredSession> =
-            sqlx::query_as(&format!("{SESSION_SQL} WHERE state='closed'"))
-                .fetch_all(&self.pool)
-                .await?;
+        let closed = select_session!("WHERE state='closed'")
+            .fetch_all(&self.pool)
+            .await?;
         for session in closed {
             let agent = session.agent(&self.pool, self.models.as_ref())?;
             match self
@@ -138,15 +146,15 @@ impl Reconcile for Turns {
                 Ok(()) | Err(turnkeel::Error::NotFound) => {}
                 Err(error) => return Err(error.into()),
             }
-            sqlx::query(
+            sqlx::query!(
                 "UPDATE conversation_sessions SET state='cancelled' WHERE id=$1 AND state='closed'",
+                session.id
             )
-            .bind(session.id)
             .execute(&self.pool)
             .await?;
         }
-        let pending: Vec<i64> = sqlx::query_scalar(
-            "SELECT id FROM turns WHERE state IN ('queued','running') ORDER BY id",
+        let pending = sqlx::query_scalar!(
+            "SELECT id FROM turns WHERE state IN ('queued','running') ORDER BY id"
         )
         .fetch_all(&self.pool)
         .await?;
@@ -171,47 +179,60 @@ impl Reconcile for Turns {
 
 async fn prepare(pool: &PgPool, id: i64) -> Result<(StoredSession, String, i64)> {
     let mut tx = pool.begin().await?;
-    let parent: i64 = sqlx::query_scalar("SELECT conversation_id FROM turns WHERE id=$1")
-        .bind(id)
+    let parent = sqlx::query_scalar!("SELECT conversation_id FROM turns WHERE id=$1", id)
         .fetch_one(&mut *tx)
         .await?;
-    sqlx::query("SELECT id FROM conversations WHERE id=$1 FOR UPDATE")
-        .bind(parent)
-        .execute(&mut *tx)
+    sqlx::query!("SELECT id FROM conversations WHERE id=$1 FOR UPDATE", parent)
+        .fetch_optional(&mut *tx)
         .await?;
     // The Conversation is locked above; a turn never changes its Conversation.
     let conversation = parent;
-    let (prompt, model, session_id, attempt): (String, Option<String>, Option<String>, i64) =
-        sqlx::query_as("SELECT prompt,model,session_id,attempt FROM turns WHERE id=$1 FOR UPDATE")
-            .bind(id)
-            .fetch_one(&mut *tx)
-            .await?;
-    let model = model
+    let turn = sqlx::query!(
+        "SELECT prompt,model,session_id,attempt FROM turns WHERE id=$1 FOR UPDATE",
+        id
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    let (prompt, attempt) = (turn.prompt, turn.attempt);
+    let model = turn
+        .model
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "connection-default".into());
-    let mut session: Option<StoredSession> = if let Some(session_id) = session_id {
-        sqlx::query_as(&format!("{SESSION_SQL} WHERE id=$1"))
-            .bind(session_id)
+    let mut session = if let Some(session_id) = turn.session_id {
+        select_session!("WHERE id=$1", session_id)
             .fetch_optional(&mut *tx)
             .await?
     } else {
-        sqlx::query_as(&format!(
-            "{SESSION_SQL} WHERE conversation_id=$1 AND model=$2 AND state='active'"
-        ))
-        .bind(conversation)
-        .bind(&model)
+        select_session!(
+            "WHERE conversation_id=$1 AND model=$2 AND state='active'",
+            conversation,
+            model
+        )
         .fetch_optional(&mut *tx)
         .await?
     };
     if session.is_none() {
-        sqlx::query("UPDATE conversation_sessions SET state='closed' WHERE conversation_id=$1 AND state='active'").bind(conversation).execute(&mut *tx).await?;
-        let prior:Vec<(String,String)>=sqlx::query_as("SELECT prompt,response FROM turns WHERE conversation_id=$1 AND id<$2 AND state='completed' ORDER BY id").bind(conversation).bind(id).fetch_all(&mut *tx).await?;
+        sqlx::query!(
+            "UPDATE conversation_sessions SET state='closed' WHERE conversation_id=$1 AND state='active'",
+            conversation
+        )
+        .execute(&mut *tx)
+        .await?;
+        let prior = sqlx::query!(
+            r#"SELECT prompt,response AS "response!" FROM turns WHERE conversation_id=$1 AND id<$2 AND state='completed' ORDER BY id"#,
+            conversation,
+            id
+        )
+        .fetch_all(&mut *tx)
+        .await?;
         let history = prior
             .into_iter()
-            .flat_map(|(input, output)| {
+            .flat_map(|turn| {
                 [
-                    Message::user(input),
-                    Message::assistant(vec![Content::Text { text: output }]),
+                    Message::user(turn.prompt),
+                    Message::assistant(vec![Content::Text {
+                        text: turn.response,
+                    }]),
                 ]
             })
             .collect::<Vec<_>>();
@@ -221,11 +242,25 @@ async fn prepare(pool: &PgPool, id: i64) -> Result<(StoredSession, String, i64)>
             history: sqlx::types::Json(history),
             event_offset: 0,
         };
-        sqlx::query("INSERT INTO conversation_sessions(id,conversation_id,model,history,state) VALUES ($1,$2,$3,$4,'active')").bind(&new.id).bind(conversation).bind(&new.model).bind(&new.history).execute(&mut *tx).await?;
+        sqlx::query!(
+            "INSERT INTO conversation_sessions(id,conversation_id,model,history,state) VALUES ($1,$2,$3,$4,'active')",
+            new.id,
+            conversation,
+            new.model,
+            &new.history as _
+        )
+        .execute(&mut *tx)
+        .await?;
         session = Some(new);
     }
     let session = session.expect("existing or newly inserted session");
-    sqlx::query("UPDATE turns SET state='running',session_id=$2 WHERE id=$1 AND state IN ('queued','running')").bind(id).bind(&session.id).execute(&mut *tx).await?;
+    sqlx::query!(
+        "UPDATE turns SET state='running',session_id=$2 WHERE id=$1 AND state IN ('queued','running')",
+        id,
+        session.id
+    )
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok((session, prompt, attempt))
 }
@@ -246,20 +281,42 @@ async fn drive(pool: &PgPool, runtime: &Runtime, models: &dyn ModelCatalog, id: 
             Ok(event) => {
                 let ended = event == Event::TurnEnded;
                 let mut tx = pool.begin().await?;
-                let advanced=sqlx::query("UPDATE conversation_sessions SET event_offset=event_offset+1 WHERE id=$1 AND event_offset=$2").bind(&stored.id).bind(offset).execute(&mut *tx).await?.rows_affected();
+                let advanced = sqlx::query!(
+                    "UPDATE conversation_sessions SET event_offset=event_offset+1 WHERE id=$1 AND event_offset=$2",
+                    stored.id,
+                    offset
+                )
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
                 if advanced != 0 {
                     if let Event::Message(message) = event
                         && message.role == Role::Assistant
                     {
-                        sqlx::query("UPDATE turns SET response=COALESCE(response,'')||$2 WHERE id=$1 AND state='running' AND attempt=$3").bind(id).bind(message.text()).bind(attempt).execute(&mut *tx).await?;
+                        sqlx::query!(
+                            "UPDATE turns SET response=COALESCE(response,'')||$2 WHERE id=$1 AND state='running' AND attempt=$3",
+                            id,
+                            message.text(),
+                            attempt
+                        )
+                        .execute(&mut *tx)
+                        .await?;
                     }
                     if ended {
-                        sqlx::query("UPDATE turns SET state='completed',response=COALESCE(response,''),error=NULL WHERE id=$1 AND state='running' AND attempt=$2").bind(id).bind(attempt).execute(&mut *tx).await?;
-                        sqlx::query("SELECT pg_notify($1,$2)")
-                            .bind(coordination::RESULTS)
-                            .bind(id.to_string())
-                            .execute(&mut *tx)
-                            .await?;
+                        sqlx::query!(
+                            "UPDATE turns SET state='completed',response=COALESCE(response,''),error=NULL WHERE id=$1 AND state='running' AND attempt=$2",
+                            id,
+                            attempt
+                        )
+                        .execute(&mut *tx)
+                        .await?;
+                        sqlx::query!(
+                            "SELECT pg_notify($1,$2)",
+                            coordination::RESULTS,
+                            id.to_string()
+                        )
+                        .execute(&mut *tx)
+                        .await?;
                     }
                 }
                 tx.commit().await?;
@@ -270,16 +327,27 @@ async fn drive(pool: &PgPool, runtime: &Runtime, models: &dyn ModelCatalog, id: 
             }
             Err(turnkeel::Error::RunFailed(error)) => {
                 let mut tx = pool.begin().await?;
-                sqlx::query("UPDATE turns SET state='failed',error=$2 WHERE id=$1 AND state='running' AND attempt=$3").bind(id).bind(error).bind(attempt).execute(&mut *tx).await?;
-                sqlx::query("UPDATE conversation_sessions SET state='failed' WHERE id=$1")
-                    .bind(&stored.id)
-                    .execute(&mut *tx)
-                    .await?;
-                sqlx::query("SELECT pg_notify($1,$2)")
-                    .bind(coordination::RESULTS)
-                    .bind(id.to_string())
-                    .execute(&mut *tx)
-                    .await?;
+                sqlx::query!(
+                    "UPDATE turns SET state='failed',error=$2 WHERE id=$1 AND state='running' AND attempt=$3",
+                    id,
+                    error,
+                    attempt
+                )
+                .execute(&mut *tx)
+                .await?;
+                sqlx::query!(
+                    "UPDATE conversation_sessions SET state='failed' WHERE id=$1",
+                    stored.id
+                )
+                .execute(&mut *tx)
+                .await?;
+                sqlx::query!(
+                    "SELECT pg_notify($1,$2)",
+                    coordination::RESULTS,
+                    id.to_string()
+                )
+                .execute(&mut *tx)
+                .await?;
                 tx.commit().await?;
                 return Ok(());
             }

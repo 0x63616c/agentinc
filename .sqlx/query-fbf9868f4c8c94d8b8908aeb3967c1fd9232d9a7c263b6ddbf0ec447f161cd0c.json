@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE turns SET state='completed',response=COALESCE(response,''),error=NULL WHERE id=$1 AND state='running' AND attempt=$2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fbf9868f4c8c94d8b8908aeb3967c1fd9232d9a7c263b6ddbf0ec447f161cd0c"
+}

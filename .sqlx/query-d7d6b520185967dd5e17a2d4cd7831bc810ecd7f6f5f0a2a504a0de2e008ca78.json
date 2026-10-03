@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT prompt,response AS \"response!\" FROM turns WHERE conversation_id=$1 AND id<$2 AND state='completed' ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "prompt",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "response!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "d7d6b520185967dd5e17a2d4cd7831bc810ecd7f6f5f0a2a504a0de2e008ca78"
+}

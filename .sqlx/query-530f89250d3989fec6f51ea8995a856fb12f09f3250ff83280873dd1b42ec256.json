@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE turns SET state='failed',error=$2 WHERE id=$1 AND state='running' AND attempt=$3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "530f89250d3989fec6f51ea8995a856fb12f09f3250ff83280873dd1b42ec256"
+}

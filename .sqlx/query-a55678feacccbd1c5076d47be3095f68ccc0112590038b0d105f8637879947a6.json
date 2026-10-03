@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE conversation_sessions SET state='cancelled' WHERE id=$1 AND state='closed'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a55678feacccbd1c5076d47be3095f68ccc0112590038b0d105f8637879947a6"
+}

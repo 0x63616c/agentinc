@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE turns SET response=COALESCE(response,'')||$2 WHERE id=$1 AND state='running' AND attempt=$3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "491eac788d4dd05c51dba1e5a3fde10551e25330a7f8ee4ada5723e02c9ea633"
+}

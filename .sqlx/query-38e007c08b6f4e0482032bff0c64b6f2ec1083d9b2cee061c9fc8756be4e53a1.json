@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE conversation_sessions SET event_offset=event_offset+1 WHERE id=$1 AND event_offset=$2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "38e007c08b6f4e0482032bff0c64b6f2ec1083d9b2cee061c9fc8756be4e53a1"
+}
