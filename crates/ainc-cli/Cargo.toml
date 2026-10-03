@@ -14,8 +14,19 @@ name = "ainc"
 path = "src/main.rs"
 
 [dependencies]
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "charset", "http2", "system-proxy", "json"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+reqwest = { version = "0.13", default-features = false, features = [
+  "rustls-no-provider",
+  "charset",
+  "http2",
+  "system-proxy",
+  "json",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+  "ring",
+  "std",
+  "tls12",
+  "logging",
+] }
 ainc-client = { path = "../ainc-client" }
 ainc-identity = { path = "../ainc-identity" }
 clap_complete = "4"

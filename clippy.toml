@@ -1,24 +1,24 @@
 # Colors are authored once, in crates/ainc-mac/src/ui/tokens.rs. Anywhere else, use a token
 # with `rgb(TOKEN)`. These gpui constructors invent colors outside the palette.
 disallowed-methods = [
-    { path = "gpui::hsla", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
-    { path = "gpui::white", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
-    { path = "gpui::black", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
-    { path = "gpui::red", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
-    { path = "gpui::green", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
-    { path = "gpui::blue", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
-    { path = "gpui::yellow", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
-    { path = "gpui::opaque_grey", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
-    { path = "gpui::transparent_black", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
-    { path = "gpui::transparent_white", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::hsla", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::white", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::black", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::red", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::green", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::blue", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::yellow", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::opaque_grey", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::transparent_black", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
+  { path = "gpui::transparent_white", reason = "define colors in ui/tokens.rs and use `rgb(TOKEN)`" },
 ]
 
 # Logging is `tracing` (see crates/ainc-mac/src/main.rs `init_tracing` and the daemon's subscriber).
 # CLIs, xtask, build scripts and tests print on purpose and carry a crate-level
 # `#![allow(clippy::disallowed_macros)]`; `main` may keep usage text with a per-fn allow.
 disallowed-macros = [
-    { path = "std::println", reason = "log with `tracing::info!`; only CLIs print" },
-    { path = "std::eprintln", reason = "log with `tracing::warn!` or `error!`; only CLIs print" },
-    { path = "std::print", reason = "log with `tracing::info!`; only CLIs print" },
-    { path = "std::eprint", reason = "log with `tracing::warn!` or `error!`; only CLIs print" },
+  { path = "std::println", reason = "log with `tracing::info!`; only CLIs print" },
+  { path = "std::eprintln", reason = "log with `tracing::warn!` or `error!`; only CLIs print" },
+  { path = "std::print", reason = "log with `tracing::info!`; only CLIs print" },
+  { path = "std::eprint", reason = "log with `tracing::warn!` or `error!`; only CLIs print" },
 ]

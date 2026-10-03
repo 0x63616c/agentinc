@@ -1,6 +1,19 @@
 [workspace]
 resolver = "3"
-members = ["crates/ainc-identity", "crates/ainc-release", "crates/turnkeel", "crates/turnkeel-macros", "crates/ainc-mac", "crates/ainc-daemon", "crates/ainc-client", "crates/ainc-cli", "crates/ainc-xtask", "crates/ainc-generate", "crates/gpui-pilot", "crates/gpui-pilot-cli"]
+members = [
+  "crates/ainc-identity",
+  "crates/ainc-release",
+  "crates/turnkeel",
+  "crates/turnkeel-macros",
+  "crates/ainc-mac",
+  "crates/ainc-daemon",
+  "crates/ainc-client",
+  "crates/ainc-cli",
+  "crates/ainc-xtask",
+  "crates/ainc-generate",
+  "crates/gpui-pilot",
+  "crates/gpui-pilot-cli",
+]
 exclude = ["vendor/gpui"]
 
 [workspace.package]
@@ -27,7 +40,12 @@ schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = [
+  "rt-multi-thread",
+  "macros",
+  "sync",
+  "time",
+] }
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
@@ -38,7 +56,9 @@ temporalio-common = "1.0"
 temporalio-macros = "1.0"
 temporalio-workflow = "1.0"
 # Only to turn TLS on for the SDK's dev-server download; not imported anywhere.
-temporalio-sdk-core = { version = "0.9", default-features = false, features = ["tls-ring"] }
+temporalio-sdk-core = { version = "0.9", default-features = false, features = [
+  "tls-ring",
+] }
 
 [patch."https://github.com/zed-industries/zed"]
 gpui = { path = "vendor/gpui" }
