@@ -40,9 +40,6 @@ mod settings;
 pub mod shortcuts;
 #[path = "ui/table.rs"]
 mod table;
-#[cfg(target_os = "macos")]
-#[path = "ui/terminal.rs"]
-mod terminal;
 #[path = "ui/time.rs"]
 pub mod time;
 #[path = "ui/toast.rs"]
@@ -72,8 +69,6 @@ pub use segmented::*;
 pub use select::*;
 pub use settings::*;
 pub use table::*;
-#[cfg(target_os = "macos")]
-pub use terminal::*;
 pub use toast::*;
 pub use toggle::*;
 pub use tokens::*;

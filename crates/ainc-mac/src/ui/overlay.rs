@@ -1,10 +1,10 @@
 //! One active overlay and one return-focus target per native window, plus the
 //! shells for dialogs, sheets, popovers and menus.
-use super::{layout::*, tokens::*};
+use super::{button::*, layout::*, motion::*, tokens::*};
 use gpui::{prelude::*, *};
 
 /// Tracks which overlay is open and where focus returns when it closes. The
-/// overlay vocabulary belongs to the host; the shell uses `model::Overlay`.
+/// overlay vocabulary belongs to the host; the shell uses `overlay::Overlay`.
 pub struct OverlayHost<O> {
     active: Option<O>,
     return_focus: Option<FocusHandle>,
@@ -114,13 +114,108 @@ pub fn dialog_shell(
         .child(footer)
 }
 
-/// The right-aligned Cancel / confirm row every dialog ends with.
-pub fn dialog_footer(cancel: impl IntoElement, submit: impl IntoElement) -> Div {
-    row()
-        .gap(px(CONTROL_GAP))
-        .justify_end()
-        .child(cancel)
-        .child(submit)
+/// What a dialog's confirm button does. Its pending label follows the verb.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Verb {
+    Create,
+    Save,
+    Delete,
+    Add,
+}
+impl Verb {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Create => "Create",
+            Self::Save => "Save",
+            Self::Delete => "Delete",
+            Self::Add => "Add",
+        }
+    }
+    pub fn pending(self) -> &'static str {
+        match self {
+            Self::Create => "Creating…",
+            Self::Save => "Saving…",
+            Self::Delete => "Deleting…",
+            Self::Add => "Adding…",
+        }
+    }
+}
+
+/// The right-aligned Cancel / confirm row every dialog ends with. The confirm
+/// button is destructive for `Verb::Delete`, disabled while pending and reads
+/// the verb's pending label meanwhile.
+pub struct DialogFooter {
+    verb: Verb,
+    label: Option<SharedString>,
+    ids: (&'static str, &'static str),
+    enabled: bool,
+    pending: bool,
+    focus: Option<(FocusHandle, FocusHandle)>,
+}
+impl DialogFooter {
+    pub fn new(verb: Verb) -> Self {
+        Self {
+            verb,
+            label: None,
+            ids: ("dialog.cancel", "dialog.submit"),
+            enabled: true,
+            pending: false,
+            focus: None,
+        }
+    }
+    /// A longer confirm label than the bare verb ("Add relationship").
+    pub fn label(mut self, label: impl Into<SharedString>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+    /// Element ids for the Cancel and confirm buttons.
+    pub fn ids(mut self, cancel: &'static str, submit: &'static str) -> Self {
+        self.ids = (cancel, submit);
+        self
+    }
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+    pub fn pending(mut self, pending: bool) -> Self {
+        self.pending = pending;
+        self
+    }
+    /// The two focus targets the dialog's Tab ring ends with.
+    pub fn focus(mut self, cancel: &FocusHandle, submit: &FocusHandle) -> Self {
+        self.focus = Some((cancel.clone(), submit.clone()));
+        self
+    }
+    pub fn build<V: HoverHost>(
+        self,
+        hover: &HoverFade,
+        cancel: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
+        submit: impl Fn(&mut V, &mut Window, &mut Context<V>) + Clone + 'static,
+        cx: &mut Context<V>,
+    ) -> Div {
+        let label: SharedString = if self.pending {
+            self.verb.pending().into()
+        } else {
+            self.label.unwrap_or_else(|| self.verb.label().into())
+        };
+        let mut cancel_button = Button::new(self.ids.0, "Cancel").secondary();
+        let mut submit_button = Button::new(self.ids.1, label)
+            .kind(if self.verb == Verb::Delete {
+                ButtonKind::Destructive
+            } else {
+                ButtonKind::Primary
+            })
+            .enabled(self.enabled && !self.pending);
+        if let Some((cancel_focus, submit_focus)) = &self.focus {
+            cancel_button = cancel_button.track_focus(cancel_focus);
+            submit_button = submit_button.track_focus(submit_focus);
+        }
+        row()
+            .gap(px(CONTROL_GAP))
+            .justify_end()
+            .child(cancel_button.build(hover, cancel, cx))
+            .child(submit_button.build(hover, submit, cx))
+    }
 }
 
 /// A full-height panel that slides in from the right edge of the window.

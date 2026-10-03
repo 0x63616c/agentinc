@@ -7,7 +7,7 @@ impl TicketsPage {
     /// Where the picker writes: the create dialog's draft while it is open,
     /// otherwise the open Ticket.
     fn drafting(&self) -> bool {
-        self.overlays.borrow().active() == Some(Overlay::AddTicket)
+        self.overlays.active() == Some(Dialog::Add)
     }
 
     fn applied_labels(&self) -> Vec<String> {

@@ -18,7 +18,7 @@ type Row<'a> = (
 
 impl TicketsPage {
     pub(crate) fn fixture_board(&mut self, cx: &mut Context<Self>) -> i64 {
-        let daemon = self.daemon.clone().expect("fixture daemon");
+        let daemon = self.daemon.clone();
         for (name, model) in [
             ("Evee", "connection-default"),
             ("Scout", "connection-default"),

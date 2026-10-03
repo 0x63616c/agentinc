@@ -4,13 +4,13 @@ use gpui::{prelude::*, *};
 
 /// The common page frame. Document pages share the same header, full-width
 /// content and inset; canvas pages let chat and the terminal use their height.
-pub struct Page {
+pub struct PageFrame {
     header: Option<PageHeader>,
     content: Div,
     fill: bool,
 }
 
-impl Page {
+impl PageFrame {
     pub fn document(header: PageHeader) -> Self {
         Self {
             header: Some(header),

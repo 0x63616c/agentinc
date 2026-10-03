@@ -1,22 +1,27 @@
 //! The AgentInc app entry point: menus, the main window and the opt-in pilot host.
 mod about;
 mod action;
+mod agents;
 mod assistant;
 mod automations;
 mod components;
+mod connections;
 mod daemon;
 mod evee;
 mod input;
-mod model;
 mod native_update;
+mod overlay;
+mod page;
 mod profile;
+mod routes;
+mod settings;
 mod shell;
 mod sync;
 mod temporal;
-#[cfg(target_os = "macos")]
 mod terminal;
 mod tickets;
 mod ui;
+mod ui_state;
 mod updates;
 use gpui::*;
 use shell::*;
@@ -188,7 +193,6 @@ fn main() {
                     return;
                 }
             };
-            cx.set_global(updates::UpdateHost(window));
             #[cfg(ainc_upgrade_test)]
             updates::start_upgrade_test(cx);
             #[cfg(feature = "automation")]

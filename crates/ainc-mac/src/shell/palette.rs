@@ -1,6 +1,7 @@
 //! The shell's command palette items: pages, actions and Tickets, fuzzy
 //! matched, grouped and remembered.
 use super::*;
+use crate::ui_state::FontSize;
 
 /// Everything the palette can do, in its canonical order.
 pub(super) struct PaletteCandidate {
@@ -36,10 +37,10 @@ impl Shell {
             items.push(PaletteCandidate {
                 group: "Pages",
                 entry,
-                control: Control::Open(page.route),
+                control: Control::Go(Destination::Page(page.route)),
             });
         }
-        let sidebar_open = self.session.panes[0].open;
+        let sidebar_open = self.ui_state.sidebar.open;
         items.push(PaletteCandidate {
             group: "Actions",
             entry: PaletteEntry::new(
@@ -57,7 +58,7 @@ impl Shell {
         items.push(PaletteCandidate {
             group: "Actions",
             entry: PaletteEntry::new("action.new-ticket", "New Ticket").icon("plus"),
-            control: Control::NewTicket,
+            control: Control::Go(Destination::NewTicket),
         });
         items.push(PaletteCandidate {
             group: "Actions",
@@ -69,9 +70,10 @@ impl Shell {
             entry: PaletteEntry::new("action.check-updates", "Check for Updates").icon("download"),
             control: Control::CheckForUpdates,
         });
+        let appearance = self.appearance.get();
         let current = FontSize::ALL
             .iter()
-            .position(|(size, _)| *size == self.session.font_size)
+            .position(|(size, _)| *size == appearance.font_size)
             .unwrap_or(1);
         if let Some((size, label)) = FontSize::ALL.get(current + 1) {
             items.push(PaletteCandidate {
@@ -79,7 +81,10 @@ impl Shell {
                 entry: PaletteEntry::new("action.font-size.larger", "Increase font size")
                     .icon("plus")
                     .detail(*label),
-                control: Control::FontSize(*size),
+                control: Control::Appearance(Appearance {
+                    font_size: *size,
+                    ..appearance
+                }),
             });
         }
         if let Some((size, label)) = current.checked_sub(1).and_then(|i| FontSize::ALL.get(i)) {
@@ -88,12 +93,15 @@ impl Shell {
                 entry: PaletteEntry::new("action.font-size.smaller", "Decrease font size")
                     .icon("settings")
                     .detail(*label),
-                control: Control::FontSize(*size),
+                control: Control::Appearance(Appearance {
+                    font_size: *size,
+                    ..appearance
+                }),
             });
         }
 
-        if let Some(daemon) = &self.daemon {
-            for ticket in daemon.tickets().tickets {
+        {
+            for ticket in self.daemon.tickets().tickets {
                 let status = ticket.status;
                 items.push(PaletteCandidate {
                     group: "Tickets",
@@ -108,7 +116,7 @@ impl Shell {
                     .icon(crate::tickets::model::status_icon(status))
                     .icon_color(crate::tickets::model::status_color(status))
                     .detail(crate::tickets::model::status_name(status)),
-                    control: Control::OpenTicket(ticket.id),
+                    control: Control::Go(Destination::Ticket(ticket.id)),
                 });
             }
         }
@@ -123,7 +131,7 @@ impl Shell {
         let mut choices = Vec::new();
         if query.is_empty() {
             let recent: Vec<&PaletteCandidate> = self
-                .session
+                .ui_state
                 .recent_commands
                 .iter()
                 .filter_map(|id| candidates.iter().find(|item| item.entry.id.as_ref() == id))
@@ -180,7 +188,7 @@ impl Shell {
         let Some((id, control)) = results.choices.get(index).cloned() else {
             return;
         };
-        self.session.remember_command(&id);
+        self.ui_state.remember_command(&id);
         self.dispatch(control, window, cx);
     }
 

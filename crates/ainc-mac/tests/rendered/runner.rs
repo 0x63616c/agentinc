@@ -5,9 +5,11 @@ use crate::ui::{
 };
 use crate::{
     input,
-    model::{FontSize, Overlay, PANE_WIDTHS, Route, Session},
+    overlay::Overlay,
+    routes::Route,
     shell::{self, Shell},
     ui::Assets,
+    ui_state::{FontSize, SIDEBAR_DEFAULT, UiState},
 };
 use anyhow::{Result, ensure};
 use gpui::prelude::*;
@@ -834,7 +836,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-link-dialog-empty",
         Route::Tickets,
-        Some(Overlay::LinkTicket(budget)),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.cx.simulate_input(window.into(), "dentist");
@@ -842,7 +844,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-link-dialog",
         Route::Tickets,
-        Some(Overlay::LinkTicket(budget)),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.bounds("tickets.link.candidates")?;
@@ -865,7 +867,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-create-dialog",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.check_assignee_photo("tickets.draft.assignee", true)?;
@@ -877,7 +879,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-create-label-menu",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.check_label_menu_anchor()?;
@@ -898,7 +900,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-create-assignee-fallback",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.bounds("tickets.draft.assignee.option.0")?;
@@ -912,7 +914,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "ticket-create-status-menu",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.bounds("tickets.draft.status.option.3")?;
@@ -947,7 +949,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "palette-new-ticket",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.keys("escape");
@@ -961,10 +963,10 @@ pub fn run() -> Result<()> {
     let session_path = temporary.path().join("session.json");
     let small_session_path = temporary.path().join("small-session.json");
     if std::env::var_os("AINC_RENDER_LARGER").is_some() {
-        let mut session = Session::default();
-        session.font_size = FontSize::Larger;
-        session.save(&session_path)?;
-        session.save(&small_session_path)?;
+        let mut ui_state = UiState::default();
+        ui_state.font_size = FontSize::Larger;
+        ui_state.save(&session_path)?;
+        ui_state.save(&small_session_path)?;
     }
     let output = std::env::var_os("AINC_RENDER_OUTPUT")
         .map(PathBuf::from)
@@ -1313,7 +1315,7 @@ pub fn run() -> Result<()> {
                 suite.capture(
                     &format!("ticket-field-{round}"),
                     route,
-                    Some(Overlay::AddTicket),
+                    Some(Overlay::Dialog(Route::Tickets)),
                     false,
                 )?;
                 suite.keys("escape");
@@ -1381,11 +1383,16 @@ pub fn run() -> Result<()> {
     suite.capture(
         "add-dialog",
         Route::Tickets,
-        Some(Overlay::AddTicket),
+        Some(Overlay::Dialog(Route::Tickets)),
         false,
     )?;
     suite.cx.simulate_input(window.into(), "Rendered café 👋");
-    suite.capture("add-typed", Route::Tickets, Some(Overlay::AddTicket), false)?;
+    suite.capture(
+        "add-typed",
+        Route::Tickets,
+        Some(Overlay::Dialog(Route::Tickets)),
+        false,
+    )?;
     suite.keys("escape");
     suite.capture("dialog-dismissed", Route::Tickets, None, false)?;
     suite.keys("cmd-k");
@@ -1441,14 +1448,14 @@ pub fn run() -> Result<()> {
     suite.capture("assistant-conversation", Route::Assistant, None, false)?;
     suite.click_selector("back-to-conversations")?;
     suite.capture("assistant-conversation-list", Route::Assistant, None, false)?;
-    suite.keys("cmd-,");
-    suite
-        .window
-        .update(&mut suite.cx, |shell, _, cx| shell.fixture_models(cx))?;
-    suite.capture("settings-model-closed", Route::Settings, None, false)?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_navigate(Route::Connections, cx);
+        shell.fixture_models(cx);
+    })?;
+    suite.capture("settings-model-closed", Route::Connections, None, false)?;
     let closed = suite.bounds("settings.row.Model")?;
     suite.click_selector("codex-model-select")?;
-    suite.capture("model-dropdown-open", Route::Settings, None, false)?;
+    suite.capture("model-dropdown-open", Route::Connections, None, false)?;
     suite.bounds("codex-model-select.menu")?;
     let open = suite.bounds("settings.row.Model")?;
     near(
@@ -1457,7 +1464,7 @@ pub fn run() -> Result<()> {
         f32::from(closed.size.height),
     )?;
     suite.keys("escape");
-    suite.capture("model-dropdown-closed", Route::Settings, None, false)?;
+    suite.capture("model-dropdown-closed", Route::Connections, None, false)?;
     ensure!(
         suite.bounds("codex-model-select.menu").is_err(),
         "escape must close the model select"
@@ -1466,7 +1473,7 @@ pub fn run() -> Result<()> {
     // row's height.
     suite.click_selector("codex-model-select")?;
     suite.click_selector("codex-model-select.option.1")?;
-    suite.capture("model-dropdown-selected", Route::Settings, None, false)?;
+    suite.capture("model-dropdown-selected", Route::Connections, None, false)?;
     ensure!(
         suite.bounds("codex-model-select.menu").is_err(),
         "choosing an option must close the model select"

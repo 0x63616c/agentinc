@@ -1,5 +1,5 @@
-//! The Tickets page's dialogs: create, rename, relate, delete and register an
-//! agent. Each ends with the shared Cancel / confirm footer.
+//! The Tickets page's dialogs: create, rename, relate and delete. Each ends
+//! with the shared Cancel / confirm footer.
 use super::*;
 
 /// Candidates shown in the relationship picker.
@@ -16,40 +16,18 @@ fn dialog_content_width() -> f32 {
 }
 
 impl TicketsPage {
-    pub fn overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let active = self.overlays.borrow().active()?;
-        let (title, body, enabled, submit): (String, AnyElement, bool, &str) = match active {
-            Overlay::AddTicket => (
+    pub(super) fn dialog(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let active = self.overlays.active()?;
+        let (title, body, enabled, footer): (String, AnyElement, bool, DialogFooter) = match active
+        {
+            Dialog::Add => (
                 "New Ticket".into(),
                 self.create_form(window, cx).into_any_element(),
                 !self.input.read(cx).content.trim().is_empty()
                     && Self::title_error(&self.input.read(cx).content).is_none(),
-                "Create",
+                DialogFooter::new(Verb::Create),
             ),
-            Overlay::AddAgent => (
-                "New Agent".into(),
-                column_gap(FORM_STACK_GAP)
-                    .child(text_field("Name", self.agent_name.clone(), window, cx))
-                    .child(
-                        Field::new(self.agent_instructions.clone())
-                            .label("Instructions")
-                            .multiline()
-                            .build(window, cx),
-                    )
-                    .child(
-                        Field::new(self.agent_model.clone())
-                            .label("Model")
-                            .hint("Leave empty to use the connection default.")
-                            .build(window, cx),
-                    )
-                    .when_some(self.form_error.clone(), |s, error| {
-                        s.child(error_text(error))
-                    })
-                    .into_any_element(),
-                !self.agent_name.read(cx).content.trim().is_empty(),
-                "Create",
-            ),
-            Overlay::RenameTicket(_) => (
+            Dialog::Rename(_) => (
                 "Rename Ticket".into(),
                 Field::new(self.rename.clone())
                     .label("Title")
@@ -58,17 +36,17 @@ impl TicketsPage {
                     .into_any_element(),
                 !self.rename.read(cx).content.trim().is_empty()
                     && Self::title_error(&self.rename.read(cx).content).is_none(),
-                "Save",
+                DialogFooter::new(Verb::Save),
             ),
-            Overlay::LinkTicket(id) => (
+            Dialog::Link(id) => (
                 format!("Relate {}", ticket_key(id)),
                 self.link_form(id, window, cx).into_any_element(),
                 self.link_target.is_some(),
-                "Add relationship",
+                DialogFooter::new(Verb::Add).label("Add relationship"),
             ),
-            Overlay::DeleteTicket(id) => {
+            Dialog::Delete(id) => {
                 let ticket = self.ticket(id)?;
-                let (title, body, button) = copy::confirm_delete(
+                let (title, body, _) = copy::confirm_delete(
                     &ticket.title,
                     "This Ticket, its Comments and its relationships",
                 );
@@ -82,70 +60,49 @@ impl TicketsPage {
                         })
                         .into_any_element(),
                     true,
-                    button,
+                    DialogFooter::new(Verb::Delete),
                 )
             }
-            _ => return None,
         };
-        let deleting = matches!(active, Overlay::DeleteTicket(_));
-        let submit_label = if self.pending.busy() {
-            "Saving…"
-        } else {
-            submit
-        };
-        let footer = dialog_footer(
-            Button::new("tickets.cancel", "Cancel")
-                .secondary()
-                .track_focus(&self.cancel_focus)
-                .build(
-                    &self.hover,
-                    |this: &mut Self, window, cx| {
-                        this.menu = None;
-                        this.overlays.borrow_mut().dismiss(window, cx);
-                        cx.notify();
-                    },
-                    cx,
-                ),
-            Button::new("tickets.submit", submit_label)
-                .kind(if deleting {
-                    ButtonKind::Destructive
-                } else {
-                    ButtonKind::Primary
-                })
-                .enabled(enabled && !self.pending.busy())
-                .track_focus(&self.submit_focus)
-                .build(
-                    &self.hover,
-                    move |this: &mut Self, _, cx| this.submit(active, cx),
-                    cx,
-                ),
-        );
+        let footer = footer
+            .ids("tickets.cancel", "tickets.submit")
+            .enabled(enabled)
+            .pending(self.pending.busy())
+            .focus(&self.cancel_focus, &self.submit_focus)
+            .build(
+                &self.hover,
+                |this: &mut Self, window, cx| {
+                    this.menu = None;
+                    this.overlays.dismiss(window, cx);
+                    cx.notify();
+                },
+                move |this: &mut Self, _, cx| this.submit(active, cx),
+                cx,
+            );
         Some(dialog_shell(title, body, footer).into_any_element())
     }
 
-    fn submit(&mut self, active: Overlay, cx: &mut Context<Self>) {
+    /// The dialog's Tab ring: its inputs, then Cancel and confirm.
+    pub(super) fn dialog_focus(&self, cx: &App) -> Vec<FocusHandle> {
+        let mut handles = match self.overlays.active() {
+            Some(Dialog::Add) => vec![
+                self.input.focus_handle(cx),
+                self.draft_description.focus_handle(cx),
+            ],
+            Some(Dialog::Rename(_)) => vec![self.rename.focus_handle(cx)],
+            Some(Dialog::Link(_)) => vec![self.link_search.focus_handle(cx)],
+            Some(Dialog::Delete(_)) | None => vec![],
+        };
+        handles.extend([self.cancel_focus.clone(), self.submit_focus.clone()]);
+        handles
+    }
+
+    fn submit(&mut self, active: Dialog, cx: &mut Context<Self>) {
         self.menu = None;
         match active {
-            Overlay::AddTicket => self.create(cx),
-            Overlay::AddAgent => {
-                let name = self.agent_name.read(cx).content.trim().to_owned();
-                let instructions = self.agent_instructions.read(cx).content.trim().to_owned();
-                let model = self.agent_model.read(cx).content.trim().to_owned();
-                self.command(
-                    TicketCommand::RegisterAgent {
-                        name,
-                        instructions,
-                        model: if model.is_empty() {
-                            "connection-default".into()
-                        } else {
-                            model
-                        },
-                    },
-                    cx,
-                );
-            }
-            Overlay::RenameTicket(_) => self.rename_ticket(cx),
-            Overlay::LinkTicket(id) => {
+            Dialog::Add => self.create(cx),
+            Dialog::Rename(_) => self.rename_ticket(cx),
+            Dialog::Link(id) => {
                 if let Some(target) = self.link_target {
                     let (from_id, to_id, link) = self.link_relation.link(id, target);
                     self.command(
@@ -158,16 +115,14 @@ impl TicketsPage {
                     );
                 }
             }
-            Overlay::DeleteTicket(id) => {
+            Dialog::Delete(id) => {
                 if let Some(ticket) = self.ticket(id) {
                     let revision = ticket.revision;
                     self.command(TicketCommand::Delete { id, revision }, cx);
                 }
             }
-            _ => {}
         }
     }
-
     fn create_form(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let full = dialog_content_width();
         let half = (full - SPACE_3) / 2.;

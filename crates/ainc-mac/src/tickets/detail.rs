@@ -52,7 +52,7 @@ impl TicketsPage {
                 .child(properties.w_full())
                 .child(main)
         };
-        Page::document(header)
+        PageFrame::document(header)
             .child(
                 column()
                     .id("tickets-page")
@@ -64,7 +64,7 @@ impl TicketsPage {
                     .when_some(
                         self.form_error
                             .clone()
-                            .filter(|_| self.overlays.borrow().active().is_none()),
+                            .filter(|_| self.overlays.active().is_none()),
                         |s, error| s.child(banner(Tone::Danger, error)),
                     )
                     .child(body),
@@ -128,11 +128,11 @@ impl TicketsPage {
                                 .build(
                                     &self.hover,
                                     move |this, window, cx| {
-                                        this.overlays.borrow_mut().open(
-                                            Overlay::DeleteTicket(id),
+                                        this.overlays.open_dialog(
+                                            Dialog::Delete(id),
+                                            this.cancel_focus.clone(),
                                             window,
                                             cx,
-                                            Some(this.cancel_focus.clone()),
                                         );
                                         cx.notify();
                                     },
@@ -155,11 +155,11 @@ impl TicketsPage {
                                     });
                                     let focus = this.rename.focus_handle(cx);
                                     this.form_error = None;
-                                    this.overlays.borrow_mut().open(
-                                        Overlay::RenameTicket(id),
+                                    this.overlays.open_dialog(
+                                        Dialog::Rename(id),
+                                        focus,
                                         window,
                                         cx,
-                                        Some(focus),
                                     );
                                     cx.notify();
                                 },
@@ -692,12 +692,8 @@ impl TicketsPage {
                                     this.form_error = None;
                                     this.link_search.update(cx, |input, _| input.reset());
                                     let focus = this.link_search.focus_handle(cx);
-                                    this.overlays.borrow_mut().open(
-                                        Overlay::LinkTicket(id),
-                                        window,
-                                        cx,
-                                        Some(focus),
-                                    );
+                                    this.overlays
+                                        .open_dialog(Dialog::Link(id), focus, window, cx);
                                     cx.notify();
                                 },
                                 cx,
@@ -816,15 +812,11 @@ impl TicketsPage {
         let conversation = ticket.conversation_id.map(|id| {
             let title = self
                 .daemon
-                .as_ref()
-                .and_then(|daemon| {
-                    daemon
-                        .product()
-                        .conversations
-                        .into_iter()
-                        .find(|c| c.id == id)
-                        .map(|c| c.title)
-                })
+                .product()
+                .conversations
+                .into_iter()
+                .find(|c| c.id == id)
+                .map(|c| c.title)
                 .unwrap_or_else(|| "Conversation".into());
             (id, title)
         });
@@ -844,7 +836,9 @@ impl TicketsPage {
                                 .trailing(icon("arrowUpRight", ICON_SIZE_SM))
                                 .build(
                                     &self.hover,
-                                    |_: &mut Self, _, cx| cx.emit(TicketsEvent::OpenRuns),
+                                    |_: &mut Self, _, cx| {
+                                        cx.emit(Destination::Page(Route::Temporal))
+                                    },
                                     cx,
                                 )
                                 .mr(px(-CONTROL_INSET_X_SM)),
@@ -891,7 +885,7 @@ impl TicketsPage {
                         .build(
                             &self.hover,
                             move |_: &mut Self, _, cx| {
-                                cx.emit(TicketsEvent::OpenConversation(conversation))
+                                cx.emit(Destination::Conversation(conversation))
                             },
                             cx,
                         )

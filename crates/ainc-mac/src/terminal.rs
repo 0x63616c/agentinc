@@ -1,210 +1,205 @@
-//! The AppKit host for GhosttyKit's libghostty renderer and exec backend.
+//! Terminal: the Ghostty surface hosted as an AppKit child of this window. The
+//! page owns the host's lifetime, hides it under overlays and when another
+//! page is shown, and relays the shortcuts Ghostty swallows back to the shell.
 #[cfg(target_os = "macos")]
-mod macos {
-    use crate::shell::{Control, Shell};
-    use anyhow::{Context as _, Result, anyhow};
-    use gpui::{AnyWindowHandle, AsyncApp, WeakEntity, Window};
-    use libloading::Library;
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    use std::{
-        ffi::{CString, c_void},
-        path::PathBuf,
-        ptr::NonNull,
-    };
+#[path = "terminal/host.rs"]
+mod host;
 
-    type Shortcut = unsafe extern "C" fn(*mut c_void, i32);
-    type CommandChanged = unsafe extern "C" fn(*mut c_void, bool);
-    type SetCommandCallback =
-        unsafe extern "C" fn(*mut c_void, Option<CommandChanged>, *mut c_void);
-    type Create = unsafe extern "C" fn(
-        *mut c_void,
-        *const std::ffi::c_char,
-        *const std::ffi::c_char,
-        *const std::ffi::c_char,
-        *const std::ffi::c_char,
-        u32,
-        Option<Shortcut>,
-        *mut c_void,
-    ) -> *mut c_void;
-    type SetFrame = unsafe extern "C" fn(*mut c_void, f64, f64, f64, f64, bool, bool);
-    type Destroy = unsafe extern "C" fn(*mut c_void);
+use crate::{
+    daemon::Daemon,
+    overlay::Overlay,
+    page::Page,
+    routes::{Destination, Route},
+    ui::*,
+};
+use gpui::{prelude::*, *};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-    struct Navigation {
-        app: AsyncApp,
-        window: AnyWindowHandle,
-        shell: WeakEntity<Shell>,
+/// A key chord Ghostty received that belongs to the shell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shortcut {
+    Search,
+    Settings,
+    Back,
+    Forward,
+    Page(Route),
+}
+
+/// How the terminal reaches the shell without knowing it.
+pub type ShortcutHandler = Rc<dyn Fn(Shortcut, &mut Window, &mut App)>;
+pub type CommandHeldHandler = Rc<dyn Fn(bool, &mut App)>;
+#[derive(Clone)]
+pub struct TerminalCallbacks {
+    pub on_shortcut: ShortcutHandler,
+    /// Ghostty saw Command pressed or released; the sidebar shows its hints.
+    pub on_command_held: CommandHeldHandler,
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct TerminalPage {
+    daemon: Arc<Daemon>,
+    overlays: Rc<RefCell<OverlayHost<Overlay>>>,
+    callbacks: TerminalCallbacks,
+    #[cfg(target_os = "macos")]
+    host: Option<Rc<RefCell<host::TerminalHost>>>,
+    error: Option<String>,
+    pending_focus: bool,
+}
+impl EventEmitter<Destination> for TerminalPage {}
+
+impl TerminalPage {
+    pub fn new(
+        daemon: Arc<Daemon>,
+        overlays: Rc<RefCell<OverlayHost<Overlay>>>,
+        callbacks: TerminalCallbacks,
+        _: &mut Context<Self>,
+    ) -> Self {
+        Self {
+            daemon,
+            overlays,
+            callbacks,
+            #[cfg(target_os = "macos")]
+            host: None,
+            error: None,
+            pending_focus: false,
+        }
     }
-
-    unsafe extern "C" fn shortcut(context: *mut c_void, number: i32) {
-        // SAFETY: the bridge retains this pointer only while TerminalHost and
-        // its Navigation box are alive, and invokes it synchronously on the UI thread.
-        let Some(navigation) = (unsafe { (context as *const Navigation).as_ref() }) else {
-            return;
-        };
-        let control = match number {
-            -1 => Control::Search,
-            -2 => Control::Navigate(crate::model::Route::Settings),
-            -3 => Control::Back,
-            -4 => Control::Forward,
-            0..=9 => {
-                let Some(route) = crate::model::Route::from_shortcut(number as u8) else {
-                    return;
-                };
-                Control::Navigate(route)
+    #[cfg(all(test, feature = "rendered-tests"))]
+    #[allow(dead_code)]
+    pub(crate) fn fixture_unavailable(&mut self, cx: &mut Context<Self>) {
+        #[cfg(target_os = "macos")]
+        {
+            self.host = None;
+        }
+        self.error = Some(copy::unavailable(
+            "Terminal",
+            "Ghostty could not start: the bundled runtime is missing",
+        ));
+        cx.notify();
+    }
+    #[cfg(target_os = "macos")]
+    fn surface(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if self.host.is_none() && self.error.is_none() {
+            let workspace_id = self.daemon.workspaces().current_id;
+            match host::TerminalHost::new(
+                window,
+                cx.to_async(),
+                self.callbacks.clone(),
+                &workspace_id,
+            ) {
+                Ok(host) => {
+                    self.host = Some(Rc::new(RefCell::new(host)));
+                    self.pending_focus = true;
+                }
+                Err(error) => {
+                    self.error = Some(copy::unavailable(
+                        "Terminal",
+                        &format!("Ghostty could not start: {error:#}"),
+                    ))
+                }
             }
-            _ => return,
-        };
-        navigation.app.update(|cx| {
-            let _ = navigation.window.update(cx, |_, window, cx| {
-                let _ = navigation.shell.update(cx, |shell, cx| {
-                    shell.dispatch(control, window, cx);
-                });
-            });
-        });
-    }
-
-    unsafe extern "C" fn command_changed(context: *mut c_void, held: bool) {
-        // SAFETY: same lifetime and UI-thread contract as the shortcut callback.
-        let Some(navigation) = (unsafe { (context as *const Navigation).as_ref() }) else {
-            return;
-        };
-        navigation.app.update(|cx| {
-            let _ = navigation.shell.update(cx, |shell, cx| {
-                shell.set_command_held(held, cx);
-            });
-        });
-    }
-
-    pub struct TerminalHost {
-        _library: Library,
-        raw: NonNull<c_void>,
-        set_frame: SetFrame,
-        destroy: Destroy,
-        _navigation: Box<Navigation>,
-        frame: (f64, f64, f64, f64),
-        visible: bool,
-    }
-
-    impl TerminalHost {
-        pub fn new(
-            window: &Window,
-            app: AsyncApp,
-            shell: WeakEntity<Shell>,
-            workspace_id: &str,
-        ) -> Result<Self> {
-            let handle = HasWindowHandle::window_handle(window)
-                .map_err(|error| anyhow!("GPUI native window: {error}"))?;
-            let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
-                return Err(anyhow!("Ghostty requires an AppKit window"));
-            };
-            let home = std::env::var_os("HOME").context("HOME is missing")?;
-            let home = CString::new(home.to_string_lossy().as_bytes()).context("invalid HOME")?;
-            let helper = std::env::current_exe()?.with_file_name("aincd");
-            let helper = CString::new(helper.to_string_lossy().as_bytes())?;
-            let layout_name = if workspace_id == "local" {
-                "terminal-layout.json".to_owned()
-            } else {
-                format!("terminal-layout-{workspace_id}.json")
-            };
-            let layout = crate::daemon::discovery_path()?.with_file_name(layout_name);
-            let layout = CString::new(layout.to_string_lossy().as_bytes())?;
-            let colors = CString::new(crate::ui::terminal_colors())?;
-            let library = unsafe { Library::new(Self::library_path()?) }
-                .context("load AgentInc Ghostty bridge")?;
-            // SAFETY: the library is pinned in this struct for the lifetime of
-            // these function pointers and its ABI is declared in Bridge.swift.
-            let (create, set_frame, destroy, set_command_callback): (
-                Create,
-                SetFrame,
-                Destroy,
-                SetCommandCallback,
-            ) = unsafe {
-                (
-                    *library.get(b"agentinc_ghostty_create")?,
-                    *library.get(b"agentinc_ghostty_set_frame")?,
-                    *library.get(b"agentinc_ghostty_destroy")?,
-                    *library.get(b"agentinc_ghostty_set_command_callback")?,
+        }
+        let host = self.host.clone()?;
+        // AppKit child views paint above GPUI's Metal layer. Hide Ghostty
+        // before GPUI paints any app popover, menu, or dialog over this page.
+        let visible = self.overlays.borrow().active().is_none();
+        if !visible {
+            host.borrow_mut().hide();
+        }
+        let focus = std::mem::take(&mut self.pending_focus);
+        Some(
+            PageFrame::canvas()
+                .child(
+                    column().size_full().min_h_0().child(
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .child(terminal_surface(host, visible, focus)),
+                    ),
                 )
-            };
-            let navigation = Box::new(Navigation {
-                app,
-                window: window.window_handle(),
-                shell,
-            });
-            // SAFETY: GPUI's AppKit handle is a live NSView pointer. Swift
-            // attaches a child NSView on the same main thread and retains it.
-            let raw = unsafe {
-                create(
-                    handle.ns_view.as_ptr(),
-                    home.as_ptr(),
-                    helper.as_ptr(),
-                    layout.as_ptr(),
-                    colors.as_ptr(),
-                    crate::ui::BORDER_SUBTLE,
-                    Some(shortcut),
-                    (&*navigation as *const Navigation).cast_mut().cast(),
-                )
-            };
-            let raw = NonNull::new(raw).context("Ghostty host creation failed")?;
-            // A separate setter keeps the bridge's create ABI stable. Observe
-            // native modifiers without replaying keys into GPUI or stealing
-            // Ghostty's input/shortcuts.
-            unsafe {
-                set_command_callback(
-                    raw.as_ptr(),
-                    Some(command_changed),
-                    (&*navigation as *const Navigation).cast_mut().cast(),
-                );
-            }
-            Ok(Self {
-                _library: library,
-                raw,
-                set_frame,
-                destroy,
-                _navigation: navigation,
-                frame: (0., 0., 0., 0.),
-                visible: false,
-            })
-        }
-
-        fn library_path() -> Result<PathBuf> {
-            let executable = std::env::current_exe().context("locate AgentInc executable")?;
-            let bundled = executable
-                .parent()
-                .and_then(|path| path.parent())
-                .context("locate AgentInc bundle")?
-                .join("Frameworks/libAgentIncGhosttyBridge.dylib");
-            if bundled.is_file() {
-                return Ok(bundled);
-            }
-            Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("ghostty-bridge/.build/debug/libAgentIncGhosttyBridge.dylib"))
-        }
-
-        pub fn set_frame(&mut self, x: f64, y: f64, width: f64, height: f64, focus: bool) {
-            self.frame = (x, y, width, height);
-            let focus = focus || !self.visible;
-            self.visible = true;
-            // SAFETY: raw is owned by the live Swift host and calls stay on
-            // GPUI's macOS main thread.
-            unsafe { (self.set_frame)(self.raw.as_ptr(), x, y, width, height, true, focus) }
-        }
-
-        pub fn hide(&mut self) {
-            self.visible = false;
-            let (x, y, width, height) = self.frame;
-            // SAFETY: same lifetime and thread contract as set_frame.
-            unsafe { (self.set_frame)(self.raw.as_ptr(), x, y, width, height, false, false) }
-        }
+                .build()
+                .into_any_element(),
+        )
     }
+}
 
-    impl Drop for TerminalHost {
-        fn drop(&mut self) {
-            // SAFETY: Swift releases its retained host before the library and
-            // callback context stored by this struct are dropped.
-            unsafe { (self.destroy)(self.raw.as_ptr()) }
+impl Page for TerminalPage {
+    const ROUTE: Route = Route::Terminal;
+    fn shown(&mut self, shown: bool, _: &mut Context<Self>) {
+        if shown {
+            self.pending_focus = true;
+        }
+        #[cfg(target_os = "macos")]
+        if !shown && let Some(host) = &self.host {
+            host.borrow_mut().hide();
         }
     }
 }
 
-pub use macos::TerminalHost;
+impl Render for TerminalPage {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(target_os = "macos")]
+        if let Some(surface) = self.surface(_window, _cx) {
+            return surface;
+        }
+        #[cfg(target_os = "macos")]
+        let message = self
+            .error
+            .clone()
+            .unwrap_or_else(|| "Ghostty could not start.".into());
+        #[cfg(not(target_os = "macos"))]
+        let message = "Terminal requires macOS and the Ghostty runtime.";
+        PageFrame::canvas()
+            .child(
+                column().size_full().min_h_0().p(px(PAGE_X)).child(
+                    EmptyState::new("terminal", "Terminal unavailable")
+                        .description(message)
+                        .selector("terminal.unavailable")
+                        .build(),
+                ),
+            )
+            .build()
+            .into_any_element()
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn terminal_colors() -> String {
+    // Ghostty reads the user's config first. These final color values use the
+    // same roles as the surrounding AgentInc surface and controls.
+    let selection = TEXT_SELECTION >> 8;
+    let mut config = format!(
+        "background = #{SURFACE:06x}\nforeground = #{TEXT:06x}\ncursor-color = #{PRIMARY:06x}\ncursor-text = #{TEXT_ON_PRIMARY:06x}\nselection-background = #{selection:06x}\nselection-foreground = #{TEXT:06x}\nbackground-opacity = 1\n"
+    );
+    for (index, color) in TERMINAL_ANSI.into_iter().enumerate() {
+        config.push_str(&format!("palette = {index}=#{color:06x}\n"));
+    }
+    config
+}
+
+/// GPUI's layout slot for the real Ghostty AppKit surface.
+#[cfg(target_os = "macos")]
+fn terminal_surface(
+    host: Rc<RefCell<host::TerminalHost>>,
+    visible: bool,
+    focus: bool,
+) -> impl IntoElement {
+    canvas(
+        move |bounds, _, _| {
+            if visible {
+                host.borrow_mut().set_frame(
+                    f64::from(f32::from(bounds.origin.x)),
+                    f64::from(f32::from(bounds.origin.y)),
+                    f64::from(f32::from(bounds.size.width)),
+                    f64::from(f32::from(bounds.size.height)),
+                    focus,
+                );
+            } else {
+                host.borrow_mut().hide();
+            }
+        },
+        |_, _, _, _| {},
+    )
+    .size_full()
+}

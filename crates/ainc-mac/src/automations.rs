@@ -3,6 +3,8 @@ use crate::{
     action::{Pending, Run},
     daemon::Daemon,
     input::TextInput,
+    page::{Drafts, Page},
+    routes::{Destination, Route},
     sync::{SliceChanged, Sync},
     ui::*,
 };
@@ -12,9 +14,8 @@ use ainc_client::types::{
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 
-pub struct OpenTicket(pub i64);
 pub struct AutomationsPage {
-    daemon: Option<Arc<Daemon>>,
+    daemon: Arc<Daemon>,
     sync: Entity<Sync>,
     state: AutomationSnapshot,
     error: Option<String>,
@@ -32,7 +33,7 @@ pub struct AutomationsPage {
     hover: HoverFade,
     _subscriptions: Vec<Subscription>,
 }
-impl EventEmitter<OpenTicket> for AutomationsPage {}
+impl EventEmitter<Destination> for AutomationsPage {}
 impl HoverHost for AutomationsPage {
     fn hover_fade(&mut self) -> &mut HoverFade {
         &mut self.hover
@@ -56,45 +57,7 @@ fn every(minutes: i64) -> String {
     )
 }
 impl AutomationsPage {
-    pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
-        anyhow::ensure!(
-            !self.pending.busy(),
-            "Wait for the current change to finish before installing"
-        );
-        Ok(
-            serde_json::json!({"editing":self.editing,"selected":self.selected,"editing_revision":self.editing_revision,"agent":self.agent,"name": self.name.read(cx).content.to_string(), "prompt": self.prompt.read(cx).content.to_string(), "minutes": self.minutes.read(cx).content.to_string()}),
-        )
-    }
-    pub(crate) fn restore_update_drafts(
-        &mut self,
-        value: &serde_json::Value,
-        cx: &mut Context<Self>,
-    ) {
-        if let Ok(value) = serde_json::from_value(value["editing"].clone()) {
-            self.editing = value;
-        }
-        if let Ok(value) = serde_json::from_value(value["selected"].clone()) {
-            self.selected = value;
-        }
-        if let Ok(value) = serde_json::from_value(value["editing_revision"].clone()) {
-            self.editing_revision = value;
-        }
-        if let Ok(value) = serde_json::from_value(value["agent"].clone()) {
-            self.agent = value;
-        }
-        if let Some(text) = value["name"].as_str() {
-            self.name.update(cx, |input, cx| input.set_text(text, cx));
-        }
-        if let Some(text) = value["prompt"].as_str() {
-            self.prompt.update(cx, |input, cx| input.set_text(text, cx));
-        }
-        if let Some(text) = value["minutes"].as_str() {
-            self.minutes
-                .update(cx, |input, cx| input.set_text(text, cx));
-        }
-    }
-
-    pub fn new(daemon: Option<Arc<Daemon>>, sync: Entity<Sync>, cx: &mut Context<Self>) -> Self {
+    pub fn new(daemon: Arc<Daemon>, sync: Entity<Sync>, cx: &mut Context<Self>) -> Self {
         let name =
             cx.new(|cx| TextInput::field("Rule name", false, cx).identified("automations.name"));
         let prompt = cx.new(|cx| {
@@ -142,14 +105,10 @@ impl AutomationsPage {
         this
     }
     pub(crate) fn reload(&mut self) {
-        if let Some(daemon) = &self.daemon {
-            self.state = daemon.automations();
-        }
+        self.state = self.daemon.automations();
     }
     fn command(&mut self, command: AutomationCommand, cx: &mut Context<Self>) {
-        let Some(daemon) = self.daemon.clone() else {
-            return;
-        };
+        let daemon = self.daemon.clone();
         cx.run(
             &self.pending.clone(),
             move || Ok(daemon.send(command)?),
@@ -217,9 +176,8 @@ impl AutomationsPage {
     fn editor(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         let agents: Vec<_> = self
             .daemon
-            .as_ref()
-            .map(|s| s.tickets().assignees)
-            .unwrap_or_default()
+            .tickets()
+            .assignees
             .into_iter()
             .filter(|a| a.kind == AssigneeKind::Agent)
             .collect();
@@ -306,15 +264,14 @@ impl AutomationsPage {
                             })),
                     ),
             )
-            .child(dialog_footer(
-                Button::new("automations.cancel", "Cancel")
-                    .secondary()
-                    .build(&self.hover, close, cx),
-                Button::new("automations.save", "Save Automation")
-                    .primary()
-                    .enabled(enabled && valid)
-                    .build(&self.hover, |this, _, cx| this.save(cx), cx),
-            ))
+            .child(
+                DialogFooter::new(Verb::Save)
+                    .label("Save Automation")
+                    .ids("automations.cancel", "automations.save")
+                    .enabled(valid)
+                    .pending(!enabled)
+                    .build(&self.hover, close, |this, _, cx| this.save(cx), cx),
+            )
     }
 
     fn detail_header(&self, rule: &Automation, cx: &mut Context<Self>) -> PageHeader {
@@ -469,7 +426,7 @@ impl AutomationsPage {
                                                 .trailing(icon("arrowRight", ICON_SIZE_SM))
                                                 .build(
                                                     &self.hover,
-                                                    move |_, _, cx| cx.emit(OpenTicket(id)),
+                                                    move |_, _, cx| cx.emit(Destination::Ticket(id)),
                                                     cx,
                                                 ),
                                             )
@@ -557,9 +514,9 @@ impl Render for AutomationsPage {
         );
         let header = match (&selected, self.editing) {
             (Some(rule), false) => self.detail_header(rule, cx),
-            (_, true) => PageHeader::new("Automations")
+            (_, true) => PageHeader::new(self.title())
                 .description("Recurring rules that create and assign Tickets on a schedule."),
-            _ => PageHeader::new("Automations")
+            _ => PageHeader::new(self.title())
                 .description("Recurring rules that create and assign Tickets on a schedule.")
                 .actions(
                     row_gap(CONTROL_GAP)
@@ -620,7 +577,7 @@ impl Render for AutomationsPage {
             }
             content = content.child(self.list(cx));
         }
-        Page::document(header)
+        PageFrame::document(header)
             .child(
                 div()
                     .id("automations.page")
@@ -631,5 +588,41 @@ impl Render for AutomationsPage {
                     .child(content),
             )
             .build()
+    }
+}
+
+impl Page for AutomationsPage {
+    const ROUTE: Route = Route::Automations;
+    fn drafts(&self, cx: &App) -> anyhow::Result<Drafts> {
+        anyhow::ensure!(
+            !self.pending.busy(),
+            "Wait for the current change to finish before installing"
+        );
+        let mut drafts = Drafts::default();
+        drafts.set("editing", self.editing);
+        drafts.set("selected", &self.selected);
+        drafts.set("editing_revision", self.editing_revision);
+        drafts.set("agent", &self.agent);
+        drafts.text("name", &self.name, cx);
+        drafts.text("prompt", &self.prompt, cx);
+        drafts.text("minutes", &self.minutes, cx);
+        Ok(drafts)
+    }
+    fn restore(&mut self, drafts: Drafts, cx: &mut Context<Self>) {
+        if let Some(editing) = drafts.get("editing") {
+            self.editing = editing;
+        }
+        if let Some(selected) = drafts.get("selected") {
+            self.selected = selected;
+        }
+        if let Some(revision) = drafts.get("editing_revision") {
+            self.editing_revision = revision;
+        }
+        if let Some(agent) = drafts.get("agent") {
+            self.agent = agent;
+        }
+        drafts.restore_text("name", &self.name, cx);
+        drafts.restore_text("prompt", &self.prompt, cx);
+        drafts.restore_text("minutes", &self.minutes, cx);
     }
 }

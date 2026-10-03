@@ -2,10 +2,11 @@
 use crate::{
     action::{Pending, Run},
     daemon::Daemon,
+    page::Page,
+    routes::{Destination, Route},
     ui::*,
 };
 use ainc_client::types::ExecutionView;
-use anyhow::Context as _;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 
@@ -39,7 +40,7 @@ fn columns() -> [TableColumn; 4] {
 }
 
 pub struct TemporalPage {
-    daemon: Option<Arc<Daemon>>,
+    daemon: Arc<Daemon>,
     rows: Vec<ExecutionView>,
     filter: &'static str,
     next_page: Option<String>,
@@ -57,7 +58,7 @@ impl HoverHost for TemporalPage {
 }
 
 impl TemporalPage {
-    pub fn new(daemon: Option<Arc<Daemon>>, cx: &mut Context<Self>) -> Self {
+    pub fn new(daemon: Arc<Daemon>, cx: &mut Context<Self>) -> Self {
         let page = Self {
             daemon,
             rows: Vec::new(),
@@ -90,7 +91,7 @@ impl TemporalPage {
         page
     }
 
-    pub(crate) fn ensure_loaded(&mut self, cx: &mut Context<Self>) {
+    fn ensure_loaded(&mut self, cx: &mut Context<Self>) {
         if !self.loaded && !self.loading.busy() {
             self.load(false, cx);
         }
@@ -149,10 +150,7 @@ impl TemporalPage {
         let daemon = self.daemon.clone();
         cx.run(
             &self.loading.clone(),
-            move || {
-                let daemon = daemon.context("Daemon unavailable")?;
-                anyhow::Ok(daemon.fetch(crate::daemon::Executions { status, page })?)
-            },
+            move || anyhow::Ok(daemon.fetch(crate::daemon::Executions { status, page })?),
             |this, result, _| {
                 this.loaded = true;
                 match result {
@@ -246,6 +244,16 @@ impl TemporalPage {
     }
 }
 
+impl EventEmitter<Destination> for TemporalPage {}
+impl Page for TemporalPage {
+    const ROUTE: Route = Route::Temporal;
+    fn shown(&mut self, shown: bool, cx: &mut Context<Self>) {
+        if shown {
+            self.ensure_loaded(cx);
+        }
+    }
+}
+
 impl Render for TemporalPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
@@ -255,7 +263,7 @@ impl Render for TemporalPage {
             .iter()
             .position(|(value, _)| *value == self.filter)
             .unwrap_or(0);
-        let header = PageHeader::new("Temporal")
+        let header = PageHeader::new(self.title())
             .description("Every workflow execution in this AgentInc runtime, newest first.")
             .actions(
                 Button::new("temporal.refresh", "Refresh")
@@ -335,7 +343,7 @@ impl Render for TemporalPage {
                 ),
             );
         }
-        Page::document(header)
+        PageFrame::document(header)
             .child(
                 div()
                     .id("temporal.page")

@@ -1,6 +1,11 @@
 //! The living component gallery: every design-system piece rendered from the
 //! same code the app uses. Reachable from the command palette as "Components".
-use crate::{input::TextInput, ui::*};
+use crate::{
+    input::TextInput,
+    page::Page,
+    routes::{Destination, Route},
+    ui::*,
+};
 use gpui::{prelude::*, *};
 use std::time::Instant;
 
@@ -103,16 +108,6 @@ impl ComponentsPage {
         self.section = section.min(SECTIONS.len() - 1);
         self.select_open = false;
         cx.notify();
-    }
-
-    /// Closes the open select; returns whether anything was open.
-    pub fn dismiss_menus(&mut self, cx: &mut Context<Self>) -> bool {
-        let was_open = self.select_open;
-        self.select_open = false;
-        if was_open {
-            cx.notify();
-        }
-        was_open
     }
 
     #[cfg(all(test, feature = "rendered-tests"))]
@@ -506,6 +501,19 @@ impl ComponentsPage {
     }
 }
 
+impl EventEmitter<Destination> for ComponentsPage {}
+impl Page for ComponentsPage {
+    const ROUTE: Route = Route::Components;
+    fn dismiss_menus(&mut self, cx: &mut Context<Self>) -> bool {
+        let was_open = self.select_open;
+        self.select_open = false;
+        if was_open {
+            cx.notify();
+        }
+        was_open
+    }
+}
+
 impl Render for ComponentsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
@@ -515,7 +523,7 @@ impl Render for ComponentsPage {
             2 => self.data(window, cx),
             _ => self.overlays(cx),
         };
-        Page::document(PageHeader::new("Components").description(
+        PageFrame::document(PageHeader::new("Components").description(
             "The AgentInc design system, rendered by the app itself. See docs/design-system.md.",
         ))
         .child(

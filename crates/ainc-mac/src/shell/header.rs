@@ -41,6 +41,74 @@ pub fn current_space_contour() -> impl IntoElement {
 }
 
 impl Shell {
+    /// A bare ghost control with the shared contract and hover fade; callers
+    /// compose its children. Labeled buttons use `ui::Button`.
+    pub(super) fn button(
+        &self,
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        control: Control,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let id = id.into();
+        let label: SharedString = label.into();
+        let spoken: SharedString = label
+            .split(" · ")
+            .next()
+            .unwrap_or(&label)
+            .to_owned()
+            .into();
+        let click_control = control.clone();
+        let (progress, on_hover) = self.hover.track(&id, true, cx);
+        let button = action_button(
+            ButtonSpec {
+                id,
+                label: spoken,
+                enabled: true,
+            },
+            |button| {
+                button
+                    .gap(px(CONTROL_GAP))
+                    .bg(blend(SHELL, HOVER, progress))
+                    .on_hover(on_hover)
+                    .hover(|s| s.text_color(rgb(TEXT)))
+            },
+            move |this: &mut Self, window, cx| this.dispatch(click_control.clone(), window, cx),
+            cx,
+        );
+        match &control {
+            Control::Sidebar => {
+                button
+                    .role(accesskit::Role::Switch)
+                    .aria_toggled(if self.ui_state.sidebar.open {
+                        accesskit::Toggled::True
+                    } else {
+                        accesskit::Toggled::False
+                    })
+            }
+            _ => button,
+        }
+    }
+    pub(super) fn icon_button(
+        &self,
+        id: &'static str,
+        label: impl Into<SharedString>,
+        name: &'static str,
+        control: Control,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        self.button(id, label, control, cx)
+            .debug_selector(move || id.into())
+            .size(px(HEADER_CONTROL))
+            .justify_center()
+            .child(
+                row()
+                    .size(px(HEADER_ICON_SIZE))
+                    .justify_center()
+                    .debug_selector(move || format!("{id}.glyph"))
+                    .child(icon(name, HEADER_ICON_SIZE)),
+            )
+    }
     fn titlebar_space(&self, id: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
         div()
             .id(id)
@@ -64,7 +132,7 @@ impl Shell {
     }
 
     pub(super) fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let route = self.session.current();
+        let route = self.ui_state.current();
         let unread = self
             .notification_items
             .iter()
@@ -77,7 +145,7 @@ impl Shell {
             .pr(px(HEADER_EDGE_INSET))
             .child(
                 row()
-                    .w(px(self.session.panes[pane::Side::Left.index()].width + 60.))
+                    .w(px(self.ui_state.sidebar.width + 60.))
                     .h_full()
                     .flex_shrink_0()
                     .justify_end()
@@ -96,7 +164,7 @@ impl Shell {
                         } else {
                             "chevronLeft"
                         };
-                        if self.session.can_go(forward) {
+                        if self.ui_state.can_go(forward) {
                             self.icon_button(
                                 if forward { "forward" } else { "back" },
                                 name,

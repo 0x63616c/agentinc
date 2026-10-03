@@ -126,7 +126,7 @@ impl Shell {
                             .shortcut(shortcuts::SETTINGS.glyph)
                             .build(
                                 &self.hover,
-                                Self::menu_action(Control::Navigate(Route::Settings)),
+                                Self::menu_action(Control::Go(Destination::Page(Route::Settings))),
                                 cx,
                             ),
                     )

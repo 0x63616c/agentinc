@@ -97,7 +97,7 @@ fn fetch(daemon: &Daemon) -> anyhow::Result<Fetched> {
 }
 
 pub struct Sync {
-    daemon: Option<Arc<Daemon>>,
+    daemon: Arc<Daemon>,
     clock: Rc<dyn Clock>,
     pending: Pending,
     seen: [Option<String>; 4],
@@ -105,7 +105,7 @@ pub struct Sync {
     generation: u64,
     active: bool,
     paused: bool,
-    /// The first fetch set has landed (or there is no daemon to fetch from).
+    /// The first fetch set has landed.
     pub loaded: bool,
     /// The latest fetch set failed; cleared by the next one that succeeds.
     pub error: Option<Failure>,
@@ -114,9 +114,9 @@ pub struct Sync {
 }
 impl EventEmitter<SliceChanged> for Sync {}
 impl Sync {
-    pub fn new(daemon: Option<Arc<Daemon>>, clock: impl Clock, cx: &mut Context<Self>) -> Self {
+    pub fn new(daemon: Arc<Daemon>, clock: impl Clock, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
-            loaded: daemon.is_none(),
+            loaded: false,
             daemon,
             clock: Rc::new(clock),
             pending: Pending::default(),
@@ -167,10 +167,11 @@ impl Sync {
     }
 
     fn step(&mut self, cx: &mut Context<Self>) {
-        let Some(daemon) = self.daemon.clone().filter(|_| !self.paused) else {
+        if self.paused {
             self.schedule(cx);
             return;
-        };
+        }
+        let daemon = self.daemon.clone();
         if self.error.is_some() {
             self.loading_started = Instant::now();
         }
@@ -244,7 +245,7 @@ mod tests {
     fn start(cx: &mut TestAppContext) -> (Arc<Daemon>, ManualClock, gpui::Entity<Sync>) {
         let daemon = Arc::new(Daemon::in_memory());
         let clock = ManualClock::default();
-        let sync = cx.new(|cx| Sync::new(Some(daemon.clone()), clock.clone(), cx));
+        let sync = cx.new(|cx| Sync::new(daemon.clone(), clock.clone(), cx));
         cx.run_until_parked();
         (daemon, clock, sync)
     }

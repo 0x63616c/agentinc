@@ -9,6 +9,7 @@ use ainc_release::{
 use gpui::{prelude::*, *};
 use std::{
     path::PathBuf,
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -39,11 +40,10 @@ fn apply_choice(
         _ => {}
     }
 }
+/// Runs before the installer is spawned; an Err postpones the install.
+type BeforeInstall = Rc<dyn Fn(&mut App) -> anyhow::Result<()>>;
 #[derive(Clone)]
 pub struct Updates(pub Entity<UpdateView>);
-#[derive(Clone)]
-pub struct UpdateHost(pub WindowHandle<crate::shell::Shell>);
-impl Global for UpdateHost {}
 impl Global for Updates {}
 pub struct UpdateView {
     preferences: Preferences,
@@ -60,6 +60,7 @@ pub struct UpdateView {
     visible: bool,
     changelog: bool,
     failure: Option<Retry>,
+    before_install: Option<BeforeInstall>,
     hover: HoverFade,
 }
 impl HoverHost for UpdateView {
@@ -159,8 +160,13 @@ impl UpdateView {
             visible: false,
             changelog: false,
             failure: None,
+            before_install: None,
             hover: HoverFade::default(),
         }
+    }
+    /// The shell flushes its state and drafts here before an install.
+    pub fn on_before_install(&mut self, hook: impl Fn(&mut App) -> anyhow::Result<()> + 'static) {
+        self.before_install = Some(Rc::new(hook));
     }
     pub fn is_ready(&self) -> bool {
         self.ready
@@ -408,8 +414,9 @@ impl UpdateView {
         self.failure = None;
         let result = (|| -> anyhow::Result<()> {
             anyhow::ensure!(self.ready, "download is not verified");
-            let host = cx.global::<UpdateHost>().0;
-            host.update(cx, |shell, _, cx| shell.flush_for_update(cx))??;
+            if let Some(hook) = self.before_install.clone() {
+                hook(cx)?;
+            }
             let executable = std::env::current_exe()?;
             let macos = executable
                 .parent()
