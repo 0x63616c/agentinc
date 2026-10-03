@@ -116,6 +116,10 @@ The AppKit update windows expose formatted notes/changelog, download progress,
 Install Update, Remind Me Later, Skip This Version and the existing automatic-download
 preference. A custom Sparkle user driver connects these windows to Sparkle's update
 engine; verification, delta application and installation belong to Sparkle.
+Background download-only caching remains app-owned: it must not prepare a Sparkle
+installer or ask for authorization. Sparkle's prepared installer may install when
+the UI crashes, so daemon drain happens before the initial Install reply, not just
+before relaunch. The native crash gate exercises this boundary.
 Manual checks ignore skipped versions.
 Update offers show all releases newer than the installed version, newest first, and
 install directly to the latest version. Full Changelog is read-only and works even

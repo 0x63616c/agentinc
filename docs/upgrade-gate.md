@@ -32,6 +32,13 @@ payload responses: a delta pass must fetch the patch without fetching the full a
 and fallback must fetch the patch before the full app. The gate reports actual patch
 and archive byte sizes. Merely producing a patch or successfully installing a full
 archive is not evidence that delta updating works.
+
+A download-only crash pass waits for a real cached delta and a ready current daemon,
+then sends SIGKILL to the UI. No Sparkle extraction/preparation callback may have
+occurred. The original signed bundle and daemon must remain intact and usable.
+This catches accidentally handing Sparkle an Install reply during background
+prefetch: after preparation, Sparkle may install on host termination even while
+the user driver's ready reply remains pending.
 After relaunch, the gate runs the signed bundle's `aincd --terminal-attach`
 through a PTY. A new pane and a saved pane whose daemon session is gone must
 both show startup output before input and run a command.
