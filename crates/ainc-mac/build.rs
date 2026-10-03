@@ -1,5 +1,6 @@
 fn main() {
     println!("cargo:rerun-if-changed=src/update_window.m");
+    println!("cargo:rerun-if-changed=../../vendor/sparkle/Headers");
     println!("cargo:rerun-if-env-changed=AINC_UPGRADE_TEST_PUBLIC_KEY");
     println!("cargo:rustc-check-cfg=cfg(ainc_upgrade_test)");
     let upgrade_test = std::env::var_os("AINC_UPGRADE_TEST_PUBLIC_KEY").is_some();
@@ -9,7 +10,12 @@ fn main() {
     #[cfg(target_os = "macos")]
     {
         let mut build = cc::Build::new();
-        build.file("src/update_window.m").flag("-fobjc-arc");
+        build
+            .file("src/update_window.m")
+            .flag("-fobjc-arc")
+            .flag("-fblocks")
+            .define("BUILDING_SPARKLE_SOURCES_EXTERNALLY", None)
+            .include("../../vendor/sparkle/Headers");
         if upgrade_test {
             build.define("AINC_UPGRADE_TEST", None);
         }

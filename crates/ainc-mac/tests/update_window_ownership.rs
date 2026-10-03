@@ -3,6 +3,42 @@
 use std::{fs, path::PathBuf, process::Command};
 
 #[test]
+fn sparkle_driver_callbacks_complete_replies_and_preserve_native_ownership() {
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let scratch = crate_dir.join("../../.local/update-window-tests");
+    fs::create_dir_all(&scratch).unwrap();
+    let directory = tempfile::tempdir_in(scratch).unwrap();
+    let executable = directory.path().join("sparkle-driver");
+    let compile = Command::new("clang")
+        .args([
+            "-fobjc-arc",
+            "-fblocks",
+            "-DBUILDING_SPARKLE_SOURCES_EXTERNALLY",
+            "-framework",
+            "AppKit",
+            "-I",
+        ])
+        .arg(crate_dir.join("../../vendor/sparkle/Headers"))
+        .arg(crate_dir.join("tests/fixtures/sparkle_driver.m"))
+        .arg("-o")
+        .arg(&executable)
+        .output()
+        .unwrap();
+    assert!(
+        compile.status.success(),
+        "driver harness failed to compile: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let result = Command::new(executable).output().unwrap();
+    assert!(
+        result.status.success(),
+        "driver callbacks failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(result.stdout, b"Sparkle driver callbacks passed\n");
+}
+
+#[test]
 fn update_windows_survive_check_offer_progress_and_close() {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let scratch = crate_dir.join("../../.local/update-window-tests");
@@ -10,7 +46,15 @@ fn update_windows_survive_check_offer_progress_and_close() {
     let directory = tempfile::tempdir_in(scratch).unwrap();
     let executable = directory.path().join("ownership");
     let compile = Command::new("clang")
-        .args(["-fobjc-arc", "-framework", "AppKit"])
+        .args([
+            "-fobjc-arc",
+            "-fblocks",
+            "-DBUILDING_SPARKLE_SOURCES_EXTERNALLY",
+            "-framework",
+            "AppKit",
+            "-I",
+        ])
+        .arg(crate_dir.join("../../vendor/sparkle/Headers"))
         .arg(crate_dir.join("src/update_window.m"))
         .arg(crate_dir.join("tests/fixtures/update_window_ownership.m"))
         .arg("-o")

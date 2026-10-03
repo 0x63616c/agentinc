@@ -1,6 +1,17 @@
 #import <AppKit/AppKit.h>
+#import <objc/runtime.h>
+#import "SPUUpdater.h"
+#import "SPUUpdaterDelegate.h"
+#import "SPUUserDriver.h"
+#import "SUAppcast.h"
+#import "SUAppcastItem.h"
+#import "SUUpdatePermissionResponse.h"
+#import "SPUDownloadData.h"
+#import "SUStandardVersionComparator.h"
+#import "SUErrors.h"
 
 extern void ainc_update_action(int action, bool automatic);
+static void updateAction(int action, bool automatic);
 
 @interface AincUpdateUI : NSObject <NSWindowDelegate>
 @property(strong) NSWindow *offer;
@@ -9,20 +20,22 @@ extern void ainc_update_action(int action, bool automatic);
 @property(strong) NSButton *automatic;
 @property(strong) NSProgressIndicator *bar;
 @property(strong) NSTextField *bytes;
+@property(strong) NSTextField *phase;
+@property(strong) NSButton *cancelButton;
 #ifdef AINC_UPGRADE_TEST
 @property(strong) NSButton *installButton;
 #endif
 @end
 
 @implementation AincUpdateUI
-- (void)skip:(id)sender { ainc_update_action(1, self.automatic.state == NSControlStateValueOn); [self.offer close]; self.offer = nil; }
-- (void)later:(id)sender { ainc_update_action(2, self.automatic.state == NSControlStateValueOn); [self.offer close]; self.offer = nil; }
-- (void)install:(id)sender { ainc_update_action(3, self.automatic.state == NSControlStateValueOn); [self.offer close]; self.offer = nil; }
-- (void)cancel:(id)sender { ainc_update_action(4, false); [self.progress close]; self.progress = nil; }
-- (void)automaticChanged:(id)sender { ainc_update_action(5, self.automatic.state == NSControlStateValueOn); }
-- (void)dismiss:(id)sender { ainc_update_action(7, false); [self.offer close]; self.offer = nil; self.alert = nil; }
-- (void)retry:(id)sender { ainc_update_action(6, false); [self.offer close]; self.offer = nil; self.alert = nil; }
-- (BOOL)windowShouldClose:(NSWindow *)sender { ainc_update_action(7, false); return YES; }
+- (void)skip:(id)sender { [self.offer close]; self.offer = nil; updateAction(1, self.automatic.state == NSControlStateValueOn); }
+- (void)later:(id)sender { [self.offer close]; self.offer = nil; updateAction(2, self.automatic.state == NSControlStateValueOn); }
+- (void)install:(id)sender { [self.offer close]; self.offer = nil; updateAction(3, self.automatic.state == NSControlStateValueOn); }
+- (void)cancel:(id)sender { [self.progress close]; self.progress = nil; updateAction(4, false); }
+- (void)automaticChanged:(id)sender { updateAction(5, self.automatic.state == NSControlStateValueOn); }
+- (void)dismiss:(id)sender { [self.offer close]; self.offer = nil; self.alert = nil; updateAction(7, false); }
+- (void)retry:(id)sender { [self.offer close]; self.offer = nil; self.alert = nil; updateAction(6, false); }
+- (BOOL)windowShouldClose:(NSWindow *)sender { updateAction(7, false); return YES; }
 @end
 
 static AincUpdateUI *ui(void) {
@@ -67,6 +80,7 @@ void ainc_update_offer(const char *version, const char *current, const char *htm
     [state.offer close];
     state.alert = nil;
     [state.progress close];
+    state.progress = nil;
     NSString *next = [NSString stringWithUTF8String:version];
     NSString *installed = [NSString stringWithUTF8String:current];
     state.offer = window(NSMakeSize(620, 450), changelog ? @"Release Notes" : @"Software Update", NO);
@@ -215,20 +229,25 @@ void ainc_update_progress(const char *message, unsigned long long received, unsi
         icon.image = NSApp.applicationIconImage;
         [content addSubview:icon];
         [content addSubview:label(@"Updating AgentInc", NSMakeRect(98, 122, 350, 28), [NSFont boldSystemFontOfSize:17])];
-        [content addSubview:label(@"Downloading update...", NSMakeRect(98, 94, 350, 24), [NSFont systemFontOfSize:13])];
+        state.phase = label(@"", NSMakeRect(98, 94, 350, 24), [NSFont systemFontOfSize:13]);
+        [content addSubview:state.phase];
         state.bar = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(24, 72, 422, 16)];
         state.bar.indeterminate = NO;
         state.bar.minValue = 0; state.bar.maxValue = 1;
         [content addSubview:state.bar];
         state.bytes = label(@"", NSMakeRect(25, 39, 320, 22), [NSFont systemFontOfSize:12]);
         [content addSubview:state.bytes];
-        [content addSubview:button(@"Cancel", NSMakeRect(354, 20, 92, 30), state, @selector(cancel:))];
+        state.cancelButton = button(@"Cancel", NSMakeRect(354, 20, 92, 30), state, @selector(cancel:));
+        [content addSubview:state.cancelButton];
         [state.progress makeKeyAndOrderFront:nil];
         [NSApp activateIgnoringOtherApps:YES];
     }
-    state.bar.doubleValue = total ? (double)received / (double)total : 0;
+    state.phase.stringValue = [NSString stringWithUTF8String:message];
+    state.bar.indeterminate = total == 0;
+    if (total == 0) [state.bar startAnimation:nil];
+    else [state.bar stopAnimation:nil];
+    state.bar.doubleValue = total ? MIN(1.0, (double)received / (double)total) : 0;
     state.bytes.stringValue = [NSString stringWithFormat:@"%.1f MB of %.1f MB", received / 1000000.0, total / 1000000.0];
-    (void)message;
 }
 
 void ainc_update_close(void) {
@@ -262,3 +281,552 @@ void ainc_update_smoke_init(void) {
     [NSApplication sharedApplication];
     [NSApp finishLaunching];
 }
+
+// Sparkle owns the update state machine, downloads, verification and installer.
+// This driver owns only presentation, replies, and the app's shutdown barrier.
+@interface AincSparkleDriver : NSObject <SPUUserDriver, SPUUpdaterDelegate>
+@property(strong) SPUUpdater *updater;
+@property(strong) SUAppcastItem *item;
+@property(copy) NSString *message;
+@property(copy) NSString *notes;
+@property(copy) NSString *history;
+@property(copy) NSString *current;
+@property(copy) void (^choice)(SPUUserUpdateChoice);
+@property(copy) void (^cancellation)(void);
+@property(copy) void (^acknowledgement)(void);
+@property(copy) void (^continuation)(void);
+@property(copy) void (^retryTermination)(void);
+@property BOOL ready;
+@property BOOL installArmed;
+@property BOOL preparing;
+@property BOOL prepared;
+@property BOOL terminationWaiting;
+@property BOOL retryQuit;
+@property BOOL preparationFailed;
+@property BOOL changelog;
+@property BOOL historyRequested;
+@property BOOL historyFailed;
+@property BOOL started;
+@property(strong) NSUserDefaults *defaults;
+@property BOOL backgroundDownload;
+@property BOOL userVisible;
+@property BOOL installRequested;
+@property BOOL cancelBackgroundOnQuit;
+@property uint64_t received;
+@property uint64_t expected;
+- (void)action:(int)action automatic:(BOOL)automatic;
+- (void)presentOffer;
+- (void)prepare;
+- (void)preparedWithError:(NSString *)error;
+- (void)cancelBackgroundInstallation;
+- (void)requestHistory;
+@end
+
+static AincSparkleDriver *sparkle;
+static IMP originalShouldTerminate;
+
+static NSApplicationTerminateReply shouldTerminate(id self, SEL selector, NSApplication *application) {
+    NSApplicationTerminateReply original = originalShouldTerminate
+        ? ((NSApplicationTerminateReply (*)(id, SEL, NSApplication *))originalShouldTerminate)(self, selector, application)
+        : NSTerminateNow;
+    if (original != NSTerminateNow) return original;
+    if (sparkle.backgroundDownload && !sparkle.installRequested) {
+        // Download-only means quitting must not silently consent to installation.
+        // Wait for Sparkle to acknowledge cancellation before the host can exit.
+        sparkle.cancelBackgroundOnQuit = YES;
+        dispatch_async(dispatch_get_main_queue(), ^{ [sparkle cancelBackgroundInstallation]; });
+        return NSTerminateLater;
+    }
+    if (!sparkle.installArmed || sparkle.prepared) {
+        return NSTerminateNow;
+    }
+    // Keep GPUI's actual delegate in place: GPUI accesses its ivars on shutdown.
+    // AppKit will resume termination only after Rust flushes and drains off-thread.
+    sparkle.terminationWaiting = YES;
+    [sparkle prepare];
+    return NSTerminateLater;
+}
+
+static void installTerminationBarrier(void) {
+    Class delegate = object_getClass(NSApp.delegate);
+    SEL selector = @selector(applicationShouldTerminate:);
+    Method method = class_getInstanceMethod(delegate, selector);
+    originalShouldTerminate = method ? method_getImplementation(method) : NULL;
+    if (!class_addMethod(delegate, selector, (IMP)shouldTerminate, "Q@:@")) {
+        method_setImplementation(class_getInstanceMethod(delegate, selector), (IMP)shouldTerminate);
+    }
+}
+
+static NSString *escaped(NSString *text) {
+    return [[[text stringByReplacingOccurrencesOfString:@"&" withString:@"&amp;"]
+        stringByReplacingOccurrencesOfString:@"<" withString:@"&lt;"]
+        stringByReplacingOccurrencesOfString:@">" withString:@"&gt;"];
+}
+
+static NSString *itemNotes(SUAppcastItem *item) {
+    NSString *description = item.itemDescription ?: @"Release notes unavailable.";
+    return [item.itemDescriptionFormat isEqualToString:@"plain-text"]
+        ? [NSString stringWithFormat:@"<p>%@</p>", escaped(description)] : description;
+}
+
+@implementation AincSparkleDriver
+- (void)showUpdatePermissionRequest:(SPUUpdatePermissionRequest *)request reply:(void (^)(SUUpdatePermissionResponse *))reply {
+    // Normally suppressed by the shipped SUEnableAutomaticChecks default.
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"Check for AgentInc updates automatically?";
+    alert.informativeText = @"You can change this in Software Updates settings.";
+    [alert addButtonWithTitle:@"Check Automatically"];
+    [alert addButtonWithTitle:@"Not Now"];
+    BOOL allowed = [alert runModal] == NSAlertFirstButtonReturn;
+    Class response = NSClassFromString(@"SUUpdatePermissionResponse");
+    reply([[response alloc] initWithAutomaticUpdateChecks:allowed sendSystemProfile:NO]);
+}
+- (void)showUserInitiatedUpdateCheckWithCancellation:(void (^)(void))cancellation {
+    self.userVisible = YES;
+    self.cancellation = cancellation;
+    self.message = @"Checking for updates…";
+    ainc_update_status(self.message.UTF8String, self.current.UTF8String, 0);
+}
+- (void)presentOffer {
+    if (!self.item) return;
+    self.changelog = NO;
+    ainc_update_offer(self.item.displayVersionString.UTF8String, self.current.UTF8String,
+        (self.notes ?: itemNotes(self.item)).UTF8String,
+        [self.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"], self.ready, false);
+    if (self.item.informationOnlyUpdate) {
+        for (NSView *view in ui().offer.contentView.subviews) {
+            if ([view isKindOfClass:NSButton.class] && ((NSButton *)view).action == @selector(install:)) {
+                ((NSButton *)view).title = @"Learn More";
+            }
+        }
+    }
+#ifdef AINC_UPGRADE_TEST
+    if (getenv("AINC_UPGRADE_TEST_MODE") && !self.item.informationOnlyUpdate) {
+        // Exercise the real retained NSButton target/action, not a parallel path.
+        NSWindow *offeredWindow = ui().offer;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.choice && ui().offer == offeredWindow && offeredWindow.visible) ainc_update_test_click_install();
+        });
+    }
+#endif
+}
+- (void)showUpdateFoundWithAppcastItem:(SUAppcastItem *)item state:(SPUUserUpdateState *)state reply:(void (^)(SPUUserUpdateChoice))reply {
+    self.cancellation = nil;
+    self.item = item;
+    self.choice = reply;
+    self.ready = state.stage != SPUUserUpdateStageNotDownloaded;
+    self.installArmed |= state.stage == SPUUserUpdateStageInstalling;
+    self.message = [NSString stringWithFormat:@"AgentInc %@ is available", item.displayVersionString];
+    self.backgroundDownload = !state.userInitiated && [self.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"] && !item.informationOnlyUpdate;
+    if (self.backgroundDownload && state.stage == SPUUserUpdateStageNotDownloaded) {
+        self.choice = nil;
+        reply(SPUUserUpdateChoiceInstall);
+        return;
+    }
+    [self presentOffer];
+}
+- (void)showUpdateReleaseNotesWithDownloadData:(SPUDownloadData *)data {
+    self.notes = [[NSString alloc] initWithData:data.data encoding:NSUTF8StringEncoding] ?: @"Release notes unavailable.";
+    if (self.choice && !self.changelog && (!self.backgroundDownload || self.userVisible)) [self presentOffer];
+}
+- (void)showUpdateReleaseNotesFailedToDownloadWithError:(NSError *)error {
+    self.notes = escaped(error.localizedDescription);
+    if (self.choice && !self.changelog && (!self.backgroundDownload || self.userVisible)) [self presentOffer];
+}
+- (void)showUpdateNotFoundWithError:(NSError *)error acknowledgement:(void (^)(void))acknowledgement {
+    self.cancellation = nil;
+    self.acknowledgement = acknowledgement;
+    self.message = error.localizedDescription;
+    // Sparkle distinguishes latest-version from incompatible OS / other reasons.
+    NSNumber *reason = error.userInfo[@"SUNoUpdateFoundReason"];
+    BOOL latest = reason && (reason.integerValue == SPUNoUpdateFoundReasonOnLatestVersion || reason.integerValue == SPUNoUpdateFoundReasonOnNewerThanLatestVersion);
+    ainc_update_status(self.message.UTF8String, self.current.UTF8String, latest ? 1 : 3);
+}
+- (void)showUpdaterError:(NSError *)error acknowledgement:(void (^)(void))acknowledgement {
+    self.cancellation = nil;
+    self.choice = nil;
+    self.acknowledgement = acknowledgement;
+    self.message = error.localizedDescription;
+    ainc_update_status(self.message.UTF8String, self.current.UTF8String, 2);
+}
+- (void)showDownloadInitiatedWithCancellation:(void (^)(void))cancellation {
+    self.choice = nil;
+    self.cancellation = cancellation;
+    self.received = 0;
+    self.expected = 0;
+    self.message = @"Downloading update…";
+    if (self.backgroundDownload && !self.userVisible) return;
+    ainc_update_progress(self.message.UTF8String, 0, 0);
+    ui().cancelButton.enabled = YES;
+}
+- (void)showDownloadDidReceiveExpectedContentLength:(uint64_t)length {
+    self.expected = length;
+    if (self.backgroundDownload && !self.userVisible) return;
+    ainc_update_progress(self.message.UTF8String, self.received, self.expected);
+}
+- (void)showDownloadDidReceiveDataOfLength:(uint64_t)length {
+    self.received += length;
+    if (self.backgroundDownload && !self.userVisible) return;
+    ainc_update_progress(self.message.UTF8String, self.received, self.expected);
+}
+- (void)showDownloadDidStartExtractingUpdate {
+    self.cancellation = nil;
+    self.message = @"Preparing update…";
+    if (self.backgroundDownload && !self.userVisible) return;
+    ainc_update_progress(self.message.UTF8String, 0, 0);
+    ui().cancelButton.enabled = NO;
+}
+- (void)showExtractionReceivedProgress:(double)progress {
+    if (self.backgroundDownload && !self.userVisible) return;
+    ainc_update_progress(self.message.UTF8String, (uint64_t)(MAX(0, MIN(1, progress)) * 1000), 1000);
+    ui().bytes.stringValue = [NSString stringWithFormat:@"%.0f%%", MAX(0, MIN(1, progress)) * 100];
+}
+- (void)showReadyToInstallAndRelaunch:(void (^)(SPUUserUpdateChoice))reply {
+    self.ready = YES;
+    self.installArmed = YES;
+    self.choice = reply;
+    self.message = @"Update verified and ready to install";
+    if (self.cancelBackgroundOnQuit) { [self cancelBackgroundInstallation]; return; }
+    if (self.installRequested) { [self action:3 automatic:[self.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"]]; return; }
+    if (self.backgroundDownload && !self.userVisible) {
+#ifdef AINC_UPGRADE_TEST
+        if (getenv("AINC_UPGRADE_TEST_MODE")) [self presentOffer];
+#endif
+        return;
+    }
+    [self presentOffer];
+}
+- (void)showInstallingUpdateWithApplicationTerminated:(BOOL)terminated retryTerminatingApplication:(void (^)(void))retry {
+    self.retryTermination = terminated ? nil : retry;
+    self.message = @"Installing update…";
+    ainc_update_progress(self.message.UTF8String, 0, 0);
+    ui().cancelButton.enabled = NO;
+}
+- (void)showUpdateInstalledAndRelaunched:(BOOL)relaunched acknowledgement:(void (^)(void))acknowledgement {
+    acknowledgement();
+}
+- (void)dismissUpdateInstallation {
+    self.choice = nil;
+    self.cancellation = nil;
+    self.acknowledgement = nil;
+    self.retryTermination = nil;
+    if (!self.preparing && !self.preparationFailed) ainc_update_close();
+}
+- (void)showUpdateInFocus {
+    self.userVisible = YES;
+    if (ui().offer) [ui().offer makeKeyAndOrderFront:nil];
+    else if (ui().progress) [ui().progress makeKeyAndOrderFront:nil];
+    else if (self.choice) [self presentOffer];
+    else if (self.backgroundDownload) {
+        ainc_update_progress(self.message.UTF8String, self.received, self.expected);
+        ui().cancelButton.enabled = self.cancellation != nil;
+    }
+    [NSApp activateIgnoringOtherApps:YES];
+}
+- (void)prepare {
+    if (self.preparing) return;
+    self.preparing = YES;
+    self.preparationFailed = NO;
+    self.message = @"Saving work and stopping the local runtime…";
+    ainc_update_progress(self.message.UTF8String, 0, 0);
+    ui().cancelButton.enabled = NO;
+    // Rust handles action 8 on its next foreground turn, then drains off-thread.
+    ainc_update_action(8, false);
+}
+- (void)preparedWithError:(NSString *)error {
+    self.preparing = NO;
+    if (error) {
+        self.preparationFailed = YES;
+        self.message = error;
+        if (self.terminationWaiting) {
+            self.terminationWaiting = NO;
+            self.retryQuit = YES;
+            [NSApp replyToApplicationShouldTerminate:NO];
+        }
+        ainc_update_status(error.UTF8String, self.current.UTF8String, 2);
+        return;
+    }
+    self.prepared = YES;
+    self.preparationFailed = NO;
+    void (^continuation)(void) = self.continuation;
+    self.continuation = nil;
+    if (continuation) continuation();
+    if (self.terminationWaiting) {
+        self.terminationWaiting = NO;
+        [NSApp replyToApplicationShouldTerminate:YES];
+    } else if (self.retryQuit) {
+        self.retryQuit = NO;
+        [NSApp terminate:nil];
+    }
+}
+- (void)action:(int)action automatic:(BOOL)automatic {
+    if (action == 5) { [self.defaults setBool:automatic forKey:@"AINCAutomaticallyDownloadUpdates"]; return; }
+    if (self.historyRequested && action == 7) { self.historyRequested = NO; return; }
+    if (self.changelog) {
+        self.changelog = NO;
+        if (self.choice) [self presentOffer];
+        return;
+    }
+    if (self.preparationFailed) {
+        if (action == 6) [self prepare];
+        // Closing the error never resumes an un-drained installation.
+        return;
+    }
+    if ((action == 4 || action == 7) && self.cancellation) {
+        void (^cancel)(void) = self.cancellation;
+        self.cancellation = nil;
+        cancel();
+        return;
+    }
+    if (self.acknowledgement) {
+        void (^acknowledge)(void) = self.acknowledgement;
+        self.acknowledgement = nil;
+        acknowledge();
+        if (action == 6) {
+            BOOL history = self.historyFailed;
+            self.historyFailed = NO;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (history) [self requestHistory];
+                else [self.updater checkForUpdates];
+            });
+        }
+        return;
+    }
+    if (self.choice && (action == 1 || action == 2 || action == 3 || action == 7)) {
+        if (action != 7) [self.defaults setBool:automatic forKey:@"AINCAutomaticallyDownloadUpdates"];
+        if (self.backgroundDownload && (action == 2 || action == 7)) {
+            // Retain the ready reply. Dismiss would arm install-on-quit, which
+            // is not what the download-only setting promises.
+            self.userVisible = NO;
+            return;
+        }
+        void (^reply)(SPUUserUpdateChoice) = self.choice;
+        self.choice = nil;
+        SPUUserUpdateChoice choice = action == 1 ? SPUUserUpdateChoiceSkip
+            : action == 3 ? SPUUserUpdateChoiceInstall : SPUUserUpdateChoiceDismiss;
+        if (choice == SPUUserUpdateChoiceInstall && self.item.informationOnlyUpdate) {
+            NSURL *url = self.item.infoURL;
+            if ([@[@"https", @"http"] containsObject:url.scheme.lowercaseString]) [NSWorkspace.sharedWorkspace openURL:url];
+            choice = SPUUserUpdateChoiceDismiss;
+        }
+        if (choice == SPUUserUpdateChoiceSkip) {
+            // The ready-to-relaunch reply cancels installation but, unlike the
+            // initial offer reply, does not remember a skipped version. Keep
+            // this existing AgentInc button's meaning in Sparkle's own domain.
+            if (self.ready) [self.defaults setObject:self.item.versionString forKey:@"SUSkippedVersion"];
+            self.ready = NO;
+            self.installArmed = NO;
+        }
+        if (choice == SPUUserUpdateChoiceDismiss) self.ready = NO;
+        if (choice == SPUUserUpdateChoiceInstall) self.installRequested = YES;
+        if (choice == SPUUserUpdateChoiceInstall && self.installArmed && !self.prepared) {
+            self.continuation = ^{ reply(SPUUserUpdateChoiceInstall); };
+            [self prepare];
+        } else reply(choice);
+    }
+}
+- (void)cancelBackgroundInstallation {
+    if (self.choice) {
+        void (^reply)(SPUUserUpdateChoice) = self.choice;
+        self.choice = nil;
+        reply(SPUUserUpdateChoiceSkip);
+    } else if (self.cancellation) {
+        void (^cancel)(void) = self.cancellation;
+        self.cancellation = nil;
+        cancel();
+    } else if (self.acknowledgement) {
+        void (^acknowledge)(void) = self.acknowledgement;
+        self.acknowledgement = nil;
+        acknowledge();
+    }
+    // Extraction has no cancellation callback; showReady... will cancel it.
+}
+- (BOOL)updater:(SPUUpdater *)updater shouldPostponeRelaunchForUpdate:(SUAppcastItem *)item untilInvokingBlock:(void (^)(void))installHandler {
+    if (self.prepared) return NO;
+    self.installArmed = YES;
+    self.continuation = installHandler;
+    [self prepare];
+    return YES;
+}
+- (void)updater:(SPUUpdater *)updater willInstallUpdate:(SUAppcastItem *)item {
+    self.installArmed = YES;
+}
+- (BOOL)updater:(SPUUpdater *)updater willInstallUpdateOnQuit:(SUAppcastItem *)item immediateInstallationBlock:(void (^)(void))installHandler {
+    self.item = item;
+    self.ready = YES;
+    self.installArmed = YES;
+    self.message = @"Update verified and ready to install";
+    // The ordinary-quit barrier also protects Sparkle's install-on-quit path.
+    return NO;
+}
+- (void)updater:(SPUUpdater *)updater didFinishUpdateCycleForUpdateCheck:(SPUUpdateCheck)check error:(NSError *)error {
+    if (self.historyRequested && error) {
+        self.historyRequested = NO;
+        self.historyFailed = YES;
+        [self showUpdaterError:error acknowledgement:^{}];
+    }
+    if (self.cancelBackgroundOnQuit) {
+        self.cancelBackgroundOnQuit = NO;
+        self.backgroundDownload = NO;
+        self.installArmed = NO;
+        self.ready = NO;
+        [NSApp replyToApplicationShouldTerminate:YES];
+    }
+    if (error && self.prepared) {
+        self.prepared = NO;
+        self.installArmed = NO;
+        ainc_update_action(9, false);
+    }
+    if (error) { self.ready = NO; self.installArmed = NO; }
+    self.backgroundDownload = NO;
+    self.installRequested = NO;
+    self.userVisible = NO;
+}
+- (NSString *)feedURLStringForUpdater:(SPUUpdater *)updater {
+#ifdef AINC_UPGRADE_TEST
+    return NSProcessInfo.processInfo.environment[@"AINC_UPGRADE_TEST_SPARKLE_FEED_URL"];
+#else
+    return nil;
+#endif
+}
+- (void)showHistory {
+    self.changelog = YES;
+    ainc_update_offer(self.current.UTF8String, self.current.UTF8String,
+        (self.history ?: @"<p>Release history is unavailable.</p>").UTF8String,
+        false, false, true);
+}
+- (void)requestHistory {
+    if (self.history) [self showHistory];
+    else if (!self.updater.sessionInProgress) {
+        self.historyRequested = YES;
+        ainc_update_status("Loading release history…", self.current.UTF8String, 0);
+        [self.updater checkForUpdateInformation];
+    } else [self showUpdateInFocus];
+}
+- (void)updater:(SPUUpdater *)updater didFinishLoadingAppcast:(SUAppcast *)appcast {
+    NSMutableString *history = [NSMutableString string];
+    NSMutableString *notes = [NSMutableString string];
+    id<SUVersionComparison> comparator = [NSClassFromString(@"SUStandardVersionComparator") defaultComparator];
+    for (SUAppcastItem *item in appcast.items) {
+        NSString *section = [NSString stringWithFormat:@"<h2>AgentInc %@</h2>%@", escaped(item.displayVersionString), itemNotes(item)];
+        [history appendString:section];
+        if ([comparator compareVersion:item.versionString toVersion:self.current] == NSOrderedDescending) [notes appendString:section];
+    }
+    self.history = history;
+    self.notes = notes.length ? notes : nil;
+    if (self.historyRequested) {
+        self.historyRequested = NO;
+        [self showHistory];
+    }
+}
+@end
+
+static void updateAction(int action, bool automatic) {
+    if (sparkle) [sparkle action:action automatic:automatic];
+    else ainc_update_action(action, automatic);
+}
+
+static void migratePreferences(SPUUpdater *updater, NSString *path, NSBundle *host) {
+    NSString *domain = [host objectForInfoDictionaryKey:@"SUDefaultsDomain"] ?: host.bundleIdentifier;
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:domain];
+    if ([defaults boolForKey:@"AINCSparklePreferencesMigrated"]) return;
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    NSDictionary *legacy = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if ([legacy isKindOfClass:NSDictionary.class]) {
+        // Do not overwrite settings already owned by Sparkle.
+        NSDictionary *saved = [defaults persistentDomainForName:domain];
+        if (!saved[@"SUEnableAutomaticChecks"] && legacy[@"automatic_checks"]) updater.automaticallyChecksForUpdates = [legacy[@"automatic_checks"] boolValue];
+        if (!saved[@"AINCAutomaticallyDownloadUpdates"] && legacy[@"automatic_download"]) [defaults setBool:[legacy[@"automatic_download"] boolValue] forKey:@"AINCAutomaticallyDownloadUpdates"];
+        if (!saved[@"SUScheduledCheckInterval"] && legacy[@"interval_hours"]) updater.updateCheckInterval = [legacy[@"interval_hours"] doubleValue] * 3600;
+        if (!saved[@"SUSkippedVersion"] && [legacy[@"skipped_version"] isKindOfClass:NSString.class]) [defaults setObject:legacy[@"skipped_version"] forKey:@"SUSkippedVersion"];
+        NSTimeInterval last = [legacy[@"last_check"] doubleValue];
+        NSTimeInterval reminder = [legacy[@"remind_after"] doubleValue] - updater.updateCheckInterval;
+        if (!saved[@"SULastCheckTime"] && MAX(last, reminder) > 0) [defaults setObject:[NSDate dateWithTimeIntervalSince1970:MAX(last, reminder)] forKey:@"SULastCheckTime"];
+    }
+    [defaults setBool:YES forKey:@"AINCSparklePreferencesMigrated"];
+}
+
+bool ainc_sparkle_start(const char *legacy, const char *version) {
+    if (sparkle) return sparkle.started;
+    sparkle = [AincSparkleDriver new];
+    sparkle.current = [NSString stringWithUTF8String:version];
+    NSBundle *host = NSBundle.mainBundle;
+#ifdef AINC_UPGRADE_TEST
+    if (getenv("AINC_UPGRADE_TEST_MODE")) {
+        NSString *domain = [host objectForInfoDictionaryKey:@"SUDefaultsDomain"];
+        if (!domain.length || [domain isEqualToString:host.bundleIdentifier]) {
+            sparkle.message = @"Upgrade tests require an isolated SUDefaultsDomain.";
+            return false;
+        }
+    }
+#endif
+    NSString *path = [host.privateFrameworksPath stringByAppendingPathComponent:@"Sparkle.framework"];
+    NSBundle *framework = path ? [NSBundle bundleWithPath:path] : nil;
+    NSError *error = nil;
+    if (!framework || ![framework loadAndReturnError:&error]) {
+        sparkle.message = error.localizedDescription ?: @"Sparkle.framework is missing. Reinstall AgentInc to enable updates.";
+        return false;
+    }
+    Class updater = NSClassFromString(@"SPUUpdater");
+    sparkle.updater = [[updater alloc] initWithHostBundle:host applicationBundle:host userDriver:sparkle delegate:sparkle];
+    migratePreferences(sparkle.updater, [NSString stringWithUTF8String:legacy], host);
+    NSString *domain = [host objectForInfoDictionaryKey:@"SUDefaultsDomain"] ?: host.bundleIdentifier;
+    sparkle.defaults = [[NSUserDefaults alloc] initWithSuiteName:domain];
+    // Sparkle's automatic-download switch also consents to install-on-quit.
+    // AgentInc has a download-only setting, implemented through user-driver
+    // replies and explicit cancellation on ordinary quit instead.
+    sparkle.updater.automaticallyDownloadsUpdates = NO;
+    if (![sparkle.updater startUpdater:&error]) {
+        sparkle.message = error.localizedDescription;
+        return false;
+    }
+    sparkle.started = YES;
+    sparkle.message = [NSString stringWithFormat:@"AgentInc %@", sparkle.current];
+    installTerminationBarrier();
+    return true;
+}
+
+void ainc_sparkle_check(bool background) {
+    if (!sparkle.started) {
+        ainc_update_status((sparkle.message ?: @"Updates are available in production builds.").UTF8String,
+            (sparkle.current ?: @"").UTF8String, 3);
+    } else if (background) [sparkle.updater checkForUpdatesInBackground];
+    else [sparkle.updater checkForUpdates];
+}
+
+void ainc_sparkle_changelog(void) {
+    if (!sparkle.started) { ainc_sparkle_check(false); return; }
+    [sparkle requestHistory];
+}
+
+const char *ainc_sparkle_message(void) { return sparkle.message.UTF8String ?: "Updates are available in production builds."; }
+unsigned int ainc_sparkle_state(void) {
+    return (sparkle.updater.automaticallyChecksForUpdates ? 1 : 0)
+        | ([sparkle.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"] ? 2 : 0)
+        | (sparkle.updater.updateCheckInterval > 86400 ? 4 : 0)
+        | (sparkle.ready ? 8 : 0)
+        | (sparkle.updater.canCheckForUpdates ? 16 : 0)
+        | (sparkle.started ? 32 : 0);
+}
+void ainc_sparkle_setting(int setting, bool enabled) {
+    if (setting == 0) sparkle.updater.automaticallyChecksForUpdates = enabled;
+    if (setting == 1) [sparkle.defaults setBool:enabled forKey:@"AINCAutomaticallyDownloadUpdates"];
+    if (setting == 2) sparkle.updater.updateCheckInterval = enabled ? 604800 : 86400;
+}
+void ainc_sparkle_prepared(const char *error) {
+    [sparkle preparedWithError:error ? [NSString stringWithUTF8String:error] : nil];
+}
+
+#ifdef AINC_UPGRADE_TEST
+void ainc_sparkle_restore_test_environment(void) {
+    NSDictionary *environment = [NSBundle.mainBundle objectForInfoDictionaryKey:@"AINCUpgradeTestEnvironment"];
+    NSArray *keys = @[@"AINC_UPGRADE_TEST_MODE", @"AINC_UPGRADE_TEST_FROM", @"AINC_UPGRADE_TEST_SUCCESS_FILE",
+        @"AINC_UPGRADE_TEST_SPARKLE_FEED_URL", @"AINC_UPGRADE_TEST_FEED_URL", @"AINC_DISCOVERY_FILE",
+        @"AINC_TOKEN_FILE", @"AGENTINC_SESSION_PATH", @"AINC_DATABASE_URL", @"AINC_DAEMON_URL",
+        @"AINC_LEGACY_DIR", @"AGENTINC_CODEX_HOME"];
+    for (NSString *key in keys) {
+        NSString *value = environment[key];
+        if ([value isKindOfClass:NSString.class] && !getenv(key.UTF8String)) setenv(key.UTF8String, value.UTF8String, 0);
+    }
+}
+#endif

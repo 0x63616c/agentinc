@@ -1,23 +1,37 @@
-//! AppKit presentation for the Rust updater. All calls run on the app's main thread.
+//! AgentInc's custom Sparkle user driver. Calls run on the app's main thread.
+#[cfg(all(feature = "automation", target_os = "macos"))]
 use ainc_release::Manifest;
-#[cfg(any(test, target_os = "macos"))]
+#[cfg(any(test, all(feature = "automation", target_os = "macos")))]
 use pulldown_cmark::{Event, Options, Parser, html};
 #[cfg(target_os = "macos")]
-use std::ffi::CString;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::ffi::{CStr, CString};
+use std::{collections::VecDeque, sync::Mutex};
 
-static ACTION: AtomicI32 = AtomicI32::new(0);
-static AUTOMATIC: AtomicBool = AtomicBool::new(false);
+static ACTIONS: Mutex<VecDeque<(i32, bool)>> = Mutex::new(VecDeque::new());
 
-pub enum Status<'a> {
-    Checking,
-    UpToDate,
-    Failed(&'a str),
-    Info(&'a str),
+#[derive(Clone, Default, PartialEq)]
+pub struct State {
+    pub automatic_checks: bool,
+    pub automatic_download: bool,
+    pub weekly: bool,
+    pub ready: bool,
+    pub can_check: bool,
+    pub enabled: bool,
+    pub message: String,
 }
 
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
+    fn ainc_sparkle_start(legacy: *const i8, version: *const i8) -> bool;
+    fn ainc_sparkle_check(background: bool);
+    fn ainc_sparkle_changelog();
+    fn ainc_sparkle_message() -> *const i8;
+    fn ainc_sparkle_state() -> u32;
+    fn ainc_sparkle_setting(setting: i32, enabled: bool);
+    fn ainc_sparkle_prepared(error: *const i8);
+    #[cfg(ainc_upgrade_test)]
+    fn ainc_sparkle_restore_test_environment();
+    #[cfg(feature = "automation")]
     fn ainc_update_offer(
         version: *const i8,
         current: *const i8,
@@ -26,26 +40,101 @@ unsafe extern "C" {
         ready: bool,
         changelog: bool,
     );
-    fn ainc_update_status(message: *const i8, current: *const i8, kind: i32);
+    #[cfg(feature = "automation")]
     fn ainc_update_progress(message: *const i8, received: u64, total: u64);
+    #[cfg(feature = "automation")]
     fn ainc_update_close();
-    #[cfg(ainc_upgrade_test)]
-    fn ainc_update_test_click_install();
     #[cfg(feature = "automation")]
     fn ainc_update_capture(path: *const i8, progress: bool) -> bool;
     #[cfg(feature = "automation")]
     fn ainc_update_smoke_init();
 }
 
+pub fn start(legacy: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    if ainc_release::identity::PRODUCTION {
+        let legacy = cstring(&legacy.to_string_lossy());
+        let version = cstring(ainc_release::VERSION);
+        unsafe { ainc_sparkle_start(legacy.as_ptr(), version.as_ptr()) };
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = legacy;
+}
+
+pub fn state() -> State {
+    #[cfg(target_os = "macos")]
+    {
+        let bits = unsafe { ainc_sparkle_state() };
+        State {
+            automatic_checks: bits & 1 != 0,
+            automatic_download: bits & 2 != 0,
+            weekly: bits & 4 != 0,
+            ready: bits & 8 != 0,
+            can_check: bits & 16 != 0,
+            enabled: bits & 32 != 0,
+            message: unsafe { CStr::from_ptr(ainc_sparkle_message()) }
+                .to_string_lossy()
+                .into_owned(),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    State::default()
+}
+
+pub fn check(background: bool) {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        ainc_sparkle_check(background)
+    };
+    #[cfg(not(target_os = "macos"))]
+    let _ = background;
+}
+
+pub fn changelog() {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        ainc_sparkle_changelog()
+    };
+}
+
+pub fn setting(setting: i32, enabled: bool) {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        ainc_sparkle_setting(setting, enabled)
+    };
+    #[cfg(not(target_os = "macos"))]
+    let _ = (setting, enabled);
+}
+
+pub fn prepared(error: Option<&str>) {
+    #[cfg(target_os = "macos")]
+    {
+        let error = error.map(cstring);
+        unsafe { ainc_sparkle_prepared(error.as_ref().map_or(std::ptr::null(), |s| s.as_ptr())) };
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = error;
+}
+
+/// Called before any threads or profile reads in upgrade-test builds only.
+#[cfg(ainc_upgrade_test)]
+pub fn restore_upgrade_test_environment() {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        ainc_sparkle_restore_test_environment()
+    };
+}
+
 #[unsafe(no_mangle)]
 extern "C" fn ainc_update_action(action: i32, automatic: bool) {
-    AUTOMATIC.store(automatic, Ordering::Relaxed);
-    ACTION.store(action, Ordering::Release);
+    ACTIONS
+        .lock()
+        .expect("native update actions")
+        .push_back((action, automatic));
 }
 
 pub fn take_action() -> Option<(i32, bool)> {
-    let action = ACTION.swap(0, Ordering::AcqRel);
-    (action != 0).then(|| (action, AUTOMATIC.load(Ordering::Relaxed)))
+    ACTIONS.lock().expect("native update actions").pop_front()
 }
 
 #[cfg(target_os = "macos")]
@@ -53,7 +142,7 @@ fn cstring(text: &str) -> CString {
     CString::new(text.replace('\0', "")).expect("NUL stripped")
 }
 
-#[cfg(any(test, target_os = "macos"))]
+#[cfg(any(test, all(feature = "automation", target_os = "macos")))]
 pub fn notes_html(markdown: &str) -> String {
     let parser =
         Parser::new_ext(markdown, Options::ENABLE_STRIKETHROUGH).map(|event| match event {
@@ -73,8 +162,8 @@ pub fn notes_html(markdown: &str) -> String {
     )
 }
 
-#[cfg(any(test, target_os = "macos"))]
-fn offer_html(manifest: &Manifest, current: &str, changelog: bool) -> String {
+#[cfg(any(test, all(feature = "automation", target_os = "macos")))]
+fn offer_html(manifest: &ainc_release::Manifest, current: &str, changelog: bool) -> String {
     if changelog {
         notes_html(&manifest.changelog)
     } else {
@@ -88,7 +177,7 @@ fn offer_html(manifest: &Manifest, current: &str, changelog: bool) -> String {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "automation", target_os = "macos"))]
 pub fn offer(manifest: &Manifest, automatic: bool, ready: bool, changelog: bool) {
     let version = cstring(&manifest.version.to_string());
     let current = cstring(ainc_release::VERSION);
@@ -105,47 +194,16 @@ pub fn offer(manifest: &Manifest, automatic: bool, ready: bool, changelog: bool)
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-pub fn offer(_: &Manifest, _: bool, _: bool, _: bool) {}
-
-pub fn status(status: Status<'_>) {
-    let (kind, message) = match status {
-        Status::Checking => (0, "Checking for updates…"),
-        Status::UpToDate => (1, "You’re up to date"),
-        Status::Failed(message) => (2, message),
-        Status::Info(message) => (3, message),
-    };
-    #[cfg(target_os = "macos")]
-    {
-        let message = cstring(message);
-        let current = cstring(ainc_release::identity::version().as_str());
-        unsafe { ainc_update_status(message.as_ptr(), current.as_ptr(), kind) }
-    }
-    #[cfg(not(target_os = "macos"))]
-    let _ = (kind, message);
-}
-
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "automation", target_os = "macos"))]
 pub fn progress(received: u64, total: u64) {
     let message = cstring("Downloading update...");
     unsafe { ainc_update_progress(message.as_ptr(), received, total) }
 }
 
-#[cfg(not(target_os = "macos"))]
-pub fn progress(_: u64, _: u64) {}
-
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "automation", target_os = "macos"))]
 pub fn close() {
     unsafe { ainc_update_close() }
 }
-
-#[cfg(all(ainc_upgrade_test, target_os = "macos"))]
-pub fn upgrade_test_click_install() {
-    unsafe { ainc_update_test_click_install() }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn close() {}
 
 #[cfg(all(feature = "automation", target_os = "macos"))]
 pub fn smoke(manifest: &Manifest, directory: &std::path::Path) -> anyhow::Result<()> {
@@ -186,7 +244,7 @@ mod tests {
 
     #[test]
     fn offer_renders_every_missed_version_and_changelog_keeps_installed_versions() {
-        let mut manifest: Manifest =
+        let mut manifest: ainc_release::Manifest =
             serde_json::from_str(include_str!("../tests/fixtures/update-manifest.json")).unwrap();
         manifest.version = "0.4.3".parse().unwrap();
         manifest.changelog = ainc_release::notes::changelog(&[0, 1, 2, 3].map(|patch| {
