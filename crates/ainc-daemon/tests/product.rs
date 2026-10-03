@@ -1,8 +1,7 @@
 #![allow(deprecated)] // The Todo commands stay callable until the release after their deprecation.
-use ainc_daemon::{
-    legacy,
-    product::{self, Command, CommandRequest, Product},
-};
+#[cfg(feature = "legacy-import")]
+use ainc_daemon::legacy;
+use ainc_daemon::product::{self, Command, CommandRequest, Product};
 use sqlx::PgPool;
 
 async fn execute(
@@ -175,6 +174,7 @@ async fn owner_credential_required_for_reads_and_writes(pool: PgPool) {
     assert_eq!(response.status(), 401);
 }
 
+#[cfg(feature = "legacy-import")]
 fn legacy_fixture(path: &std::path::Path) {
     let db = rusqlite::Connection::open(path.join("assistant.sqlite3")).unwrap();
     db.execute_batch("CREATE TABLE todos(id INTEGER PRIMARY KEY,title TEXT,completed INTEGER); INSERT INTO todos VALUES(9,'legacy task',1); CREATE TABLE conversations(id INTEGER PRIMARY KEY,title TEXT,updated_at INTEGER); INSERT INTO conversations VALUES(8,'Old conversation',1700000000); CREATE TABLE turns(id INTEGER PRIMARY KEY,conversation_id INTEGER,prompt TEXT,response TEXT,error TEXT); INSERT INTO turns VALUES(4,8,'hello','world',NULL),(5,8,'unfinished',NULL,NULL); CREATE TABLE assistant_settings(key TEXT PRIMARY KEY,value TEXT); INSERT INTO assistant_settings VALUES('model','example'); PRAGMA user_version=2;").unwrap();
@@ -185,6 +185,7 @@ fn legacy_fixture(path: &std::path::Path) {
     .unwrap();
 }
 
+#[cfg(feature = "legacy-import")]
 #[sqlx::test]
 async fn import_preserves_order_preferences_and_sources_without_replaying(pool: PgPool) {
     // Synthetic fixture only. No test resolves the user's Application Support.
@@ -218,6 +219,7 @@ async fn import_preserves_order_preferences_and_sources_without_replaying(pool: 
     assert_eq!(snapshot(&pool).await.unwrap().conversations.len(), 1);
 }
 
+#[cfg(feature = "legacy-import")]
 #[sqlx::test]
 async fn failed_import_rolls_back_and_future_schema_is_untouched(pool: PgPool) {
     let directory = tempfile::tempdir().unwrap();
@@ -482,4 +484,15 @@ async fn snapshot_of_state(pool: &PgPool) -> Vec<i64> {
         .iter()
         .map(|c| c.id)
         .collect()
+}
+
+#[cfg(feature = "legacy-import")]
+#[sqlx::test]
+async fn import_once_settles_on_the_first_start(pool: PgPool) {
+    let directory = tempfile::tempdir().unwrap();
+    // Nothing to import on the first start settles the import for good.
+    assert!(!legacy::import_once(&pool, directory.path()).await.unwrap());
+    legacy_fixture(directory.path());
+    assert!(!legacy::import_once(&pool, directory.path()).await.unwrap());
+    assert!(snapshot(&pool).await.unwrap().conversations.is_empty());
 }

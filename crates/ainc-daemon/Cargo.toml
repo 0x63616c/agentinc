@@ -18,6 +18,11 @@ path = "src/main.rs"
 name = "codex-fixture"
 path = "src/bin/codex_fixture.rs"
 
+[features]
+# Imports the pre-Postgres app data once. Remove after 2027-01-01; see docs/ownership.md.
+default = ["legacy-import"]
+legacy-import = ["dep:rusqlite"]
+
 [dependencies]
 # The daemon needs only the product identity. Kept under the old crate name until the
 # sources switch to `ainc_identity::` (a mechanical rename deferred to avoid merge churn).
@@ -39,7 +44,7 @@ tokio-tungstenite = "0.29"
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid.workspace = true
-rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+rusqlite = { version = "0.32", features = ["bundled", "backup"], optional = true }
 utoipa = { version = "5.5", features = ["axum_extras"] }
 utoipa-axum = "0.2"
 tower-http = { version = "0.6", features = ["set-header", "trace"] }

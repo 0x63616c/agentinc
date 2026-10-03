@@ -19,6 +19,8 @@ Before publishing readiness, the daemon runs the SQLx migrations and imports `as
 
 SQLite is opened read-only and read inside a consistent transaction, including committed WAL content. The destination transaction imports schema 0/1 single-chat history or schema 2 Conversations, turn IDs/order, the legacy `todos` table (imported as Tickets), assistant settings and the original session JSON. Interrupted turns become failed/retryable; import never dispatches a model call. A committed source receipt prevents reimport, including resurrection of later-deleted records. Future SQLite schemas, invalid session JSON and a populated destination without an import receipt are refused. Failure rolls back destination rows; source data is not migrated in place or deleted. Tests use disposable synthetic copies of the original schemas, never the regular Application Support directory.
 
+The import is the `legacy-import` cargo feature (on by default) and runs on the first start only: a `<done>` row in `legacy_imports` stops later starts from looking at the legacy directory. Remove the feature, `legacy.rs` and the `rusqlite` dependency after 2027-01-01.
+
 Only shell layout, navigation and font remain app-local. Their versioned UI-preference DTO preserves the saved `tasks`/`evee` route aliases (today's Tickets and Assistant) and older tab histories. An unreadable or future-version file is displayed as unavailable and is not overwritten. Product preferences (selected model and Conversation) are daemon-owned.
 
 ## Local companion and remote configuration

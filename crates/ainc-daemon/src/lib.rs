@@ -13,6 +13,7 @@ pub mod conversations;
 pub mod execution;
 pub mod health;
 pub mod inference;
+#[cfg(feature = "legacy-import")]
 pub mod legacy;
 pub mod pg;
 pub mod product;

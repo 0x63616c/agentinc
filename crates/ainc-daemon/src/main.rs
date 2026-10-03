@@ -18,6 +18,7 @@ struct Config {
     discovery: PathBuf,
     /// An external Postgres; without it the daemon manages its own runtime.
     database_url: Option<String>,
+    #[cfg(feature = "legacy-import")]
     legacy_dir: Option<PathBuf>,
     /// The durable runtime as JSON; otherwise `runtime.json` beside discovery.
     runtime_config: Option<String>,
@@ -32,6 +33,7 @@ impl Config {
         Ok(Self {
             discovery: path("AINC_DISCOVERY_FILE").context("AINC_DISCOVERY_FILE is required")?,
             database_url: env::var("DATABASE_URL").ok(),
+            #[cfg(feature = "legacy-import")]
             legacy_dir: path("AINC_LEGACY_DIR"),
             runtime_config: env::var("AINC_RUNTIME_CONFIG").ok(),
             workspace_dir: path("AINC_WORKSPACE_DIR"),
@@ -110,13 +112,16 @@ async fn run() -> Result<()> {
     ainc_daemon::migrate(&pool)
         .await
         .context("migrate product database")?;
-    let legacy = config
-        .legacy_dir
-        .clone()
-        .unwrap_or_else(ainc_release::identity::support_dir);
-    ainc_daemon::legacy::import(&pool, &legacy)
-        .await
-        .context("import legacy app data")?;
+    #[cfg(feature = "legacy-import")]
+    {
+        let legacy = config
+            .legacy_dir
+            .clone()
+            .unwrap_or_else(ainc_release::identity::support_dir);
+        ainc_daemon::legacy::import_once(&pool, &legacy)
+            .await
+            .context("import legacy app data")?;
+    }
     let token_path = discovery.with_file_name("owner-token");
     fs::create_dir_all(token_path.parent().context("token directory")?)?;
     let token = match fs::OpenOptions::new()
