@@ -1,3 +1,5 @@
+mod checks;
+
 use anyhow::{Context, Result, anyhow, bail};
 use progenitor::{GenerationSettings, Generator, InterfaceStyle};
 use serde::{Deserialize, Serialize};
@@ -412,24 +414,47 @@ fn generate(root: &Path, check: bool) -> Result<()> {
     Ok(())
 }
 
+/// Run one command from the repo root and fail the check if it fails.
+fn step(root: &Path, command: &[&str]) -> Result<()> {
+    println!("$ {}", command.join(" "));
+    let status = Command::new(command[0])
+        .args(&command[1..])
+        .current_dir(root)
+        .status()
+        .with_context(|| format!("could not run {}", command[0]))?;
+    anyhow::ensure!(status.success(), "check failed: {}", command.join(" "));
+    Ok(())
+}
+
+/// The native UI rules: colors, spacing and component forks. CI runs this on its own, after
+/// its tests have built xtask; `check` runs it as part of the static gate.
+fn check_ui(root: &Path) -> Result<()> {
+    checks::colors::run(&root.join("crates/ainc-mac"))?;
+    step(
+        root,
+        &["python3", "crates/ainc-mac/scripts/check-ui-spacing.py"],
+    )?;
+    step(
+        root,
+        &["python3", "crates/ainc-mac/scripts/check-ui-core.py"],
+    )
+}
+
 /// The static gate: everything CI checks that needs no database and no test run.
 /// `just check`, the pre-commit hook and CI all come through here.
 fn check(root: &Path) -> Result<()> {
-    let steps: [&[&str]; 6] = [
-        &["cargo", "fmt", "--all", "--", "--check"],
-        &["python3", "crates/ainc-mac/scripts/check-colors.py"],
-        &[
-            "python3",
-            "-m",
-            "unittest",
-            "discover",
-            "-s",
-            "crates/ainc-mac/scripts",
-            "-p",
-            "test_check_colors.py",
-        ],
+    step(root, &["cargo", "fmt", "--all", "--", "--check"])?;
+    checks::colors::run(&root.join("crates/ainc-mac"))?;
+    step(
+        root,
         &["python3", "crates/ainc-mac/scripts/check-ui-spacing.py"],
+    )?;
+    step(
+        root,
         &["python3", "crates/ainc-mac/scripts/check-ui-core.py"],
+    )?;
+    step(
+        root,
         &[
             "cargo",
             "clippy",
@@ -440,17 +465,7 @@ fn check(root: &Path) -> Result<()> {
             "-D",
             "warnings",
         ],
-    ];
-    for step in steps {
-        println!("$ {}", step.join(" "));
-        let status = Command::new(step[0])
-            .args(&step[1..])
-            .current_dir(root)
-            .status()
-            .with_context(|| format!("could not run {}", step[0]))?;
-        anyhow::ensure!(status.success(), "check failed: {}", step.join(" "));
-    }
-    Ok(())
+    )
 }
 
 fn main() -> Result<()> {
@@ -470,6 +485,7 @@ fn main() -> Result<()> {
             Ok(())
         }
         "check" => check(&root),
+        "check-ui" => check_ui(&root),
         "generate" => generate(&root, args.next().as_deref() == Some("--check")),
         "dev" => {
             let mut instance = write_instance(&instance)?;

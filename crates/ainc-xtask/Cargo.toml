@@ -17,6 +17,7 @@ anyhow.workspace = true
 openapiv3 = "2"
 prettyplease = "0.2"
 progenitor = "0.14"
+regex = "1"
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"

@@ -257,6 +257,7 @@ dependencies = [
  "openapiv3",
  "prettyplease 0.2.37",
  "progenitor",
+ "regex",
  "serde",
  "serde_json",
  "sha2",

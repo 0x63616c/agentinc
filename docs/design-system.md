@@ -33,7 +33,7 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 | Shadow | `shadow_overlay()`, `shadow_dialog()`, `shadow_toast()`, `focus_ring()` | Menus, dialogs and the palette, toasts, keyboard focus. Focus rings appear after keyboard navigation and hide on the next pointer press. |
 | Motion | `HOVER_MS`, `PANEL_MS`, `MESSAGE_MS`, `SKELETON_MS`, `SPRING_SNAPPY`, `SPRING_GENTLE` | Fades, panel reveal, message arrival, skeleton pulse, springs. |
 
-`scripts/check-colors.py` fails the build when a color literal appears anywhere
+`cargo xtask check-ui` (`crates/ainc-xtask/src/checks/colors.rs`) fails the build when a color literal appears anywhere
 else; `scripts/check-ui-spacing.py` warns on raw spacing literals in migrated
 files.
 
