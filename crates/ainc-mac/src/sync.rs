@@ -8,6 +8,7 @@
 use crate::{
     action::{Failure, Pending, Run},
     daemon::Daemon,
+    ui::is_active,
 };
 use gpui::{BackgroundExecutor, Context, EventEmitter};
 use std::{pin::Pin, rc::Rc, sync::Arc, time::Duration, time::Instant};
@@ -81,9 +82,8 @@ fn fetch(daemon: &Daemon) -> anyhow::Result<Fetched> {
     daemon.refresh()?;
     let product = daemon.product();
     let tickets = daemon.tickets();
-    let running = |state: &str| state == "queued" || state == "running";
-    let active = product.turns.iter().any(|t| running(&t.state))
-        || tickets.runs.iter().any(|r| running(&r.state));
+    let active = product.turns.iter().any(|t| is_active(&t.state))
+        || tickets.runs.iter().any(|r| is_active(&r.state));
     let fingerprints = [
         serde_json::to_string(&daemon.workspaces())?,
         serde_json::to_string(&product)?,
@@ -222,6 +222,7 @@ impl Sync {
 mod tests {
     use super::*;
     use crate::daemon::transport::{Request, Slice};
+    use crate::ui::WorkState;
     use ainc_client::types::{TicketCommand, Turn};
     use gpui::{AppContext, TestAppContext};
     use std::{cell::RefCell, rc::Rc};
@@ -311,7 +312,7 @@ mod tests {
                 prompt: "Hello".into(),
                 response: None,
                 error: None,
-                state: "running".into(),
+                state: WorkState::Running.as_str().into(),
             });
         });
         clock.tick();
