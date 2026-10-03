@@ -149,6 +149,7 @@ its path and lease ID. Work only in that lease; leave other active worktrees alo
 Return only your own lease after its commits are integrated or otherwise safely
 preserved: `treehouse return <path> --if-lease-id <lease-id>`. Returning may terminate
 processes and reset the worktree; never use `--force` to discard unpreserved work.
+Exit status 3 means a dirty worktree was not returned; preserve its work before retrying.
 
 ## Decisions already made
 
