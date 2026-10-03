@@ -41,7 +41,7 @@ Every crate lives directly under `crates/`. The Mac app's directory is `crates/a
 | [`crates/turnkeel`](crates/turnkeel), [`crates/turnkeel-macros`](crates/turnkeel-macros) | The Turnkeel Rust agent SDK and its `#[tool]` macro; overview below. |
 | [`vendor/gpui`](vendor) | Zed's GPUI core crate, pinned to one revision with the pilot patch applied. Kept outside the workspace; `cargo xtask vendor-pilot-gpui` regenerates it. |
 
-The [architecture](docs/architecture.md), [decisions](docs/adr) and [runtime design](docs/phase-3-runtime.md) describe how the pieces fit together. [The screenshot recipe](docs/assets/readme/README.md) explains how to regenerate the native window capture.
+The [architecture](docs/architecture.md), [decisions](docs/adr) and [runtime design](docs/runtime.md) describe how the pieces fit together. [The screenshot recipe](docs/assets/readme/README.md) explains how to regenerate the native window capture.
 
 ## Turnkeel SDK
 

@@ -53,7 +53,7 @@ The manifest binds the archive digest/size, product and daemon versions, API win
 architecture, build ID and commit. A published version cannot be reassigned to another
 commit. Release notes are generated from non-merge commit subjects between the previous
 published product release and the exact shipped commit, including direct commits. A
-nonempty `docs/releases/VERSION.md` overrides generation. Drafts, prereleases and
+nonempty `docs/releases/VERSION.md` overrides generation (`crates/ainc-xtask/src/release/notes.rs`); that directory holds hand-written overrides only, so most versions have no file there. Drafts, prereleases and
 unpublished tags are not release boundaries. Notes are stored in the draft; retries
 reuse them. The same notes are in GitHub, the manifest and downloadable notes artifacts.
 `cargo xtask release-distribute` also includes every published version in the changelog,

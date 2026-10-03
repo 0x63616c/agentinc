@@ -6,7 +6,7 @@ This is the current plan. The contracts are accepted; the components described b
 
 ## Product and workspace
 
-The macOS app is **AgentInc**, bundle ID `co.worldwidewebb.agentinc`. Its GPUI app, assets and acceptance material are imported under `crates/`. The daemon now imports its legacy SQLite product data into Postgres; UI-only preferences remain at the existing support path. See [phase 2 ownership](phase-2-ownership.md) for the implemented boundary and execution limits. All crates stay directly under `crates/`; the SDK is the daemon's agent runtime and the app is its real consumer. The SDK crate is `turnkeel`; product packages use the `ainc-` prefix.
+The macOS app is **AgentInc**, bundle ID `co.worldwidewebb.agentinc`. Its GPUI app, assets and acceptance material are imported under `crates/`. The daemon now imports its legacy SQLite product data into Postgres; UI-only preferences remain at the existing support path. See [phase 2 ownership](ownership.md) for the implemented boundary and execution limits. All crates stay directly under `crates/`; the SDK is the daemon's agent runtime and the app is its real consumer. The SDK crate is `turnkeel`; product packages use the `ainc-` prefix.
 
 The app remains a native GPUI client with our own components. A generated CLI and authorized agent tools use the same daemon commands. Anything a person can do in the UI must be possible through those tools. A `Route` catalogue names destinations; `Page` views render them. Keep the existing single-tab, dark Control shell and add Tickets and Automations there.
 
@@ -65,7 +65,7 @@ One product version drives the app bundle and compatible daemon/client release m
 
 ## Development environment
 
-`cargo xtask dev` starts the worktree's Tilt + Compose stack and native daemon. `cargo xtask doctor` shows its identity and API discovery; `cargo xtask down` stops that stack without deleting volumes. `cargo xtask generate` exports the Utoipa contract as validated OpenAPI 3.0.3 and regenerates the Progenitor client and CLI operations. The Ticket domain lives at `/v1/tickets` and `/v1/tickets/commands` (see [tickets](phase-3-tickets.md)); the phase-1 echo stub `/v1/tickets/contract` still exists and is slated for deletion.
+`cargo xtask dev` starts the worktree's Tilt + Compose stack and native daemon. `cargo xtask doctor` shows its identity and API discovery; `cargo xtask down` stops that stack without deleting volumes. `cargo xtask generate` exports the Utoipa contract as validated OpenAPI 3.0.3 and regenerates the Progenitor client and CLI operations. The Ticket domain lives at `/v1/tickets` and `/v1/tickets/commands` (see [tickets](tickets.md)); the phase-1 echo stub `/v1/tickets/contract` still exists and is slated for deletion.
 
 `dev/check-isolation.sh WORKTREE_A WORKTREE_B` exercises two disposable worktrees, then restarts one while checking the other's database and health.
 

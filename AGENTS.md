@@ -76,10 +76,10 @@ needs to become its own crate.
   sense with a single agent and no UI? If yes, it belongs in the SDK.
 - **AgentInc** is a personal life-OS app; its native client is at `crates/ainc-mac`.
   The daemon owns product state; migration, isolated profile overrides and local
-  companion setup are documented in `docs/phase-2-ownership.md`; current runtime and tool policy
-  are in `docs/phase-3-execution.md`; scheduled Ticket grants, overlap/catch-up policy and
-  phase-4 evidence are in `docs/phase-4-automations.md`; the Ticket board
-  (statuses, order, relationships, history) is in `docs/phase-3-tickets.md`, and
+  companion setup are documented in `docs/ownership.md`; current runtime and tool policy
+  are in `docs/execution.md`; scheduled Ticket grants, overlap/catch-up policy and
+  phase-4 evidence are in `docs/automations.md`; the Ticket board
+  (statuses, order, relationships, history) is in `docs/tickets.md`, and
   every Ticket writer takes the workspace board lock before any row lock. Rule: anything a human can do in
   its UI, an agent can do through the same tools.
 
@@ -133,11 +133,11 @@ wants. To wait for a session to finish a turn, read `session.events()` until
 Add a test for every behaviour change in the loop. The test should not mention Temporal;
 if it has to, the public API has leaked.
 
-Personal packaging, update signing and bundled runtime ownership: [docs/phase-5-distribution.md](docs/phase-5-distribution.md).
+Personal packaging, update signing and bundled runtime ownership: [docs/distribution.md](docs/distribution.md).
 The production/development channel and isolation rule is also documented there;
 `ainc-release::identity` is its single code source.
 
-Stable runtime deployment and process-recovery checks: [docs/phase-3-runtime.md](docs/phase-3-runtime.md).
+Stable runtime deployment and process-recovery checks: [docs/runtime.md](docs/runtime.md).
 
 Verify with `just test`, which runs every CI check and should be clean.
 
