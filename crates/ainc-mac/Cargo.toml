@@ -5,6 +5,9 @@ edition = "2024"
 rust-version = "1.98"
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 ainc-release = { path = "../ainc-release" }
 gpui-pilot = { path = "../gpui-pilot", optional = true, features = ["host"] }

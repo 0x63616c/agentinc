@@ -11,6 +11,12 @@ edition = "2024"
 license = "MIT"
 rust-version = "1.98"
 
+[workspace.lints.rust]
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+
 [workspace.dependencies]
 turnkeel = { path = "crates/turnkeel" }
 turnkeel-macros = { path = "crates/turnkeel-macros" }

@@ -5,6 +5,9 @@ edition = "2024"
 rust-version = "1.98"
 publish = false
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "gpui-pilot"
 path = "src/main.rs"

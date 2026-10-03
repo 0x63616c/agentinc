@@ -5,6 +5,9 @@ edition = "2024"
 rust-version = "1.98"
 publish = false
 
+[lints]
+workspace = true
+
 [features]
 default = []
 host = ["dep:gpui", "dep:accesskit", "dep:image", "dep:async-channel", "dep:futures"]

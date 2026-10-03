@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Durable AI agents in Rust"
 
+[lints]
+workspace = true
+
 [dependencies]
 turnkeel-macros.workspace = true
 
