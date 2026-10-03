@@ -1,3 +1,10 @@
+/// Builds an HTTP client with the ring TLS provider installed. Every reqwest client in the
+/// daemon starts here, so a test or binary that forgets the provider cannot panic later.
+pub fn http_client() -> reqwest::ClientBuilder {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    reqwest::Client::builder()
+}
+
 pub mod automations;
 pub mod coding;
 pub mod connection;

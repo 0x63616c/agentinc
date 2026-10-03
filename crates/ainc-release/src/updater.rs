@@ -66,6 +66,7 @@ impl Preferences {
     }
 }
 fn http() -> Result<reqwest::Client> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     Ok(reqwest::Client::builder()
         .user_agent("AgentInc updater")
         .https_only(!cfg!(ainc_upgrade_test))

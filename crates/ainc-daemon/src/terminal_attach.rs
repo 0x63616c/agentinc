@@ -75,7 +75,8 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
             }
         };
         if !existing {
-            let response = reqwest::Client::new()
+            let response = ainc_daemon::http_client()
+                .build()?
                 .post(format!("{url}/v1/terminal/sessions"))
                 .header("authorization", format!("Bearer {token}"))
                 .header("agent-inc-client", ainc_release::client_header())
@@ -161,7 +162,8 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
 
 pub async fn close(id: Uuid) -> Result<()> {
     let (url, token) = connection()?;
-    reqwest::Client::new()
+    ainc_daemon::http_client()
+        .build()?
         .delete(format!("{url}/v1/terminal/sessions/{id}"))
         .header("authorization", format!("Bearer {token}"))
         .header("agent-inc-client", ainc_release::client_header())

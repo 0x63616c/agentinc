@@ -115,7 +115,7 @@ impl Stack {
             ainc_release::client_header().parse().unwrap(),
         );
         (
-            reqwest::Client::builder()
+            ainc_daemon::http_client()
                 .default_headers(headers)
                 .build()
                 .unwrap(),

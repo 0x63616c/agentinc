@@ -410,7 +410,7 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let id = Uuid::new_v4();
-        let client = reqwest::Client::new();
+        let client = crate::http_client().build().unwrap();
         client
             .post(format!("http://{address}/v1/terminal/sessions"))
             .bearer_auth("owner")
