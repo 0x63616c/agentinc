@@ -89,7 +89,7 @@ fast shutdown to disconnect residual pool sockets while safely rolling back and 
 Companion startup diagnostics are retained in `daemon.log` beside discovery.
 Native process startup and pre-exec launch clear inherited signal masks and reset
 SIGCHLD, so launching from a UI dispatch thread cannot disable child reaping.
-`runtime-smoke.py --blocked-signals` verifies readiness and reaping with SIGCHLD
+`cargo xtask release-runtime-smoke --blocked-signals` verifies readiness and reaping with SIGCHLD
 blocked and ignored, including drain/restart and crash recovery.
 
 This is a personal, single-machine runtime, not a hosted or multi-user deployment.
