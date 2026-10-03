@@ -46,6 +46,10 @@ No sleeps or timers in tests. Coordinate on state or explicit gates.
 
 Flat: every crate lives directly under `crates/`. No nesting; related crates share a
 prefix instead (`crates/ainc-tickets`, never `crates/ainc-mac/tickets`).
+A module with children is `foo.rs` beside `foo/`, never `foo/mod.rs`; every Mac app file opens
+with a `//!` line. The product is spelled AgentInc (the legacy data dir `Application Support/Agentinc OS/` aside),
+product env vars are `AINC_*` and SDK ones `TURNKEEL_*`; `cargo xtask check-names` and
+`check-layout` enforce these as part of `check`.
 For the accepted product plan, see [docs/architecture.md](docs/architecture.md) and
 [docs/adr/](docs/adr/). Crate names below describe the current source.
 Adding an endpoint, page, component, tool, migration or CLI command, or cutting a release:

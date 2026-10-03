@@ -1,5 +1,5 @@
 //! Repository checks, including native UI rules and Git commit messages.
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -7,6 +7,9 @@ use std::{
 
 pub mod colors;
 pub mod commit_msg;
+pub mod env_names;
+pub mod layout;
+pub mod naming;
 pub mod ui_core;
 pub mod ui_spacing;
 pub mod ui_vocabulary;
@@ -30,4 +33,25 @@ fn files(dir: &Path, extension: &str) -> Result<Vec<PathBuf>> {
     }
     found.sort();
     Ok(found)
+}
+
+/// Every Git-tracked file under `root` that holds UTF-8 text, as `(repo-relative path, text)`,
+/// in `git ls-files` order. Binary files and the untracked `target/` and `.local/` never appear.
+fn tracked_text_files(root: &Path) -> Result<Vec<(String, String)>> {
+    let output = crate::spawn::command("git")
+        .args(["ls-files", "-z"])
+        .current_dir(root)
+        .output()
+        .context("could not list tracked files")?;
+    anyhow::ensure!(output.status.success(), "git ls-files failed");
+    let mut files = Vec::new();
+    for path in String::from_utf8(output.stdout)?.split('\0') {
+        if path.is_empty() {
+            continue;
+        }
+        if let Ok(text) = fs::read_to_string(root.join(path)) {
+            files.push((path.to_string(), text));
+        }
+    }
+    Ok(files)
 }

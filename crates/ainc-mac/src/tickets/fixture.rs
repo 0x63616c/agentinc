@@ -1,6 +1,6 @@
-#![allow(dead_code)] // Driven by the rendered-shell harness only.
 //! A believable board for the rendered-shell captures: two agents, Tickets in
 //! every column, labels, priorities, relationships, Comments, runs and history.
+#![allow(dead_code)] // Driven by the rendered-shell harness only.
 use super::*;
 use ainc_client::types::WorkRun;
 use ainc_client::types::{ActivityKind, Comment, LinkKind};

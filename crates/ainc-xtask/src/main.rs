@@ -327,6 +327,17 @@ fn check_ui(root: &Path) -> Result<()> {
     checks::ui_vocabulary::run(&app)
 }
 
+/// Repository-wide name rules: product spellings and environment variable families.
+fn check_names(root: &Path) -> Result<()> {
+    checks::naming::run(root)?;
+    checks::env_names::run(root)
+}
+
+/// Source layout: `foo.rs` beside `foo/`, and a `//!` line on every Mac app file.
+fn check_layout(root: &Path) -> Result<()> {
+    checks::layout::run(root)
+}
+
 /// `--profile NAME` from the argument list, if present: CI passes `ci`, local runs use `dev`.
 fn profile(args: &[String]) -> Result<Option<String>> {
     match args {
@@ -341,6 +352,8 @@ fn profile(args: &[String]) -> Result<Option<String>> {
 fn check(root: &Path, profile: Option<&str>) -> Result<()> {
     step(root, &["cargo", "fmt", "--all", "--", "--check"])?;
     check_ui(root)?;
+    check_names(root)?;
+    check_layout(root)?;
     let mut clippy = vec![
         "cargo",
         "clippy",
@@ -499,7 +512,7 @@ fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args.next().ok_or_else(|| {
         anyhow!(
-            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
+            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-ui|check-names|check-layout|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
             release::NAMES,
             readme::NAMES
         )
@@ -513,6 +526,8 @@ fn main() -> Result<()> {
         "test" => test(&root, profile(&args.collect::<Vec<_>>())?.as_deref()),
         "clean-incremental" => clean_incremental(&root),
         "check-ui" => check_ui(&root),
+        "check-names" => check_names(&root),
+        "check-layout" => check_layout(&root),
         "check-commit-msg" => checks::commit_msg::run(&args.collect::<Vec<_>>()),
         "vendor-pilot-gpui" => vendor_pilot_gpui::cli(&args.collect::<Vec<_>>(), &root),
         "generate" => generate(&root, args.collect()),
