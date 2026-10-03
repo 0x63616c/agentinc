@@ -355,6 +355,7 @@ fn check(root: &Path, profile: Option<&str>) -> Result<()> {
     check_ui(root)?;
     check_names(root)?;
     check_layout(root)?;
+    checks::sdk_vocabulary::run(root)?;
     let mut clippy = vec![
         "cargo",
         "clippy",
