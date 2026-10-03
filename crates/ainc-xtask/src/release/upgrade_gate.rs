@@ -1,18 +1,15 @@
-//! Run signed, notarized upgrade fixtures through the real native app and helper.
+//! Run signed, notarized upgrades through the native UI, including Sparkle deltas.
 use super::{
     checked, file_server::FileServer, http, output, parse_args, proc::ManagedChild, read_to_string,
-    resolve, terminal_smoke,
+    resolve, sparkle, terminal_smoke,
 };
 use anyhow::{Result, anyhow, bail};
 use serde_json::Value;
 use std::{
     collections::HashMap,
     env, fs,
-    io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::mpsc,
-    thread,
     time::{Duration, Instant},
 };
 
@@ -53,18 +50,23 @@ fn unpack(archive: &Path, destination: &Path) -> Result<PathBuf> {
     if !app.is_dir() {
         bail!("{} has no AgentInc.app", archive.display());
     }
+    verify_app(&app)?;
+    Ok(app)
+}
+
+fn verify_app(app: &Path) -> Result<()> {
     let requirement = "=anchor apple generic and certificate leaf[subject.OU] = \"X9E4HG27NK\" and identifier \"co.worldwidewebb.agentinc\"";
     checked(
         Command::new("/usr/bin/codesign")
             .args(["--verify", "--deep", "--strict", "-R", requirement])
-            .arg(&app),
+            .arg(app),
     )?;
     checked(
         Command::new("/usr/sbin/spctl")
             .args(["--assess", "--type", "execute"])
-            .arg(&app),
+            .arg(app),
     )?;
-    Ok(app)
+    Ok(())
 }
 
 /// Wait until `ready()` holds, woken by writes to `directory`; errors after `seconds`.
@@ -162,8 +164,94 @@ fn tail_chars(bytes: &[u8], count: usize) -> String {
     text.chars().skip(skip).collect()
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Payload {
+    Full,
+    Delta,
+    BrokenDelta,
+}
+
+impl Payload {
+    fn verify(self, requests: &[super::file_server::ServedRequest]) -> Result<()> {
+        let downloaded = |name: &str| requests.iter().any(|request| request.path == name);
+        let delta = downloaded("update.delta");
+        let full = downloaded("AgentInc.tar.gz");
+        let expected = match self {
+            Self::Full => (false, true),
+            Self::Delta => (true, false),
+            Self::BrokenDelta => (true, true),
+        };
+        anyhow::ensure!(
+            (delta, full) == expected,
+            "{self:?}: expected delta/full downloads {expected:?}, got {requests:?}"
+        );
+        if matches!(self, Self::BrokenDelta) {
+            let delta = requests.iter().position(|r| r.path == "update.delta");
+            let full = requests.iter().position(|r| r.path == "AgentInc.tar.gz");
+            anyhow::ensure!(delta < full, "fallback must follow the failed delta");
+        }
+        Ok(())
+    }
+}
+
+fn sparkle_feed(
+    serving: &Path,
+    app: &Path,
+    next_app: &Path,
+    key: &Path,
+    port: u16,
+    payload: Payload,
+) -> Result<()> {
+    let pem = read_to_string(key)?;
+    let current = release_json(app)?;
+    let next = release_json(next_app)?;
+    let old_build: u64 = field(&current, "build")?.parse()?;
+    let next_build: u64 = field(&next, "build")?.parse()?;
+    anyhow::ensure!(
+        next_build > old_build,
+        "Sparkle fixture build must increase"
+    );
+    let version = field(&next, "version")?;
+    let archive = fs::read(serving.join("AgentInc.tar.gz"))?;
+    let signature = sparkle::sign_bytes(&archive, &pem)?;
+    let mut deltas = String::new();
+    if !matches!(payload, Payload::Full) {
+        let patch = serving.join("update.delta");
+        match payload {
+            Payload::Delta => {
+                sparkle::create_delta(&crate::root()?, app, next_app, &patch)?;
+            }
+            Payload::BrokenDelta => {
+                // A signed but unapplicable patch exercises real extraction fallback.
+                fs::write(&patch, b"deliberately invalid delta for the upgrade gate")?;
+            }
+            Payload::Full => unreachable!(),
+        }
+        let bytes = fs::read(&patch)?;
+        let signature = sparkle::sign_bytes(&bytes, &pem)?;
+        anyhow::ensure!(bytes.len() < archive.len(), "fixture delta must save bytes");
+        println!(
+            "{payload:?}: {} bytes versus {} full bytes ({:.1}% smaller)",
+            bytes.len(),
+            archive.len(),
+            100.0 * (1.0 - bytes.len() as f64 / archive.len() as f64)
+        );
+        deltas = format!(
+            "<sparkle:deltas><enclosure url=\"http://127.0.0.1:{port}/update.delta\" length=\"{}\" type=\"application/octet-stream\" sparkle:deltaFrom=\"{old_build}\" sparkle:edSignature=\"{signature}\" /></sparkle:deltas>",
+            bytes.len()
+        );
+    }
+    let xml = format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<rss version=\"2.0\" xmlns:sparkle=\"http://www.andymatuschak.org/xml-namespaces/sparkle\"><channel><title>AgentInc upgrade gate</title><item><title>AgentInc {version}</title><sparkle:version>{next_build}</sparkle:version><sparkle:shortVersionString>{version}</sparkle:shortVersionString><sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion><description>Upgrade gate fixture</description><enclosure url=\"http://127.0.0.1:{port}/AgentInc.tar.gz\" length=\"{}\" type=\"application/gzip\" sparkle:edSignature=\"{signature}\" />{deltas}</item></channel></rss>\n",
+        archive.len()
+    );
+    fs::write(serving.join("appcast.xml"), sparkle::sign_feed(&xml, &pem)?)?;
+    Ok(())
+}
+
 fn exercise(
     mode: &str,
+    payload: Payload,
     candidate: &Path,
     newer: &Path,
     key: &Path,
@@ -174,6 +262,11 @@ fn exercise(
         .tempdir()?;
     let root = temporary.path();
     let app = unpack(candidate, &root.join("install"))?;
+    let uses_sparkle = app.join("Contents/Frameworks/Sparkle.framework").is_dir();
+    anyhow::ensure!(
+        uses_sparkle || matches!(payload, Payload::Full),
+        "delta gate requires a Sparkle-enabled candidate"
+    );
     let serving = tempfile::Builder::new().tempdir_in(root)?;
     let serving = serving.path();
     fs::copy(newer, serving.join("AgentInc.tar.gz"))?;
@@ -204,10 +297,13 @@ fn exercise(
             .env("AINC_RELEASE_TEST_KEY", "1")
             .env("UPDATE_SIGNING_KEY_ED25519_PEM", read_to_string(key)?),
     )?;
+    if uses_sparkle {
+        sparkle_feed(serving, &app, &next_app, key, port, payload)?;
+    }
     let profile = root.join("profile");
     fs::create_dir(&profile)?;
     let marker = root.join("relaunch.txt");
-    let (reader, writer) = std::io::pipe()?;
+    let stderr_path = root.join("app.stderr.log");
     let mut command = Command::new(app.join("Contents/MacOS/AgentInc"));
     command
         .env(
@@ -215,6 +311,10 @@ fn exercise(
             format!("http://127.0.0.1:{port}/feed.json"),
         )
         .env("AINC_UPGRADE_TEST_MODE", mode)
+        .env(
+            "AINC_UPGRADE_TEST_SPARKLE_FEED_URL",
+            format!("http://127.0.0.1:{port}/appcast.xml"),
+        )
         .env("AINC_UPGRADE_TEST_FROM", &old_version)
         .env("AINC_UPGRADE_TEST_SUCCESS_FILE", &marker)
         .env("AGENTINC_SESSION_PATH", profile.join("sessions.json"))
@@ -222,22 +322,11 @@ fn exercise(
         .env("AINC_LEGACY_DIR", profile.join("legacy"))
         .env("AGENTINC_CODEX_HOME", profile.join("codex"))
         .stdout(Stdio::null())
-        .stderr(writer);
+        .stderr(fs::File::create(&stderr_path)?);
     let mut process = ManagedChild::spawn(command)?;
-    let (sender, errors) = mpsc::channel();
-    thread::spawn(move || {
-        let mut reader = reader;
-        let mut buffer = Vec::new();
-        let _ = reader.read_to_end(&mut buffer);
-        let _ = sender.send(buffer);
-    });
     let result = (|| -> Result<()> {
-        // `communicate(timeout=240)`: the process must exit and close stderr.
-        let deadline = Instant::now() + Duration::from_secs(240);
         let status = process.wait_timeout(Duration::from_secs(240))?;
-        let stderr = errors
-            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .map_err(|_| anyhow!("candidate timed out after 240 seconds"))?;
+        let stderr = fs::read(&stderr_path)?;
         if !status.success() {
             bail!(
                 "{mode} candidate exited {}: {}",
@@ -280,11 +369,46 @@ fn exercise(
         if unsafe { libc::kill(pid_text.parse()?, 0) } != 0 {
             return Err(std::io::Error::last_os_error().into());
         }
+        verify_app(&app)?;
+        let url = read_to_string(&profile.join("daemon/api-url"))?;
+        let identity: Value = serde_json::from_slice(&http::request(
+            &format!("{}/version", url.trim()),
+            "GET",
+            &[],
+            None,
+            Duration::from_secs(10),
+        )?)?;
+        anyhow::ensure!(
+            identity["version"] == next_version,
+            "restarted daemon must match installed app"
+        );
+        http::request(
+            &format!("{}/health/ready", url.trim()),
+            "GET",
+            &[],
+            None,
+            Duration::from_secs(10),
+        )?;
         terminal_smoke::check(&app, &profile)?;
-        println!("PASS {mode}: {old_version} -> {next_version}, relaunch PID {pid_text}");
+        if uses_sparkle {
+            let requests = server.requests();
+            payload.verify(&requests)?;
+            let transferred: usize = requests
+                .iter()
+                .filter(|request| {
+                    matches!(request.path.as_str(), "update.delta" | "AgentInc.tar.gz")
+                })
+                .map(|request| request.bytes)
+                .sum();
+            println!("PASS {payload:?} transport: {transferred} payload bytes downloaded");
+        }
+        println!(
+            "PASS {mode} {payload:?}: {old_version} -> {next_version}, relaunch PID {pid_text}"
+        );
         Ok(())
     })();
     if result.is_err() {
+        println!("{}", tail_chars(&fs::read(&stderr_path)?, 8000));
         let log = profile.join("updates/install.log");
         if log.is_file() {
             println!("{}", tail_chars(&fs::read(&log)?, 4000));
@@ -434,11 +558,28 @@ pub fn cli(args: &[String]) -> Result<()> {
             bail!("prior test build does not match published {version}");
         }
         for mode in ["manual", "automatic"] {
-            exercise(mode, &prior, &candidate, &key, &manifest_tool)?;
+            exercise(
+                mode,
+                Payload::Full,
+                &prior,
+                &candidate,
+                &key,
+                &manifest_tool,
+            )?;
         }
     }
     for mode in ["manual", "automatic"] {
-        exercise(mode, &candidate, &newer, &key, &manifest_tool)?;
+        exercise(
+            mode,
+            Payload::Full,
+            &candidate,
+            &newer,
+            &key,
+            &manifest_tool,
+        )?;
+    }
+    for payload in [Payload::Delta, Payload::BrokenDelta] {
+        exercise("manual", payload, &candidate, &newer, &key, &manifest_tool)?;
     }
     Ok(())
 }
@@ -446,6 +587,33 @@ pub fn cli(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transport_evidence_requires_delta_only_or_ordered_fallback() {
+        use super::super::file_server::ServedRequest;
+        let delta = ServedRequest {
+            path: "update.delta".into(),
+            bytes: 10,
+        };
+        let full = ServedRequest {
+            path: "AgentInc.tar.gz".into(),
+            bytes: 100,
+        };
+        assert!(Payload::Full.verify(std::slice::from_ref(&full)).is_ok());
+        assert!(Payload::Delta.verify(std::slice::from_ref(&delta)).is_ok());
+        assert!(
+            Payload::Delta
+                .verify(&[delta.clone(), full.clone()])
+                .is_err()
+        );
+        assert!(
+            Payload::BrokenDelta
+                .verify(&[delta.clone(), full.clone()])
+                .is_ok()
+        );
+        assert!(Payload::BrokenDelta.verify(&[full, delta]).is_err());
+        assert!(Payload::Full.verify(&[]).is_err());
+    }
 
     #[test]
     fn versions_compare_numerically_like_python_tuples() {
@@ -467,7 +635,7 @@ mod tests {
         let marker = dir.path().join("marker");
         let writer = {
             let marker = marker.clone();
-            thread::spawn(move || fs::write(marker, "x").unwrap())
+            std::thread::spawn(move || fs::write(marker, "x").unwrap())
         };
         wait_for(dir.path(), || marker.is_file(), 60, "no marker").unwrap();
         writer.join().unwrap();

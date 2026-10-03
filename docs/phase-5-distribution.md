@@ -20,8 +20,9 @@ also the GPUI window app ID, separating LaunchServices identity and preferences.
 Development does not check or install production updates. Explicit `AINC_*` profile
 overrides remain for isolated tests and external development stacks; they can connect
 to a chosen endpoint intentionally.
-`ainc-release` owns request compatibility, the signed manifest, update preferences and
-archive validation. ADRs 0008 and 0009 remain authoritative. This phase excludes OIDC,
+`ainc-release` owns request compatibility and the legacy signed manifest/archive
+contract. Sparkle owns the native update engine, with AgentInc's existing presentation.
+ADRs 0008 and 0011 remain authoritative. This phase excludes OIDC,
 membership and additional-user setup.
 
 ## Native build and Linux signing
@@ -113,7 +114,8 @@ carries the server version. The generated client reports `Update to continue` ce
 Update checks and settings belong to the native app, independent of backend readiness.
 The AppKit update windows expose formatted notes/changelog, download progress,
 Install Update, Remind Me Later, Skip This Version and the existing automatic-download
-preference. The Rust updater remains responsible for verification and installation.
+preference. A custom Sparkle user driver connects these windows to Sparkle's update
+engine; verification, delta application and installation belong to Sparkle.
 Manual checks ignore skipped versions.
 Update offers show all releases newer than the installed version, newest first, and
 install directly to the latest version. Full Changelog is read-only and works even
@@ -123,10 +125,16 @@ installed readers reject unknown manifest fields. New apps fall back to latest n
 for older free-form feeds; old apps keep verifying and rendering the unchanged feed.
 Up-to-date results use a native alert with the installed version and OK; checking
 shows a spinner, and failures offer Retry/Cancel without altering update preferences.
-Downloaded archives are authenticated before installation. The signed helper repeats
-verification, validates the Apple team/bundle identity and Gatekeeper assessment,
-waits for the UI to close, asks the owned daemon to drain, waits for its discovery lock,
-and replaces the complete app/daemon bundle. It never signals a process from a PID file.
+Downloaded archives and deltas are authenticated before extraction. Before allowing
+installation, AgentInc flushes its UI state and drains the owned daemon. Sparkle
+reconstructs and verifies the new bundle and manages replacement and relaunch. A
+delta changes the transfer size, not the installed app's contents or data location.
+
+The legacy signed `feed.json` and full `AgentInc.tar.gz` remain available for already
+installed clients. Their signed `ainc-update` helper verifies the candidate, drains
+the daemon and installs the first Sparkle-enabled release. Subsequent updates use
+the Sparkle appcast and applicable deltas, with a full-archive fallback. See the
+[native upgrade gate](upgrade-gate.md) for migration and delta acceptance evidence.
 
 ## Acceptance status
 

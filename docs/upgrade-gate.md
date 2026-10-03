@@ -6,7 +6,8 @@ exercises the same gate and keeps every artifact in a draft.
 
 The native build job makes three handoffs from the exact commit: the production
 candidate, an upgrade-test candidate, and the same upgrade-test code reporting
-the next patch version. The test builds have the production bundle identity but
+the next patch version and a strictly newer `CFBundleVersion`. Sparkle compares build
+numbers, so changing the display version alone is insufficient. The test builds have the production bundle identity but
 a separate compiled Ed25519 public key. The Mac generates the matching private
 key for that workflow run. Linux signs and notarizes all three apps. The test
 key travels only in the one-day Actions handoff; it is never a release asset.
@@ -16,14 +17,21 @@ are compiled out of the shipping app and helper. Signature, archive hash,
 Developer ID, and Gatekeeper checks remain mandatory in both builds.
 
 `cargo xtask release-upgrade-gate` installs the signed test candidate in an
-isolated profile and serves the signed newer build from a local feed. It starts
-the actual app twice. The manual pass triggers Check for Updates, displays the
-AppKit offer and clicks its Install Update button. The automatic pass checks
-silently, downloads and verifies the archive, displays Update ready, and clicks
-the same button. Each pass must exit normally, run the signed `ainc-update`
-helper, replace the app bundle, relaunch as the newer version, and retire the
-backup after runtime readiness. The test hook calls the real AppKit button's
+isolated profile and serves the signed newer build from a local feed. The manual
+pass triggers Check for Updates, displays the existing AppKit offer and clicks its
+Install Update button. The automatic pass downloads the update and clicks the same
+button when ready. Sparkle drives downloading, verification and installation through
+our custom user driver. Each pass must exit normally, replace the app bundle, and
+relaunch with a compatible, ready daemon. The resulting bundle must pass Developer ID
+and Gatekeeper checks again. The test hook calls the real AppKit button's
 `performClick`; the old window ownership bug crashes that call.
+
+The Sparkle candidate also runs a real binary-delta upgrade and a signed, invalid
+delta that must fall back to the full archive. The local HTTP server records completed
+payload responses: a delta pass must fetch the patch without fetching the full app,
+and fallback must fetch the patch before the full app. The gate reports actual patch
+and archive byte sizes. Merely producing a patch or successfully installing a full
+archive is not evidence that delta updating works.
 After relaunch, the gate runs the signed bundle's `aincd --terminal-attach`
 through a PTY. A new pane and a saved pane whose daemon session is gone must
 both show startup output before input and run a command.
@@ -46,6 +54,10 @@ reports this limitation for every version; it does not silently omit one.
 For a prior release whose tag contains the test-only feed build, Distribution
 also rebuilds that exact tagged source with this run's test key, signs and
 notarizes it, and drives both in-app paths from that version to the candidate.
+Legacy fixtures still use the original signed JSON feed and `ainc-update` helper;
+the migration release continues publishing that feed and full archive so already
+installed clients can acquire Sparkle. Their first migration download is necessarily
+full. Subsequent Sparkle-enabled versions can use deltas.
 The gate checks the rebuilt version and commit against the installed published
 asset. This begins with versions shipped after this gate lands; older binaries
 cannot be rebuilt with the override. The candidate's two in-app passes prevent

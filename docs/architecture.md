@@ -61,7 +61,7 @@ Use **Tilt + Docker Compose**, with no Kubernetes requirement for local developm
 
 ## Native release and update
 
-One product version drives the app bundle and compatible daemon/client release manifest; the SDK may version independently. Build, test, sign, notarize and verify the app and companion daemon, then publish a signed update archive and release notes. The app owns a **Rust updater** with Sparkle feature parity: app-menu **Check for Updates**, settings, an update window with release notes, **Install and Relaunch / Remind Me Later / Skip This Version**, progress and full changelog. Sparkle through `objc2` is a fallback if parity cannot be delivered safely. The updater works when the product database is unavailable. App relaunch preserves drafts; a bundled daemon update drains intake and resumes durable work after compatibility checks.
+One product version drives the app bundle and compatible daemon/client release manifest; the SDK may version independently. Build, test, sign, notarize and verify the app and companion daemon, then publish signed full and delta updates and release notes. **Sparkle owns the update engine**, connected to AgentInc's existing presentation through a custom user driver: app-menu **Check for Updates**, settings, an update window with release notes, **Install and Relaunch / Remind Me Later / Skip This Version**, progress and full changelog. See [ADR 0011](adr/0011-sparkle-update-engine.md). The updater works when the product database is unavailable. App relaunch preserves drafts; a bundled daemon update drains intake and resumes durable work after compatibility checks.
 
 ## Development environment
 
@@ -78,7 +78,9 @@ One product version drives the app bundle and compatible daemon/client release m
 | **2 — app import** | Import GPUI app; move storage and conversation ownership to daemon; import SQLite data; preserve native flows and preferences. | Real legacy data survives; closing the window leaves acknowledged work running. |
 | **3 — durable work** | Stable SDK runtime, subscription provider, outbox, Conversations, four-status Tickets, Comments and coding tools. | New-process recovery, deduplication, permissions, cancellation and reassignment pass with no paid-model dependency in ordinary tests. |
 | **4 — Automations** | Scheduled Occurrences create and assign Tickets; pause, Run now and history. | A real Schedule survives restart without duplicate Tickets or effects. |
-| **5 — distribution** | Signed releases, Rust updater, compatibility checks and remote daemon validation; then additional users. | Native update, rollback refusal, backup restore and two-user isolation are exercised. |
+| **5 — distribution** | Signed releases, Sparkle update engine, compatibility checks and remote daemon validation; then additional users. | Native updates, delta fallback, rollback refusal, backup restore and two-user isolation are exercised. |
 | **Later** | Event/webhook triggers, Home, Calendar, Library and isolated worker Environments. | Each addition has a real user flow and permission model. |
 
 **Decided 2026-09-23:** One workspace; AgentInc app naming and bundle ID; own agent loop with personal ChatGPT/Codex subscription access and optional API keys; Ticket-gated autonomous effects; daemon/Postgres/Temporal ownership; remote-capable daemon; version headers and central upgrade handling; Rust updater with Sparkle parity; isolated Tilt + Compose development. The SDK is Turnkeel and product packages use the `ainc-` prefix.
+
+**Updated 2026-10-03:** Use Sparkle for the update engine and delta delivery while retaining AgentInc's update UI and daemon lifecycle handling (ADR 0011).

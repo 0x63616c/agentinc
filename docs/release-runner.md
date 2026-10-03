@@ -23,8 +23,12 @@ change pushed to `main`. Its Ubuntu prepare job checks the version, then the
 Mac runs `cargo xtask release` at that exact commit. The unsigned archive moves
 to the Ubuntu job through a one-day Actions artifact. Only Ubuntu receives the
 Apple and update-signing secrets; it signs, notarizes, and staples. Distribution
-then runs the [native upgrade gate](upgrade-gate.md) on the Mac and publishes
-on main only after that job succeeds.
+then runs the [native upgrade gate](upgrade-gate.md) on the Mac. The Mac also
+generates Sparkle deltas from previously published signed bundles and verifies each
+patch by applying it and checking the reconstructed bundle. Linux signs the full
+archive, deltas and appcast with the existing Ed25519 key, and publishes on main
+only after these steps and exact-commit CI succeed. No production private key is
+sent to the Mac.
 The Mac job has read-only repository permission and checkout does not persist
 its token. No pull-request event invokes the Mac job. An owner
 `workflow_dispatch` may run the path in `test=true` mode, which leaves a draft
@@ -56,6 +60,14 @@ prebuilt libghostty, its runtime resources, the checked-in built-in themes and
 license notices before the unsigned handoff is inventoried. See
 `crates/ainc-mac/ghostty-bridge/README.md` for provenance and checksum. The
 signed app's minimum macOS version remains 15.0.
+
+Sparkle's framework, helper apps and tools are pinned by version and archive digest
+in `crates/ainc-xtask/src/release/sparkle.rs`. Framework symlinks and executable
+permissions are preserved. Native Cargo development builds do not download Sparkle;
+the production packaging step stages the framework before inventory and signing.
+Both `feed.json` (legacy clients) and `appcast.xml` (Sparkle clients) point at the
+immutable versioned release archive. Only compatible published Sparkle bundles
+serve as delta bases; a missing or inapplicable delta uses the full archive.
 
 ## Connection, credentials, and restart
 
