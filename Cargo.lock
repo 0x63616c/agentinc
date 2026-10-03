@@ -227,6 +227,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ainc-generate"
+version = "0.1.0"
+dependencies = [
+ "ainc-daemon",
+ "anyhow",
+ "openapiv3",
+ "prettyplease 0.2.37",
+ "progenitor",
+ "serde_json",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "ainc-release"
 version = "0.5.0"
 dependencies = [
@@ -250,21 +263,16 @@ dependencies = [
 name = "ainc-xtask"
 version = "0.1.0"
 dependencies = [
- "ainc-daemon",
  "ainc-release",
  "anyhow",
  "base64 0.22.1",
  "flate2",
  "image",
  "libc",
- "openapiv3",
- "prettyplease 0.2.37",
- "progenitor",
  "regex",
  "serde",
  "serde_json",
  "sha2",
- "syn 2.0.119",
  "tar",
  "tempfile",
  "toml 0.8.23",

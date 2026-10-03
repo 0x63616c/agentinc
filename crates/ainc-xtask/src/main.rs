@@ -5,15 +5,13 @@ mod spawn;
 mod vendor_pilot_gpui;
 
 use anyhow::{Context, Result, anyhow, bail};
-use progenitor::{GenerationSettings, Generator, InterfaceStyle};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     env, fs,
-    io::Write,
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     thread,
     time::Duration,
 };
@@ -295,126 +293,15 @@ fn daemon(instance: &Instance) -> Result<()> {
     Ok(())
 }
 
-fn generate(root: &Path, check: bool) -> Result<()> {
-    let mut spec = ainc_daemon::openapi();
-    // This API uses the common 3.0/3.1 schema subset. Validate that assumption
-    // before changing the dialect marker; never silently reinterpret nullability.
-    fn compatible(value: &serde_json::Value) -> Result<()> {
-        match value {
-            serde_json::Value::Object(map) => {
-                for (key, child) in map {
-                    if [
-                        "const",
-                        "if",
-                        "then",
-                        "else",
-                        "unevaluatedProperties",
-                        "$schema",
-                    ]
-                    .contains(&key.as_str())
-                    {
-                        bail!("OpenAPI 3.1-only schema key: {key}");
-                    }
-                    if key == "type" && child.is_array() {
-                        bail!("OpenAPI 3.1 union type needs conversion");
-                    }
-                    compatible(child)?;
-                }
-            }
-            serde_json::Value::Array(items) => {
-                for child in items {
-                    compatible(child)?;
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-    // Utoipa represents nullable primitives as a JSON Schema type array.
-    // Convert exactly that shape to the OpenAPI 3.0 nullable keyword.
-    fn nullable(value: &mut serde_json::Value) -> Result<()> {
-        match value {
-            serde_json::Value::Object(map) => {
-                if let Some(serde_json::Value::Array(types)) = map.get("type") {
-                    let non_null: Vec<_> =
-                        types.iter().filter(|v| **v != "null").cloned().collect();
-                    if types.len() != 2 || non_null.len() != 1 {
-                        bail!("unsupported schema type union");
-                    }
-                    map.insert("type".into(), non_null[0].clone());
-                    map.insert("nullable".into(), true.into());
-                }
-                for child in map.values_mut() {
-                    nullable(child)?;
-                }
-            }
-            serde_json::Value::Array(items) => {
-                for child in items {
-                    nullable(child)?;
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-    nullable(&mut spec)?;
-    compatible(&spec)?;
-    if let Some(license) = spec["info"]["license"].as_object_mut() {
-        license.remove("identifier"); // OpenAPI 3.1 field; name remains for 3.0.3.
-    }
-    spec["openapi"] = "3.0.3".into();
-    // Workspace feature unification can enable serde_json's preserve_order.
-    // Generated output must stay canonical regardless of that dependency feature.
-    spec.sort_all_objects();
-    let spec_text = format!("{}\n", serde_json::to_string_pretty(&spec)?);
-    let parsed: openapiv3::OpenAPI = serde_json::from_value(spec)?;
-    let mut settings = GenerationSettings::default();
-    settings
-        .with_interface(InterfaceStyle::Builder)
-        .with_derive("schemars::JsonSchema")
-        .with_pre_hook_async(syn::parse_quote!(crate::client_header))
-        .with_post_hook_async(syn::parse_quote!(crate::server_compatibility));
-    let mut generator = Generator::new(&settings);
-    fn format(source: String) -> Result<String> {
-        // Progenitor emits block-doc examples whose fences rustfmt indents into
-        // invalid doctests. Keep them as comments in the checked-in output.
-        let source = source.replace("/**", "/*");
-        let mut rustfmt = Command::new("rustfmt")
-            .args(["--edition", "2024", "--emit", "stdout"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
-        rustfmt
-            .stdin
-            .take()
-            .context("rustfmt stdin")?
-            .write_all(source.as_bytes())?;
-        let output = rustfmt.wait_with_output()?;
-        if !output.status.success() {
-            bail!("rustfmt failed");
-        }
-        Ok(String::from_utf8(output.stdout)?)
-    }
-    let client = format(prettyplease::unparse(&syn::parse2(
-        generator.generate_tokens(&parsed)?,
-    )?))?;
-    let cli = format(prettyplease::unparse(&syn::parse2(
-        generator.cli(&parsed, "ainc_client")?,
-    )?))?;
-    for (path, content) in [
-        (root.join("api/openapi-3.0.json"), spec_text),
-        (root.join("crates/ainc-client/src/generated.rs"), client),
-        (root.join("crates/ainc-cli/src/generated.rs"), cli),
-    ] {
-        if check {
-            if fs::read_to_string(&path).ok().as_deref() != Some(&content) {
-                bail!("generated file differs: {}", path.display());
-            }
-        } else {
-            fs::create_dir_all(path.parent().context("generated file parent")?)?;
-            fs::write(path, content)?;
-        }
-    }
+/// `generate` lives in its own crate (`ainc-generate`) so xtask never links the daemon.
+fn generate(root: &Path, args: Vec<String>) -> Result<()> {
+    let status = spawn::cargo()
+        .args(["run", "--locked", "-p", "ainc-generate", "--"])
+        .args(args)
+        .current_dir(root)
+        .status()
+        .context("could not run cargo")?;
+    anyhow::ensure!(status.success(), "generate failed");
     Ok(())
 }
 
@@ -477,7 +364,7 @@ fn main() -> Result<()> {
         "check-ui" => check_ui(&root),
         "check-commit-msg" => checks::commit_msg::run(&args.collect::<Vec<_>>()),
         "vendor-pilot-gpui" => vendor_pilot_gpui::cli(&args.collect::<Vec<_>>(), &root),
-        "generate" => generate(&root, args.next().as_deref() == Some("--check")),
+        "generate" => generate(&root, args.collect()),
         "dev" => {
             let mut instance = write_instance(&instance)?;
             if TcpListener::bind(("127.0.0.1", instance.tilt_port)).is_err() {
@@ -564,12 +451,6 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn generated_api_and_clients_are_current() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        generate(&root, true).unwrap();
-    }
 
     #[test]
     fn canonical_path_controls_identity() {

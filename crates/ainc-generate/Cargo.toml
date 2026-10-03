@@ -1,0 +1,24 @@
+[package]
+name = "ainc-generate"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Regenerates api/ and the generated client and CLI sources from the daemon's OpenAPI document"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ainc-generate"
+path = "src/main.rs"
+
+[dependencies]
+ainc-daemon = { path = "../ainc-daemon" }
+anyhow.workspace = true
+openapiv3 = "2"
+prettyplease = "0.2"
+progenitor = "0.14"
+serde_json.workspace = true
+syn = { version = "2", features = ["full"] }

@@ -26,7 +26,7 @@ test: check
         port=$(docker port "$container" 5432/tcp | head -1 | sed 's/.*://')
         export DATABASE_URL="postgres://postgres:test@127.0.0.1:$port/postgres"
     fi
-    # The xtask workspace test checks generation using the same compiled dependency graph.
+    # The ainc-generate workspace test checks generation using the same compiled dependency graph.
     cargo test --locked --workspace
 
 # Bump to the next version (patch, minor, major, or an explicit one of those) and commit; pushing to main ships it.

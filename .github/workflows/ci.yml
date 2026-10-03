@@ -54,7 +54,7 @@ jobs:
       - if: matrix.check == 'clippy'
         run: cargo clippy --locked --profile ci --workspace --all-targets -- -D warnings
       - if: matrix.check == 'test'
-        # Includes generated_api_and_clients_are_current: no second xtask build.
+        # Includes generated_api_and_clients_are_current from ainc-generate: no second build.
         run: cargo test --locked --profile ci --workspace
       - if: matrix.check == 'test'
         # Reuses the xtask build the tests just made.
