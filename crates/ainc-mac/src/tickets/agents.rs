@@ -74,11 +74,7 @@ impl TicketsPage {
                                         t.id == r.ticket_id && t.assignee_id == agent.id
                                     })
                             });
-                            let subtitle = match assigned {
-                                0 => "No open Tickets".to_owned(),
-                                1 => "1 open Ticket".to_owned(),
-                                n => format!("{n} open Tickets"),
-                            };
+                            let subtitle = copy::pluralize(assigned, "open Ticket", "open Tickets");
                             list_item(SharedString::from(format!("agent.{}", agent.id)), name.clone())
                                 .accessibility_id(format!("agent.{}", agent.id))
                                 .min_h(px(LIST_ROW_HEIGHT))

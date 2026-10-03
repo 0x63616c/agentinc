@@ -761,10 +761,12 @@ impl AssistantPage {
             _ => return None,
         };
         let conversation = self.conversations.iter().find(|c| c.id == id)?;
+        let (delete_title, delete_body, delete_button) =
+            copy::confirm_delete(&conversation.title, "This Conversation and its messages");
         let title = if rename {
             "Rename conversation".to_owned()
         } else {
-            format!("Delete “{}”?", conversation.title)
+            delete_title
         };
         let body = if rename {
             Field::new(self.rename_input.clone())
@@ -776,9 +778,7 @@ impl AssistantPage {
         } else {
             column()
                 .gap(px(SPACE_2))
-                .child(caption(
-                    "This permanently removes its messages from this Mac.",
-                ))
+                .child(caption(delete_body))
                 .when_some(self.form_error.clone(), |s, error| {
                     s.child(error_text(error))
                 })
@@ -804,11 +804,7 @@ impl AssistantPage {
                 ),
             Button::new(
                 "conversation-submit",
-                if rename {
-                    "Save"
-                } else {
-                    "Delete conversation"
-                },
+                if rename { "Save" } else { delete_button },
             )
             .kind(if rename {
                 ButtonKind::Primary
@@ -1115,7 +1111,7 @@ impl Render for AssistantPage {
                     })
                     .when(self.daemon.is_none(), |s| {
                         s.child(error_text(
-                            "Conversation data is unavailable. Refresh to reconnect.",
+                            copy::unavailable("Conversation data", "Refresh to reconnect"),
                         ))
                     })
                     .when_some(self.error.clone().or(self.sync.read(cx).message()), |s, error| {

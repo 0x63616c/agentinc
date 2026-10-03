@@ -4,6 +4,7 @@ mod avatar;
 mod badge;
 mod banner;
 mod button;
+pub mod copy;
 mod display;
 mod empty;
 mod field;

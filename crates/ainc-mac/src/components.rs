@@ -441,8 +441,8 @@ impl ComponentsPage {
                 "Dialog",
                 "Centered on a scrim with a title, body and right-aligned actions.",
                 row().justify_center().child(dialog_shell(
-                    "Delete “Plan the week”?",
-                    caption("This Ticket and its Comments will be removed."),
+                    copy::confirm_delete("Plan the week", "This Ticket and its Comments").0,
+                    caption(copy::confirm_delete("Plan the week", "This Ticket and its Comments").1),
                     row_gap(CONTROL_GAP).justify_end()
                         .child(Button::new("components.dialog-cancel", "Cancel").secondary().build(&self.hover, noop, cx))
                         .child(Button::new("components.dialog-confirm", "Delete").destructive().build(&self.hover, noop, cx)),

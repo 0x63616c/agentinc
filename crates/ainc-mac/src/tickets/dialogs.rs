@@ -68,19 +68,21 @@ impl TicketsPage {
             ),
             Overlay::DeleteTicket(id) => {
                 let ticket = self.ticket(id)?;
+                let (title, body, button) = copy::confirm_delete(
+                    &ticket.title,
+                    "This Ticket, its Comments and its relationships",
+                );
                 (
-                    format!("Delete “{}”?", ticket.title),
+                    title,
                     column()
                         .gap(px(SPACE_2))
-                        .child(caption(
-                            "This Ticket, its Comments and its relationships will be removed.",
-                        ))
+                        .child(caption(body))
                         .when_some(self.form_error.clone(), |s, error| {
                             s.child(error_text(error))
                         })
                         .into_any_element(),
                     true,
-                    "Delete",
+                    button,
                 )
             }
             _ => return None,

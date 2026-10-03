@@ -115,7 +115,7 @@ impl TemporalPage {
     pub(crate) fn fixture_error(&mut self, cx: &mut Context<Self>) {
         self.rows.clear();
         self.loaded = true;
-        self.error = Some("Temporal is unavailable. Try again.".into());
+        self.error = Some(copy::unavailable("Temporal", "Try again"));
         cx.notify();
     }
 
