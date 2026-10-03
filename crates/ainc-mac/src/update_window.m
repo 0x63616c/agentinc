@@ -512,6 +512,7 @@ static BOOL sendBytes(int socket, const void *bytes, size_t remaining) {
 @property BOOL extractionStarted;
 @property BOOL recoveringArmedFence;
 @property BOOL cycleResolved;
+@property BOOL retryAfterCycle;
 @property uint64_t received;
 @property uint64_t expected;
 - (void)action:(int)action automatic:(BOOL)automatic;
@@ -915,6 +916,11 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     self.retryTermination = nil;
     self.acknowledgement = acknowledgement;
     self.message = error.localizedDescription;
+    // Sparkle ends the cycle only after acknowledgement, which may never come
+    // if the user quits. Evict rejected served bytes now, and leave no
+    // background progress for a later focus request to redraw over the error.
+    if (self.archiveServer) [NSFileManager.defaultManager removeItemAtURL:self.archiveServer.archive error:nil];
+    self.backgroundDownload = NO;
     ainc_update_status(self.message.UTF8String, self.current.UTF8String, 2);
 }
 - (void)showDownloadInitiatedWithCancellation:(void (^)(void))cancellation {
@@ -1057,15 +1063,14 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     if (self.acknowledgement) {
         void (^acknowledge)(void) = self.acknowledgement;
         self.acknowledgement = nil;
+        BOOL history = self.historyFailed;
+        self.historyFailed = NO;
+        // A history error is shown after its cycle ended. Any other
+        // acknowledgement ends a live cycle, and checking before it finishes
+        // only makes Sparkle focus the failed session; retry once it ends.
+        self.retryAfterCycle = action == 6 && !history;
         acknowledge();
-        if (action == 6) {
-            BOOL history = self.historyFailed;
-            self.historyFailed = NO;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (history) [self requestHistory];
-                else [self.updater checkForUpdates];
-            });
-        }
+        if (action == 6 && history) dispatch_async(dispatch_get_main_queue(), ^{ [self requestHistory]; });
         return;
     }
     if (self.choice && (action == 1 || action == 2 || action == 3 || action == 7)) {
@@ -1150,6 +1155,10 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     self.userVisible = NO;
     [self pruneArchives:check != SPUUpdateCheckUpdateInformation && self.cycleResolved];
     self.cycleResolved = NO;
+    if (self.retryAfterCycle) {
+        self.retryAfterCycle = NO;
+        dispatch_async(dispatch_get_main_queue(), ^{ [self.updater checkForUpdates]; });
+    }
 }
 - (void)updaterDidNotFindUpdate:(SPUUpdater *)updater error:(NSError *)error {
     self.item = nil;

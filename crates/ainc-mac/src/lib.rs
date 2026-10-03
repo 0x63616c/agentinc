@@ -29,7 +29,6 @@ use shell::*;
 /// (default `info`); gpui's `log` records are bridged in.
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
-    let _ = tracing_log::LogTracer::init();
     let filter = EnvFilter::try_from_env("AINC_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
     let subscriber = tracing_subscriber::registry()
         .with(filter)
@@ -221,4 +220,13 @@ pub fn run() {
                 cx.activate(true);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn tracing_starts_once_and_bridges_gpui_log_records() {
+        super::init_tracing();
+        assert!(tracing_log::log::log_enabled!(tracing_log::log::Level::Info));
+    }
 }

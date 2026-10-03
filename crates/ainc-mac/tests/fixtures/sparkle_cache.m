@@ -93,17 +93,44 @@ static void verifyCachedRequest(void) {
             NSMutableURLRequest *served = [NSMutableURLRequest requestWithURL:full.fileURL];
             [sparkle updater:sparkle.updater willDownloadUpdate:(SUAppcastItem *)full withRequest:served];
             NSCAssert(fullInstalls == 1 && [served.URL.host isEqualToString:@"127.0.0.1"] && ![served.URL isEqual:full.fileURL], @"retry serves the cached full archive");
+            // The offer came from an automatic download-only check.
+            sparkle.backgroundDownload = YES;
+            [sparkle showDownloadInitiatedWithCancellation:^{}];
+            [sparkle showDownloadDidReceiveExpectedContentLength:poison.length];
+            [sparkle showDownloadDidReceiveDataOfLength:poison.length];
+            [sparkle showDownloadDidStartExtractingUpdate];
             [sparkle updater:sparkle.updater willExtractUpdate:(SUAppcastItem *)full];
-            [sparkle updater:sparkle.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:[NSError errorWithDomain:@"SUSparkleErrorDomain" code:3001 userInfo:nil]];
-            NSCAssert(![NSFileManager.defaultManager fileExistsAtPath:poisoned.path] && [readFence(sparkle.fenceURL) isEqualToDictionary:armed], @"rejected served bytes are evicted while the armed recovery fence remains");
-            sparkle.choice = ^(SPUUserUpdateChoice choice) { fullInstalls++; };
-            [sparkle action:3 automatic:YES];
-            ainc_sparkle_prepared(NULL);
-            NSMutableURLRequest *refetch = [NSMutableURLRequest requestWithURL:full.fileURL];
-            [sparkle updater:sparkle.updater willDownloadUpdate:(SUAppcastItem *)full withRequest:refetch];
-            NSCAssert(fullInstalls == 2 && [refetch.URL isEqual:full.fileURL], @"the next retry fetches the authenticated release instead of replaying the cache");
-            releaseFenceLease();
-            finish();
+            // Sparkle finishes a failed cycle only after its error is acknowledged.
+            __block NSUInteger acknowledged = 0;
+            [sparkle showUpdaterError:[NSError errorWithDomain:@"SUSparkleErrorDomain" code:3001 userInfo:@{NSLocalizedDescriptionKey:@"The update is improperly signed."}]
+                acknowledgement:^{ acknowledged++; }];
+            NSCAssert(![NSFileManager.defaultManager fileExistsAtPath:poisoned.path] && [readFence(sparkle.fenceURL) isEqualToDictionary:armed], @"rejected served bytes are evicted when the failure is reported, before an acknowledgement a quit would skip, while the armed recovery fence remains");
+            NSCAssert(ui().alert && !ui().progress, @"the failure is shown as a retryable error");
+            [sparkle showUpdateInFocus];
+            NSCAssert(ui().alert && ui().offer.visible && !ui().progress, @"focusing keeps the error");
+            TestUpdater *updater = (TestUpdater *)sparkle.updater;
+            [ui() retry:nil];
+            NSCAssert(acknowledged == 1 && updater.checks == 0, @"retry acknowledges, then waits for Sparkle to finish the failed cycle");
+            [sparkle showUpdateInFocus]; // Sparkle's reply to a check while the failed session winds down.
+            NSCAssert(!ui().progress, @"a late focus cannot redraw stale download progress under the error text");
+            // Sparkle winds the aborted session down on a later main-queue turn.
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSCAssert(updater.checks == 0, @"no check is issued while the failed cycle is still in progress");
+                [sparkle dismissUpdateInstallation];
+                [sparkle updater:sparkle.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:[NSError errorWithDomain:@"SUSparkleErrorDomain" code:3001 userInfo:nil]];
+                NSCAssert([readFence(sparkle.fenceURL) isEqualToDictionary:armed], @"a post-extraction rejection keeps the armed recovery fence");
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    NSCAssert(updater.checks == 1, @"retry checks again once the failed cycle has ended");
+                    sparkle.choice = ^(SPUUserUpdateChoice choice) { fullInstalls++; };
+                    [sparkle action:3 automatic:YES];
+                    ainc_sparkle_prepared(NULL);
+                    NSMutableURLRequest *refetch = [NSMutableURLRequest requestWithURL:full.fileURL];
+                    [sparkle updater:sparkle.updater willDownloadUpdate:(SUAppcastItem *)full withRequest:refetch];
+                    NSCAssert(fullInstalls == 2 && [refetch.URL isEqual:full.fileURL], @"the next retry fetches the authenticated release instead of replaying the cache");
+                    releaseFenceLease();
+                    finish();
+                });
+            });
         });
     }] resume];
 }

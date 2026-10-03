@@ -15,8 +15,10 @@ void ainc_update_free_notes(char *text) { free(text); }
 @property BOOL automaticallyChecksForUpdates;
 @property NSTimeInterval updateCheckInterval;
 @property BOOL canCheckForUpdates;
+@property NSUInteger checks;
 @end
 @implementation TestUpdater
+- (void)checkForUpdates { self.checks++; }
 @end
 
 @interface TestItem : NSObject
