@@ -317,13 +317,14 @@ fn step(root: &Path, command: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// The native UI rules: colors, spacing and component forks. CI runs this on its own, after
+/// The native UI rules: colors, spacing, component forks and presentation vocabulary. CI runs this on its own, after
 /// its tests have built xtask; `check` runs it as part of the static gate.
 fn check_ui(root: &Path) -> Result<()> {
     let app = root.join("crates/ainc-mac");
     checks::colors::run(&app)?;
     checks::ui_spacing::run(&app)?;
-    checks::ui_core::run(&app)
+    checks::ui_core::run(&app)?;
+    checks::ui_vocabulary::run(&app)
 }
 
 /// `--profile NAME` from the argument list, if present: CI passes `ci`, local runs use `dev`.

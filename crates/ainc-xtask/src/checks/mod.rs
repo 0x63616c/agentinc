@@ -9,6 +9,7 @@ pub mod colors;
 pub mod commit_msg;
 pub mod ui_core;
 pub mod ui_spacing;
+pub mod ui_vocabulary;
 
 /// Every file under `dir` with the given extension, sorted so output is stable.
 fn files(dir: &Path, extension: &str) -> Result<Vec<PathBuf>> {
