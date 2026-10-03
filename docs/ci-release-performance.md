@@ -67,3 +67,26 @@ running: supersession cancels it and the release correctly refuses to publish.
 The pre-existing `build=false` fallback only uploads a production archive, not the
 upgrade fixtures/tools required by the native gate; it remains fail-closed and is
 not an escape hatch around upgrade coverage.
+
+## Measured CI follow-up — 2026-10-03
+
+[CI 37082617976](https://github.com/0x63616c/agentinc/actions/runs/37082617976)
+completed successfully for `27a7a2e81fdf342a556c01a13214c5994500d399`
+(the 0.4.0 release commit). GitHub timestamps and completed logs show:
+
+| Measurement | Observed result |
+| --- | --- |
+| Whole workflow | **8m15s** (00:34:11–00:42:26 UTC), versus 23m18s: **15m03s / 64.6% less elapsed time**. Includes ~51–53s initial runner queueing. |
+| Concurrent Clippy lane | Job 4m27s; command step 3m49s; Cargo reported **3m40s**. |
+| Workspace test lane | Job 7m15s; command step 6m31s; Cargo reported **5m19s** build, followed by **~63s** test/doctest execution (00:40:59–00:42:02). |
+| Generated API/client check | Passed inside the xtask test suite, which finished in **0.31s**; no standalone generator build. |
+| Cache restoration | **Both lanes missed**, with subsecond lookup steps. This result does not demonstrate warm-cache savings. |
+| Successful cache saves | Clippy **9s**, 860,128,276 bytes (~820 MiB); tests **15s**, 1,347,029,572 bytes (~1,285 MiB). Restore effectiveness remains to be measured. |
+| Safety checks | `checks` and aggregate `rust` succeeded; 15 Python tests passed. Rust result lines total 159 passed, zero failed, four ignored. |
+
+Cargo durations include dependency fetching/index updates but exclude the ~8s
+automatic pinned-toolchain installation in each command step. Test execution rose
+from the baseline's ~45s to ~63s; this run also contains additional regression
+tests and uses unoptimized dependencies. This is an observed comparison between
+two release commits, not an isolated attribution of savings to each change.
+No completed Distribution timing or publication result is claimed here.
