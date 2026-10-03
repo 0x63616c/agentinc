@@ -249,26 +249,29 @@ pub fn deltas_cli(root: &Path, raw: &[String]) -> Result<()> {
             .args(["stapler", "validate"])
             .arg(&app),
     )?;
-    let releases: Vec<Value> = serde_json::from_str(&output(
+    let pages: Vec<Vec<Value>> = serde_json::from_str(&output(
         "gh",
         &[
-            "release",
-            "list",
-            "--limit",
-            "100",
-            "--json",
-            "tagName,isDraft,isPrerelease",
+            "api",
+            "--paginate",
+            "--slurp",
+            "repos/{owner}/{repo}/releases?per_page=100",
         ],
     )?)?;
     let mut deltas = Vec::new();
-    // Three recent production archives give an actual delta path without ever
-    // rebuilding a historical source tree (which changes its signed bytes).
-    for release in releases
+    // Reuse published signed bytes, never rebuilt historical source trees.
+    // Legacy releases have no appcast and cannot consume a delta.
+    for release in pages
         .iter()
-        .filter(|release| release["isDraft"] == false && release["isPrerelease"] == false)
-        .take(3)
+        .flatten()
+        .filter(|release| release["draft"] == false && release["prerelease"] == false)
+        .filter(|release| {
+            release["assets"]
+                .as_array()
+                .is_some_and(|assets| assets.iter().any(|asset| asset["name"] == "appcast.xml"))
+        })
     {
-        let prior_tag = release["tagName"].as_str().context("release tag")?;
+        let prior_tag = release["tag_name"].as_str().context("release tag")?;
         if prior_tag == tag {
             continue;
         }
@@ -572,31 +575,59 @@ mod tests {
             }],
         };
         let feed = appcast(&manifest, archive, &handoff, root.path(), &pem).unwrap();
-        let feed_path = root.path().join("appcast.xml");
-        fs::write(&feed_path, feed).unwrap();
-        // Parse XML using a real parser, including the signature footer and
-        // escaping of release notes; source text matching cannot satisfy this.
-        let parsed = Command::new("ruby").args(["-rrexml/document", "-e", r#"
-            doc = REXML::Document.new(File.read(ARGV[0]))
-            item = doc.elements['rss/channel/item']
-            abort unless item.elements['sparkle:version'].text == '100'
-            abort unless item.elements['sparkle:shortVersionString'].text == '0.6.0'
-            abort unless item.elements['description'].text.include?('Fix & improve <updates>')
-            delta = item.elements['sparkle:deltas/enclosure']
-            abort unless delta.attributes['sparkle:deltaFrom'] == '99'
-            abort unless delta.attributes['url'] == 'https://github.com/owner/repo/releases/download/v0.6.0/AgentInc-100-from-99.delta'
-            puts item.elements['enclosure'].attributes['sparkle:edSignature']
-            puts delta.attributes['sparkle:edSignature']
-        "#]).arg(&feed_path).output().unwrap();
-        assert!(
-            parsed.status.success(),
-            "{}",
-            String::from_utf8_lossy(&parsed.stderr)
+        // Parse the emitted XML contract, including namespaces, escaping and
+        // signature footer, rather than inspecting implementation source.
+        let feed = String::from_utf8(feed).unwrap();
+        let document = roxmltree::Document::parse(&feed).unwrap();
+        let namespace = "http://www.andymatuschak.org/xml-namespaces/sparkle";
+        let item = document
+            .descendants()
+            .find(|node| node.has_tag_name("item"))
+            .unwrap();
+        let child_text = |name| {
+            item.children()
+                .find(|node| node.has_tag_name((namespace, name)))
+                .unwrap()
+                .text()
+                .unwrap()
+        };
+        assert_eq!(child_text("version"), "100");
+        assert_eq!(child_text("shortVersionString"), "0.6.0");
+        assert_eq!(
+            item.children()
+                .find(|node| node.has_tag_name("description"))
+                .unwrap()
+                .text(),
+            Some(manifest.changelog.as_str())
         );
-        let signatures = String::from_utf8(parsed.stdout).unwrap();
-        let signatures: Vec<_> = signatures.lines().collect();
-        assert!(verify(archive, signatures[0], root.path()));
-        assert!(verify(b"delta", signatures[1], root.path()));
+        let full = item
+            .children()
+            .find(|node| node.has_tag_name("enclosure"))
+            .unwrap();
+        let delta = item
+            .children()
+            .find(|node| node.has_tag_name((namespace, "deltas")))
+            .unwrap()
+            .children()
+            .find(|node| node.has_tag_name("enclosure"))
+            .unwrap();
+        assert_eq!(delta.attribute((namespace, "deltaFrom")), Some("99"));
+        assert_eq!(
+            delta.attribute("url"),
+            Some(
+                "https://github.com/owner/repo/releases/download/v0.6.0/AgentInc-100-from-99.delta"
+            )
+        );
+        assert!(verify(
+            archive,
+            full.attribute((namespace, "edSignature")).unwrap(),
+            root.path()
+        ));
+        assert!(verify(
+            b"delta",
+            delta.attribute((namespace, "edSignature")).unwrap(),
+            root.path()
+        ));
         fs::write(root.path().join(name), b"corrupt").unwrap();
         assert!(appcast(&manifest, archive, &handoff, root.path(), &pem).is_err());
         handoff.deltas.clear();

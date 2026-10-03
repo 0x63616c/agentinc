@@ -28,3 +28,6 @@ tar = "0.4"
 tempfile = "3"
 toml = { version = "0.8", features = ["preserve_order"] }
 uuid.workspace = true
+
+[dev-dependencies]
+roxmltree = "0.21"

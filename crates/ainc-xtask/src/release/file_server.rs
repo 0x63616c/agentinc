@@ -7,7 +7,7 @@ use std::{
     net::{Shutdown, SocketAddr, TcpListener, TcpStream},
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
@@ -18,6 +18,14 @@ pub struct FileServer {
     address: SocketAddr,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
+    requests: Arc<Mutex<Vec<ServedRequest>>>,
+}
+
+/// Completed responses, used to prove which update payload the native app downloaded.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServedRequest {
+    pub path: String,
+    pub bytes: usize,
 }
 
 fn content_type(path: &Path) -> &'static str {
@@ -25,11 +33,12 @@ fn content_type(path: &Path) -> &'static str {
         Some("json") => "application/json",
         Some("gz") => "application/gzip",
         Some("md") => "text/markdown",
+        Some("xml") => "application/rss+xml",
         _ => "application/octet-stream",
     }
 }
 
-fn serve(mut stream: TcpStream, directory: &Path) {
+fn serve(mut stream: TcpStream, directory: &Path, requests: &Mutex<Vec<ServedRequest>>) {
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 4096];
     while !buffer.windows(4).any(|w| w == b"\r\n\r\n") {
@@ -64,9 +73,15 @@ fn serve(mut stream: TcpStream, directory: &Path) {
         "HTTP/1.0 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
     );
-    let _ = stream.write_all(head.as_bytes());
-    if method != "HEAD" {
-        let _ = stream.write_all(&body);
+    if stream.write_all(head.as_bytes()).is_ok()
+        && method == "GET"
+        && stream.write_all(&body).is_ok()
+        && status == "200 OK"
+    {
+        requests.lock().unwrap().push(ServedRequest {
+            path: relative.to_owned(),
+            bytes: body.len(),
+        });
     }
     let _ = stream.shutdown(Shutdown::Both);
 }
@@ -78,6 +93,8 @@ impl FileServer {
         let stop = Arc::new(AtomicBool::new(false));
         let directory = directory.to_path_buf();
         let flag = stop.clone();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let served = requests.clone();
         let thread = thread::spawn(move || {
             for stream in listener.incoming() {
                 if flag.load(Ordering::SeqCst) {
@@ -85,7 +102,8 @@ impl FileServer {
                 }
                 if let Ok(stream) = stream {
                     let directory = directory.clone();
-                    thread::spawn(move || serve(stream, &directory));
+                    let served = served.clone();
+                    thread::spawn(move || serve(stream, &directory, &served));
                 }
             }
         });
@@ -93,11 +111,16 @@ impl FileServer {
             address,
             stop,
             thread: Some(thread),
+            requests,
         })
     }
 
     pub fn port(&self) -> u16 {
         self.address.port()
+    }
+
+    pub fn requests(&self) -> Vec<ServedRequest> {
+        self.requests.lock().unwrap().clone()
     }
 
     pub fn shutdown(&mut self) {
@@ -138,8 +161,26 @@ mod tests {
             )
         };
         assert_eq!(get("/feed.json").unwrap(), b"{\"ok\":true}");
+        assert!(
+            request(
+                &format!("{base}/feed.json"),
+                "HEAD",
+                &[],
+                None,
+                Duration::from_secs(10)
+            )
+            .unwrap()
+            .is_empty()
+        );
         assert!(get("/missing").is_err());
         assert!(get("/../x").is_err());
+        assert_eq!(
+            server.requests(),
+            vec![ServedRequest {
+                path: "feed.json".into(),
+                bytes: 11
+            }]
+        );
         server.shutdown();
         assert!(get("/feed.json").is_err());
     }
