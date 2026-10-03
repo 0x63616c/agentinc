@@ -50,6 +50,7 @@ impl<T> Channel<T> {
 }
 
 impl Script {
+    /// Creates an empty script.
     pub fn new() -> Self {
         Self::default()
     }
@@ -92,10 +93,12 @@ impl ModelCall {
         self.reply.closed().await;
     }
 
+    /// The request the agent sent to the model.
     pub fn request(&self) -> &ModelRequest {
         &self.request
     }
 
+    /// Answers the call with the given model response.
     pub fn reply(self, response: ModelResponse) {
         let _ = self.reply.send(Ok(response));
     }
@@ -122,14 +125,17 @@ impl ToolCall {
         self.reply.closed().await;
     }
 
+    /// The name of the tool being called.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The arguments the tool was called with.
     pub fn args(&self) -> &Value {
         &self.args
     }
 
+    /// Answers the call with a successful result.
     pub fn succeed(self, result: Value) {
         self.inner
             .answered
@@ -141,6 +147,7 @@ impl ToolCall {
 }
 
 #[derive(Clone)]
+/// The model half of a [`Script`], created by [`Script::model`].
 pub struct ScriptModel {
     inner: Arc<Inner>,
 }
@@ -168,6 +175,7 @@ impl Model for ScriptModel {
 }
 
 #[derive(Clone)]
+/// The tool half of a [`Script`], created by [`Script::tool`].
 pub struct ScriptTool {
     name: String,
     inner: Arc<Inner>,

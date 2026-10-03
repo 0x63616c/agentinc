@@ -3,15 +3,17 @@ use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 
 /// Identifies an agent run. Stable for the run's whole life, including across restarts and
-/// retries. (Not to be confused with Temporal's per-attempt run id, which is never exposed.)
+/// retries.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RunId(pub(crate) String);
 
 impl RunId {
+    /// Wraps an existing run ID, for example one you stored earlier.
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
+    /// The ID as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -35,6 +37,7 @@ impl Run {
         self.handle.cancel().await
     }
 
+    /// This run's ID.
     pub fn id(&self) -> &RunId {
         &self.id
     }

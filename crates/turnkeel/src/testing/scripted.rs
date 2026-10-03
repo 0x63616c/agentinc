@@ -32,6 +32,7 @@ pub struct ScriptedModel {
 }
 
 impl ScriptedModel {
+    /// Creates a model with no rules; add some with the `on_*` methods.
     pub fn new() -> Self {
         Self::default()
     }

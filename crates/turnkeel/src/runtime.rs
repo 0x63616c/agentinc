@@ -7,8 +7,11 @@ use std::sync::Arc;
 /// agent definitions when replacing a process. A group shares work between its workers.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RuntimeConfig {
+    /// The address of the deployed runtime to connect to, for example `http://localhost:7233`.
     pub endpoint: String,
+    /// A name that keeps this deployment's work separate from other deployments on the same endpoint.
     pub scope: String,
+    /// The group of workers that share work with each other.
     pub worker_group: String,
 }
 
@@ -28,8 +31,11 @@ pub enum RunKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunStatus {
+    /// The work is still in progress.
     Running,
+    /// The work finished successfully.
     Completed,
+    /// The work ended with an error.
     Failed,
     /// Stopped on request, whether by its caller or by an operator.
     Cancelled,
@@ -40,16 +46,20 @@ pub enum RunStatus {
 pub struct WorkRecord {
     /// The run, session or occurrence ID.
     pub id: String,
+    /// What kind of work this is.
     pub kind: RunKind,
+    /// Where the work stands.
     pub status: RunStatus,
     /// Milliseconds since the Unix epoch.
     pub started_at: i64,
+    /// Milliseconds since the Unix epoch when the work ended, or `None` while it is open.
     pub closed_at: Option<i64>,
 }
 
 /// A page of work, open work first, then newest first.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WorkPage {
+    /// The records on this page.
     pub work: Vec<WorkRecord>,
     /// Pass back to [`Runtime::work_history`] for the next page.
     pub next_page: Option<String>,
@@ -59,11 +69,17 @@ pub struct WorkPage {
 #[deprecated(note = "use `Runtime::work_history` and `WorkRecord`")]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RunRecord {
+    /// The run's ID.
     pub id: String,
+    /// Identifies this particular attempt of the run; it differs between attempts.
     pub run_id: String,
+    /// The kind of work, as a name.
     pub kind: String,
+    /// Where the run stands, as a name.
     pub status: String,
+    /// Milliseconds since the Unix epoch when the run started.
     pub started_at: i64,
+    /// Milliseconds since the Unix epoch when the run ended, or `None` while it is open.
     pub closed_at: Option<i64>,
 }
 
@@ -72,7 +88,9 @@ pub struct RunRecord {
 #[allow(deprecated)]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RunPage {
+    /// The runs on this page.
     pub runs: Vec<RunRecord>,
+    /// Pass back to [`Runtime::run_history`] for the next page.
     pub next_page: Option<String>,
 }
 
