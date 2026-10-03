@@ -48,3 +48,37 @@ allow-git = [
     "https://github.com/zed-industries/font-kit",
     "https://github.com/proptest-rs/proptest",
 ]
+
+# The Temporal SDK crates publish without a license field; the repository is MIT.
+[[licenses.clarify]]
+crate = "temporalio-client"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "temporalio-common"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "temporalio-common-wasm"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "temporalio-macros"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "temporalio-protos"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "temporalio-sdk"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "temporalio-sdk-core"
+expression = "MIT"
+license-files = []
+[[licenses.clarify]]
+crate = "temporalio-workflow"
+expression = "MIT"
+license-files = []
