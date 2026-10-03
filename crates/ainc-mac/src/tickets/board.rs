@@ -510,3 +510,42 @@ fn drop_line(active: bool) -> Div {
         .rounded_full()
         .bg(rgb(PRIMARY))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{DragState, status_key};
+    use ainc_client::types::TicketStatus;
+    use gpui::{Bounds, point, px, size};
+
+    fn lane(state: &DragState, status: TicketStatus, cards: &[(i64, f32)]) {
+        state.geometry.borrow_mut().insert(
+            status_key(status),
+            cards
+                .iter()
+                .map(|(id, top)| {
+                    (
+                        *id,
+                        Bounds::new(point(px(0.), px(*top)), size(px(100.), px(40.))),
+                    )
+                })
+                .collect(),
+        );
+    }
+
+    #[test]
+    fn a_drop_lands_below_the_last_card_whose_middle_the_pointer_has_passed() {
+        let state = DragState::default();
+        lane(&state, TicketStatus::ToDo, &[(1, 0.), (2, 50.), (3, 100.)]);
+        let after = |dragged, y| state.after(TicketStatus::ToDo, dragged, px(y));
+        assert_eq!(after(9, 5.), None, "above the first card's middle");
+        assert_eq!(after(9, 30.), Some(1));
+        assert_eq!(after(9, 80.), Some(2));
+        assert_eq!(after(9, 500.), Some(3));
+        assert_eq!(after(3, 500.), Some(2), "the dragged card is ignored");
+        assert_eq!(
+            state.after(TicketStatus::Done, 9, px(500.)),
+            None,
+            "an unpainted lane"
+        );
+    }
+}

@@ -641,3 +641,43 @@ impl Page for AutomationsPage {
         drafts.restore_text("minutes", &self.minutes, cx);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{automation_state, every};
+    use ainc_client::types::Automation;
+
+    fn automation() -> Automation {
+        Automation {
+            agent_id: "agent".into(),
+            applied_revision: 1,
+            error: None,
+            every_minutes: 5,
+            id: "a".into(),
+            missed: 0,
+            name: "Nightly".into(),
+            overlap_skipped: 0,
+            paused: false,
+            prompt: "Go".into(),
+            revision: 1,
+        }
+    }
+
+    #[test]
+    fn state_prefers_errors_then_pending_then_paused() {
+        let mut rule = automation();
+        assert_eq!(automation_state(&rule).0, "Active");
+        rule.paused = true;
+        assert_eq!(automation_state(&rule).0, "Paused");
+        rule.revision = 2;
+        assert_eq!(automation_state(&rule).0, "Pending");
+        rule.error = Some("boom".into());
+        assert_eq!(automation_state(&rule).0, "Needs attention");
+    }
+
+    #[test]
+    fn every_pluralises_minutes() {
+        assert_eq!(every(1), "Every 1 minute");
+        assert_eq!(every(15), "Every 15 minutes");
+    }
+}

@@ -318,3 +318,27 @@ impl Render for TemporalPage {
             .build()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{filters, kind_label, work_state};
+    use crate::ui::WorkState;
+    use ainc_client::types::{WorkKind, WorkStatus};
+
+    #[test]
+    fn statuses_and_kinds_have_their_labels() {
+        assert_eq!(work_state(WorkStatus::Completed), WorkState::Done);
+        assert_eq!(work_state(WorkStatus::Running), WorkState::Running);
+        assert_eq!(kind_label(WorkKind::Run), "Work");
+        assert_eq!(kind_label(WorkKind::Session), "Conversation");
+        assert_eq!(kind_label(WorkKind::Occurrence), "Occurrence");
+    }
+
+    #[test]
+    fn filters_start_with_all_and_cover_every_status() {
+        let filters = filters();
+        assert_eq!(filters[0], (None, "All"));
+        assert_eq!(filters.len(), 5);
+        assert!(filters[1..].iter().all(|(status, _)| status.is_some()));
+    }
+}

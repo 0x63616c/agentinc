@@ -2,7 +2,7 @@
 //! history and Comments with the composer, and a properties column for status,
 //! priority, assignee, labels, relationships, work and where it came from.
 use super::*;
-use ainc_client::types::{ActivityKind, Comment};
+use ainc_client::types::Comment;
 
 /// Work listed under the Work heading, newest first.
 const RECENT_WORK: usize = 3;
@@ -321,7 +321,7 @@ impl TicketsPage {
 
     fn change_row(&self, entry: &TicketActivity, now: i64) -> Div {
         let actor = self.actor(entry);
-        let (glyph, action) = self.describe(entry);
+        let (glyph, action) = describe(entry, |id| self.assignee_name(id).to_string());
         let text = format!("{actor} {action}");
         let emphasis = HighlightStyle {
             color: Some(rgb(TEXT).into()),
@@ -352,108 +352,6 @@ impl TicketsPage {
                     .pt(px(SPACE_HALF))
                     .child(hint(time::relative(entry.created_at, now))),
             )
-    }
-
-    /// A glyph and the rest of the sentence after the actor's name.
-    fn describe(&self, entry: &TicketActivity) -> (Icon, String) {
-        let from = entry.from_value.as_deref().unwrap_or_default();
-        let to = entry.to_value.as_deref().unwrap_or_default();
-        let other = |value: &str| {
-            value
-                .parse::<i64>()
-                .map(ticket_key)
-                .unwrap_or_else(|_| value.to_owned())
-        };
-        match entry.kind {
-            ActivityKind::Created => (Icon::Plus, "created the Ticket".into()),
-            ActivityKind::Renamed => (Icon::Edit, format!("renamed it from “{from}”")),
-            ActivityKind::Described => (Icon::Edit, "updated the description".into()),
-            ActivityKind::Status => match (status_from_key(from), status_from_key(to)) {
-                (Some(from), Some(to)) => (
-                    status_icon(to),
-                    format!("moved it from {} to {}", status_name(from), status_name(to)),
-                ),
-                _ => (Icon::History, "changed the status".into()),
-            },
-            ActivityKind::Priority => match priority_from_key(to) {
-                Some(TicketPriority::None) => (Icon::PriorityNone, "removed the priority".into()),
-                Some(priority) => (
-                    priority_icon(priority),
-                    format!("set priority to {}", priority_name(priority)),
-                ),
-                None => (Icon::History, "changed the priority".into()),
-            },
-            ActivityKind::Assigned => (
-                Icon::User,
-                format!("assigned it to {}", self.assignee_name(to)),
-            ),
-            ActivityKind::Labels => {
-                let split = |value: &str| -> Vec<String> {
-                    value
-                        .split(',')
-                        .filter(|label| !label.is_empty())
-                        .map(str::to_owned)
-                        .collect()
-                };
-                let (before, after) = (split(from), split(to));
-                let added: Vec<_> = after
-                    .iter()
-                    .filter(|l| !before.contains(l))
-                    .cloned()
-                    .collect();
-                let removed: Vec<_> = before
-                    .iter()
-                    .filter(|l| !after.contains(l))
-                    .cloned()
-                    .collect();
-                let sentence = match (added.is_empty(), removed.is_empty()) {
-                    (false, true) => format!("added {}", added.join(", ")),
-                    (true, false) => format!("removed {}", removed.join(", ")),
-                    _ => "changed the labels".to_owned(),
-                };
-                (Icon::Tag, sentence)
-            }
-            ActivityKind::Linked | ActivityKind::Unlinked => {
-                let key = other(to);
-                let sentence = match (entry.kind, Relation::from_history(from)) {
-                    (ActivityKind::Linked, Some(Relation::Blocks)) => {
-                        format!("marked it as blocking {key}")
-                    }
-                    (ActivityKind::Linked, Some(Relation::BlockedBy)) => {
-                        format!("marked it as blocked by {key}")
-                    }
-                    (ActivityKind::Linked, Some(Relation::Duplicates)) => {
-                        format!("marked it as a duplicate of {key}")
-                    }
-                    (ActivityKind::Linked, Some(Relation::DuplicatedBy)) => {
-                        format!("marked {key} as a duplicate of it")
-                    }
-                    (ActivityKind::Linked, Some(Relation::Parent)) => {
-                        format!("made it a Sub-Ticket of {key}")
-                    }
-                    (ActivityKind::Linked, Some(Relation::SubTicket)) => {
-                        format!("added {key} as a Sub-Ticket")
-                    }
-                    (ActivityKind::Linked, _) => format!("related it to {key}"),
-                    (_, relation) => format!(
-                        "removed its link to {key}{}",
-                        relation
-                            .map_or(String::new(), |r| format!(" ({})", r.name().to_lowercase()))
-                    ),
-                };
-                (Icon::Link, sentence)
-            }
-            ActivityKind::Work => (
-                Icon::Play,
-                match WorkState::parse(to) {
-                    Some(WorkState::Queued) => "started work".into(),
-                    Some(WorkState::Done) => "finished the work".into(),
-                    Some(WorkState::Failed) => "stopped: the work failed".into(),
-                    Some(WorkState::Cancelled) => "cancelled the work".into(),
-                    _ => format!("work is {}", state_label(to).to_lowercase()),
-                },
-            ),
-        }
     }
 
     fn comment_row(&self, comment: &Comment, now: i64) -> Stateful<Div> {
