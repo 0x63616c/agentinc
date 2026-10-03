@@ -33,16 +33,31 @@ jobs:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Install xtask build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev protobuf-compiler
+      - uses: actions/cache/restore@v4
+        with:
+          # Read-only: reuses the build the distribute job saved, so the xtask build is not cold.
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git
+            target
+          key: manifest-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-${{ inputs.commit || github.sha }}
+          restore-keys: |
+            manifest-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-
+            manifest-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-
       - name: Check release trigger
         id: version
         env:
           COMMIT: ${{ inputs.commit || github.sha }}
           BEFORE: ${{ github.event.before }}
+          CARGO_INCREMENTAL: "0"
         run: |
           test "$(git rev-parse HEAD)" = "$COMMIT"
           echo "version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = push ]; then
-            changed=$(python3 scripts/release/version-changed.py "$BEFORE")
+            changed=$(cargo run --locked --quiet --profile ci -p ainc-xtask -- release-version-changed "$BEFORE")
             echo "ready=$changed" >> "$GITHUB_OUTPUT"
           else
             echo 'ready=true' >> "$GITHUB_OUTPUT"
