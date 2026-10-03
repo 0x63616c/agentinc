@@ -52,6 +52,7 @@ fn main_window_options(
 }
 
 fn main() {
+    native_update::restore_relaunch_environment().expect("restore update relaunch profile");
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
     let _ = rustls::crypto::ring::default_provider().install_default();

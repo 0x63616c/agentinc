@@ -1,5 +1,9 @@
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
+#import <CommonCrypto/CommonDigest.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #import "SPUUpdater.h"
 #import "SPUUpdaterDelegate.h"
 #import "SPUUserDriver.h"
@@ -370,6 +374,111 @@ static NSString *itemNotes(SUAppcastItem *item) {
         ? [NSString stringWithFormat:@"<p>%@</p>", escaped(description)] : description;
 }
 
+// Sparkle 2.9.6 relaunches through NSWorkspace.openURL without forwarding the
+// host environment. Keep only documented profile/companion configuration,
+// never test feeds/keys or the rest of the caller's process environment.
+static NSArray<NSString *> *profileEnvironmentKeys(void) {
+    return @[@"AGENTINC_SESSION_PATH", @"AINC_DISCOVERY_FILE", @"AINC_DAEMON_URL",
+        @"AINC_TOKEN_FILE", @"AINC_DATABASE_URL", @"DATABASE_URL", @"AINC_LEGACY_DIR",
+        @"AGENTINC_CODEX_HOME", @"AGENTINC_CODEX_PATH", @"AINC_RUNTIME_CONFIG",
+        @"AINC_WORKSPACE_DIR", @"AINC_TOOL_ALLOW"];
+}
+
+static NSURL *relaunchProfileURL(NSBundle *bundle) {
+    if (!bundle.bundleIdentifier.length) return nil; // Unbundled builds/tests.
+    NSData *path = [bundle.bundlePath.stringByResolvingSymlinksInPath dataUsingEncoding:NSUTF8StringEncoding];
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(path.bytes, (CC_LONG)path.length, digest);
+    NSMutableString *name = [NSMutableString string];
+    for (NSUInteger i = 0; i < sizeof(digest); i++) [name appendFormat:@"%02x", digest[i]];
+    NSURL *support = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
+    NSURL *directory = [[support URLByAppendingPathComponent:bundle.bundleIdentifier isDirectory:YES]
+        URLByAppendingPathComponent:@"Updater Relaunch" isDirectory:YES];
+    return [directory URLByAppendingPathComponent:[name stringByAppendingPathExtension:@"plist"]];
+}
+
+static NSString *saveRelaunchProfile(NSURL *url, NSString *targetVersion) {
+    if (!url) return nil;
+    NSMutableDictionary *environment = [NSMutableDictionary dictionary];
+    for (NSString *key in profileEnvironmentKeys()) {
+        const char *value = getenv(key.UTF8String);
+        if (value) {
+            NSString *text = [NSString stringWithUTF8String:value];
+            if (!text) return @"An update profile override is not valid UTF-8.";
+            environment[key] = text;
+        }
+    }
+    NSError *error = nil;
+    NSData *data = [NSPropertyListSerialization dataWithPropertyList:@{@"version":targetVersion ?: @"", @"environment":environment}
+        format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
+    if (!data) return error.localizedDescription;
+    if (![NSFileManager.defaultManager createDirectoryAtURL:url.URLByDeletingLastPathComponent withIntermediateDirectories:YES
+        attributes:@{NSFilePosixPermissions:@0700} error:&error]) return error.localizedDescription;
+    char *temporary = strdup([[url.path stringByAppendingString:@".XXXXXX"] fileSystemRepresentation]);
+    if (!temporary) return @"Could not save the update relaunch profile.";
+    int fd = mkstemp(temporary); // Creates the potentially credential-bearing file mode 0600.
+    if (fd < 0) { free(temporary); return @"Could not save the update relaunch profile."; }
+    const uint8_t *bytes = data.bytes;
+    NSUInteger remaining = data.length;
+    BOOL success = YES;
+    while (remaining) {
+        ssize_t written = write(fd, bytes, remaining);
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) { success = NO; break; }
+        bytes += written;
+        remaining -= (NSUInteger)written;
+    }
+    if (success && fsync(fd) != 0) success = NO;
+    if (close(fd) != 0) success = NO;
+    if (success && rename(temporary, url.fileSystemRepresentation) != 0) success = NO;
+    if (!success) unlink(temporary);
+    free(temporary);
+    return success ? nil : @"Could not save the update relaunch profile.";
+}
+
+static NSString *restoreRelaunchProfile(NSURL *url, NSString *version) {
+    if (!url) return nil;
+    int fd = open(url.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW);
+    if (fd < 0) return errno == ENOENT ? nil : @"Could not read the update relaunch profile.";
+    struct stat attributes;
+    if (fstat(fd, &attributes) != 0 || !S_ISREG(attributes.st_mode) || attributes.st_uid != geteuid()
+        || (attributes.st_mode & 0077) != 0) {
+        close(fd);
+        return @"The update relaunch profile must be an owner-only regular file.";
+    }
+    NSFileHandle *file = [[NSFileHandle alloc] initWithFileDescriptor:fd closeOnDealloc:YES];
+    NSError *error = nil;
+    NSData *data = [file readDataToEndOfFileAndReturnError:&error];
+    if (!data) return error.localizedDescription;
+    NSDictionary *record = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:nil error:&error];
+    if (![record isKindOfClass:NSDictionary.class] || ![record[@"environment"] isKindOfClass:NSDictionary.class]
+        || ![record[@"version"] isKindOfClass:NSString.class]) return @"The update relaunch profile is invalid.";
+    // A canceled/failed update must not change the profile of the old version.
+    if (![record[@"version"] isEqualToString:version]) return nil;
+    NSDictionary *environment = record[@"environment"];
+    for (NSString *key in profileEnvironmentKeys()) {
+        if (environment[key] && ![environment[key] isKindOfClass:NSString.class]) return @"The update relaunch profile is invalid.";
+    }
+    for (NSString *key in profileEnvironmentKeys()) {
+        NSString *value = environment[key];
+        // An explicit launch environment takes precedence over the handoff.
+        if (value && !getenv(key.UTF8String) && setenv(key.UTF8String, value.UTF8String, 0) != 0) {
+            return @"Could not restore the update relaunch profile.";
+        }
+    }
+    if (unlink(url.fileSystemRepresentation) != 0) return @"Could not consume the update relaunch profile.";
+    return nil;
+}
+
+const char *ainc_restore_relaunch_profile(void) {
+    static NSString *error;
+    @autoreleasepool {
+        NSBundle *bundle = NSBundle.mainBundle;
+        error = restoreRelaunchProfile(relaunchProfileURL(bundle), [bundle objectForInfoDictionaryKey:@"CFBundleVersion"]);
+    }
+    return error.UTF8String;
+}
+
 @implementation AincSparkleDriver
 - (void)showUpdatePermissionRequest:(SPUUpdatePermissionRequest *)request reply:(void (^)(SUUpdatePermissionResponse *))reply {
     // Normally suppressed by the shipped SUEnableAutomaticChecks default.
@@ -703,6 +812,8 @@ static NSString *itemNotes(SUAppcastItem *item) {
         [NSApp replyToApplicationShouldTerminate:YES];
     }
     if (error && self.prepared) {
+        NSURL *profile = relaunchProfileURL(NSBundle.mainBundle);
+        if (profile) [NSFileManager.defaultManager removeItemAtURL:profile error:nil];
         self.prepared = NO;
         self.installArmed = NO;
         ainc_update_action(9, false);
@@ -759,12 +870,17 @@ static void updateAction(int action, bool automatic) {
 static void migratePreferences(SPUUpdater *updater, NSString *path, NSBundle *host) {
     NSString *domain = [host objectForInfoDictionaryKey:@"SUDefaultsDomain"] ?: host.bundleIdentifier;
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:domain];
+    NSDictionary *saved = [defaults persistentDomainForName:domain];
+    if (!saved[@"SUEnableAutomaticChecks"]) {
+        // Preserve AgentInc's existing opt-out default even when packaging uses
+        // SUEnableAutomaticChecks=NO to suppress Sparkle's permission prompt.
+        updater.automaticallyChecksForUpdates = YES;
+    }
     if ([defaults boolForKey:@"AINCSparklePreferencesMigrated"]) return;
     NSData *data = [NSData dataWithContentsOfFile:path];
     NSDictionary *legacy = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
     if ([legacy isKindOfClass:NSDictionary.class]) {
         // Do not overwrite settings already owned by Sparkle.
-        NSDictionary *saved = [defaults persistentDomainForName:domain];
         if (!saved[@"SUEnableAutomaticChecks"] && legacy[@"automatic_checks"]) updater.automaticallyChecksForUpdates = [legacy[@"automatic_checks"] boolValue];
         if (!saved[@"AINCAutomaticallyDownloadUpdates"] && legacy[@"automatic_download"]) [defaults setBool:[legacy[@"automatic_download"] boolValue] forKey:@"AINCAutomaticallyDownloadUpdates"];
         if (!saved[@"SUScheduledCheckInterval"] && legacy[@"interval_hours"]) updater.updateCheckInterval = [legacy[@"interval_hours"] doubleValue] * 3600;
@@ -844,7 +960,9 @@ void ainc_sparkle_setting(int setting, bool enabled) {
     if (setting == 2) sparkle.updater.updateCheckInterval = enabled ? 604800 : 86400;
 }
 void ainc_sparkle_prepared(const char *error) {
-    [sparkle preparedWithError:error ? [NSString stringWithUTF8String:error] : nil];
+    NSString *failure = error ? [NSString stringWithUTF8String:error] : nil;
+    if (!failure && sparkle.started) failure = saveRelaunchProfile(relaunchProfileURL(NSBundle.mainBundle), sparkle.item.versionString);
+    [sparkle preparedWithError:failure];
 }
 
 #ifdef AINC_UPGRADE_TEST
