@@ -1,0 +1,71 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT a.id,a.ticket_id,a.actor_id,a.kind AS \"kind: ActivityKind\",a.from_value,a.to_value,a.conversation_id,a.run_id,a.created_at FROM ticket_activity a JOIN tickets t ON t.id=a.ticket_id WHERE t.workspace_id=$1 AND t.id=$2 ORDER BY a.id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "ticket_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "actor_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "kind: ActivityKind",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "from_value",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "to_value",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "conversation_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "run_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "2e4a0797e10c0da055d1788ec09fb99dc226f92ce28b2308a7cfbde92072a42a"
+}

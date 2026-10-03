@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM ticket_links WHERE workspace_id=$1 AND from_id=$2 AND to_id=$3 AND kind=$4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7133a7f9acdf650bc8d176feb11cbb8ea49b5f3b0aaf3a6d6c2cf00e53283d8a"
+}

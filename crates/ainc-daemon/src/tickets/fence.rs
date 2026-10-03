@@ -4,7 +4,7 @@
 //! queued or running. Every writer acting for an agent proves this inside its
 //! own transaction, so a credential made stale by cancellation or reassignment
 //! writes nothing.
-use super::{Actor, AssigneeKind, TICKET_COLUMNS, Ticket, TicketStatus};
+use super::{Actor, AssigneeKind, Ticket, TicketStatus, select_ticket};
 use crate::api::CommandError;
 use sqlx::{Postgres, Transaction};
 
@@ -55,31 +55,41 @@ impl LiveAssignment {
         let Some((ticket, generation)) = actor.assignment else {
             return Ok(None);
         };
-        let columns = TICKET_COLUMNS
-            .split(',')
-            .map(|column| format!("t.{column}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let locking = if lock { " FOR UPDATE OF t" } else { "" };
-        let ticket: Option<Ticket> = sqlx::query_as(&format!(
-            "SELECT {columns} FROM tickets t JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation \
-             WHERE t.id=$1 AND t.workspace_id=$2 AND t.generation=$3 AND t.assignee_kind=$4 AND t.assignee_id=$5 AND r.agent_id=$5 \
-             AND t.status=ANY($6) AND r.state IN ('queued','running'){locking}"
-        ))
-        .bind(ticket)
-        .bind(&actor.workspace)
-        .bind(generation)
-        .bind(AssigneeKind::Agent)
-        .bind(&actor.id)
-        .bind(
-            TicketStatus::ALL
-                .into_iter()
-                .filter(|status| status.actionable())
-                .map(TicketStatus::as_str)
-                .collect::<Vec<_>>(),
-        )
-        .fetch_optional(&mut **tx)
-        .await?;
+        let statuses = TicketStatus::ALL
+            .into_iter()
+            .filter(|status| status.actionable())
+            .map(|status| status.as_str().to_owned())
+            .collect::<Vec<_>>();
+        // The run of the ticket's current generation, queued or running, is the proof.
+        let ticket = if lock {
+            select_ticket!(
+                "WHERE id=$1 AND workspace_id=$2 AND generation=$3 AND assignee_kind=$4 AND assignee_id=$5 \
+                 AND status=ANY($6) AND EXISTS(SELECT 1 FROM ticket_runs r WHERE r.ticket_id=tickets.id \
+                 AND r.generation=tickets.generation AND r.agent_id=$5 AND r.state IN ('queued','running')) FOR UPDATE",
+                ticket,
+                actor.workspace,
+                generation,
+                AssigneeKind::Agent as _,
+                actor.id,
+                &statuses[..]
+            )
+            .fetch_optional(&mut **tx)
+            .await?
+        } else {
+            select_ticket!(
+                "WHERE id=$1 AND workspace_id=$2 AND generation=$3 AND assignee_kind=$4 AND assignee_id=$5 \
+                 AND status=ANY($6) AND EXISTS(SELECT 1 FROM ticket_runs r WHERE r.ticket_id=tickets.id \
+                 AND r.generation=tickets.generation AND r.agent_id=$5 AND r.state IN ('queued','running'))",
+                ticket,
+                actor.workspace,
+                generation,
+                AssigneeKind::Agent as _,
+                actor.id,
+                &statuses[..]
+            )
+            .fetch_optional(&mut **tx)
+            .await?
+        };
         Ok(ticket.map(|ticket| Self { ticket }))
     }
 }
@@ -132,7 +142,7 @@ mod tests {
             TicketCommand::Assign {
                 id,
                 revision: 0,
-                assignee_kind: AssigneeKind::Agent,
+                assignee_kind: AssigneeKind::Agent as _,
                 assignee_id: agent.clone(),
             },
         )

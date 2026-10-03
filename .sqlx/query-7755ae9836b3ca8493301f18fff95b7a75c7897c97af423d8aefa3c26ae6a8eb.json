@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tickets t SET position=v.position FROM unnest($1::bigint[],$2::bigint[]) AS v(id,position) WHERE t.id=v.id AND t.position<>v.position",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8Array",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7755ae9836b3ca8493301f18fff95b7a75c7897c97af423d8aefa3c26ae6a8eb"
+}

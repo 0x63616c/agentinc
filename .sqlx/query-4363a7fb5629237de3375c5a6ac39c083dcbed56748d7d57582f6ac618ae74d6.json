@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tickets SET updated_at=extract(epoch FROM clock_timestamp())::bigint WHERE id=ANY($1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4363a7fb5629237de3375c5a6ac39c083dcbed56748d7d57582f6ac618ae74d6"
+}

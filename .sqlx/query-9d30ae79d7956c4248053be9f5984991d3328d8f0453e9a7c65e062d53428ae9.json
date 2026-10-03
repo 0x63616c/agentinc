@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO dispatch_outbox(ticket_id,generation,action,run_id) SELECT ticket_id,generation,'start',run_id FROM ticket_runs WHERE run_id=$1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9d30ae79d7956c4248053be9f5984991d3328d8f0453e9a7c65e062d53428ae9"
+}

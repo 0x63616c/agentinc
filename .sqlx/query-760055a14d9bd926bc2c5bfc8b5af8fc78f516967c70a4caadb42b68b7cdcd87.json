@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO ticket_links(workspace_id,from_id,to_id,kind) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "760055a14d9bd926bc2c5bfc8b5af8fc78f516967c70a4caadb42b68b7cdcd87"
+}

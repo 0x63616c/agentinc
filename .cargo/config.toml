@@ -1,2 +1,7 @@
 [alias]
 xtask = "run -p ainc-xtask --"
+
+[env]
+# sqlx's query macros read the checked-in `.sqlx/` data, never a live database, so a
+# build never depends on DATABASE_URL. `cargo xtask check` verifies the data is current.
+SQLX_OFFLINE = "true"

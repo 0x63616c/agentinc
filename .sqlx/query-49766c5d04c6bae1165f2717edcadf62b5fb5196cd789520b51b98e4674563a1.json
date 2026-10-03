@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT from_id,to_id,kind AS \"kind: LinkKind\" FROM ticket_links WHERE from_id=$1 OR to_id=$1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "from_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "to_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "kind: LinkKind",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "49766c5d04c6bae1165f2717edcadf62b5fb5196cd789520b51b98e4674563a1"
+}

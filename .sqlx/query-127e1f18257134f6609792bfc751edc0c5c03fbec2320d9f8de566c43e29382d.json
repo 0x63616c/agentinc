@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT from_id,to_id,kind AS \"kind: LinkKind\" FROM ticket_links WHERE workspace_id=$1 AND ($2::bigint IS NULL OR from_id=$2 OR to_id=$2) ORDER BY from_id,to_id,kind",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "from_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "to_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "kind: LinkKind",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "127e1f18257134f6609792bfc751edc0c5c03fbec2320d9f8de566c43e29382d"
+}

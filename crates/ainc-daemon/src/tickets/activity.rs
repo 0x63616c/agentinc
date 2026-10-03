@@ -92,16 +92,18 @@ pub(crate) async fn record(
     conversation: Option<i64>,
     entry: Entry<'_>,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("INSERT INTO ticket_activity(ticket_id,actor_id,kind,from_value,to_value,conversation_id,run_id) VALUES ($1,$2,$3,$4,$5,$6,$7)")
-        .bind(entry.ticket_id)
-        .bind(actor_id)
-        .bind(entry.kind)
-        .bind(entry.from)
-        .bind(entry.to)
-        .bind(conversation)
-        .bind(entry.run_id)
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query!(
+        "INSERT INTO ticket_activity(ticket_id,actor_id,kind,from_value,to_value,conversation_id,run_id) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        entry.ticket_id,
+        actor_id,
+        entry.kind as _,
+        entry.from,
+        entry.to,
+        conversation,
+        entry.run_id
+    )
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
@@ -110,9 +112,12 @@ pub(super) async fn for_ticket(
     workspace: &str,
     ticket_id: i64,
 ) -> Result<Vec<TicketActivity>, CommandError> {
-    Ok(sqlx::query_as("SELECT a.id,a.ticket_id,a.actor_id,a.kind,a.from_value,a.to_value,a.conversation_id,a.run_id,a.created_at FROM ticket_activity a JOIN tickets t ON t.id=a.ticket_id WHERE t.workspace_id=$1 AND t.id=$2 ORDER BY a.id")
-        .bind(workspace)
-        .bind(ticket_id)
-        .fetch_all(&mut **tx)
-        .await?)
+    Ok(sqlx::query_as!(
+        TicketActivity,
+        r#"SELECT a.id,a.ticket_id,a.actor_id,a.kind AS "kind: ActivityKind",a.from_value,a.to_value,a.conversation_id,a.run_id,a.created_at FROM ticket_activity a JOIN tickets t ON t.id=a.ticket_id WHERE t.workspace_id=$1 AND t.id=$2 ORDER BY a.id"#,
+        workspace,
+        ticket_id
+    )
+    .fetch_all(&mut **tx)
+    .await?)
 }

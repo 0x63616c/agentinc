@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT kind AS \"kind: AssigneeKind\" FROM principals WHERE workspace_id=$1 AND id=$2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind: AssigneeKind",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b495dbcb8543c43e3f38893ef637e2bd1a3c6f05fdd0285865692d6d93c62a0e"
+}

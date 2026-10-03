@@ -111,7 +111,19 @@ pub struct Ticket {
     /// The Conversation that created this Ticket, if any.
     pub conversation_id: Option<i64>,
 }
-const TICKET_COLUMNS: &str = "id,title,description,status,priority,labels,assignee_kind,assignee_id,position,revision,generation,created_at,updated_at,conversation_id";
+/// `query_as!` of a [`Ticket`]: every column, then `$tail` (a literal starting at
+/// the table), then the query's arguments.
+macro_rules! select_ticket {
+    ($tail:literal $(, $arg:expr)* $(,)?) => {
+        sqlx::query_as!(
+            Ticket,
+            r#"SELECT id,title,description,status AS "status: crate::tickets::TicketStatus",priority AS "priority: crate::tickets::TicketPriority",labels,assignee_kind AS "assignee_kind: crate::tickets::AssigneeKind",assignee_id,position,revision,generation,created_at,updated_at,conversation_id FROM tickets "#
+                + $tail
+            $(, $arg)*
+        )
+    };
+}
+pub(crate) use select_ticket;
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema, FromRow)]
 pub struct Comment {
     pub id: i64,
@@ -383,20 +395,38 @@ pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<TicketSnaps
     let ticket = actor.assignment.map(|a| a.0);
     let mut tx = crate::pg::snapshot_tx(pool).await?;
     fence_read(&mut tx, actor).await?;
-    let tickets = sqlx::query_as(&format!("SELECT {TICKET_COLUMNS} FROM tickets WHERE workspace_id=$1 AND ($2::bigint IS NULL OR id=$2) ORDER BY array_position($3::text[],status),position,id DESC"))
-        .bind(&actor.workspace)
-        .bind(ticket)
-        .bind(TicketStatus::ALL.map(TicketStatus::as_str))
-        .fetch_all(&mut *tx)
-        .await?;
-    let comments=sqlx::query_as("SELECT c.id,c.ticket_id,c.author_id,c.body,c.created_at FROM comments c JOIN tickets t ON t.id=c.ticket_id WHERE t.workspace_id=$1 AND ($2::bigint IS NULL OR t.id=$2) ORDER BY c.id").bind(&actor.workspace).bind(ticket).fetch_all(&mut *tx).await?;
-    let assignees = sqlx::query_as(
-        "SELECT id,name,kind FROM principals WHERE workspace_id=$1 ORDER BY kind,name",
+    let order = TicketStatus::ALL.map(|status| status.as_str().to_owned());
+    let tickets = select_ticket!(
+        "WHERE workspace_id=$1 AND ($2::bigint IS NULL OR id=$2) ORDER BY array_position($3::text[],status),position,id DESC",
+        actor.workspace,
+        ticket,
+        &order[..]
     )
-    .bind(&actor.workspace)
     .fetch_all(&mut *tx)
     .await?;
-    let runs=sqlx::query_as("SELECT r.run_id,r.ticket_id,r.generation,r.state,r.error FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id WHERE t.workspace_id=$1 AND ($2::bigint IS NULL OR t.id=$2) ORDER BY r.ticket_id,r.generation").bind(&actor.workspace).bind(ticket).fetch_all(&mut *tx).await?;
+    let comments = sqlx::query_as!(
+        Comment,
+        "SELECT c.id,c.ticket_id,c.author_id,c.body,c.created_at FROM comments c JOIN tickets t ON t.id=c.ticket_id WHERE t.workspace_id=$1 AND ($2::bigint IS NULL OR t.id=$2) ORDER BY c.id",
+        actor.workspace,
+        ticket
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let assignees = sqlx::query_as!(
+        Assignee,
+        r#"SELECT id,name,kind AS "kind: AssigneeKind" FROM principals WHERE workspace_id=$1 ORDER BY kind,name"#,
+        actor.workspace
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let runs = sqlx::query_as!(
+        WorkRun,
+        "SELECT r.run_id,r.ticket_id,r.generation,r.state,r.error FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id WHERE t.workspace_id=$1 AND ($2::bigint IS NULL OR t.id=$2) ORDER BY r.ticket_id,r.generation",
+        actor.workspace,
+        ticket
+    )
+    .fetch_all(&mut *tx)
+    .await?;
     let links = links::in_workspace(&mut tx, &actor.workspace, ticket).await?;
     tx.commit().await?;
     Ok(TicketSnapshot {
@@ -422,11 +452,11 @@ async fn lock_ticket(
         }
         live.ticket
     } else {
-        sqlx::query_as(&format!(
-            "SELECT {TICKET_COLUMNS} FROM tickets WHERE id=$1 AND workspace_id=$2 FOR UPDATE"
-        ))
-        .bind(id)
-        .bind(&actor.workspace)
+        select_ticket!(
+            "WHERE id=$1 AND workspace_id=$2 FOR UPDATE",
+            id,
+            actor.workspace
+        )
         .fetch_optional(&mut **tx)
         .await?
         .ok_or(CommandError::NotFound)?
@@ -482,8 +512,7 @@ pub(crate) async fn execute_in(
     let receipt = receipts::execute(tx, scope, operation_id, &payload, |tx| {
         Box::pin(async move {
             let result_id = apply(tx, &actor, command).await?;
-            sqlx::query("SELECT pg_notify($1,'')")
-                .bind(crate::pg::coordination::DISPATCH)
+            sqlx::query!("SELECT pg_notify($1,'')", crate::pg::coordination::DISPATCH)
                 .execute(&mut **tx)
                 .await?;
             Ok(result_id)
@@ -513,20 +542,22 @@ async fn create(
 ) -> Result<i64, CommandError> {
     let dispatch = ticket.assignee_kind == AssigneeKind::Agent && ticket.status.actionable();
     let position = board::top(tx, &actor.workspace, ticket.status).await?;
-    let id: i64 = sqlx::query_scalar("INSERT INTO tickets(workspace_id,title,description,status,priority,labels,assignee_kind,assignee_id,generation,conversation_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id")
-        .bind(&actor.workspace)
-        .bind(&ticket.title)
-        .bind(&ticket.description)
-        .bind(ticket.status)
-        .bind(ticket.priority)
-        .bind(&ticket.labels)
-        .bind(ticket.assignee_kind)
-        .bind(&ticket.assignee_id)
-        .bind(i64::from(dispatch))
-        .bind(actor.conversation)
-        .bind(position)
-        .fetch_one(&mut **tx)
-        .await?;
+    let id = sqlx::query_scalar!(
+        "INSERT INTO tickets(workspace_id,title,description,status,priority,labels,assignee_kind,assignee_id,generation,conversation_id,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id",
+        actor.workspace,
+        ticket.title,
+        ticket.description,
+        ticket.status.as_str(),
+        ticket.priority.as_str(),
+        &ticket.labels,
+        ticket.assignee_kind as _,
+        ticket.assignee_id,
+        i64::from(dispatch),
+        actor.conversation,
+        position
+    )
+    .fetch_one(&mut **tx)
+    .await?;
     actor
         .log(tx, Entry::new(id, ActivityKind::Created).to(ticket.title))
         .await?;
@@ -543,11 +574,11 @@ async fn apply(
 ) -> Result<Option<i64>, CommandError> {
     Ok(match command {
         TicketCommand::CreateAssigned { proposal } => {
-            let valid: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM agents WHERE workspace_id=$1 AND id=$2)",
+            let valid = sqlx::query_scalar!(
+                r#"SELECT EXISTS(SELECT 1 FROM agents WHERE workspace_id=$1 AND id=$2) AS "valid!""#,
+                actor.workspace,
+                proposal.agent_id
             )
-            .bind(&actor.workspace)
-            .bind(&proposal.agent_id)
             .fetch_one(&mut **tx)
             .await?;
             if !valid || proposal.title.trim().is_empty() || proposal.title.chars().count() > 500 {
@@ -588,11 +619,11 @@ async fn apply(
         } => {
             let (assignee_kind, assignee_id) = match assignee_id {
                 Some(id) => {
-                    let kind: Option<AssigneeKind> = sqlx::query_scalar(
-                        "SELECT kind FROM principals WHERE workspace_id=$1 AND id=$2",
+                    let kind = sqlx::query_scalar!(
+                        r#"SELECT kind AS "kind: AssigneeKind" FROM principals WHERE workspace_id=$1 AND id=$2"#,
+                        actor.workspace,
+                        id
                     )
-                    .bind(&actor.workspace)
-                    .bind(&id)
                     .fetch_optional(&mut **tx)
                     .await?;
                     (
@@ -622,21 +653,21 @@ async fn apply(
                 return Err(invalid("Instructions are too long."));
             }
             let id = uuid::Uuid::new_v4().to_string();
-            sqlx::query(
+            sqlx::query!(
                 "INSERT INTO principals(workspace_id,id,kind,name) VALUES ($1,$2,'agent',$3)",
+                actor.workspace,
+                id,
+                name.trim()
             )
-            .bind(&actor.workspace)
-            .bind(&id)
-            .bind(name.trim())
             .execute(&mut **tx)
             .await?;
-            sqlx::query(
+            sqlx::query!(
                 "INSERT INTO agents(workspace_id,id,instructions,model) VALUES ($1,$2,$3,$4)",
+                actor.workspace,
+                id,
+                instructions,
+                model.trim()
             )
-            .bind(&actor.workspace)
-            .bind(id)
-            .bind(instructions)
-            .bind(model.trim())
             .execute(&mut **tx)
             .await?;
             None
@@ -644,31 +675,31 @@ async fn apply(
         TicketCommand::AddComment { ticket_id, body } => {
             lock_ticket(tx, actor, ticket_id, None).await?;
             Some(
-                sqlx::query_scalar(
+                sqlx::query_scalar!(
                     "INSERT INTO comments(ticket_id,author_id,body) VALUES ($1,$2,$3) RETURNING id",
+                    ticket_id,
+                    actor.id,
+                    body.trim()
                 )
-                .bind(ticket_id)
-                .bind(&actor.id)
-                .bind(body.trim())
                 .fetch_one(&mut **tx)
                 .await?,
             )
         }
         TicketCommand::Delete { id, revision } => {
             lock_ticket(tx, actor, id, Some(revision)).await?;
-            let worked: bool =
-                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs WHERE ticket_id=$1)")
-                    .bind(id)
-                    .fetch_one(&mut **tx)
-                    .await?;
+            let worked = sqlx::query_scalar!(
+                r#"SELECT EXISTS(SELECT 1 FROM ticket_runs WHERE ticket_id=$1) AS "worked!""#,
+                id
+            )
+            .fetch_one(&mut **tx)
+            .await?;
             if worked {
                 return Err(CommandError::Conflict(
                     "A Ticket that has been worked on keeps its history.".into(),
                 ));
             }
             links::detach_all(tx, actor, id).await?;
-            sqlx::query("DELETE FROM tickets WHERE id=$1")
-                .bind(id)
+            sqlx::query!("DELETE FROM tickets WHERE id=$1", id)
                 .execute(&mut **tx)
                 .await?;
             Some(id)
@@ -681,11 +712,13 @@ async fn apply(
             let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             let title = clean_title(&title)?;
             if title != ticket.title {
-                sqlx::query("UPDATE tickets SET title=$2,revision=revision+1 WHERE id=$1")
-                    .bind(id)
-                    .bind(&title)
-                    .execute(&mut **tx)
-                    .await?;
+                sqlx::query!(
+                    "UPDATE tickets SET title=$2,revision=revision+1 WHERE id=$1",
+                    id,
+                    title
+                )
+                .execute(&mut **tx)
+                .await?;
                 actor
                     .log(
                         tx,
@@ -705,11 +738,13 @@ async fn apply(
             let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             let description = clean_description(&description)?;
             if description != ticket.description {
-                sqlx::query("UPDATE tickets SET description=$2,revision=revision+1 WHERE id=$1")
-                    .bind(id)
-                    .bind(description)
-                    .execute(&mut **tx)
-                    .await?;
+                sqlx::query!(
+                    "UPDATE tickets SET description=$2,revision=revision+1 WHERE id=$1",
+                    id,
+                    description
+                )
+                .execute(&mut **tx)
+                .await?;
                 actor
                     .log(tx, Entry::new(id, ActivityKind::Described))
                     .await?;
@@ -732,11 +767,13 @@ async fn apply(
         } => {
             let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             if priority != ticket.priority {
-                sqlx::query("UPDATE tickets SET priority=$2,revision=revision+1 WHERE id=$1")
-                    .bind(id)
-                    .bind(priority)
-                    .execute(&mut **tx)
-                    .await?;
+                sqlx::query!(
+                    "UPDATE tickets SET priority=$2,revision=revision+1 WHERE id=$1",
+                    id,
+                    priority.as_str()
+                )
+                .execute(&mut **tx)
+                .await?;
                 actor
                     .log(
                         tx,
@@ -756,11 +793,13 @@ async fn apply(
             let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             let labels = clean_labels(labels)?;
             if labels != ticket.labels {
-                sqlx::query("UPDATE tickets SET labels=$2,revision=revision+1 WHERE id=$1")
-                    .bind(id)
-                    .bind(&labels)
-                    .execute(&mut **tx)
-                    .await?;
+                sqlx::query!(
+                    "UPDATE tickets SET labels=$2,revision=revision+1 WHERE id=$1",
+                    id,
+                    &labels
+                )
+                .execute(&mut **tx)
+                .await?;
                 actor
                     .log(
                         tx,
@@ -791,7 +830,14 @@ async fn apply(
         } => {
             let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             cancel_generation(tx, actor, &ticket).await?;
-            sqlx::query("UPDATE tickets SET assignee_kind=$2,assignee_id=$3,revision=revision+1,generation=generation+1 WHERE id=$1").bind(id).bind(assignee_kind).bind(&assignee_id).execute(&mut **tx).await?;
+            sqlx::query!(
+                "UPDATE tickets SET assignee_kind=$2,assignee_id=$3,revision=revision+1,generation=generation+1 WHERE id=$1",
+                id,
+                assignee_kind as _,
+                assignee_id
+            )
+            .execute(&mut **tx)
+            .await?;
             // Stopped work goes back to To do, at the top like any status change.
             if ticket.status == TicketStatus::InProgress {
                 board::enter_column(tx, id, TicketStatus::ToDo).await?;
@@ -817,10 +863,10 @@ async fn apply(
         TicketCommand::Cancel { id, revision } => {
             let ticket = lock_ticket(tx, actor, id, Some(revision)).await?;
             cancel_generation(tx, actor, &ticket).await?;
-            sqlx::query(
+            sqlx::query!(
                 "UPDATE tickets SET generation=generation+1,revision=revision+1 WHERE id=$1",
+                id
             )
-            .bind(id)
             .execute(&mut **tx)
             .await?;
             if ticket.status == TicketStatus::InProgress {
@@ -875,11 +921,13 @@ async fn change_status(
     if plan.cancel {
         cancel_generation(tx, actor, ticket).await?;
     }
-    sqlx::query("UPDATE tickets SET revision=revision+1,generation=generation+$2 WHERE id=$1")
-        .bind(ticket.id)
-        .bind(i64::from(plan.bump_generation))
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query!(
+        "UPDATE tickets SET revision=revision+1,generation=generation+$2 WHERE id=$1",
+        ticket.id,
+        i64::from(plan.bump_generation)
+    )
+    .execute(&mut **tx)
+    .await?;
     board::enter_column(tx, ticket.id, status).await?;
     actor
         .log(tx, Entry::status(ticket.id, ticket.status, status))
@@ -894,8 +942,20 @@ async fn cancel_generation(
     actor: &Actor,
     ticket: &Ticket,
 ) -> Result<(), CommandError> {
-    sqlx::query("INSERT INTO dispatch_outbox(ticket_id,generation,action,run_id) SELECT ticket_id,generation,'cancel',run_id FROM ticket_runs WHERE ticket_id=$1 AND generation=$2 AND state IN ('queued','running') ON CONFLICT DO NOTHING").bind(ticket.id).bind(ticket.generation).execute(&mut **tx).await?;
-    let cancelled: Vec<String> = sqlx::query_scalar("UPDATE ticket_runs SET state='cancelled' WHERE ticket_id=$1 AND generation=$2 AND state IN ('queued','running') RETURNING run_id").bind(ticket.id).bind(ticket.generation).fetch_all(&mut **tx).await?;
+    sqlx::query!(
+        "INSERT INTO dispatch_outbox(ticket_id,generation,action,run_id) SELECT ticket_id,generation,'cancel',run_id FROM ticket_runs WHERE ticket_id=$1 AND generation=$2 AND state IN ('queued','running') ON CONFLICT DO NOTHING",
+        ticket.id,
+        ticket.generation
+    )
+    .execute(&mut **tx)
+    .await?;
+    let cancelled = sqlx::query_scalar!(
+        "UPDATE ticket_runs SET state='cancelled' WHERE ticket_id=$1 AND generation=$2 AND state IN ('queued','running') RETURNING run_id",
+        ticket.id,
+        ticket.generation
+    )
+    .fetch_all(&mut **tx)
+    .await?;
     for run_id in &cancelled {
         actor
             .log(tx, Entry::work(ticket.id, run_id, "cancelled"))
@@ -910,12 +970,25 @@ async fn start_generation(
 ) -> Result<(), CommandError> {
     // A fresh assignment owns immutable prompt/model/definition snapshots.
     let run_id = uuid::Uuid::new_v4().to_string();
-    let queued = sqlx::query("INSERT INTO ticket_runs(run_id,ticket_id,generation,agent_id,model,instructions,prompt,state) SELECT $1,t.id,t.generation,a.id,a.model,a.instructions,t.title||CASE WHEN t.description='' THEN '' ELSE E'\n\n'||t.description END,'queued' FROM tickets t JOIN agents a ON a.workspace_id=t.workspace_id AND a.id=t.assignee_id WHERE t.id=$2 AND t.workspace_id=$3").bind(&run_id).bind(id).bind(&actor.workspace).execute(&mut **tx).await?.rows_affected();
+    let queued = sqlx::query!(
+        r"INSERT INTO ticket_runs(run_id,ticket_id,generation,agent_id,model,instructions,prompt,state) SELECT $1,t.id,t.generation,a.id,a.model,a.instructions,t.title||CASE WHEN t.description='' THEN '' ELSE E'\n\n'||t.description END,'queued' FROM tickets t JOIN agents a ON a.workspace_id=t.workspace_id AND a.id=t.assignee_id WHERE t.id=$2 AND t.workspace_id=$3",
+        run_id,
+        id,
+        actor.workspace
+    )
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
     // An agent principal without a definition has nothing to run.
     if queued == 0 {
         return Ok(());
     }
-    sqlx::query("INSERT INTO dispatch_outbox(ticket_id,generation,action,run_id) SELECT ticket_id,generation,'start',run_id FROM ticket_runs WHERE run_id=$1").bind(&run_id).execute(&mut **tx).await?;
+    sqlx::query!(
+        "INSERT INTO dispatch_outbox(ticket_id,generation,action,run_id) SELECT ticket_id,generation,'start',run_id FROM ticket_runs WHERE run_id=$1",
+        run_id
+    )
+    .execute(&mut **tx)
+    .await?;
     actor.log(tx, Entry::work(id, &run_id, "queued")).await?;
     Ok(())
 }

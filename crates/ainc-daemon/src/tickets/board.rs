@@ -11,10 +11,12 @@ pub(crate) async fn lock(
     tx: &mut Transaction<'_, Postgres>,
     workspace: &str,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
-        .bind(format!("board/{workspace}"))
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query!(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+        format!("board/{workspace}")
+    )
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
@@ -24,11 +26,11 @@ pub(super) async fn top(
     workspace: &str,
     status: TicketStatus,
 ) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar(
-        "SELECT COALESCE(min(position),1)-1 FROM tickets WHERE workspace_id=$1 AND status=$2",
+    sqlx::query_scalar!(
+        r#"SELECT COALESCE(min(position),1)-1 AS "top!" FROM tickets WHERE workspace_id=$1 AND status=$2"#,
+        workspace,
+        status.as_str()
     )
-    .bind(workspace)
-    .bind(status)
     .fetch_one(&mut **tx)
     .await
 }
@@ -40,17 +42,18 @@ pub(crate) async fn enter_column(
     id: i64,
     status: TicketStatus,
 ) -> Result<(), sqlx::Error> {
-    let workspace: String = sqlx::query_scalar("SELECT workspace_id FROM tickets WHERE id=$1")
-        .bind(id)
+    let workspace = sqlx::query_scalar!("SELECT workspace_id FROM tickets WHERE id=$1", id)
         .fetch_one(&mut **tx)
         .await?;
     let position = top(tx, &workspace, status).await?;
-    sqlx::query("UPDATE tickets SET status=$2,position=$3 WHERE id=$1")
-        .bind(id)
-        .bind(status)
-        .bind(position)
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query!(
+        "UPDATE tickets SET status=$2,position=$3 WHERE id=$1",
+        id,
+        status.as_str(),
+        position
+    )
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
@@ -82,21 +85,23 @@ pub(super) async fn place(
     if after == Some(id) {
         return Err(invalid("A Ticket cannot follow itself."));
     }
-    let column: Vec<i64> = sqlx::query_scalar(
+    let column = sqlx::query_scalar!(
         "SELECT id FROM tickets WHERE workspace_id=$1 AND status=$2 ORDER BY position,id DESC",
+        workspace,
+        status.as_str()
     )
-    .bind(workspace)
-    .bind(status)
     .fetch_all(&mut **tx)
     .await?;
     // A neighbour that moved away since the client read the board is a stale view.
     let order = insert_after(&column, id, after).ok_or_else(CommandError::conflict)?;
     let positions: Vec<i64> = (0..order.len() as i64).collect();
-    sqlx::query("UPDATE tickets t SET position=v.position FROM unnest($1::bigint[],$2::bigint[]) AS v(id,position) WHERE t.id=v.id AND t.position<>v.position")
-        .bind(&order)
-        .bind(&positions)
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query!(
+        "UPDATE tickets t SET position=v.position FROM unnest($1::bigint[],$2::bigint[]) AS v(id,position) WHERE t.id=v.id AND t.position<>v.position",
+        &order,
+        &positions
+    )
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 

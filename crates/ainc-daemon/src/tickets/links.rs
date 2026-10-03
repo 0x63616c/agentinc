@@ -44,11 +44,14 @@ pub(super) async fn in_workspace(
     workspace: &str,
     ticket: Option<i64>,
 ) -> Result<Vec<TicketLink>, sqlx::Error> {
-    sqlx::query_as("SELECT from_id,to_id,kind FROM ticket_links WHERE workspace_id=$1 AND ($2::bigint IS NULL OR from_id=$2 OR to_id=$2) ORDER BY from_id,to_id,kind")
-        .bind(workspace)
-        .bind(ticket)
-        .fetch_all(&mut **tx)
-        .await
+    sqlx::query_as!(
+        TicketLink,
+        r#"SELECT from_id,to_id,kind AS "kind: LinkKind" FROM ticket_links WHERE workspace_id=$1 AND ($2::bigint IS NULL OR from_id=$2 OR to_id=$2) ORDER BY from_id,to_id,kind"#,
+        workspace,
+        ticket
+    )
+    .fetch_all(&mut **tx)
+    .await
 }
 
 fn canonical(from: i64, to: i64, kind: LinkKind) -> (i64, i64) {
@@ -82,10 +85,10 @@ async fn touch_and_log(
     kind: LinkKind,
     activity: ActivityKind,
 ) -> Result<(), CommandError> {
-    sqlx::query(
+    sqlx::query!(
         "UPDATE tickets SET updated_at=extract(epoch FROM clock_timestamp())::bigint WHERE id=ANY($1)",
+        &[from, to][..]
     )
-    .bind([from, to])
     .execute(&mut **tx)
     .await?;
     let (source, target) = kind.sides();
@@ -114,35 +117,39 @@ pub(super) async fn link(
     lock_pair(tx, actor, from, to).await?;
     if kind != LinkKind::RelatesTo {
         // Refuse a loop such as A blocks B blocks A, or a Ticket inside its own subtree.
-        let cycle: bool = sqlx::query_scalar("WITH RECURSIVE reach(id) AS (SELECT to_id FROM ticket_links WHERE from_id=$1 AND kind=$3 UNION SELECT l.to_id FROM ticket_links l JOIN reach r ON l.from_id=r.id AND l.kind=$3) SELECT EXISTS(SELECT 1 FROM reach WHERE id=$2)")
-            .bind(to)
-            .bind(from)
-            .bind(kind)
-            .fetch_one(&mut **tx)
-            .await?;
+        let cycle = sqlx::query_scalar!(
+            r#"WITH RECURSIVE reach(id) AS (SELECT to_id FROM ticket_links WHERE from_id=$1 AND kind=$3 UNION SELECT l.to_id FROM ticket_links l JOIN reach r ON l.from_id=r.id AND l.kind=$3) SELECT EXISTS(SELECT 1 FROM reach WHERE id=$2) AS "cycle!""#,
+            to,
+            from,
+            kind as _
+        )
+        .fetch_one(&mut **tx)
+        .await?;
         if cycle {
             return Err(invalid("That relationship would make a loop."));
         }
     }
     if kind == LinkKind::ParentOf {
-        let parent: Option<i64> = sqlx::query_scalar(
+        let parent = sqlx::query_scalar!(
             "SELECT from_id FROM ticket_links WHERE to_id=$1 AND kind='parent_of'",
+            to
         )
-        .bind(to)
         .fetch_optional(&mut **tx)
         .await?;
         if parent.is_some_and(|parent| parent != from) {
             return Err(invalid("That Ticket already has a parent."));
         }
     }
-    let inserted = sqlx::query("INSERT INTO ticket_links(workspace_id,from_id,to_id,kind) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING")
-        .bind(&actor.workspace)
-        .bind(from)
-        .bind(to)
-        .bind(kind)
-        .execute(&mut **tx)
-        .await?
-        .rows_affected();
+    let inserted = sqlx::query!(
+        "INSERT INTO ticket_links(workspace_id,from_id,to_id,kind) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+        actor.workspace,
+        from,
+        to,
+        kind as _
+    )
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
     if inserted > 0 {
         touch_and_log(tx, actor, from, to, kind, ActivityKind::Linked).await?;
     }
@@ -156,11 +163,13 @@ pub(super) async fn detach_all(
     actor: &Actor,
     id: i64,
 ) -> Result<(), CommandError> {
-    let links: Vec<TicketLink> =
-        sqlx::query_as("SELECT from_id,to_id,kind FROM ticket_links WHERE from_id=$1 OR to_id=$1")
-            .bind(id)
-            .fetch_all(&mut **tx)
-            .await?;
+    let links = sqlx::query_as!(
+        TicketLink,
+        r#"SELECT from_id,to_id,kind AS "kind: LinkKind" FROM ticket_links WHERE from_id=$1 OR to_id=$1"#,
+        id
+    )
+    .fetch_all(&mut **tx)
+    .await?;
     for link in links {
         let (source, target) = link.kind.sides();
         let (other, side) = if link.from_id == id {
@@ -189,13 +198,13 @@ pub(super) async fn unlink(
 ) -> Result<(), CommandError> {
     let (from, to) = canonical(from, to, kind);
     lock_pair(tx, actor, from, to).await?;
-    let deleted = sqlx::query(
+    let deleted = sqlx::query!(
         "DELETE FROM ticket_links WHERE workspace_id=$1 AND from_id=$2 AND to_id=$3 AND kind=$4",
+        actor.workspace,
+        from,
+        to,
+        kind as _
     )
-    .bind(&actor.workspace)
-    .bind(from)
-    .bind(to)
-    .bind(kind)
     .execute(&mut **tx)
     .await?
     .rows_affected();

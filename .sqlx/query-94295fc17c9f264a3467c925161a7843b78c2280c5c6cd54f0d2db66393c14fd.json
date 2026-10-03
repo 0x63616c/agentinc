@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO principals(workspace_id,id,kind,name) VALUES ($1,$2,'agent',$3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "94295fc17c9f264a3467c925161a7843b78c2280c5c6cd54f0d2db66393c14fd"
+}

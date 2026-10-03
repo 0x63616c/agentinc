@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO dispatch_outbox(ticket_id,generation,action,run_id) SELECT ticket_id,generation,'cancel',run_id FROM ticket_runs WHERE ticket_id=$1 AND generation=$2 AND state IN ('queued','running') ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "70134418fe42954694592dad2377171db494ea236f93205659a39d88f81d9270"
+}

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT from_id FROM ticket_links WHERE to_id=$1 AND kind='parent_of'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "from_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5d9a20a7e314ebc23c2c87c0a432442578eb85a2567a95f7ea313e87ead9ce03"
+}

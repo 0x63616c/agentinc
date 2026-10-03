@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH RECURSIVE reach(id) AS (SELECT to_id FROM ticket_links WHERE from_id=$1 AND kind=$3 UNION SELECT l.to_id FROM ticket_links l JOIN reach r ON l.from_id=r.id AND l.kind=$3) SELECT EXISTS(SELECT 1 FROM reach WHERE id=$2) AS \"cycle!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "cycle!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "6b7ab12702c94e8fc7d66eeab450d8f657fc5ea9678609dac26d0eac00dcd2ff"
+}
