@@ -122,7 +122,7 @@ jobs:
       - name: Build unsigned native handoff
         run: |
           test "$(git rev-parse HEAD)" = '${{ inputs.commit || github.sha }}'
-          python3 scripts/release/measure-build.py cargo xtask release
+          cargo run --locked -p ainc-xtask -- release-measure-build cargo xtask release
       - name: Build isolated upgrade fixtures
         run: |
           set -euo pipefail
