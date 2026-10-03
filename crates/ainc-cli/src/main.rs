@@ -361,8 +361,8 @@ async fn main() -> Result<()> {
     if group == "version" {
         return execute(
             &client,
-            operation("get_version"),
-            &generated_matches(operation("get_version"), None)?,
+            operation("version_show"),
+            &generated_matches(operation("version_show"), None)?,
         )
         .await;
     }
@@ -477,7 +477,7 @@ mod tests {
                     tree.find_subcommand(group)
                         .and_then(|g| g.find_subcommand(action))
                         .is_some()
-                        || id == "get_version",
+                        || id == "version_show",
                     "{id}"
                 );
             }

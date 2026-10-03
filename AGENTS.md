@@ -23,7 +23,7 @@ is imported. Keep it that way.
 
 Four things, from the repo root (`just` lists them): `just dev` runs the whole app (Postgres,
 Temporal, daemon and Mac app under Tilt, rebuilding on change), `just check` is the fast static
-gate (fmt, clippy, native UI checks; the pre-commit hook runs it), `just test` is `check` plus every
+gate (fmt, clippy, native UI checks, the OpenAPI lint; the pre-commit hook runs it), `just test` is `check` plus every
 other CI check, `just release patch|minor|major` bumps the version and commits. Everything else
 (`cargo xtask`, `bundle.sh`) is plumbing those use. Any `just` recipe points git at the tracked
 `.githooks/` first, so hooks install themselves; CI is the real gate.
