@@ -33,8 +33,6 @@ jobs:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Install xtask build dependencies
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev protobuf-compiler
       - uses: actions/cache/restore@v4
         with:
           # Read-only: reuses the build the distribute job saved, so the xtask build is not cold.
@@ -111,14 +109,6 @@ jobs:
             mv "$tools/codex-aarch64-apple-darwin" "$tools/codex"
             rm "$tools/codex.tar.gz"
           fi
-          if [ ! -x "$tools/protoc/bin/protoc" ]; then
-            curl --fail --location --output "$tools/protoc.zip" https://github.com/protocolbuffers/protobuf/releases/download/v36.2/protoc-36.2-osx-aarch_64.zip
-            test "$(shasum -a 256 "$tools/protoc.zip" | cut -d ' ' -f 1)" = 9cd98a532c5c5e0c4161314de0225de27e4c8a323917b6ea7b1b714d3ae23466
-            mkdir -p "$tools/protoc"
-            unzip -q "$tools/protoc.zip" -d "$tools/protoc"
-            rm "$tools/protoc.zip"
-          fi
-          echo "PROTOC=$tools/protoc/bin/protoc" >> "$GITHUB_ENV"
       - name: Run visible updater acceptance on the dedicated Mac
         env:
           AINC_NATIVE_UPDATE_TESTS: "1"
@@ -198,8 +188,6 @@ jobs:
         with:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0
-      - name: Install xtask build dependencies
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev protobuf-compiler
       - uses: actions/cache/restore@v4
         id: cache
         with:
@@ -325,12 +313,11 @@ jobs:
             case "$archive" in *-unsigned.tar.gz) continue;; esac
             [ ! -f "$archive" ] || prior+=(--prior "$archive")
           done
-          # Reuse the native job's toolchain, protoc and build cache for the xtask build.
+          # Reuse the native job's toolchain and build cache for the xtask build.
           export CARGO_HOME="$RUNNER_WORKSPACE/.cargo"
           export RUSTUP_HOME="$RUNNER_WORKSPACE/.rustup"
           export CARGO_TARGET_DIR="$RUNNER_WORKSPACE/.cargo-target"
           export PATH="$HOME/.cargo/bin:$PATH"
-          export PROTOC="$RUNNER_WORKSPACE/release-tools/protoc/bin/protoc"
           export CARGO_INCREMENTAL=0
           cargo run --locked -p ainc-xtask -- release-upgrade-gate \
             --candidate .local/upgrade-signed/upgrade-candidate.tar.gz \
@@ -349,7 +336,6 @@ jobs:
           export RUSTUP_HOME="$RUNNER_WORKSPACE/.rustup"
           export CARGO_TARGET_DIR="$RUNNER_WORKSPACE/.cargo-target"
           export PATH="$HOME/.cargo/bin:$PATH"
-          export PROTOC="$RUNNER_WORKSPACE/release-tools/protoc/bin/protoc"
           export CARGO_INCREMENTAL=0
           tag="v$VERSION"
           flags=()
@@ -385,8 +371,6 @@ jobs:
           # implementation while checking the requested exact commit below.
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-      - name: Install xtask build dependencies
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev protobuf-compiler
       - uses: actions/cache/restore@v4
         with:
           # Read-only: reuses the build the distribute job saved, so the xtask build is not cold.
