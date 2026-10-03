@@ -1,0 +1,5 @@
+# A test that stops making progress fails instead of stalling the whole gate: nextest
+# reports it slow after 60 s and terminates it after three periods (3 min). The process
+# tests, which launch a real daemon and Temporal dev server, finish in about 15 s.
+[profile.default]
+slow-timeout = { period = "60s", terminate-after = 3 }
