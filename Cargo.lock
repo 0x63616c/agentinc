@@ -254,6 +254,9 @@ dependencies = [
  "ainc-daemon",
  "ainc-release",
  "anyhow",
+ "base64 0.22.1",
+ "flate2",
+ "libc",
  "openapiv3",
  "prettyplease 0.2.37",
  "progenitor",
@@ -262,7 +265,10 @@ dependencies = [
  "serde_json",
  "sha2",
  "syn 2.0.119",
+ "tar",
  "tempfile",
+ "toml 0.8.23",
+ "uuid",
 ]
 
 [[package]]

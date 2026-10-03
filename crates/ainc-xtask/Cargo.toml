@@ -14,6 +14,9 @@ path = "src/main.rs"
 ainc-release = { path = "../ainc-release" }
 ainc-daemon = { path = "../ainc-daemon" }
 anyhow.workspace = true
+base64 = "0.22"
+flate2 = "1"
+libc = "0.2"
 openapiv3 = "2"
 prettyplease = "0.2"
 progenitor = "0.14"
@@ -22,6 +25,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
 syn = { version = "2", features = ["full"] }
-
-[dev-dependencies]
+tar = "0.4"
 tempfile = "3"
+toml = "0.8"
+uuid.workspace = true

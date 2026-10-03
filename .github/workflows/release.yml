@@ -175,6 +175,8 @@ jobs:
         with:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0
+      - name: Install xtask build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev protobuf-compiler
       - uses: actions/cache/restore@v4
         id: cache
         with:
@@ -240,9 +242,9 @@ jobs:
             archive=()
           fi
           if [ "$TEST_RELEASE" = true ]; then
-            python3 scripts/release/distribute.py --commit "$COMMIT" "${archive[@]}" --test --stage
+            cargo run --locked --profile ci -p ainc-xtask -- release-distribute --commit "$COMMIT" "${archive[@]}" --test --stage
           else
-            python3 scripts/release/distribute.py --commit "$COMMIT" "${archive[@]}" --stage
+            cargo run --locked --profile ci -p ainc-xtask -- release-distribute --commit "$COMMIT" "${archive[@]}" --stage
           fi
       - uses: actions/upload-artifact@v4
         if: steps.handoff.outputs.ready == 'true'
@@ -325,11 +327,26 @@ jobs:
           # implementation while checking the requested exact commit below.
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
+      - name: Install xtask build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev protobuf-compiler
+      - uses: actions/cache/restore@v4
+        with:
+          # Read-only: reuses the build the distribute job saved, so the xtask build is not cold.
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git
+            target
+          key: manifest-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-${{ inputs.commit || github.sha }}
+          restore-keys: |
+            manifest-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-
+            manifest-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-
       - name: Recheck exact-commit CI before publication
         env:
           GH_TOKEN: ${{ github.token }}
           COMMIT: ${{ inputs.commit || github.sha }}
-        run: python3 scripts/release/ci_gate.py "$COMMIT"
+          CARGO_INCREMENTAL: "0"
+        run: cargo run --locked --profile ci -p ainc-xtask -- release-ci-gate "$COMMIT"
       - name: Check draft lookup
         if: inputs.test == true
         env:

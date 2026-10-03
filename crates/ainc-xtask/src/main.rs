@@ -1,4 +1,5 @@
 mod checks;
+mod release;
 
 use anyhow::{Context, Result, anyhow, bail};
 use progenitor::{GenerationSettings, Generator, InterfaceStyle};
@@ -457,9 +458,12 @@ fn check(root: &Path) -> Result<()> {
 
 fn main() -> Result<()> {
     let mut args = env::args().skip(1);
-    let operation = args
-        .next()
-        .ok_or_else(|| anyhow!("usage: cargo xtask dev|down|doctor|check|generate"))?;
+    let operation = args.next().ok_or_else(|| {
+        anyhow!(
+            "usage: cargo xtask dev|down|doctor|check|generate|{}",
+            release::NAMES
+        )
+    })?;
     let root = root()?;
     let instance = identity(&root)?;
     match operation.as_str() {
@@ -471,6 +475,7 @@ fn main() -> Result<()> {
             anyhow::ensure!(status.success(), "release preparation failed");
             Ok(())
         }
+        op if release::handles(op) => release::run(op, args.collect(), &root),
         "check" => check(&root),
         "check-ui" => check_ui(&root),
         "generate" => generate(&root, args.next().as_deref() == Some("--check")),

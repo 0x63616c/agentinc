@@ -10,7 +10,7 @@ the next patch version. The test builds have the production bundle identity but
 a separate compiled Ed25519 public key. The Mac generates the matching private
 key for that workflow run. Linux signs and notarizes all three apps. The test
 key travels only in the one-day Actions handoff; it is never a release asset.
-The shipping handoff carries `upgrade_test: false`, which `distribute.py`
+The shipping handoff carries `upgrade_test: false`, which `cargo xtask release-distribute`
 requires before staging it. The test-only feed override and local HTTP client
 are compiled out of the shipping app and helper. Signature, archive hash,
 Developer ID, and Gatekeeper checks remain mandatory in both builds.

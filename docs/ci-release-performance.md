@@ -49,7 +49,7 @@ key; coverage is more important than claiming an unsafe cache hit.
 
 ## Validation and next measurement
 
-- Python regression tests cover latest exact-commit CI selection (including failed
+- Rust tests (`crates/ainc-xtask/src/release`) cover latest exact-commit CI selection (including failed
   reruns/cancellations), four-bundle/build overlap using an explicit barrier,
   failure propagation, fixture identity/inventory checks, required notary
   wait/staple, and CI failure preventing asset upload/publication.
