@@ -14,6 +14,8 @@
 //! let answer = turnkeel.start(&agent, "Weather in Lisbon?").await?.result().await?;
 //! ```
 
+#![warn(missing_docs)]
+
 mod agent;
 mod engine;
 mod error;

@@ -23,12 +23,16 @@ use crate::{Agent, Error, Message, Run, Runtime};
 /// A finished run plus its transcript, for asserting on.
 #[derive(Debug)]
 pub struct TestRun {
+    /// The run that was executed.
     pub run: Run,
+    /// The run's final answer.
     pub output: String,
+    /// The full conversation of the run.
     pub transcript: Vec<Message>,
 }
 
 impl TestRun {
+    /// Starts an ordered assertion over this run's transcript.
     pub fn assert_transcript(&self) -> TranscriptAssert<'_> {
         TranscriptAssert::new(&self.transcript)
     }
@@ -55,10 +59,12 @@ pub async fn run(agent: &Agent, input: impl Into<Message>) -> Result<TestRun, Er
 pub struct Server(crate::engine::TestServer);
 
 impl Server {
+    /// Starts an isolated test server.
     pub async fn start() -> Result<Self, Error> {
         Ok(Self(crate::engine::TestServer::start().await?))
     }
 
+    /// The configuration to give each [`Runtime`] that should use this server.
     pub fn config(&self) -> crate::RuntimeConfig {
         self.0.config.clone()
     }
@@ -75,6 +81,7 @@ impl Server {
         self.0.fire_rule(id).await
     }
 
+    /// Stops the test server.
     pub async fn shutdown(self) -> Result<(), Error> {
         self.0.shutdown().await
     }

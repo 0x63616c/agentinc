@@ -11,6 +11,7 @@ pub struct Agent {
 }
 
 impl Agent {
+    /// Starts building an agent with the given name; set a model with [`AgentBuilder::model`] before building.
     pub fn builder(name: impl Into<String>) -> AgentBuilder {
         AgentBuilder {
             name: name.into(),
@@ -20,10 +21,12 @@ impl Agent {
         }
     }
 
+    /// The agent's name, used to look up its tools and model.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The tools this agent can call.
     pub fn tools(&self) -> &ToolSet {
         &self.tools
     }
@@ -48,16 +51,19 @@ pub struct AgentBuilder {
 }
 
 impl AgentBuilder {
+    /// Sets the model that answers for this agent. Required before [`AgentBuilder::build`].
     pub fn model(mut self, model: impl Model) -> Self {
         self.model = Some(Arc::new(model));
         self
     }
 
+    /// Sets the instructions given to the model on every request.
     pub fn instructions(mut self, instructions: impl Into<String>) -> Self {
         self.instructions = instructions.into();
         self
     }
 
+    /// Adds a tool the model may call; a later tool with the same name replaces an earlier one.
     pub fn tool(mut self, tool: impl Tool) -> Self {
         self.tools.insert(tool);
         self
@@ -84,6 +90,7 @@ impl AgentBuilder {
 /// exists: the run fails with a clear error. Return `Err` for a transient failure such as
 /// an unreachable database: the step retries.
 pub trait AgentSource: Send + Sync + 'static {
+    /// Looks up the agent definition with this name, or returns `Ok(None)` if there is none.
     fn resolve(
         &self,
         name: &str,

@@ -7,10 +7,12 @@ use serde::{Deserialize, Serialize};
 pub struct SessionId(pub(crate) String);
 
 impl SessionId {
+    /// Wraps an existing session ID, for example one you stored earlier.
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
+    /// The ID as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -37,6 +39,7 @@ impl Session {
         self.handle.cancel().await
     }
 
+    /// This session's ID.
     pub fn id(&self) -> &SessionId {
         &self.id
     }
