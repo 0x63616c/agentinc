@@ -2,8 +2,9 @@
 
 extern void ainc_update_action(int action, bool automatic);
 
-@interface AincUpdateUI : NSObject
+@interface AincUpdateUI : NSObject <NSWindowDelegate>
 @property(strong) NSWindow *offer;
+@property(strong) NSAlert *alert;
 @property(strong) NSWindow *progress;
 @property(strong) NSButton *automatic;
 @property(strong) NSProgressIndicator *bar;
@@ -19,6 +20,9 @@ extern void ainc_update_action(int action, bool automatic);
 - (void)install:(id)sender { ainc_update_action(3, self.automatic.state == NSControlStateValueOn); [self.offer close]; self.offer = nil; }
 - (void)cancel:(id)sender { ainc_update_action(4, false); [self.progress close]; self.progress = nil; }
 - (void)automaticChanged:(id)sender { ainc_update_action(5, self.automatic.state == NSControlStateValueOn); }
+- (void)dismiss:(id)sender { ainc_update_action(7, false); [self.offer close]; self.offer = nil; self.alert = nil; }
+- (void)retry:(id)sender { ainc_update_action(6, false); [self.offer close]; self.offer = nil; self.alert = nil; }
+- (BOOL)windowShouldClose:(NSWindow *)sender { ainc_update_action(7, false); return YES; }
 @end
 
 static AincUpdateUI *ui(void) {
@@ -58,23 +62,27 @@ static NSWindow *window(NSSize size, NSString *title, BOOL closable) {
     return result;
 }
 
-void ainc_update_offer(const char *version, const char *current, const char *html, bool automatic, bool ready) {
+void ainc_update_offer(const char *version, const char *current, const char *html, bool automatic, bool ready, bool changelog) {
     AincUpdateUI *state = ui();
     [state.offer close];
+    state.alert = nil;
     [state.progress close];
     NSString *next = [NSString stringWithUTF8String:version];
     NSString *installed = [NSString stringWithUTF8String:current];
-    state.offer = window(NSMakeSize(620, 450), @"Software Update", NO);
+    state.offer = window(NSMakeSize(620, 450), changelog ? @"Release Notes" : @"Software Update", NO);
     NSView *content = state.offer.contentView;
     NSImageView *icon = [[NSImageView alloc] initWithFrame:NSMakeRect(26, 356, 64, 64)];
     icon.image = NSApp.applicationIconImage;
     [content addSubview:icon];
-    [content addSubview:label(@"A new version of AgentInc is available!", NSMakeRect(108, 389, 486, 30), [NSFont boldSystemFontOfSize:17])];
+    [content addSubview:label(changelog ? @"AgentInc release history" : @"A new version of AgentInc is available!", NSMakeRect(108, 389, 486, 30), [NSFont boldSystemFontOfSize:17])];
     NSString *question = ready ? @"Would you like to install it now?" : @"Would you like to download it now?";
-    NSString *description = [NSString stringWithFormat:@"AgentInc %@ is now available—you have %@.\n%@", next, installed, question];
+    NSString *description = changelog
+        ? [NSString stringWithFormat:@"All published releases.\nYou have AgentInc %@.", installed]
+        : [NSString stringWithFormat:@"AgentInc %@ is now available—you have %@.\n%@", next, installed, question];
     [content addSubview:label(description, NSMakeRect(108, 348, 480, 40), [NSFont systemFontOfSize:13])];
 
-    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(26, 94, 568, 244)];
+    CGFloat notesBottom = changelog ? 64 : 94;
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(26, notesBottom, 568, 338 - notesBottom)];
     scroll.hasVerticalScroller = YES;
     scroll.borderType = NSBezelBorder;
     NSTextView *notes = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 568, 244)];
@@ -89,6 +97,19 @@ void ainc_update_offer(const char *version, const char *current, const char *htm
     NSAttributedString *formatted = [[NSAttributedString alloc] initWithData:data options:options documentAttributes:nil error:nil];
     [notes.textStorage setAttributedString:formatted ?: [[NSAttributedString alloc] initWithString:@"Release notes unavailable"]];
     NSRange all = NSMakeRange(0, notes.textStorage.length);
+    // AppKit's HTML importer falls back to Times for CSS system-font aliases.
+    // Use real system fonts while retaining heading sizes, emphasis and code styling.
+    [notes.textStorage enumerateAttribute:NSFontAttributeName inRange:all options:0 usingBlock:^(id value, NSRange range, BOOL *stop) {
+        NSFont *font = value ?: [NSFont systemFontOfSize:13];
+        NSFontDescriptorSymbolicTraits traits = font.fontDescriptor.symbolicTraits;
+        NSFont *base = (traits & NSFontDescriptorTraitMonoSpace)
+            ? [NSFont monospacedSystemFontOfSize:font.pointSize weight:NSFontWeightRegular]
+            : [NSFont systemFontOfSize:font.pointSize];
+        NSFontDescriptor *descriptor = [base.fontDescriptor fontDescriptorWithSymbolicTraits:traits & (NSFontDescriptorTraitBold | NSFontDescriptorTraitItalic | NSFontDescriptorTraitMonoSpace)];
+        NSFont *system = [NSFont fontWithDescriptor:descriptor size:font.pointSize] ?: base;
+        [notes.textStorage addAttribute:NSFontAttributeName value:system range:range];
+        (void)stop;
+    }];
     [notes.textStorage addAttribute:NSForegroundColorAttributeName value:NSColor.labelColor range:all];
     [notes.textStorage enumerateAttribute:NSLinkAttributeName inRange:all options:0 usingBlock:^(id value, NSRange range, BOOL *stop) {
         if (value) [notes.textStorage addAttribute:NSForegroundColorAttributeName value:NSColor.linkColor range:range];
@@ -98,6 +119,15 @@ void ainc_update_offer(const char *version, const char *current, const char *htm
     notes.textContainer.widthTracksTextView = YES;
     scroll.documentView = notes;
     [content addSubview:scroll];
+
+    if (changelog) {
+        NSButton *done = button(@"Done", NSMakeRect(494, 19, 100, 30), state, @selector(dismiss:));
+        done.keyEquivalent = @"\r";
+        [content addSubview:done];
+        [state.offer makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+        return;
+    }
 
     state.automatic = [NSButton checkboxWithTitle:@"Automatically download updates in the future" target:state action:@selector(automaticChanged:)];
     state.automatic.frame = NSMakeRect(27, 60, 450, 24);
@@ -126,11 +156,50 @@ void ainc_update_test_click_install(void) {
 }
 #endif
 
-void ainc_update_status(const char *message) {
+// 0: checking, 1: up to date, 2: retryable error, 3: informational.
+void ainc_update_status(const char *message, const char *current, int kind) {
     AincUpdateUI *state = ui();
     [state.offer close];
-    state.offer = window(NSMakeSize(460, 150), @"Software Update", YES);
-    [state.offer.contentView addSubview:label([NSString stringWithUTF8String:message], NSMakeRect(28, 72, 404, 52), [NSFont systemFontOfSize:14])];
+    [state.progress close]; state.progress = nil;
+    state.alert = nil;
+    NSString *text = [NSString stringWithUTF8String:message];
+    NSString *installed = [NSString stringWithUTF8String:current];
+    if (kind == 0) {
+        state.offer = window(NSMakeSize(360, 112), @"Software Update", YES);
+        state.offer.delegate = state;
+        NSView *content = state.offer.contentView;
+        NSImageView *icon = [[NSImageView alloc] initWithFrame:NSMakeRect(24, 32, 48, 48)];
+        icon.image = NSApp.applicationIconImage;
+        [content addSubview:icon];
+        [content addSubview:label(text, NSMakeRect(92, 58, 244, 22), [NSFont boldSystemFontOfSize:13])];
+        NSProgressIndicator *spinner = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(92, 32, 16, 16)];
+        spinner.style = NSProgressIndicatorStyleSpinning;
+        spinner.indeterminate = YES;
+        [spinner startAnimation:nil];
+        [content addSubview:spinner];
+        [content addSubview:label(@"Looking for a newer version…", NSMakeRect(116, 30, 220, 20), [NSFont systemFontOfSize:12])];
+    } else {
+        state.alert = [NSAlert new];
+        state.alert.alertStyle = kind == 2 ? NSAlertStyleWarning : NSAlertStyleInformational;
+        state.alert.icon = NSApp.applicationIconImage;
+        state.alert.messageText = kind == 1 ? @"You’re up to date" : (kind == 2 ? @"Couldn’t update AgentInc" : @"Software Update");
+        state.alert.informativeText = kind == 1
+            ? [NSString stringWithFormat:@"AgentInc %@ is the latest version available.", installed]
+            : text;
+        NSButton *primary = [state.alert addButtonWithTitle:kind == 2 ? @"Retry" : @"OK"];
+        primary.target = state;
+        primary.action = kind == 2 ? @selector(retry:) : @selector(dismiss:);
+        if (kind == 2) {
+            NSButton *cancel = [state.alert addButtonWithTitle:@"Cancel"];
+            cancel.target = state;
+            cancel.action = @selector(dismiss:);
+        }
+        [state.alert layout];
+        state.offer = state.alert.window;
+        state.offer.releasedWhenClosed = NO;
+        state.offer.title = @"Software Update";
+        [state.offer center];
+    }
     [state.offer makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
 }
@@ -138,6 +207,7 @@ void ainc_update_status(const char *message) {
 void ainc_update_progress(const char *message, unsigned long long received, unsigned long long total) {
     AincUpdateUI *state = ui();
     [state.offer close]; state.offer = nil;
+    state.alert = nil;
     if (!state.progress) {
         state.progress = window(NSMakeSize(470, 180), @"Updating AgentInc", NO);
         NSView *content = state.progress.contentView;
@@ -164,6 +234,7 @@ void ainc_update_progress(const char *message, unsigned long long received, unsi
 void ainc_update_close(void) {
     [ui().offer close]; ui().offer = nil;
     [ui().progress close]; ui().progress = nil;
+    ui().alert = nil;
 }
 
 bool ainc_update_capture(const char *path, bool progress) {

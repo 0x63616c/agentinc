@@ -23,7 +23,13 @@ fn update_windows_survive_check_offer_progress_and_close() {
         String::from_utf8_lossy(&compile.stderr)
     );
 
-    let result = Command::new(executable).output().unwrap();
+    let result = Command::new(executable)
+        .env(
+            "AINC_UPDATE_TEST_ICON",
+            crate_dir.join("assets/AppIcon.png"),
+        )
+        .output()
+        .unwrap();
     assert!(
         result.status.success(),
         "update window transitions failed: {}",

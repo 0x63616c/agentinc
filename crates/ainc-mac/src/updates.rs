@@ -1,5 +1,5 @@
 //! App-owned update state. Native AppKit windows remain available when the backend is down.
-use crate::native_update;
+use crate::native_update::{self, Status};
 use crate::ui::*;
 use ainc_release::{
     Manifest, SignedManifest,
@@ -16,6 +16,13 @@ use std::{
 };
 
 actions!(updates, [CheckForUpdates, ShowChangelog]);
+
+#[derive(Clone, Copy)]
+enum Retry {
+    Check,
+    Download { install: bool },
+    Install,
+}
 
 fn apply_choice(
     preferences: &mut Preferences,
@@ -51,6 +58,7 @@ pub struct UpdateView {
     install_after_download: bool,
     visible: bool,
     changelog: bool,
+    failure: Option<Retry>,
     hover: HoverFade,
 }
 impl HoverHost for UpdateView {
@@ -148,6 +156,7 @@ impl UpdateView {
             install_after_download: false,
             visible: false,
             changelog: false,
+            failure: None,
             hover: HoverFade::default(),
         }
     }
@@ -178,8 +187,10 @@ impl UpdateView {
                 );
             }
         } else if self.busy {
-            native_update::status(&self.message);
-        } else if self.available {
+            native_update::status(Status::Checking);
+        } else if self.failure.is_some() {
+            native_update::status(Status::Failed(&self.message));
+        } else if self.available || (self.changelog && self.release.is_some()) {
             if let Some((_, manifest)) = &self.release {
                 native_update::offer(
                     manifest,
@@ -193,7 +204,11 @@ impl UpdateView {
                 }
             }
         } else {
-            native_update::status(&self.message);
+            native_update::status(if self.release.is_some() {
+                Status::UpToDate
+            } else {
+                Status::Info(&self.message)
+            });
         }
     }
     fn poll_native(&mut self, cx: &mut Context<Self>) {
@@ -201,6 +216,22 @@ impl UpdateView {
             self.present_progress();
         }
         if let Some((action, automatic)) = native_update::take_action() {
+            if action == 6 {
+                match self.failure.take() {
+                    Some(Retry::Check) => self.check(true, cx),
+                    Some(Retry::Download { install }) => {
+                        self.install_after_download = install;
+                        self.download(cx);
+                    }
+                    Some(Retry::Install) => self.install(cx),
+                    None => {}
+                }
+                return;
+            }
+            if action == 7 {
+                self.visible = false;
+                return;
+            }
             if action == 4 {
                 if let Some(cancel) = &self.cancel {
                     let _ = cancel.send(true);
@@ -248,6 +279,7 @@ impl UpdateView {
     fn check(&mut self, manual: bool, cx: &mut Context<Self>) {
         if !ainc_release::identity::PRODUCTION {
             self.message = "Updates are available in production builds.".into();
+            self.present();
             cx.notify();
             return;
         }
@@ -259,6 +291,7 @@ impl UpdateView {
             self.preferences.remind_after = 0;
         }
         self.busy = true;
+        self.failure = None;
         self.message = "Checking for updates…".into();
         self.present();
         let request = cx.background_executor().spawn(async {
@@ -294,9 +327,15 @@ impl UpdateView {
                             this.available = false;
                             this.release = Some((signed, manifest));
                         }
-                        Err(error) => this.message = error.to_string(),
+                        Err(error) => {
+                            this.message = error.to_string();
+                            this.failure = Some(Retry::Check);
+                        }
                     },
-                    Err(error) => this.message = format!("Could not check for updates: {error:#}"),
+                    Err(error) => {
+                        this.message = format!("Could not check for updates: {error:#}");
+                        this.failure = Some(Retry::Check);
+                    }
                 }
                 this.save();
                 this.present();
@@ -315,6 +354,7 @@ impl UpdateView {
         }
         self.busy = true;
         self.downloading = true;
+        self.failure = None;
         let (cancel, cancelled) = tokio::sync::watch::channel(false);
         self.cancel = Some(cancel);
         self.message = "Downloading update…".into();
@@ -348,6 +388,9 @@ impl UpdateView {
                     return;
                 }
                 this.ready = result.is_ok();
+                this.failure = result.is_err().then_some(Retry::Download {
+                    install: this.install_after_download,
+                });
                 this.message = match result {
                     Ok(()) => "Update verified and ready to install".into(),
                     Err(e) => format!("Download failed: {e:#}"),
@@ -371,6 +414,7 @@ impl UpdateView {
         cx.notify();
     }
     fn install(&mut self, cx: &mut Context<Self>) {
+        self.failure = None;
         let result = (|| -> anyhow::Result<()> {
             anyhow::ensure!(self.ready, "download is not verified");
             let host = cx.global::<UpdateHost>().0;
@@ -405,6 +449,7 @@ impl UpdateView {
             }
             Err(error) => {
                 self.message = format!("Install failed: {error:#}");
+                self.failure = Some(Retry::Install);
                 self.present();
                 cx.notify();
             }
@@ -493,7 +538,7 @@ impl UpdateView {
                 .child(settings_divider())
                 .child(settings_row(
                     "Release notes",
-                    "See what changed in the latest version.",
+                    "Browse the full release history.",
                     Button::new("updates.notes", "View Changelog")
                         .secondary()
                         .build(&self.hover, |_: &mut Self, _, cx| open_changelog(cx), cx),

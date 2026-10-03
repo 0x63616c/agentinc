@@ -51,8 +51,13 @@ Distribution uses rcodesign 0.29.0 on Ubuntu to sign all nested code with harden
 runtime, submit to Apple's Notary API, staple, archive and Ed25519-sign the manifest.
 The manifest binds the archive digest/size, product and daemon versions, API window,
 architecture, build ID and commit. A published version cannot be reassigned to another
-commit. Release notes are generated once and stored in the draft; retries reuse them.
-The same notes are in the manifest and downloadable notes/changelog artifacts.
+commit. Release notes are generated from non-merge commit subjects between the previous
+published product release and the exact shipped commit, including direct commits. A
+nonempty `docs/releases/VERSION.md` overrides generation. Drafts, prereleases and
+unpublished tags are not release boundaries. Notes are stored in the draft; retries
+reuse them. The same notes are in GitHub, the manifest and downloadable notes artifacts.
+`cargo xtask release-distribute` also includes every published version in the changelog,
+backfilling older link-only release bodies from Git without editing historical releases.
 
 Only the main branch may publish, after the [native upgrade gate](upgrade-gate.md).
 The branch acceptance job and `test=true` dispatch leave signed artifacts in a
@@ -110,6 +115,14 @@ The AppKit update windows expose formatted notes/changelog, download progress,
 Install Update, Remind Me Later, Skip This Version and the existing automatic-download
 preference. The Rust updater remains responsible for verification and installation.
 Manual checks ignore skipped versions.
+Update offers show all releases newer than the installed version, newest first, and
+install directly to the latest version. Full Changelog is read-only and works even
+when the app is up to date. Version-labelled Markdown lives in the existing schema-1
+`changelog` field (`# AgentInc changelog` and `## AgentInc VERSION` sections), because
+installed readers reject unknown manifest fields. New apps fall back to latest notes
+for older free-form feeds; old apps keep verifying and rendering the unchanged feed.
+Up-to-date results use a native alert with the installed version and OK; checking
+shows a spinner, and failures offer Retry/Cancel without altering update preferences.
 Downloaded archives are authenticated before installation. The signed helper repeats
 verification, validates the Apple team/bundle identity and Gatekeeper assessment,
 waits for the UI to close, asks the owned daemon to drain, waits for its discovery lock,

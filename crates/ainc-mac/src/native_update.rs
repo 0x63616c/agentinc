@@ -9,6 +9,13 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 static ACTION: AtomicI32 = AtomicI32::new(0);
 static AUTOMATIC: AtomicBool = AtomicBool::new(false);
 
+pub enum Status<'a> {
+    Checking,
+    UpToDate,
+    Failed(&'a str),
+    Info(&'a str),
+}
+
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn ainc_update_offer(
@@ -17,8 +24,9 @@ unsafe extern "C" {
         html: *const i8,
         automatic: bool,
         ready: bool,
+        changelog: bool,
     );
-    fn ainc_update_status(message: *const i8);
+    fn ainc_update_status(message: *const i8, current: *const i8, kind: i32);
     fn ainc_update_progress(message: *const i8, received: u64, total: u64);
     fn ainc_update_close();
     #[cfg(ainc_upgrade_test)]
@@ -65,15 +73,26 @@ pub fn notes_html(markdown: &str) -> String {
     )
 }
 
+#[cfg(any(test, target_os = "macos"))]
+fn offer_html(manifest: &Manifest, current: &str, changelog: bool) -> String {
+    if changelog {
+        notes_html(&manifest.changelog)
+    } else {
+        let notes = manifest.notes_since(current);
+        // The offer already has a title; start with the newest version section.
+        notes_html(
+            notes
+                .strip_prefix("# AgentInc changelog\n\n")
+                .unwrap_or(&notes),
+        )
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub fn offer(manifest: &Manifest, automatic: bool, ready: bool, changelog: bool) {
     let version = cstring(&manifest.version.to_string());
     let current = cstring(ainc_release::VERSION);
-    let notes = cstring(&notes_html(if changelog {
-        &manifest.changelog
-    } else {
-        &manifest.notes
-    }));
+    let notes = cstring(&offer_html(manifest, ainc_release::VERSION, changelog));
     unsafe {
         ainc_update_offer(
             version.as_ptr(),
@@ -81,6 +100,7 @@ pub fn offer(manifest: &Manifest, automatic: bool, ready: bool, changelog: bool)
             notes.as_ptr(),
             automatic,
             ready,
+            changelog,
         )
     }
 }
@@ -88,14 +108,22 @@ pub fn offer(manifest: &Manifest, automatic: bool, ready: bool, changelog: bool)
 #[cfg(not(target_os = "macos"))]
 pub fn offer(_: &Manifest, _: bool, _: bool, _: bool) {}
 
-#[cfg(target_os = "macos")]
-pub fn status(message: &str) {
-    let message = cstring(message);
-    unsafe { ainc_update_status(message.as_ptr()) }
+pub fn status(status: Status<'_>) {
+    let (kind, message) = match status {
+        Status::Checking => (0, "Checking for updates…"),
+        Status::UpToDate => (1, "You’re up to date"),
+        Status::Failed(message) => (2, message),
+        Status::Info(message) => (3, message),
+    };
+    #[cfg(target_os = "macos")]
+    {
+        let message = cstring(message);
+        let current = cstring(ainc_release::identity::version().as_str());
+        unsafe { ainc_update_status(message.as_ptr(), current.as_ptr(), kind) }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (kind, message);
 }
-
-#[cfg(not(target_os = "macos"))]
-pub fn status(_: &str) {}
 
 #[cfg(target_os = "macos")]
 pub fn progress(received: u64, total: u64) {
@@ -154,5 +182,30 @@ mod tests {
         assert!(html.contains("<p>• <strong>Fast</strong> updates</p>"));
         assert!(html.contains("&lt;script&gt;"));
         assert!(!html.contains("<script>"));
+    }
+
+    #[test]
+    fn offer_renders_every_missed_version_and_changelog_keeps_installed_versions() {
+        let mut manifest: Manifest =
+            serde_json::from_str(include_str!("../tests/fixtures/update-manifest.json")).unwrap();
+        manifest.version = "0.4.3".parse().unwrap();
+        manifest.changelog = ainc_release::notes::changelog(&[0, 1, 2, 3].map(|patch| {
+            ainc_release::notes::ReleaseNotes {
+                version: format!("0.4.{patch}").parse().unwrap(),
+                notes: format!("- **Change {patch}**"),
+            }
+        }));
+        let html = offer_html(&manifest, "0.4.0", false);
+        assert!(html.contains("<h2>AgentInc 0.4.3</h2>"));
+        assert!(html.contains("<h2>AgentInc 0.4.2</h2>"));
+        assert!(html.contains("<h2>AgentInc 0.4.1</h2>"));
+        assert!(!html.contains("AgentInc 0.4.0"));
+        assert!(html.contains("<strong>Change 1</strong>"));
+        assert!(offer_html(&manifest, "0.4.3", true).contains("<h2>AgentInc 0.4.0</h2>"));
+        manifest.changelog = "Legacy history".into();
+        assert_eq!(
+            offer_html(&manifest, "0.4.0", false),
+            notes_html(&manifest.notes)
+        );
     }
 }
