@@ -2,8 +2,8 @@
 //! requests: the real daemon over HTTP, or an in-memory stand-in in tests.
 pub use ainc_client::ClientError as DaemonError;
 use ainc_client::types::{
-    AutomationRequest, AutomationSnapshot, CommandRequest, ConnectionStatus, ExecutionPage,
-    Snapshot, TicketActivity, TicketCommandRequest, TicketSnapshot, WorkspaceRequest,
+    AutomationRequest, AutomationSnapshot, CommandRequest, ConnectionStatus, Snapshot,
+    TicketActivity, TicketCommandRequest, TicketSnapshot, WorkPage, WorkspaceRequest,
     WorkspaceState,
 };
 
@@ -68,7 +68,7 @@ pub enum Reply {
     Tickets(TicketSnapshot),
     Automations(AutomationSnapshot),
     Activity(Vec<TicketActivity>),
-    Executions(ExecutionPage),
+    Executions(WorkPage),
     /// A workspace or automation receipt: the id of what the command produced.
     Receipt(String),
     /// A ticket or product acknowledgement: the id of what the command produced, if any.

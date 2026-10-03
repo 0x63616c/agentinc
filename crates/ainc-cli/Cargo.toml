@@ -22,7 +22,7 @@ clap_complete = "4"
 tempfile = "3"
 uuid.workspace = true
 anyhow.workspace = true
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "string"] }
 serde_json.workspace = true
 schemars = "0.8"
 serde.workspace = true

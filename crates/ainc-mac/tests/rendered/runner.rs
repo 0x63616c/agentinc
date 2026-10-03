@@ -1132,80 +1132,70 @@ pub fn run() -> Result<()> {
         "dismissed toasts must leave the shell"
     );
     let now = chrono::Utc::now().timestamp_millis();
-    let execution = |workflow_type: &str,
-                     workflow_id: &str,
-                     run_id: &str,
-                     status: &str,
+    use ainc_client::types::{WorkKind, WorkStatus};
+    let execution = |kind: WorkKind,
+                     id: &str,
+                     status: WorkStatus,
                      minutes_ago: i64,
                      closed_after: Option<i64>| {
         let started_at = now - minutes_ago * 60_000;
-        ainc_client::types::ExecutionView {
-            workflow_id: workflow_id.into(),
-            run_id: run_id.into(),
-            workflow_type: workflow_type.into(),
-            status: status.into(),
+        ainc_client::types::WorkView {
+            id: id.into(),
+            kind,
+            status,
             started_at,
             closed_at: closed_after.map(|seconds| started_at + seconds * 1000),
-            url: Some(format!(
-                "http://127.0.0.1:8080/namespaces/agentinc/workflows/{workflow_id}/{run_id}/history"
-            )),
         }
     };
     let executions = vec![
         execution(
-            "agentinc.run",
+            WorkKind::Run,
             "ticket/4821:reconcile-weekly-budget-and-receipts",
-            "8a37e3d2-6a42-4918-a5d2-98fc38ea2274",
-            "Running",
+            WorkStatus::Running,
             3,
             None,
         ),
         execution(
-            "turnkeel.occurrence",
+            WorkKind::Occurrence,
             "automation/weekday-morning-review-for-the-family-and-household",
-            "175f70bd-ffb3-4c3a-9aad-90c8c979ecb1",
-            "Completed",
+            WorkStatus::Completed,
             18,
             Some(42),
         ),
         execution(
-            "agentinc.session",
+            WorkKind::Session,
             "conversation/9332",
-            "c8915b43-b5b4-4acf-8d7c-1bd9d7a5ca74",
-            "Failed",
+            WorkStatus::Failed,
             64,
             Some(14),
         ),
         execution(
-            "agentinc.run",
+            WorkKind::Run,
             "ticket/4790",
-            "264d4aaa-20ae-4050-9ff5-5822f4125c6e",
-            "Canceled",
+            WorkStatus::Cancelled,
             170,
             Some(65),
         ),
         execution(
-            "turnkeel.occurrence",
+            WorkKind::Occurrence,
             "automation/house-check",
-            "74e812df-2eac-4eea-920d-876633bef27a",
-            "TimedOut",
+            WorkStatus::Failed,
             1_460,
             Some(3_600),
         ),
     ];
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal(
-            ainc_client::types::ExecutionPage {
-                executions: executions.clone(),
+            ainc_client::types::WorkPage {
+                work: executions.clone(),
                 next_page: Some("next".into()),
-                ui_available: true,
             },
             cx,
         );
     })?;
     suite.keys("cmd-6");
     suite.capture("temporal-populated", Route::Temporal, None, false)?;
-    suite.bounds("temporal.row.8a37e3d2-6a42-4918-a5d2-98fc38ea2274")?;
+    suite.bounds("temporal.row.ticket/4821:reconcile-weekly-budget-and-receipts")?;
     let table = suite.bounds("temporal.table")?;
     let status = suite.bounds("status-bar")?;
     ensure!(
@@ -1219,10 +1209,9 @@ pub fn run() -> Result<()> {
     suite.bounds("temporal.loading")?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal(
-            ainc_client::types::ExecutionPage {
-                executions: Vec::new(),
+            ainc_client::types::WorkPage {
+                work: Vec::new(),
                 next_page: None,
-                ui_available: true,
             },
             cx,
         );
@@ -1236,10 +1225,9 @@ pub fn run() -> Result<()> {
     suite.bounds("temporal.error")?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_temporal(
-            ainc_client::types::ExecutionPage {
-                executions: executions.clone(),
+            ainc_client::types::WorkPage {
+                work: executions.clone(),
                 next_page: Some("next".into()),
-                ui_available: true,
             },
             cx,
         );
@@ -1280,24 +1268,21 @@ pub fn run() -> Result<()> {
             );
             suite.window.update(&mut suite.cx, |shell, _, cx| {
                 shell.fixture_temporal(
-                    ainc_client::types::ExecutionPage {
-                        executions: vec![execution(
-                            "agentinc.run",
+                    ainc_client::types::WorkPage {
+                        work: vec![execution(
+                            WorkKind::Run,
                             "ticket/4821:reconcile-weekly-budget-and-receipts",
-                            "8a37e3d2-6a42-4918-a5d2-98fc38ea2274",
-                            "Running",
+                            WorkStatus::Running,
                             3,
                             None,
                         )],
                         next_page: None,
-                        ui_available: false,
                     },
                     cx,
                 );
             })?;
             suite.keys("cmd-6");
-            suite.capture("temporal-small-no-ui", Route::Temporal, None, false)?;
-            suite.bounds("temporal.no-ui")?;
+            suite.capture("temporal-small", Route::Temporal, None, false)?;
         }
         for (index, route) in [
             Route::Tickets,

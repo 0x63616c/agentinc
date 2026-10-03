@@ -23,8 +23,8 @@ use transport::{Envelope, Reply, Request, Slice, Transport};
 
 use ainc_client::types::{
     Assignee, AssigneeKind, AutomationCommand, AutomationRequest, AutomationSnapshot,
-    Command as ProductCommand, CommandRequest, ConnectionStatus, ErrorBody, ExecutionPage,
-    Snapshot, TicketActivity, TicketCommand, TicketCommandRequest, TicketSnapshot, Workspace,
+    Command as ProductCommand, CommandRequest, ConnectionStatus, ErrorBody, Snapshot,
+    TicketActivity, TicketCommand, TicketCommandRequest, TicketSnapshot, WorkPage, Workspace,
     WorkspaceCommand, WorkspaceRequest, WorkspaceState,
 };
 use std::sync::{
@@ -191,7 +191,7 @@ fetch!(
 );
 fetch!(
     Executions,
-    ExecutionPage,
+    WorkPage,
     |s| Slice::Executions {
         status: s.status.clone(),
         page: s.page.clone(),

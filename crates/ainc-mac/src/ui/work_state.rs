@@ -19,20 +19,6 @@ pub enum WorkState {
 }
 
 impl WorkState {
-    /// Every state, in the order a filter would list them.
-    pub const ALL: [WorkState; 10] = [
-        WorkState::WaitingForWorker,
-        WorkState::WorkerUnavailable,
-        WorkState::Queued,
-        WorkState::Running,
-        WorkState::Done,
-        WorkState::Failed,
-        WorkState::Cancelled,
-        WorkState::Terminated,
-        WorkState::TimedOut,
-        WorkState::ContinuedAsNew,
-    ];
-
     /// The daemon's spelling of a state, or `None` for one this app does not know.
     pub fn parse(wire: &str) -> Option<Self> {
         Some(match wire {
@@ -66,20 +52,6 @@ impl WorkState {
             Self::TimedOut => "TimedOut",
             Self::ContinuedAsNew => "ContinuedAsNew",
         }
-    }
-
-    /// Temporal's spelling of this state, for its status filter.
-    pub fn temporal(self) -> Option<&'static str> {
-        Some(match self {
-            Self::Running => "Running",
-            Self::Done => "Completed",
-            Self::Failed => "Failed",
-            Self::Cancelled => "Canceled",
-            Self::Terminated => "Terminated",
-            Self::TimedOut => "TimedOut",
-            Self::ContinuedAsNew => "ContinuedAsNew",
-            _ => return None,
-        })
     }
 
     pub fn label(self) -> &'static str {
@@ -136,11 +108,19 @@ mod tests {
 
     #[test]
     fn every_state_round_trips_through_its_wire_name() {
-        for state in WorkState::ALL {
+        for state in [
+            WorkState::WaitingForWorker,
+            WorkState::WorkerUnavailable,
+            WorkState::Queued,
+            WorkState::Running,
+            WorkState::Done,
+            WorkState::Failed,
+            WorkState::Cancelled,
+            WorkState::Terminated,
+            WorkState::TimedOut,
+            WorkState::ContinuedAsNew,
+        ] {
             assert_eq!(WorkState::parse(state.as_str()), Some(state));
-            if let Some(temporal) = state.temporal() {
-                assert_eq!(WorkState::parse(temporal), Some(state));
-            }
         }
     }
 

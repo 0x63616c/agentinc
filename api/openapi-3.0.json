@@ -594,65 +594,6 @@
         ],
         "type": "object"
       },
-      "ExecutionPage": {
-        "properties": {
-          "executions": {
-            "items": {
-              "$ref": "#/components/schemas/ExecutionView"
-            },
-            "type": "array"
-          },
-          "next_page": {
-            "nullable": true,
-            "type": "string"
-          },
-          "ui_available": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "executions",
-          "ui_available"
-        ],
-        "type": "object"
-      },
-      "ExecutionView": {
-        "properties": {
-          "closed_at": {
-            "format": "int64",
-            "nullable": true,
-            "type": "integer"
-          },
-          "run_id": {
-            "type": "string"
-          },
-          "started_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          },
-          "url": {
-            "nullable": true,
-            "type": "string"
-          },
-          "workflow_id": {
-            "type": "string"
-          },
-          "workflow_type": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workflow_id",
-          "run_id",
-          "workflow_type",
-          "status",
-          "started_at"
-        ],
-        "type": "object"
-      },
       "Health": {
         "properties": {
           "status": {
@@ -1598,6 +1539,32 @@
         ],
         "type": "object"
       },
+      "WorkKind": {
+        "enum": [
+          "run",
+          "session",
+          "occurrence"
+        ],
+        "type": "string"
+      },
+      "WorkPage": {
+        "properties": {
+          "next_page": {
+            "nullable": true,
+            "type": "string"
+          },
+          "work": {
+            "items": {
+              "$ref": "#/components/schemas/WorkView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "work"
+        ],
+        "type": "object"
+      },
       "WorkRun": {
         "properties": {
           "error": {
@@ -1624,6 +1591,46 @@
           "ticket_id",
           "generation",
           "state"
+        ],
+        "type": "object"
+      },
+      "WorkStatus": {
+        "enum": [
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
+      "WorkView": {
+        "properties": {
+          "closed_at": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "id": {
+            "description": "The run, session or occurrence ID.",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WorkKind"
+          },
+          "started_at": {
+            "description": "Milliseconds since the Unix epoch.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkStatus"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "started_at"
         ],
         "type": "object"
       },
@@ -2197,76 +2204,6 @@
         ]
       }
     },
-    "/v1/temporal/executions": {
-      "get": {
-        "operationId": "temporal_executions",
-        "parameters": [
-          {
-            "description": "All, Running, Completed, Failed, Canceled, Terminated, TimedOut, ContinuedAsNew, or Paused",
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Opaque next-page token",
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExecutionPage"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": [
-          "temporal"
-        ]
-      }
-    },
     "/v1/terminal/sessions": {
       "get": {
         "operationId": "terminal_sessions_list",
@@ -2592,6 +2529,76 @@
         "summary": "One Ticket's history, oldest first. Comments stay in the snapshot.",
         "tags": [
           "tickets"
+        ]
+      }
+    },
+    "/v1/work": {
+      "get": {
+        "operationId": "work",
+        "parameters": [
+          {
+            "description": "Only work in this status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/WorkStatus"
+            }
+          },
+          {
+            "description": "Opaque next-page token",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkPage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "work"
         ]
       }
     },

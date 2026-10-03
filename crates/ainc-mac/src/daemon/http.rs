@@ -161,7 +161,10 @@ async fn perform(client: &Client, request: Request) -> Result<Reply, DaemonError
                 .into_inner(),
         ),
         Request::Fetch(Slice::Executions { status, page }) => {
-            let mut request = client.temporal_executions().status(status);
+            let mut request = client.work();
+            if let Ok(status) = status.parse::<ainc_client::types::WorkStatus>() {
+                request = request.status(status);
+            }
             if let Some(page) = page {
                 request = request.page(page);
             }

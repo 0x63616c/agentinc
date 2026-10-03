@@ -16,10 +16,10 @@ pub mod legacy;
 mod pg;
 pub mod product;
 pub mod receipts;
-pub mod temporal;
 pub mod terminal_sessions;
 pub mod testing;
 pub mod tickets;
+pub mod work;
 pub mod workspaces;
 use axum::{
     Json, Router,
@@ -101,7 +101,7 @@ async fn ticket_contract(Json(ticket): Json<TicketContract>) -> Json<TicketContr
         terminal_sessions::close,
         workspaces::state,
         workspaces::command,
-        temporal::list
+        work::list
     ),
     components(schemas(Health, Version, TicketContract))
 )]

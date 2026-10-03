@@ -20,7 +20,6 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionLogin => Self::cli_connection_login(),
             CliCommand::ConnectionLogout => Self::cli_connection_logout(),
             CliCommand::ProductState => Self::cli_product_state(),
-            CliCommand::TemporalExecutions => Self::cli_temporal_executions(),
             CliCommand::TerminalSessionsList => Self::cli_terminal_sessions_list(),
             CliCommand::TerminalSessionsCreate => Self::cli_terminal_sessions_create(),
             CliCommand::TerminalSessionsClose => Self::cli_terminal_sessions_close(),
@@ -28,6 +27,7 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::TicketsCommand => Self::cli_tickets_command(),
             CliCommand::TicketContract => Self::cli_ticket_contract(),
             CliCommand::TicketsActivity => Self::cli_tickets_activity(),
+            CliCommand::Work => Self::cli_work(),
             CliCommand::WorkspacesState => Self::cli_workspaces_state(),
             CliCommand::WorkspacesCommand => Self::cli_workspaces_command(),
             CliCommand::GetVersion => Self::cli_get_version(),
@@ -102,25 +102,6 @@ impl<T: CliConfig> Cli<T> {
     }
     pub fn cli_product_state() -> ::clap::Command {
         ::clap::Command::new("")
-    }
-    pub fn cli_temporal_executions() -> ::clap::Command {
-        ::clap::Command::new("")
-            .arg(
-                ::clap::Arg::new("page")
-                    .long("page")
-                    .value_parser(::clap::value_parser!(::std::string::String))
-                    .required(false)
-                    .help("Opaque next-page token"),
-            )
-            .arg(
-                ::clap::Arg::new("status")
-                    .long("status")
-                    .value_parser(::clap::value_parser!(::std::string::String))
-                    .required(false)
-                    .help(
-                        "All, Running, Completed, Failed, Canceled, Terminated, TimedOut, ContinuedAsNew, or Paused",
-                    ),
-            )
     }
     pub fn cli_terminal_sessions_list() -> ::clap::Command {
         ::clap::Command::new("")
@@ -216,6 +197,31 @@ impl<T: CliConfig> Cli<T> {
             )
             .about("One Ticket's history, oldest first. Comments stay in the snapshot.")
     }
+    pub fn cli_work() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("page")
+                    .long("page")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required(false)
+                    .help("Opaque next-page token"),
+            )
+            .arg(
+                ::clap::Arg::new("status")
+                    .long("status")
+                    .value_parser(::clap::builder::TypedValueParser::map(
+                        ::clap::builder::PossibleValuesParser::new([
+                            types::WorkStatus::Running.to_string(),
+                            types::WorkStatus::Completed.to_string(),
+                            types::WorkStatus::Failed.to_string(),
+                            types::WorkStatus::Cancelled.to_string(),
+                        ]),
+                        |s| types::WorkStatus::try_from(s).unwrap(),
+                    ))
+                    .required(false)
+                    .help("Only work in this status"),
+            )
+    }
     pub fn cli_workspaces_state() -> ::clap::Command {
         ::clap::Command::new("")
     }
@@ -261,7 +267,6 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
             CliCommand::ConnectionLogout => self.execute_connection_logout(matches).await,
             CliCommand::ProductState => self.execute_product_state(matches).await,
-            CliCommand::TemporalExecutions => self.execute_temporal_executions(matches).await,
             CliCommand::TerminalSessionsList => self.execute_terminal_sessions_list(matches).await,
             CliCommand::TerminalSessionsCreate => {
                 self.execute_terminal_sessions_create(matches).await
@@ -273,6 +278,7 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::TicketsCommand => self.execute_tickets_command(matches).await,
             CliCommand::TicketContract => self.execute_ticket_contract(matches).await,
             CliCommand::TicketsActivity => self.execute_tickets_activity(matches).await,
+            CliCommand::Work => self.execute_work(matches).await,
             CliCommand::WorkspacesState => self.execute_workspaces_state(matches).await,
             CliCommand::WorkspacesCommand => self.execute_workspaces_command(matches).await,
             CliCommand::GetVersion => self.execute_get_version(matches).await,
@@ -475,31 +481,6 @@ impl<T: CliConfig> Cli<T> {
             }
         }
     }
-    pub async fn execute_temporal_executions(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.temporal_executions();
-        if let Some(value) = matches.get_one::<::std::string::String>("page") {
-            request = request.page(value.clone());
-        }
-        if let Some(value) = matches.get_one::<::std::string::String>("status") {
-            request = request.status(value.clone());
-        }
-        self.config
-            .execute_temporal_executions(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
     pub async fn execute_terminal_sessions_list(
         &self,
         matches: &::clap::ArgMatches,
@@ -651,6 +632,27 @@ impl<T: CliConfig> Cli<T> {
         }
         self.config
             .execute_tickets_activity(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_work(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.work();
+        if let Some(value) = matches.get_one::<::std::string::String>("page") {
+            request = request.page(value.clone());
+        }
+        if let Some(value) = matches.get_one::<types::WorkStatus>("status") {
+            request = request.status(value.clone());
+        }
+        self.config.execute_work(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -817,13 +819,6 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
-    fn execute_temporal_executions(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::TemporalExecutions,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
     fn execute_terminal_sessions_list(
         &self,
         matches: &::clap::ArgMatches,
@@ -873,6 +868,13 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_work(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::Work,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_workspaces_state(
         &self,
         matches: &::clap::ArgMatches,
@@ -907,7 +909,6 @@ pub enum CliCommand {
     ConnectionLogin,
     ConnectionLogout,
     ProductState,
-    TemporalExecutions,
     TerminalSessionsList,
     TerminalSessionsCreate,
     TerminalSessionsClose,
@@ -915,6 +916,7 @@ pub enum CliCommand {
     TicketsCommand,
     TicketContract,
     TicketsActivity,
+    Work,
     WorkspacesState,
     WorkspacesCommand,
     GetVersion,
@@ -932,7 +934,6 @@ impl CliCommand {
             CliCommand::ConnectionLogin,
             CliCommand::ConnectionLogout,
             CliCommand::ProductState,
-            CliCommand::TemporalExecutions,
             CliCommand::TerminalSessionsList,
             CliCommand::TerminalSessionsCreate,
             CliCommand::TerminalSessionsClose,
@@ -940,6 +941,7 @@ impl CliCommand {
             CliCommand::TicketsCommand,
             CliCommand::TicketContract,
             CliCommand::TicketsActivity,
+            CliCommand::Work,
             CliCommand::WorkspacesState,
             CliCommand::WorkspacesCommand,
             CliCommand::GetVersion,
@@ -958,7 +960,6 @@ impl CliCommand {
             CliCommand::ConnectionLogin => "connection_login",
             CliCommand::ConnectionLogout => "connection_logout",
             CliCommand::ProductState => "product_state",
-            CliCommand::TemporalExecutions => "temporal_executions",
             CliCommand::TerminalSessionsList => "terminal_sessions_list",
             CliCommand::TerminalSessionsCreate => "terminal_sessions_create",
             CliCommand::TerminalSessionsClose => "terminal_sessions_close",
@@ -966,6 +967,7 @@ impl CliCommand {
             CliCommand::TicketsCommand => "tickets_command",
             CliCommand::TicketContract => "ticket_contract",
             CliCommand::TicketsActivity => "tickets_activity",
+            CliCommand::Work => "work",
             CliCommand::WorkspacesState => "workspaces_state",
             CliCommand::WorkspacesCommand => "workspaces_command",
             CliCommand::GetVersion => "get_version",

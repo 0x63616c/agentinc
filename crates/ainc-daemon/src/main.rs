@@ -105,7 +105,7 @@ async fn run() -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     let product = ainc_daemon::product::Product::new(pool.clone(), token.trim().into())?;
-    let (config, ui_url): (turnkeel::RuntimeConfig, Option<String>) = if let Some(local) = &local {
+    let (config, _ui_url): (turnkeel::RuntimeConfig, Option<String>) = if let Some(local) = &local {
         (local.config.clone(), Some(local.ui_url.clone()))
     } else if let Ok(config) = env::var("AINC_RUNTIME_CONFIG") {
         runtime_config(config.as_bytes()).context("parse AINC_RUNTIME_CONFIG")?
@@ -162,7 +162,7 @@ async fn run() -> Result<()> {
             axum::serve(
                 listener,
                 ainc_daemon::product_router_with(product.clone(), connection)
-                    .merge(ainc_daemon::temporal::router(product, config, ui_url))
+                    .merge(ainc_daemon::work::router(product, config))
                     .route("/internal/drain", drain),
             )
             .with_graceful_shutdown(stopping(receiver.clone()))

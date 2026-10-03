@@ -1,4 +1,5 @@
-//! The Temporal page: the Work executions table with status filters and timing columns.
+//! The Temporal page: the retained work table (runs, Conversations, Automation
+//! occurrences) with status filters and timing columns.
 use crate::{
     action::{Pending, Run},
     daemon::Daemon,
@@ -6,27 +7,41 @@ use crate::{
     routes::{Destination, Route},
     ui::*,
 };
-use ainc_client::types::ExecutionView;
+use ainc_client::types::{WorkKind, WorkStatus, WorkView};
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 
-/// `(Temporal status, label)`: every state Temporal reports, after "All".
-fn filters() -> Vec<(&'static str, &'static str)> {
-    std::iter::once(("All", "All"))
+/// The app's reading of a work status.
+fn work_state(status: WorkStatus) -> WorkState {
+    match status {
+        WorkStatus::Running => WorkState::Running,
+        WorkStatus::Completed => WorkState::Done,
+        WorkStatus::Failed => WorkState::Failed,
+        WorkStatus::Cancelled => WorkState::Cancelled,
+    }
+}
+
+/// `(status filter, label)`: every status the work history reports, after "All".
+fn filters() -> Vec<(Option<WorkStatus>, &'static str)> {
+    std::iter::once((None, "All"))
         .chain(
-            WorkState::ALL
-                .iter()
-                .filter_map(|state| state.temporal().map(|value| (value, state.label()))),
+            [
+                WorkStatus::Running,
+                WorkStatus::Completed,
+                WorkStatus::Failed,
+                WorkStatus::Cancelled,
+            ]
+            .into_iter()
+            .map(|status| (Some(status), work_state(status).label())),
         )
         .collect()
 }
 
-fn workflow_label(workflow_type: &str) -> &str {
-    match workflow_type {
-        "agentinc.run" => "Agent run",
-        "agentinc.session" => "Conversation",
-        "turnkeel.occurrence" => "Automation occurrence",
-        other => other,
+fn kind_label(kind: WorkKind) -> &'static str {
+    match kind {
+        WorkKind::Run => "Agent run",
+        WorkKind::Session => "Conversation",
+        WorkKind::Occurrence => "Automation occurrence",
     }
 }
 
@@ -41,10 +56,9 @@ fn columns() -> [TableColumn; 4] {
 
 pub struct TemporalPage {
     daemon: Arc<Daemon>,
-    rows: Vec<ExecutionView>,
-    filter: &'static str,
+    rows: Vec<WorkView>,
+    filter: Option<WorkStatus>,
     next_page: Option<String>,
-    ui_available: bool,
     loading: Pending,
     loaded: bool,
     error: Option<String>,
@@ -62,9 +76,8 @@ impl TemporalPage {
         let page = Self {
             daemon,
             rows: Vec::new(),
-            filter: "All",
+            filter: None,
             next_page: None,
-            ui_available: false,
             loading: Pending::default(),
             loaded: false,
             error: None,
@@ -77,7 +90,11 @@ impl TemporalPage {
                     .await;
                 if this
                     .update(cx, |this, cx| {
-                        if this.rows.iter().any(|row| row.status == "Running") {
+                        if this
+                            .rows
+                            .iter()
+                            .any(|row| row.status == WorkStatus::Running)
+                        {
                             cx.notify();
                         }
                     })
@@ -99,14 +116,9 @@ impl TemporalPage {
 
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
-    pub(crate) fn fixture(
-        &mut self,
-        page: ainc_client::types::ExecutionPage,
-        cx: &mut Context<Self>,
-    ) {
-        self.rows = page.executions;
+    pub(crate) fn fixture(&mut self, page: ainc_client::types::WorkPage, cx: &mut Context<Self>) {
+        self.rows = page.work;
         self.next_page = page.next_page;
-        self.ui_available = page.ui_available;
         self.loaded = true;
         self.error = None;
         cx.notify();
@@ -136,7 +148,9 @@ impl TemporalPage {
         if self.loading.busy() {
             return;
         }
-        let status = self.filter.to_owned();
+        let status = self
+            .filter
+            .map_or_else(|| "all".to_owned(), |status| status.to_string());
         let page = if more { self.next_page.clone() } else { None };
         if more && page.is_none() {
             return;
@@ -155,11 +169,10 @@ impl TemporalPage {
                 this.loaded = true;
                 match result {
                     Ok(page) => {
-                        this.rows.extend(page.executions);
+                        this.rows.extend(page.work);
                         this.next_page = page.next_page;
-                        this.ui_available = page.ui_available;
                     }
-                    Err(failure) => this.error = Some(failure.message("Workflow history")),
+                    Err(failure) => this.error = Some(failure.message("Work history")),
                 }
             },
         );
@@ -171,15 +184,9 @@ impl TemporalPage {
             .rows
             .iter()
             .map(|execution| {
-                let id = execution.workflow_id.clone();
-                let run_id = execution.run_id.clone();
-                let url = execution.url.clone();
-                let status = execution.status.clone();
-                let short_id = run_id
-                    .get(run_id.len().saturating_sub(8)..)
-                    .unwrap_or(&run_id)
-                    .to_owned();
-                let selector = format!("temporal.row.{run_id}");
+                let id = execution.id.clone();
+                let state = work_state(execution.status);
+                let selector = format!("temporal.row.{id}");
                 let cells = vec![
                     column()
                         .gap(px(SPACE_HALF))
@@ -188,18 +195,18 @@ impl TemporalPage {
                                 .truncate()
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(rgb(TEXT))
-                                .child(workflow_label(&execution.workflow_type).to_owned()),
+                                .child(kind_label(execution.kind).to_owned()),
                         )
                         .child(
                             div()
                                 .truncate()
                                 .text_size(type_size(CAPTION_SIZE))
                                 .text_color(rgb(TEXT_SECONDARY))
-                                .child(format!("{short_id} · {id}")),
+                                .child(id.clone()),
                         )
                         .into_any_element(),
                     row()
-                        .child(status_pill(state_label(&status), state_tone(&status)))
+                        .child(status_pill(state.label().to_owned(), state.tone()))
                         .into_any_element(),
                     column()
                         .gap(px(SPACE_HALF))
@@ -221,16 +228,12 @@ impl TemporalPage {
                 ];
                 table_row(
                     SharedString::from(selector.clone()),
-                    format!("Open {id} in Temporal"),
+                    id,
                     &columns,
                     cells,
-                    url.is_some(),
+                    false,
                     &self.hover,
-                    move |_, _, cx| {
-                        if let Some(url) = &url {
-                            cx.open_url(url);
-                        }
-                    },
+                    |_, _, _| {},
                     cx,
                 )
                 .debug_selector(move || selector.clone())
@@ -264,7 +267,9 @@ impl Render for TemporalPage {
             .position(|(value, _)| *value == self.filter)
             .unwrap_or(0);
         let header = PageHeader::new(self.title())
-            .description("Every workflow execution in this AgentInc runtime, newest first.")
+            .description(
+                "Every run, Conversation and Automation occurrence in this AgentInc runtime.",
+            )
             .actions(
                 Button::new("temporal.refresh", "Refresh")
                     .secondary()
@@ -287,15 +292,6 @@ impl Render for TemporalPage {
                 },
                 cx,
             )));
-        if !self.ui_available && self.loaded && self.error.is_none() {
-            content = content.child(
-                banner(
-                    Tone::Info,
-                    "Workflow links unavailable: Temporal Web UI is not configured for this deployment.",
-                )
-                .debug_selector(|| "temporal.no-ui".into()),
-            );
-        }
         if let Some(error) = &self.error {
             content = content.child(
                 banner(Tone::Danger, error.clone())
@@ -315,13 +311,13 @@ impl Render for TemporalPage {
             content = content.child(
                 EmptyState::new(
                     "temporal",
-                    if self.filter == "All" {
-                        "No workflows yet"
+                    if self.filter.is_none() {
+                        "No work yet"
                     } else {
-                        "No matching workflows"
+                        "No matching work"
                     },
                 )
-                .description(if self.filter == "All" {
+                .description(if self.filter.is_none() {
                     "Runs appear here the moment AgentInc starts work."
                 } else {
                     "Try another status or refresh the list."

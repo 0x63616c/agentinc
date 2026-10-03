@@ -42,7 +42,7 @@ impl Shell {
     #[cfg(feature = "rendered-tests")]
     pub(crate) fn fixture_temporal(
         &mut self,
-        page: ainc_client::types::ExecutionPage,
+        page: ainc_client::types::WorkPage,
         cx: &mut Context<Self>,
     ) {
         self.page_entity::<crate::temporal::TemporalPage>()
