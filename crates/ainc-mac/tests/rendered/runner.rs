@@ -886,6 +886,31 @@ pub fn run() -> Result<()> {
         f32::from(menu.origin.x),
         f32::from(profile.origin.x),
     )?;
+    let divider = suite.bounds("user-menu.divider")?;
+    let updates = suite.bounds("user-menu.updates")?;
+    let settings = suite.bounds("user-menu.settings")?;
+    let support = suite.bounds("user-menu.support")?;
+    for (name, upper, lower) in [
+        ("divider to updates", divider, updates),
+        ("updates to settings", updates, settings),
+        ("settings to support", settings, support),
+    ] {
+        near(
+            name,
+            f32::from(lower.origin.y - upper.bottom()),
+            ui::MENU_INSET,
+        )?;
+    }
+    let chevron = suite.bounds("user-menu.support.chevron")?;
+    near(
+        "Support chevron has its full icon width",
+        f32::from(chevron.size.width),
+        ui::ICON_SIZE,
+    )?;
+    ensure!(
+        chevron.right() <= support.right() && chevron.bottom() <= support.bottom(),
+        "Support chevron must fit inside its menu row"
+    );
     suite.click_selector("user-menu.support")?;
     suite.capture(
         "user-menu-support",
@@ -894,6 +919,19 @@ pub fn run() -> Result<()> {
         false,
     )?;
     suite.bounds("user-menu.support.menu")?;
+    let help = suite.bounds("user-menu.help")?;
+    let feedback = suite.bounds("user-menu.feedback")?;
+    let about = suite.bounds("user-menu.about")?;
+    for (name, upper, lower) in [
+        ("help to feedback", help, feedback),
+        ("feedback to about", feedback, about),
+    ] {
+        near(
+            name,
+            f32::from(lower.origin.y - upper.bottom()),
+            ui::MENU_INSET,
+        )?;
+    }
     suite.keys("escape");
     suite.capture("user-menu-closed", Route::Assistant, None, false)?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {

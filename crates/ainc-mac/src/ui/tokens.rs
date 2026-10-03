@@ -180,9 +180,6 @@ pub const HEADER_CONTROL: f32 = 30.;
 pub const HEADER_EDGE_INSET: f32 = 9.;
 pub const HEADER_ICON_SIZE: f32 = 16.;
 pub const ICON_SIZE: f32 = 16.;
-/// The empty side of a chevron glyph inside its icon box; clipping it lets the
-/// visible edge sit where a shortcut badge ends.
-pub const CHEVRON_GLYPH_INSET: f32 = 6.;
 pub const ICON_SIZE_SM: f32 = 14.;
 /// `chevronUpDown.svg` has a 24-point viewBox and rounded 1.5-point strokes
 /// ending at x=7 and x=17. Compensate for its transparent sides at small size.
