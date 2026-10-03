@@ -7,7 +7,33 @@ use crate::{
 use futures::future::BoxFuture;
 use serde_json::{Value, json};
 use sqlx::PgPool;
+use std::sync::OnceLock;
 use turnkeel::{Tool, ToolCtx, ToolError};
+
+/// The tool arguments for one API command, with every `$ref` inlined so a model sees a
+/// self-contained schema. Built from the OpenAPI document once per process.
+fn command_schema(name: &str) -> Value {
+    let api = crate::openapi();
+    fn inline(value: &Value, api: &Value) -> Value {
+        if let Some(reference) = value.get("$ref").and_then(Value::as_str) {
+            return inline(
+                api.pointer(reference.trim_start_matches('#'))
+                    .expect("local API schema reference"),
+                api,
+            );
+        }
+        match value {
+            Value::Object(map) => Value::Object(
+                map.iter()
+                    .map(|(key, value)| (key.clone(), inline(value, api)))
+                    .collect(),
+            ),
+            Value::Array(values) => Value::Array(values.iter().map(|v| inline(v, api)).collect()),
+            value => value.clone(),
+        }
+    }
+    json!({"type":"object","properties":{"command":inline(&api["components"]["schemas"][name],&api)},"required":["command"],"additionalProperties":false})
+}
 
 #[derive(Clone)]
 pub(crate) struct TicketsTool {
@@ -34,28 +60,10 @@ impl Tool for TicketsTool {
         if !self.mutation {
             return json!({"type":"object","properties":{},"additionalProperties":false});
         }
-        let api = crate::openapi();
-        fn inline(value: &Value, api: &Value) -> Value {
-            if let Some(reference) = value.get("$ref").and_then(Value::as_str) {
-                return inline(
-                    api.pointer(reference.trim_start_matches('#'))
-                        .expect("local API schema reference"),
-                    api,
-                );
-            }
-            match value {
-                Value::Object(map) => Value::Object(
-                    map.iter()
-                        .map(|(key, value)| (key.clone(), inline(value, api)))
-                        .collect(),
-                ),
-                Value::Array(values) => {
-                    Value::Array(values.iter().map(|v| inline(v, api)).collect())
-                }
-                value => value.clone(),
-            }
-        }
-        json!({"type":"object","properties":{"command":inline(&api["components"]["schemas"]["TicketCommand"],&api)},"required":["command"],"additionalProperties":false})
+        static SCHEMA: OnceLock<Value> = OnceLock::new();
+        SCHEMA
+            .get_or_init(|| command_schema("TicketCommand"))
+            .clone()
     }
     fn idempotent(&self) -> bool {
         self.mutation
@@ -117,28 +125,10 @@ impl Tool for AutomationsTool {
         if !self.mutation {
             return json!({"type":"object","properties":{},"additionalProperties":false});
         }
-        let api = crate::openapi();
-        fn inline(value: &Value, api: &Value) -> Value {
-            if let Some(reference) = value.get("$ref").and_then(Value::as_str) {
-                return inline(
-                    api.pointer(reference.trim_start_matches('#'))
-                        .expect("local API schema reference"),
-                    api,
-                );
-            }
-            match value {
-                Value::Object(map) => Value::Object(
-                    map.iter()
-                        .map(|(key, value)| (key.clone(), inline(value, api)))
-                        .collect(),
-                ),
-                Value::Array(values) => {
-                    Value::Array(values.iter().map(|v| inline(v, api)).collect())
-                }
-                value => value.clone(),
-            }
-        }
-        json!({"type":"object","properties":{"command":inline(&api["components"]["schemas"]["AutomationCommand"],&api)},"required":["command"],"additionalProperties":false})
+        static SCHEMA: OnceLock<Value> = OnceLock::new();
+        SCHEMA
+            .get_or_init(|| command_schema("AutomationCommand"))
+            .clone()
     }
     fn idempotent(&self) -> bool {
         self.mutation

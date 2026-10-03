@@ -5,8 +5,7 @@ use futures::{StreamExt, future::BoxFuture};
 use sqlx::{FromRow, PgPool, postgres::PgListener};
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use turnkeel::{
-    Agent, Content, Event, Message, Model, ModelError, ModelRequest, ModelResponse, Role, Runtime,
-    RuntimeConfig, SessionId,
+    Agent, AgentSource, Content, Event, Message, Role, Runtime, RuntimeConfig, SessionId,
 };
 
 #[derive(Clone, FromRow)]
@@ -16,23 +15,49 @@ struct StoredSession {
     history: sqlx::types::Json<Vec<Message>>,
     event_offset: i64,
 }
+const SESSION_SQL: &str = "SELECT id,model,history,event_offset FROM conversation_sessions";
+
+/// Each Conversation session acts through its own agent definition, named after the
+/// session so its tools know which Conversation they speak for. Workers ask for the
+/// definition by name instead of preloading every active session at startup.
 #[derive(Clone)]
-struct SharedModel(Arc<dyn Model>);
-impl Model for SharedModel {
-    fn id(&self) -> &str {
-        self.0.id()
-    }
-    fn complete(
-        &self,
-        request: ModelRequest,
-    ) -> BoxFuture<'static, Result<ModelResponse, ModelError>> {
-        self.0.complete(request)
+struct ConversationAgents {
+    pool: PgPool,
+    models: Arc<dyn ModelCatalog>,
+}
+fn agent_name(session_id: &str) -> String {
+    format!("conversation-{session_id}-v1")
+}
+fn session_of(agent_name: &str) -> Option<&str> {
+    agent_name
+        .strip_prefix("conversation-")?
+        .strip_suffix("-v1")
+}
+impl AgentSource for ConversationAgents {
+    fn resolve(&self, name: &str) -> BoxFuture<'static, Result<Option<Agent>, turnkeel::Error>> {
+        let this = self.clone();
+        let session_id = session_of(name).map(str::to_owned);
+        Box::pin(async move {
+            let Some(session_id) = session_id else {
+                return Ok(None);
+            };
+            let session: Option<StoredSession> =
+                sqlx::query_as(&format!("{SESSION_SQL} WHERE id=$1"))
+                    .bind(&session_id)
+                    .fetch_optional(&this.pool)
+                    .await
+                    .map_err(|error| turnkeel::Error::Other(error.into()))?;
+            session
+                .map(|s| s.agent(&this.pool, this.models.as_ref()))
+                .transpose()
+                .map_err(turnkeel::Error::Other)
+        })
     }
 }
 impl StoredSession {
     fn agent(&self, pool: &PgPool, models: &dyn ModelCatalog) -> Result<Agent> {
-        Ok(Agent::builder(format!("conversation-{}-v1",self.id))
-            .model(SharedModel(models.resolve(&self.model)?))
+        Ok(Agent::builder(agent_name(&self.id))
+            .model(models.resolve(&self.model)?)
             .instructions("You are Evee, the personal assistant in AgentInc. Use Ticket tools for requested product changes. Autonomous work belongs on an assigned Ticket; do not claim to perform external actions without tools.")
             .tool(crate::conversation_tools::TicketsTool { pool:pool.clone(), session_id:self.id.clone(), mutation:false })
             .tool(crate::conversation_tools::TicketsTool { pool:pool.clone(), session_id:self.id.clone(), mutation:true })
@@ -61,13 +86,17 @@ impl Runner {
         anyhow::ensure!(owned, "another daemon owns Conversation execution");
         let mut listener = PgListener::connect_with(&pool).await?;
         listener.listen("agentinc_turns").await?;
-        let sessions:Vec<StoredSession>=sqlx::query_as("SELECT id,conversation_id,model,history,event_offset FROM conversation_sessions WHERE state='active'").fetch_all(&pool).await?;
-        let agents = sessions
-            .iter()
-            .map(|s| s.agent(&pool, models.as_ref()))
-            .collect::<Result<Vec<_>>>()?;
         config.worker_group.push_str("-conversations");
-        let runtime = Arc::new(Runtime::configured(config, &agents).await?);
+        let runtime = Arc::new(
+            Runtime::configured_with(
+                config,
+                ConversationAgents {
+                    pool: pool.clone(),
+                    models: models.clone(),
+                },
+            )
+            .await?,
+        );
         Ok(Self {
             pool,
             owner,
@@ -87,7 +116,10 @@ impl Runner {
         let mut active = HashSet::new();
         let mut turns = tokio::task::JoinSet::new();
         loop {
-            let closed:Vec<StoredSession>=sqlx::query_as("SELECT id,model,history,event_offset FROM conversation_sessions WHERE state='closed'").fetch_all(&self.pool).await?;
+            let closed: Vec<StoredSession> =
+                sqlx::query_as(&format!("{SESSION_SQL} WHERE state='closed'"))
+                    .fetch_all(&self.pool)
+                    .await?;
             for session in closed {
                 let agent = session.agent(&self.pool, self.models.as_ref())?;
                 match self
@@ -153,9 +185,18 @@ async fn prepare(pool: &PgPool, id: i64) -> Result<(StoredSession, String, i64)>
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "connection-default".into());
     let mut session: Option<StoredSession> = if let Some(session_id) = session_id {
-        sqlx::query_as("SELECT id,conversation_id,model,history,event_offset FROM conversation_sessions WHERE id=$1").bind(session_id).fetch_optional(&mut *tx).await?
+        sqlx::query_as(&format!("{SESSION_SQL} WHERE id=$1"))
+            .bind(session_id)
+            .fetch_optional(&mut *tx)
+            .await?
     } else {
-        sqlx::query_as("SELECT id,conversation_id,model,history,event_offset FROM conversation_sessions WHERE conversation_id=$1 AND model=$2 AND state='active'").bind(conversation).bind(&model).fetch_optional(&mut *tx).await?
+        sqlx::query_as(&format!(
+            "{SESSION_SQL} WHERE conversation_id=$1 AND model=$2 AND state='active'"
+        ))
+        .bind(conversation)
+        .bind(&model)
+        .fetch_optional(&mut *tx)
+        .await?
     };
     if session.is_none() {
         sqlx::query("UPDATE conversation_sessions SET state='closed' WHERE conversation_id=$1 AND state='active'").bind(conversation).execute(&mut *tx).await?;
@@ -274,6 +315,7 @@ mod tests {
     use crate::conversation_tools::TicketsTool;
     use crate::product::{self, Command, CommandRequest};
     use serde_json::json;
+    use turnkeel::{Model, ModelError};
     use turnkeel::{
         Tool, ToolCtx,
         testing::{ScriptedModel, Server, text, tool_call},
