@@ -42,7 +42,7 @@ cargo test --locked
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked --features rendered-tests --test rendered_shell
 scripts/bundle.sh
-codesign --verify --deep --strict --verbose=2 'dist/Agentinc OS.app'
+codesign --verify --deep --strict --verbose=2 'dist/AgentInc Dev.app'
 ```
 
 The worker used worktree-local `CARGO_HOME` and `RUSTUP_HOME` with the installed 1.98.1 compiler, preserving shared caches/toolchains. These environment overrides are not needed for normal development.
@@ -87,4 +87,4 @@ The normal bundled executable was copied to an isolated QA bundle with a distinc
 | Self-capture with Unicode task dialog | [Metal dialog](gpui-upgrade/rendered-add-typed.png) |
 | Self-capture after Evee restoration | [Metal restored](gpui-upgrade/rendered-evee-restored.png) |
 
-Checked bundle: `dist/Agentinc OS.app`, built by the normal bundling script, ad hoc signed. No release optimization, notarization, Windows rendering, OS IME acceptance, full accessibility semantics, authenticated Evee reply or performance benchmark is claimed. The test runner is test-only; no file-polling hook or driver ships in the app.
+Checked bundle: `dist/AgentInc Dev.app` (`crates/ainc-mac/dist/` from the workspace root), built by the normal bundling script, ad hoc signed. No release optimization, notarization, Windows rendering, OS IME acceptance, full accessibility semantics, authenticated Evee reply or performance benchmark is claimed. The test runner is test-only; no file-polling hook or driver ships in the app.

@@ -2,14 +2,13 @@
 
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
-- Product ownership and daemon configuration: `../../docs/phase-2-ownership.md`. Native tests must use an isolated daemon discovery file; never import the regular Application Support profile.
-- Current product ownership and native acceptance are in `../../docs/phase-2-ownership.md` and `docs/verification/PHASE3.md`.
+- Product ownership and daemon configuration: `../../docs/phase-2-ownership.md`; native acceptance evidence: `docs/verification/PHASE3.md`. Native tests must use an isolated daemon discovery file; never import the regular Application Support profile.
 - From the workspace root, build the native bundle with `crates/ainc-mac/scripts/bundle.sh`; the pinned toolchain and lockfile are at the workspace root.
 - Ghostty resource staging must use SwiftBuild; `scripts/stage-ghostty.sh` and `scripts/check-ghostty-staging.sh` enforce the shipped `Bundle.module` lookup path.
 - The opt-in driver setup, protocol, upstream seam and acceptance commands are in `docs/GPUI_PILOT.md`; normal bundles must keep `automation` off.
 - Keep GPUI `font-kit` enabled on macOS. Current upstream pin, native acceptance and the main-thread Metal regression command are documented in `docs/verification/GPUI_UPGRADE.md`; inspect saved full PNGs at logical resolution before diagnosing missing regions from inline previews.
 - Workspace Linux CI runs fmt, clippy and default tests; use the macOS rendered and pilot commands in `docs/GPUI_PILOT.md` for native acceptance.
-- The design system (tokens in `src/ui/tokens.rs`, components in `src/ui/`, the live gallery in `src/gallery.rs`) is documented in `../../docs/design-system.md`; build new UI from those components. `cargo xtask check-ui` (`ainc-xtask/src/checks/colors.rs`) guards source and SVG assets against inline color values.
+- The design system (tokens in `src/ui/tokens.rs`, components in `src/ui/`, the live Components page in `src/components.rs`) is documented in `../../docs/design-system.md`; build new UI from those components. `cargo xtask check-ui` (`ainc-xtask/src/checks/colors.rs`) guards source and SVG assets against inline color values.
 - Visual rule: keep control edge insets even, especially top/bottom/right around header icon buttons. No hover tooltips unless explicitly requested. Keep small interactions fluid with brief, restrained transitions. Approved live refinements are recorded in `docs/verification/STATUS.md`.
 - Attach proof and verification screenshots to the PR description (for example through a secret gist); do not commit them. Keep the README hero in the repository's `docs/assets/readme` committed, and retain existing images.
 

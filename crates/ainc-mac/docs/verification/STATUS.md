@@ -6,7 +6,7 @@ Verified locally on macOS 27.0 (26A428), 23 September 2026. This is a working Ru
 
 ## Reproduce
 
-From the repository root, run `scripts/bundle.sh`, then `open 'dist/Agentinc OS.app'`. The verified artifact is:
+From the repository root, run `crates/ainc-mac/scripts/bundle.sh`, then `open 'crates/ainc-mac/dist/AgentInc Dev.app'` (the 0.2.2 bundle this report verified was still named `Agentinc OS.app`). The verified artifact was:
 
 `/Users/calum/.treehouse/agentinc-os-8663d6/1/agentinc-os/dist/Agentinc OS.app`
 
@@ -20,7 +20,7 @@ Rust 1.94.0, GPUI exactly 0.2.2 and Cargo.lock are pinned. The final artifact us
 | `cargo test --locked` | 12 passed: tab selection/replacement, duplicate picker behavior, close/fallback/last-tab guard, history, persistence/recovery, filtering and Unicode word boundaries |
 | `cargo clippy --locked --all-targets -- -D warnings` | Passed |
 | `scripts/bundle.sh` | Built native `.app` |
-| `codesign --verify --deep --strict --verbose=2 'dist/Agentinc OS.app'` | Passed |
+| `codesign --verify --deep --strict --verbose=2 'dist/Agentinc OS.app'` (today: `'crates/ainc-mac/dist/AgentInc Dev.app'`) | Passed |
 
 No hosted CI is configured. These are local checks, not a claim of hosted CI or release signing.
 

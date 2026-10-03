@@ -50,7 +50,7 @@ cargo test --locked -p agentinc-os --features rendered-tests --test rendered_she
 
 It captures frames across every route, three window sizes, dialogs, Temporal states and full-page Evee conversations. It checks rendered shell regions and the shared page frame, content width and Settings/Automations right edges. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
 
-## Evee and Tasks
+## Evee and Tickets
 
 Install the official [Codex CLI](https://developers.openai.com/codex/cli), then open **Settings → Accounts & connections → Sign in with ChatGPT** and complete Codex’s browser sign-in. Evee uses your ChatGPT/Codex subscription; there is no API-key setup. Codex manages credentials in an app-specific profile. Settings shows the real connection status, sign out, and model choices returned by Codex.
 
@@ -65,11 +65,11 @@ Sidebar destinations and Search replace the destination in the single tab. Back 
 | Shortcut | Action |
 | --- | --- |
 | Cmd+K | Go to… pages, actions and workspaces |
-| Cmd+Option+Left / Right | Back / forward |
+| Cmd+[ / Cmd+] | Back / forward |
 | Cmd+1…6 | Tickets, Assistant, Agents, Automations, Terminal, Temporal |
 | Cmd+, | Settings |
 | Cmd+B | Toggle sidebar |
-| Escape | Dismiss Search, task dialogs or notifications |
+| Escape | Dismiss Search, Ticket dialogs or notifications |
 
 Go to… (⌘K) fuzzy-matches pages, actions and Tickets, groups the results, remembers your recent choices, and supports arrow/Return selection, pointer selection, bounded Tab/Shift+Tab focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. The user row opens the account menu: check for or install an update, open Settings, reach Support (Help Center, Send Feedback, About) and, once local accounts land, switch users. Settings holds persisted font family and size controls that update the whole app immediately; default type is two points larger than the original Control scale. The notification bell opens the notification panel; transient notices appear as toasts above the status bar.
 

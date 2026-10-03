@@ -65,8 +65,8 @@ draft and use a throwaway Ed25519 key. The public feed is
 `https://github.com/0x63616c/agentinc/releases/latest/download/feed.json`.
 Production publishing refuses if `UPDATE_SIGNING_KEY_ED25519_PEM` is missing or empty.
 The production public key is the single `UPDATE_PUBLIC_KEY` constant in
-`crates/ainc-release/src/lib.rs`; Firstmate provisioned it and the repository secret
-on 2026-09-24. Acceptance jobs still use throwaway keys and stay draft.
+`crates/ainc-release/src/lib.rs`; the repository owner provisioned it and the repository
+secret on 2026-09-24. Acceptance jobs still use throwaway keys and stay draft.
 
 Apple credentials are read only in the signing job, written to a temporary private
 directory, and never passed as secret values on command lines. Required secrets:
@@ -160,7 +160,7 @@ An earlier acceptance failure exposed inherited SIGCHLD state in native launches
 The process-boundary reset fixes this; the blocked/ignored-SIGCHLD regression,
 workspace tests, GPUI pilot and full signed installer now pass. The missing-secret
 refusal was exercised with the environment variable explicitly absent, even after
-Firstmate provisioned the production public key and repository secret.
+the repository owner provisioned the production public key and repository secret.
 
 All distribution artifacts remain drafts; no public release or tag was created.
 Acceptance output is recorded in

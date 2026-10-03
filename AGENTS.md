@@ -1,6 +1,9 @@
-# Turnkeel
+# AgentInc
 
-A Rust SDK for building AI agents. You define an agent (model, instructions, tools),
+This repo holds Turnkeel (the SDK, `crates/turnkeel`) and AgentInc (the app and daemon,
+`crates/ainc-*`). The SDK comes first because every agent in the app runs on it.
+
+Turnkeel is a Rust SDK for building AI agents. You define an agent (model, instructions, tools),
 start a run, and get a result. Every run is durable: it survives crashes and restarts
 and retries failed steps.
 
