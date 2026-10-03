@@ -96,7 +96,8 @@ impl Shell {
                             .pl(px(SIDEBAR_PROFILE_INSET))
                             // Align the visible glyph, not its transparent SVG box.
                             .pr(px(SIDEBAR_PROFILE_INSET - CHEVRON_UP_DOWN_GLYPH_INSET))
-                            .gap(px(SIDEBAR_PROFILE_INSET))
+                            // Keep the name on the navigation label rail.
+                            .gap(px(SPACE_1))
                             .rounded(px(RADIUS_MD))
                             .when(user_menu_open, |s| s.bg(rgb(SELECTED)))
                             .debug_selector(|| "sidebar-profile".into())
@@ -137,7 +138,7 @@ mod tests {
     use super::{Shell, bind_keys};
     use crate::{
         model::{Overlay, PANE_WIDTHS},
-        ui::SIDEBAR_PROFILE_INSET,
+        ui::SPACE_2,
     };
     use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext, px};
 
@@ -194,7 +195,9 @@ mod tests {
     }
 
     #[gpui::test]
-    fn profile_visible_edges_have_even_insets_with_a_long_name(cx: &mut TestAppContext) {
+    fn profile_edges_match_navigation_insets_and_label_rail_with_a_long_name(
+        cx: &mut TestAppContext,
+    ) {
         let dir = tempfile::tempdir().unwrap();
         let (shell, cx) = cx.add_window_view(|window, cx| {
             Shell::fixture(dir.path().join("session.json"), window, cx)
@@ -208,16 +211,22 @@ mod tests {
             let avatar = cx.debug_bounds("sidebar-profile-avatar").unwrap();
             let chevron = cx.debug_bounds("sidebar-profile-chevron").unwrap();
             let name = cx.debug_bounds("sidebar-profile-name").unwrap();
+            let navigation = cx.debug_bounds("sidebar-nav-1").unwrap();
+            let navigation_label = cx.debug_bounds("sidebar-label-1").unwrap();
             let left_inset = f32::from(avatar.origin.x - profile.origin.x);
             // The glyph's rightmost rounded stroke is x=17.75 in its 24-point SVG.
             let visible_chevron_right =
                 f32::from(chevron.origin.x) + f32::from(chevron.size.width) * 17.75 / 24.;
             let right_inset = f32::from(profile.right()) - visible_chevron_right;
-            assert!((left_inset - SIDEBAR_PROFILE_INSET).abs() < 0.5);
+            assert!(
+                (f32::from(avatar.origin.x - navigation.origin.x) - SPACE_2).abs() < 0.5,
+                "avatar must share the navigation icon inset at width {width}"
+            );
             assert!(
                 (right_inset - left_inset).abs() < 0.5,
                 "insets at width {width}: {left_inset} / {right_inset}"
             );
+            assert!((f32::from(name.origin.x - navigation_label.origin.x)).abs() < 0.5);
             assert!(name.right() <= chevron.origin.x);
         }
         let chevron_center = cx.debug_bounds("sidebar-profile-chevron").unwrap().center();

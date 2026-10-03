@@ -172,8 +172,8 @@ pub const SIDEBAR_INSET: f32 = SPACE_3;
 /// The gap between a navigation icon and its label, chosen so every sidebar
 /// text edge (search, navigation, workspace, user) lands on one line.
 pub const SIDEBAR_TEXT_GAP: f32 = 11.;
-/// Even visible edge insets around the profile avatar and trailing chevron.
-pub const SIDEBAR_PROFILE_INSET: f32 = SPACE_2 - SPACE_HALF;
+/// Match navigation row padding at the avatar and the chevron's visible edge.
+pub const SIDEBAR_PROFILE_INSET: f32 = SPACE_2;
 
 pub const HEADER_CONTROL: f32 = 30.;
 /// The title bar's right inset, shared by the bell and the panel under it.
