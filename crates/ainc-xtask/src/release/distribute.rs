@@ -99,6 +99,10 @@ pub fn sign_bundle(
     let team = env
         .get("APPLE_TEAM_ID")
         .ok_or_else(|| anyhow!("APPLE_TEAM_ID"))?;
+    // rcodesign's bundle signer recursively signs deepest nested bundles first:
+    // Sparkle's XPC services and Updater.app, then Versions/B (including
+    // Autoupdate), then the host. Do not use --shallow or re-sign after archiving;
+    // the native Sparkle job verifies --deep --strict before creating deltas.
     shell.run(
         &[
             "rcodesign".into(),
@@ -257,6 +261,9 @@ pub fn main(
     let requested = opts.required("--commit").to_string();
     let test = opts.flag("--test");
     let stage = opts.flag("--stage");
+    if !test && !stage {
+        bail!("Sparkle releases must use --stage, then the native delta/signing/publication gates");
+    }
     let archive_arg = opts.one("--archive").map(PathBuf::from);
     let candidate_arg = opts.one("--upgrade-candidate").map(PathBuf::from);
     let newer_arg = opts.one("--upgrade-newer").map(PathBuf::from);
@@ -548,19 +555,8 @@ pub fn main(
     }
     upload.push("--clobber".into());
     shell.run(&upload, None)?;
-    if !test && !stage {
-        shell.run(
-            &args(&["gh", "release", "edit", &tag, "--draft=false", "--latest"]),
-            None,
-        )?;
-    }
     println!(
-        "{} {tag}",
-        if test || stage {
-            "Draft staged"
-        } else {
-            "Published"
-        }
+        "Draft staged {tag}; Sparkle signing and native gates are required before publication"
     );
     Ok(())
 }
@@ -668,6 +664,21 @@ mod tests {
         };
         assert!(sign_bundle(&shell, &env, &bundle, &root.join("failed.tar.gz"), root).is_err());
         assert!(!root.join("failed.tar.gz").exists());
+    }
+
+    #[test]
+    fn distribution_cannot_publish_before_sparkle_gates() {
+        let root = tempfile::tempdir().unwrap();
+        let shell = Recorder::default();
+        let error = main(
+            &args(&["--commit", COMMIT]),
+            &HashMap::new(),
+            root.path(),
+            &shell,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("must use --stage"));
+        assert!(shell.calls.lock().unwrap().is_empty());
     }
 
     fn fixture_archive(root: &Path, identity: &Value) -> PathBuf {
@@ -783,7 +794,7 @@ mod tests {
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
-        let raw = args(&["--commit", COMMIT, "--archive", &text(&source)]);
+        let raw = args(&["--commit", COMMIT, "--archive", &text(&source), "--stage"]);
         let error = main(&raw, &env, root, &shell).unwrap_err();
         assert!(error.to_string().contains("CI failed"));
         let notes = fs::read_to_string(root.join(".local/distribution/notes.md")).unwrap();

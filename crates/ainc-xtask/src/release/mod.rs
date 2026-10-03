@@ -24,12 +24,13 @@ mod pipeline_config;
 pub mod prepare;
 pub mod proc;
 pub mod runtime_smoke;
+pub mod sparkle;
 pub mod terminal_smoke;
 pub mod upgrade_gate;
 pub mod version_changed;
 
 /// The subcommands this module serves, for the xtask usage string.
-pub const NAMES: &str = "bump|release-next-patch|release-package-version|release-version|release-version-less|release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-terminal-smoke|release-upgrade-gate|release-version-changed";
+pub const NAMES: &str = "bump|release-next-patch|release-package-version|release-version|release-version-less|release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-terminal-smoke|release-upgrade-gate|release-version-changed|release-sparkle-deltas|release-sparkle-sign";
 
 pub fn handles(operation: &str) -> bool {
     NAMES.split('|').any(|name| name == operation)
@@ -46,6 +47,8 @@ pub fn run(operation: &str, args: Vec<String>, root: &Path) -> Result<()> {
         "release-version-less" => bump::version_less_cli(&args),
         "release-ci-gate" => ci_gate::cli(&args),
         "release-distribute" => distribute::cli(&args),
+        "release-sparkle-deltas" => sparkle::deltas_cli(root, &args),
+        "release-sparkle-sign" => sparkle::sign_cli(&args),
         "release-measure-build" => measure_build::cli(&args),
         "release-runtime-smoke" => runtime_smoke::cli(&args),
         "release-terminal-smoke" => terminal_smoke::cli(&args),
