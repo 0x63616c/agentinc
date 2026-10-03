@@ -48,6 +48,9 @@ Flat: every crate lives directly under `crates/`. No nesting; related crates sha
 prefix instead (`crates/ainc-tickets`, never `crates/ainc-mac/tickets`).
 For the accepted product plan, see [docs/architecture.md](docs/architecture.md) and
 [docs/adr/](docs/adr/). Crate names below describe the current source.
+Adding an endpoint, page, component, tool, migration or CLI command, or cutting a release:
+follow the recipe in [docs/how-to.md](docs/how-to.md).
+Refactors in flight and the standards they enforce: [docs/cohesion-plan.md](docs/cohesion-plan.md).
 
 - `crates/turnkeel` — the SDK. Public modules at `src/*.rs`. The private engine at
   `src/engine/`. Test helpers at `src/testing/`.
