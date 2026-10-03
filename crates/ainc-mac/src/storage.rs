@@ -33,6 +33,10 @@ pub(crate) fn discovery_path() -> Result<PathBuf> {
     Ok(ainc_release::identity::support_dir().join("daemon/api-url"))
 }
 pub async fn client() -> Result<Client> {
+    anyhow::ensure!(
+        !crate::updates::installation_pending(),
+        "Update installation is preparing; companion requests are paused"
+    );
     let discovery = discovery_path()?;
     let configured = std::env::var("AINC_DAEMON_URL").ok();
     let url = if let Some(url) = configured {
@@ -52,6 +56,7 @@ pub async fn client() -> Result<Client> {
             false
         };
         if !ready {
+            let _launch = crate::updates::companion_launch_guard().await?;
             let binary = std::env::current_exe()?.with_file_name("aincd");
             anyhow::ensure!(
                 binary.exists(),

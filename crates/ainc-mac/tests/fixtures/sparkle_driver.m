@@ -11,6 +11,7 @@ static NSApplicationTerminateReply refuseQuit(id self, SEL selector, NSApplicati
 @property BOOL automaticallyDownloadsUpdates;
 @property BOOL automaticallyChecksForUpdates;
 @property NSTimeInterval updateCheckInterval;
+@property BOOL canCheckForUpdates;
 @end
 @implementation TestUpdater
 @end
@@ -113,6 +114,9 @@ int main(void) {
         NSCAssert(event == 8 && sparkle.preparing && replies == 3, @"ready reply waits for real shutdown gate");
         [sparkle preparedWithError:@"Daemon refused drain"];
         NSCAssert(!sparkle.prepared && replies == 3, @"failed drain never releases installation");
+        [ui() dismiss:nil];
+        [sparkle showUpdateInFocus];
+        NSCAssert(ui().offer.visible, @"checking again restores a dismissed drain failure");
         [ui() retry:nil];
         NSCAssert(sparkle.preparing && replies == 3, @"retry re-enters gate");
         [sparkle preparedWithError:nil];
@@ -125,6 +129,13 @@ int main(void) {
         NSCAssert(postponed && installs == 0, @"delegate postpones relaunch");
         [sparkle preparedWithError:nil];
         NSCAssert(installs == 1, @"delegate resumes after drain");
+
+        __block NSUInteger terminationRetries = 0;
+        [sparkle showInstallingUpdateWithApplicationTerminated:NO retryTerminatingApplication:^{ terminationRetries++; }];
+        [ui().cancelButton performClick:nil];
+        NSCAssert(sparkle.preparing && !sparkle.prepared && terminationRetries == 0, @"retry quit flushes work again before invoking Sparkle");
+        [sparkle preparedWithError:nil];
+        NSCAssert(terminationRetries == 1, @"retry quit reaches Sparkle after the barrier");
 
         sparkle.prepared = NO;
         originalShouldTerminate = (IMP)refuseQuit;
@@ -174,6 +185,10 @@ int main(void) {
         [sparkle showDownloadDidStartExtractingUpdate];
         [sparkle showReadyToInstallAndRelaunch:reply];
         NSCAssert(sparkle.ready && sparkle.choice && replies == beforeAutomatic + 1 && !ui().offer, @"background preparation waits for explicit installation");
+        [sparkle action:2 automatic:YES];
+        NSCAssert(!(ainc_sparkle_state() & 8) && replies == beforeAutomatic + 1, @"later suppresses the ready badge without arming install-on-quit");
+        [sparkle showUpdateInFocus];
+        NSCAssert((ainc_sparkle_state() & 8) && ui().offer.visible, @"explicit check restores the held ready offer");
         [sparkle cancelBackgroundInstallation];
         NSCAssert(replies == beforeAutomatic + 2 && choice == SPUUserUpdateChoiceSkip, @"ordinary quit cancels prepared background install");
         NSCAssert(![sparkle.defaults stringForKey:@"SUSkippedVersion"], @"ordinary quit does not skip future offers");
