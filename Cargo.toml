@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/ainc-release", "crates/turnkeel", "crates/turnkeel-macros", "crates/ainc-mac", "crates/ainc-daemon", "crates/ainc-client", "crates/ainc-cli", "crates/ainc-xtask", "crates/gpui-pilot", "crates/gpui-pilot-cli"]
+members = ["crates/ainc-identity", "crates/ainc-release", "crates/turnkeel", "crates/turnkeel-macros", "crates/ainc-mac", "crates/ainc-daemon", "crates/ainc-client", "crates/ainc-cli", "crates/ainc-xtask", "crates/ainc-generate", "crates/gpui-pilot", "crates/gpui-pilot-cli"]
 exclude = ["vendor/gpui"]
 
 [workspace.package]
@@ -10,6 +10,12 @@ version = "0.6.0"
 edition = "2024"
 license = "MIT"
 rust-version = "1.98"
+
+[workspace.lints.rust]
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
 
 [workspace.dependencies]
 turnkeel = { path = "crates/turnkeel" }
@@ -25,8 +31,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
-temporalio-sdk = { version = "1.0", features = ["testing"] }
-temporalio-client = "1.0"
+temporalio-sdk = "1.0"
+# vendored-protox compiles the Temporal protos in Rust, so no protoc install anywhere.
+temporalio-client = { version = "1.0", features = ["vendored-protox"] }
 temporalio-common = "1.0"
 temporalio-macros = "1.0"
 temporalio-workflow = "1.0"
@@ -39,10 +46,80 @@ gpui = { path = "vendor/gpui" }
 [profile.dev]
 debug = 0
 
-# Dependencies (GPUI, its layout and text engines) run optimized even in dev builds, so the
-# app stays smooth under `just dev`. Our own crates stay unoptimized for fast rebuilds.
+# Dependencies get light optimization in dev builds; GPUI and its layout, text and rendering
+# engines run fully optimized so the app stays smooth under `just dev`, as do the proc-macros
+# our crates expand at every build. Crates that cost minutes to optimize and never run hot
+# (C builds, wasm tooling, derive macros we rarely touch) stay at 0. Our own crates are
+# unoptimized for fast rebuilds.
 [profile.dev.package."*"]
-opt-level = 3
+opt-level = 1
+
+# GPUI and the engines it renders with.
+[profile.dev.package]
+gpui = { opt-level = 3 }
+gpui_platform = { opt-level = 3 }
+taffy = { opt-level = 3 }
+cosmic-text = { opt-level = 3 }
+fontdb = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+ttf-parser = { opt-level = 3 }
+swash = { opt-level = 3 }
+skrifa = { opt-level = 3 }
+read-fonts = { opt-level = 3 }
+yazi = { opt-level = 3 }
+zeno = { opt-level = 3 }
+etagere = { opt-level = 3 }
+pathfinder_geometry = { opt-level = 3 }
+pathfinder_simd = { opt-level = 3 }
+resvg = { opt-level = 3 }
+usvg = { opt-level = 3 }
+tiny-skia = { opt-level = 3 }
+tiny-skia-path = { opt-level = 3 }
+lyon = { opt-level = 3 }
+lyon_path = { opt-level = 3 }
+lyon_geom = { opt-level = 3 }
+lyon_algorithms = { opt-level = 3 }
+lyon_tessellation = { opt-level = 3 }
+image = { opt-level = 3 }
+png = { opt-level = 3 }
+metal = { opt-level = 3 }
+naga = { opt-level = 3 }
+wgpu = { opt-level = 3 }
+core-graphics = { opt-level = 3 }
+core-text = { opt-level = 3 }
+objc2 = { opt-level = 3 }
+parking_lot = { opt-level = 3 }
+smallvec = { opt-level = 3 }
+# Proc-macros our crates expand on every build.
+serde_derive = { opt-level = 3 }
+utoipa-gen = { opt-level = 3 }
+sqlx-macros = { opt-level = 3 }
+thiserror-impl = { opt-level = 3 }
+temporalio-macros = { opt-level = 3 }
+# Expensive to optimize, never hot.
+libsqlite3-sys = { opt-level = 0 }
+wit-bindgen = { opt-level = 0 }
+wit-bindgen-core = { opt-level = 0 }
+wit-bindgen-rust = { opt-level = 0 }
+wit-bindgen-rust-macro = { opt-level = 0 }
+wit-component = { opt-level = 0 }
+wit-parser = { opt-level = 0 }
+wasm-encoder = { opt-level = 0 }
+wasm-metadata = { opt-level = 0 }
+wasmparser = { opt-level = 0 }
+wasm-bindgen = { opt-level = 0 }
+wasm-bindgen-macro = { opt-level = 0 }
+wasm-bindgen-macro-support = { opt-level = 0 }
+wasm-bindgen-shared = { opt-level = 0 }
+bon-macros = { opt-level = 0 }
+mockall_derive = { opt-level = 0 }
+derive_more-impl = { opt-level = 0 }
+darling_core = { opt-level = 0 }
+zerofrom-derive = { opt-level = 0 }
+yoke-derive = { opt-level = 0 }
+zerovec-derive = { opt-level = 0 }
+synstructure = { opt-level = 0 }
+prost-derive = { opt-level = 0 }
 
 [profile.release]
 strip = true

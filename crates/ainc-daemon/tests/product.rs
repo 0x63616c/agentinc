@@ -1,3 +1,4 @@
+#![allow(deprecated)] // The Todo commands stay callable until the release after their deprecation.
 use ainc_daemon::{
     legacy,
     product::{self, Command, CommandRequest, Product},
@@ -239,4 +240,184 @@ async fn failed_import_rolls_back_and_future_schema_is_untouched(pool: PgPool) {
     );
     db.execute_batch("PRAGMA user_version=2;").unwrap();
     assert!(legacy::import(&pool, directory.path()).await.unwrap());
+}
+
+mod todo_adapter {
+    use super::*;
+    use ainc_daemon::tickets::{
+        self, ActivityKind, LinkKind, TicketCommand, TicketCommandRequest, TicketStatus,
+    };
+    use axum::{
+        Router,
+        body::{Body, to_bytes},
+        http::Request as HttpRequest,
+    };
+    use tower::ServiceExt;
+
+    fn app(pool: &PgPool) -> Router {
+        ainc_daemon::product_router(Product::new(pool.clone(), "owner-fixture".into()).unwrap())
+    }
+    async fn ticket(app: &Router, command: TicketCommand) -> i64 {
+        let request = TicketCommandRequest {
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            command,
+        };
+        let response = app
+            .clone()
+            .oneshot(
+                HttpRequest::post("/v1/tickets/commands")
+                    .header("agent-inc-client", ainc_release::client_header())
+                    .header("authorization", "Bearer owner-fixture")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 1 << 16).await.unwrap())
+                .unwrap();
+        body["result_id"].as_i64().unwrap_or_default()
+    }
+    /// Every column of a Ticket row that does not name the row itself.
+    async fn row(
+        pool: &PgPool,
+        id: i64,
+    ) -> (String, String, Vec<String>, String, String, i64, i64) {
+        sqlx::query_as("SELECT status,priority,labels,assignee_kind,assignee_id,revision,generation FROM tickets WHERE id=$1")
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+    async fn history(app: &Router, id: i64) -> Vec<(ActivityKind, Option<String>, Option<String>)> {
+        let response = app
+            .clone()
+            .oneshot(
+                HttpRequest::get(format!("/v1/tickets/{id}/activity"))
+                    .header("agent-inc-client", ainc_release::client_header())
+                    .header("authorization", "Bearer owner-fixture")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let entries: Vec<tickets::TicketActivity> =
+            serde_json::from_slice(&to_bytes(response.into_body(), 1 << 20).await.unwrap())
+                .unwrap();
+        entries
+            .into_iter()
+            .map(|e| (e.kind, e.from_value, e.to_value))
+            .collect()
+    }
+
+    #[sqlx::test]
+    async fn todo_commands_write_the_same_rows_and_history_as_ticket_commands(pool: PgPool) {
+        let app = app(&pool);
+        let todo = apply(
+            &pool,
+            Command::CreateTodo {
+                title: "Same".into(),
+            },
+        )
+        .await;
+        let full = ticket(
+            &app,
+            TicketCommand::Create {
+                title: "Same".into(),
+            },
+        )
+        .await;
+        assert_eq!(row(&pool, todo).await, row(&pool, full).await);
+        // Both land at the top of To do, newest first.
+        let column: Vec<i64> = sqlx::query_scalar(
+            "SELECT id FROM tickets WHERE status='to_do' ORDER BY position,id DESC",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(column, [full, todo]);
+        apply(
+            &pool,
+            Command::CompleteTodo {
+                id: todo,
+                completed: true,
+            },
+        )
+        .await;
+        ticket(
+            &app,
+            TicketCommand::SetStatus {
+                id: full,
+                revision: 0,
+                status: TicketStatus::Done,
+            },
+        )
+        .await;
+        assert_eq!(row(&pool, todo).await, row(&pool, full).await);
+        assert_eq!(history(&app, todo).await, history(&app, full).await);
+        assert_eq!(
+            history(&app, todo).await,
+            [
+                (ActivityKind::Created, None, Some("Same".into())),
+                (
+                    ActivityKind::Status,
+                    Some("to_do".into()),
+                    Some("done".into())
+                ),
+            ]
+        );
+        // A stale or missing Todo is a conflict, as it was before.
+        assert!(
+            product::execute(
+                &pool,
+                request(Command::CompleteTodo {
+                    id: todo + 100,
+                    completed: true
+                })
+            )
+            .await
+            .is_err()
+        );
+    }
+
+    #[sqlx::test]
+    async fn deleting_a_todo_records_the_lost_relationship_on_the_other_ticket(pool: PgPool) {
+        let app = app(&pool);
+        let kept = apply(
+            &pool,
+            Command::CreateTodo {
+                title: "Kept".into(),
+            },
+        )
+        .await;
+        let gone = apply(
+            &pool,
+            Command::CreateTodo {
+                title: "Gone".into(),
+            },
+        )
+        .await;
+        ticket(
+            &app,
+            TicketCommand::Link {
+                from_id: gone,
+                to_id: kept,
+                link: LinkKind::Blocks,
+            },
+        )
+        .await;
+        apply(&pool, Command::DeleteTodo { id: gone }).await;
+        assert_eq!(product::snapshot(&pool).await.unwrap().todos.len(), 1);
+        let last = history(&app, kept).await.pop().unwrap();
+        assert_eq!(
+            last,
+            (
+                ActivityKind::Unlinked,
+                Some("blocked_by".into()),
+                Some(gone.to_string())
+            )
+        );
+    }
 }

@@ -15,19 +15,18 @@ _hooks:
 check: _hooks
     cargo xtask check
 
-# Run every check CI runs. Starts a throwaway Postgres in Docker unless DATABASE_URL is set.
+# Apply the fixes clippy and rustfmt can make on their own.
+fix: _hooks
+    cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
+    cargo fmt --all
+
+# Run every check CI runs: `check`, then nextest and the doctests. Starts a throwaway Postgres in Docker unless DATABASE_URL is set.
 test: check
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -z "${DATABASE_URL:-}" ]; then
-        container=$(docker run -d --rm -e POSTGRES_PASSWORD=test -p 127.0.0.1::5432 postgres:16-alpine)
-        trap 'docker stop "$container" >/dev/null' EXIT
-        until docker exec "$container" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
-        port=$(docker port "$container" 5432/tcp | head -1 | sed 's/.*://')
-        export DATABASE_URL="postgres://postgres:test@127.0.0.1:$port/postgres"
-    fi
-    # The xtask workspace test checks generation using the same compiled dependency graph.
-    cargo test --locked --workspace
+    cargo xtask test
+
+# Remove the incremental compilation caches under target/ (they grow without bound; dependencies stay built).
+clean-incremental:
+    cargo xtask clean-incremental
 
 # Bump to the next version (patch, minor, major, or an explicit one of those) and commit; pushing to main ships it.
 release bump: _hooks

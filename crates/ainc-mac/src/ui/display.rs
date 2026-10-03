@@ -102,17 +102,6 @@ pub fn heading(text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
-/// A short local date and time for logs and history rows.
-pub fn timestamp(seconds: i64) -> String {
-    chrono::DateTime::from_timestamp(seconds, 0)
-        .map(|t| {
-            t.with_timezone(&chrono::Local)
-                .format("%b %-d, %H:%M")
-                .to_string()
-        })
-        .unwrap_or_else(|| "Time unavailable".into())
-}
-
 /// Tertiary copy: hints under fields, times beside authors.
 pub fn hint(text: impl Into<SharedString>) -> Div {
     div()
@@ -154,7 +143,7 @@ pub fn nav_icon(
         .flex_shrink_0()
 }
 
-/// A keyboard shortcut hint: `⌘ + K`, `↵`, `ESC`.
+/// A keyboard shortcut hint from `ui::shortcuts`: `⌘K`, `↵`, `⎋`.
 pub fn kbd(label: impl Into<SharedString>) -> Div {
     row()
         .h(px(20.))

@@ -142,22 +142,13 @@ async fn prepare(pool: &PgPool, id: i64) -> Result<(StoredSession, String, i64)>
         .bind(parent)
         .execute(&mut *tx)
         .await?;
-    let (conversation, prompt, model, session_id, attempt): (
-        i64,
-        String,
-        Option<String>,
-        Option<String>,
-        i64,
-    ) = sqlx::query_as(
-        "SELECT conversation_id,prompt,model,session_id,attempt FROM turns WHERE id=$1 FOR UPDATE",
-    )
-    .bind(id)
-    .fetch_one(&mut *tx)
-    .await?;
-    sqlx::query("SELECT id FROM conversations WHERE id=$1 FOR UPDATE")
-        .bind(conversation)
-        .execute(&mut *tx)
-        .await?;
+    // The Conversation is locked above; a turn never changes its Conversation.
+    let conversation = parent;
+    let (prompt, model, session_id, attempt): (String, Option<String>, Option<String>, i64) =
+        sqlx::query_as("SELECT prompt,model,session_id,attempt FROM turns WHERE id=$1 FOR UPDATE")
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?;
     let model = model
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "connection-default".into());

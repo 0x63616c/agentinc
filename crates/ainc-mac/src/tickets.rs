@@ -20,13 +20,16 @@ mod list;
 pub(crate) mod model;
 
 use crate::{
+    action::{Pending, Run},
+    daemon::Daemon,
     input::{Submit, TextInput},
     model::Overlay,
-    storage::{
-        Assignee, AssigneeKind, Store, Ticket, TicketActivity, TicketCommand, TicketPriority,
-        TicketSnapshot, TicketStatus,
-    },
+    sync::{SliceChanged, Sync},
     ui::*,
+};
+use ainc_client::types::{
+    Assignee, AssigneeKind, Ticket, TicketActivity, TicketCommand, TicketPriority, TicketSnapshot,
+    TicketStatus,
 };
 use gpui::{prelude::*, *};
 use model::*;
@@ -88,7 +91,8 @@ impl Default for Draft {
 }
 
 pub struct TicketsPage {
-    store: Option<Arc<Store>>,
+    daemon: Option<Arc<Daemon>>,
+    sync: Entity<Sync>,
     overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     state: TicketSnapshot,
     view: View,
@@ -115,12 +119,8 @@ pub struct TicketsPage {
     /// The open Ticket's history was read at this stamp.
     activity_for: Option<ActivityStamp>,
     drag: board::DragState,
-    error: Option<String>,
     form_error: Option<String>,
-    pending: bool,
-    refreshing: bool,
-    loaded: bool,
-    loading_started: Instant,
+    pending: Pending,
     page_focus: FocusHandle,
     restore_focus: bool,
     add_focus: FocusHandle,
@@ -155,7 +155,7 @@ impl TicketsPage {
     }
     pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
         anyhow::ensure!(
-            !self.pending,
+            !self.pending.busy(),
             "Wait for the current change to finish before installing"
         );
         let mut drafts = serde_json::json!({
@@ -188,8 +188,8 @@ impl TicketsPage {
     }
 
     pub fn new(
-        store: Option<Arc<Store>>,
-        storage_error: Option<String>,
+        daemon: Option<Arc<Daemon>>,
+        sync: Entity<Sync>,
         overlays: Rc<RefCell<OverlayHost<Overlay>>>,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -232,9 +232,18 @@ impl TicketsPage {
                 cx.notify();
             }),
             cx.observe(&agent_name, |_, _, cx| cx.notify()),
+            cx.observe(&sync, |_, _, cx| cx.notify()),
+            cx.subscribe(&sync, |this, _, event: &SliceChanged, cx| {
+                if *event == SliceChanged::Tickets {
+                    this.reload();
+                    this.load_activity(cx);
+                    cx.notify();
+                }
+            }),
         ];
         let mut this = Self {
-            store,
+            daemon,
+            sync,
             overlays,
             state: TicketSnapshot {
                 tickets: vec![],
@@ -266,12 +275,8 @@ impl TicketsPage {
             activity: vec![],
             activity_for: None,
             drag: board::DragState::default(),
-            error: storage_error,
             form_error: None,
-            pending: false,
-            refreshing: false,
-            loaded: cfg!(test),
-            loading_started: Instant::now(),
+            pending: Pending::default(),
             page_focus: cx.focus_handle(),
             restore_focus: false,
             add_focus: cx.focus_handle(),
@@ -281,21 +286,6 @@ impl TicketsPage {
             _subscriptions: subscriptions,
         };
         this.reload();
-        #[cfg(not(test))]
-        {
-            this.refresh(cx);
-            cx.spawn(async move |this, cx| {
-                loop {
-                    cx.background_executor()
-                        .timer(std::time::Duration::from_secs(2))
-                        .await;
-                    if this.update(cx, |this, cx| this.refresh(cx)).is_err() {
-                        break;
-                    }
-                }
-            })
-            .detach();
-        }
         this
     }
     /// The local person the `owner` principal stands for.
@@ -304,8 +294,8 @@ impl TicketsPage {
         cx.notify();
     }
     pub(crate) fn reload(&mut self) {
-        if let Some(store) = &self.store {
-            self.state = store.tickets();
+        if let Some(daemon) = &self.daemon {
+            self.state = daemon.tickets();
         }
         if self
             .selected
@@ -313,39 +303,6 @@ impl TicketsPage {
         {
             self.selected = None;
         }
-    }
-    #[cfg_attr(test, allow(dead_code))]
-    fn refresh(&mut self, cx: &mut Context<Self>) {
-        if self.refreshing || self.pending {
-            return;
-        }
-        let Some(store) = self.store.clone() else {
-            return;
-        };
-        if self.error.is_some() {
-            self.loading_started = Instant::now();
-        }
-        self.refreshing = true;
-        let request = cx
-            .background_executor()
-            .spawn(async move { store.refresh() });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.refreshing = false;
-                match result {
-                    Ok(()) => {
-                        this.reload();
-                        this.loaded = true;
-                        this.error = None;
-                        this.load_activity(cx);
-                    }
-                    Err(error) => this.error = Some(format!("Tickets unavailable: {error}")),
-                }
-                cx.notify();
-            });
-        })
-        .detach();
     }
     fn activity_stamp(&self) -> Option<ActivityStamp> {
         let ticket = self.selected.and_then(|id| self.ticket(id))?;
@@ -366,29 +323,26 @@ impl TicketsPage {
     /// Read the open Ticket's history in the background, unless nothing it
     /// depends on has changed since the last read.
     fn load_activity(&mut self, cx: &mut Context<Self>) {
-        let (Some(store), Some(stamp)) = (self.store.clone(), self.activity_stamp()) else {
+        let (Some(daemon), Some(stamp)) = (self.daemon.clone(), self.activity_stamp()) else {
             return;
         };
         if self.activity_for.as_ref() == Some(&stamp) {
             return;
         }
         let id = stamp.0;
-        let request = cx
-            .background_executor()
-            .spawn(async move { store.ticket_activity(id) });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
+        // Reads of different Tickets may overlap; the stamp keeps them straight.
+        cx.run(
+            &Pending::default(),
+            move || Ok(daemon.fetch(crate::daemon::Activity(id))?),
+            move |this, result, _| {
                 if this.selected == Some(id)
                     && let Ok(activity) = result
                 {
                     this.activity = activity;
                     this.activity_for = Some(stamp);
-                    cx.notify();
                 }
-            });
-        })
-        .detach();
+            },
+        );
     }
     pub fn select(&mut self, id: i64, cx: &mut Context<Self>) {
         if self.selected != Some(id) {
@@ -564,51 +518,35 @@ impl TicketsPage {
         );
     }
     fn command(&mut self, command: TicketCommand, cx: &mut Context<Self>) {
-        let Some(store) = self.store.clone() else {
+        let Some(daemon) = self.daemon.clone() else {
             return;
         };
-        self.mutate(move || store.ticket_command(command).map(|_| ()), cx);
+        self.mutate(move || Ok(daemon.send(command).map(|_| ())?), cx);
     }
     fn mutate(
         &mut self,
         operation: impl FnOnce() -> anyhow::Result<()> + Send + 'static,
         cx: &mut Context<Self>,
     ) {
-        if self.pending {
-            return;
-        }
-        self.pending = true;
-        let request = cx.background_executor().spawn(async move { operation() });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.pending = false;
-                this.restore_focus = true;
-                // The store holds the daemon's answer either way; an optimistic
-                // board move that was refused snaps back here.
-                this.reload();
-                match result {
-                    Ok(()) => {
-                        this.overlays.borrow_mut().close();
-                        this.form_error = None;
-                        this.loaded = true;
-                        this.error = None;
-                        this.editing_description = false;
-                        this.comment.update(cx, |input, cx| {
-                            input.reset();
-                            cx.notify();
-                        });
-                        this.load_activity(cx);
-                    }
-                    Err(error) => {
-                        this.form_error = Some(format!("Change was not acknowledged: {error}"))
-                    }
+        cx.run(&self.pending.clone(), operation, |this, result, cx| {
+            this.restore_focus = true;
+            // The Daemon holds the daemon's answer either way; an optimistic
+            // board move that was refused snaps back here.
+            this.reload();
+            match result {
+                Ok(()) => {
+                    this.overlays.borrow_mut().close();
+                    this.form_error = None;
+                    this.editing_description = false;
+                    this.comment.update(cx, |input, cx| {
+                        input.reset();
+                        cx.notify();
+                    });
+                    this.load_activity(cx);
                 }
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
+                Err(failure) => this.form_error = Some(failure.message("The Ticket change")),
+            }
+        });
     }
 
     // Shared pieces for the board, list and detail.
@@ -645,7 +583,7 @@ impl TicketsPage {
         self.state.runs.iter().any(|run| {
             run.ticket_id == ticket.id
                 && run.generation == ticket.generation
-                && matches!(run.state.as_str(), "queued" | "running")
+                && is_active(&run.state)
         })
     }
     fn comment_count(&self, id: i64) -> usize {
@@ -898,7 +836,7 @@ impl TicketsPage {
                 Button::new("tickets.create", "New Ticket")
                     .primary()
                     .icon("plus")
-                    .enabled(self.store.is_some() && !self.pending)
+                    .enabled(self.daemon.is_some() && !self.pending.busy())
                     .track_focus(&self.add_focus)
                     .build(
                         &self.hover,
@@ -907,8 +845,9 @@ impl TicketsPage {
                     )
                     .debug_selector(|| "tickets.create".into()),
             );
-        let notices: Vec<String> = self
-            .error
+        let sync = self.sync.read(cx);
+        let (loaded, error) = (sync.loaded, sync.message());
+        let notices: Vec<String> = error
             .iter()
             .chain(
                 self.form_error
@@ -918,7 +857,7 @@ impl TicketsPage {
             .cloned()
             .collect();
         let visible = self.visible();
-        let body = if !self.loaded && self.error.is_none() {
+        let body = if !loaded && error.is_none() {
             skeleton_rows("tickets.loading", 4).into_any_element()
         } else if self.view == View::Board {
             self.board(&visible, window, cx).into_any_element()
@@ -930,7 +869,7 @@ impl TicketsPage {
                     Button::new("tickets.create.empty", "New Ticket")
                         .secondary()
                         .icon("plus")
-                        .enabled(self.store.is_some() && !self.pending)
+                        .enabled(self.daemon.is_some() && !self.pending.busy())
                         .build(
                             &self.hover,
                             |this: &mut Self, window, cx| this.open_create(None, window, cx),

@@ -1,5 +1,3 @@
-use std::process::Command;
-
 fn main() {
     println!("cargo:rerun-if-env-changed=AINC_CHANNEL");
     println!("cargo:rerun-if-env-changed=AINC_COMMIT");
@@ -16,31 +14,6 @@ fn main() {
     } else {
         assert!(std::env::var_os("AINC_UPGRADE_TEST_VERSION").is_none());
     }
-    if std::env::var_os("AINC_COMMIT").is_none() {
-        if let Ok(output) = Command::new("git").args(["rev-parse", "HEAD"]).output()
-            && output.status.success()
-        {
-            println!(
-                "cargo:rustc-env=AINC_COMMIT={}",
-                String::from_utf8_lossy(&output.stdout).trim()
-            );
-        }
-        let branch = Command::new("git")
-            .args(["symbolic-ref", "HEAD"])
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned());
-        for reference in [Some("HEAD"), branch.as_deref()].into_iter().flatten() {
-            if let Ok(output) = Command::new("git")
-                .args(["rev-parse", "--git-path", reference])
-                .output()
-            {
-                println!(
-                    "cargo:rerun-if-changed={}",
-                    String::from_utf8_lossy(&output.stdout).trim()
-                );
-            }
-        }
-    }
+    // The commit comes only from the release pipeline (`AINC_COMMIT`, set by `release prepare`).
+    // Development builds carry none, so a commit never invalidates a build.
 }

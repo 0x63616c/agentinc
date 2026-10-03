@@ -166,7 +166,7 @@ impl Smoke {
     }
 
     fn cargo(&self, log: &File, env: &[(&str, String)], args: &[&str]) -> Result<()> {
-        let mut command = Command::new("cargo");
+        let mut command = crate::spawn::cargo();
         command
             .args(args)
             .envs(env.iter().map(|(k, v)| (*k, v.as_str())))

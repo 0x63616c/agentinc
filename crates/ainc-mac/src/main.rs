@@ -1,14 +1,16 @@
 mod about;
+mod action;
 mod assistant;
 mod automations;
 mod components;
+mod daemon;
 mod evee;
 mod input;
 mod model;
 mod native_update;
 mod profile;
 mod shell;
-mod storage;
+mod sync;
 mod temporal;
 #[cfg(target_os = "macos")]
 mod terminal;
@@ -52,6 +54,8 @@ fn main_window_options(
 fn main() {
     native_update::restore_relaunch_environment().expect("restore update relaunch profile");
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
+    // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     #[cfg(all(feature = "automation", target_os = "macos"))]
     if args.len() == 3 && args[0] == "--update-ui-smoke" {

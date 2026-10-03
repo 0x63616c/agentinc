@@ -1,15 +1,14 @@
 mod checks;
 mod readme;
 mod release;
+mod spawn;
 mod vendor_pilot_gpui;
 
 use anyhow::{Context, Result, anyhow, bail};
-use progenitor::{GenerationSettings, Generator, InterfaceStyle};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     env, fs,
-    io::Write,
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -95,7 +94,7 @@ fn write_instance(instance: &Instance) -> Result<Instance> {
 }
 
 fn cmd(instance: &Instance, program: &str) -> Command {
-    let mut command = Command::new(program);
+    let mut command = spawn::command(program);
     command
         .current_dir(&instance.path)
         .env("AINC_INSTANCE", &instance.id)
@@ -294,133 +293,22 @@ fn daemon(instance: &Instance) -> Result<()> {
     Ok(())
 }
 
-fn generate(root: &Path, check: bool) -> Result<()> {
-    let mut spec = ainc_daemon::openapi();
-    // This API uses the common 3.0/3.1 schema subset. Validate that assumption
-    // before changing the dialect marker; never silently reinterpret nullability.
-    fn compatible(value: &serde_json::Value) -> Result<()> {
-        match value {
-            serde_json::Value::Object(map) => {
-                for (key, child) in map {
-                    if [
-                        "const",
-                        "if",
-                        "then",
-                        "else",
-                        "unevaluatedProperties",
-                        "$schema",
-                    ]
-                    .contains(&key.as_str())
-                    {
-                        bail!("OpenAPI 3.1-only schema key: {key}");
-                    }
-                    if key == "type" && child.is_array() {
-                        bail!("OpenAPI 3.1 union type needs conversion");
-                    }
-                    compatible(child)?;
-                }
-            }
-            serde_json::Value::Array(items) => {
-                for child in items {
-                    compatible(child)?;
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-    // Utoipa represents nullable primitives as a JSON Schema type array.
-    // Convert exactly that shape to the OpenAPI 3.0 nullable keyword.
-    fn nullable(value: &mut serde_json::Value) -> Result<()> {
-        match value {
-            serde_json::Value::Object(map) => {
-                if let Some(serde_json::Value::Array(types)) = map.get("type") {
-                    let non_null: Vec<_> =
-                        types.iter().filter(|v| **v != "null").cloned().collect();
-                    if types.len() != 2 || non_null.len() != 1 {
-                        bail!("unsupported schema type union");
-                    }
-                    map.insert("type".into(), non_null[0].clone());
-                    map.insert("nullable".into(), true.into());
-                }
-                for child in map.values_mut() {
-                    nullable(child)?;
-                }
-            }
-            serde_json::Value::Array(items) => {
-                for child in items {
-                    nullable(child)?;
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-    nullable(&mut spec)?;
-    compatible(&spec)?;
-    if let Some(license) = spec["info"]["license"].as_object_mut() {
-        license.remove("identifier"); // OpenAPI 3.1 field; name remains for 3.0.3.
-    }
-    spec["openapi"] = "3.0.3".into();
-    // Workspace feature unification can enable serde_json's preserve_order.
-    // Generated output must stay canonical regardless of that dependency feature.
-    spec.sort_all_objects();
-    let spec_text = format!("{}\n", serde_json::to_string_pretty(&spec)?);
-    let parsed: openapiv3::OpenAPI = serde_json::from_value(spec)?;
-    let mut settings = GenerationSettings::default();
-    settings
-        .with_interface(InterfaceStyle::Builder)
-        .with_derive("schemars::JsonSchema")
-        .with_pre_hook_async(syn::parse_quote!(crate::client_header))
-        .with_post_hook_async(syn::parse_quote!(crate::server_compatibility));
-    let mut generator = Generator::new(&settings);
-    fn format(source: String) -> Result<String> {
-        // Progenitor emits block-doc examples whose fences rustfmt indents into
-        // invalid doctests. Keep them as comments in the checked-in output.
-        let source = source.replace("/**", "/*");
-        let mut rustfmt = Command::new("rustfmt")
-            .args(["--edition", "2024", "--emit", "stdout"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
-        rustfmt
-            .stdin
-            .take()
-            .context("rustfmt stdin")?
-            .write_all(source.as_bytes())?;
-        let output = rustfmt.wait_with_output()?;
-        if !output.status.success() {
-            bail!("rustfmt failed");
-        }
-        Ok(String::from_utf8(output.stdout)?)
-    }
-    let client = format(prettyplease::unparse(&syn::parse2(
-        generator.generate_tokens(&parsed)?,
-    )?))?;
-    let cli = format(prettyplease::unparse(&syn::parse2(
-        generator.cli(&parsed, "ainc_client")?,
-    )?))?;
-    for (path, content) in [
-        (root.join("api/openapi-3.0.json"), spec_text),
-        (root.join("crates/ainc-client/src/generated.rs"), client),
-        (root.join("crates/ainc-cli/src/generated.rs"), cli),
-    ] {
-        if check {
-            if fs::read_to_string(&path).ok().as_deref() != Some(&content) {
-                bail!("generated file differs: {}", path.display());
-            }
-        } else {
-            fs::create_dir_all(path.parent().context("generated file parent")?)?;
-            fs::write(path, content)?;
-        }
-    }
+/// `generate` lives in its own crate (`ainc-generate`) so xtask never links the daemon.
+fn generate(root: &Path, args: Vec<String>) -> Result<()> {
+    let status = spawn::cargo()
+        .args(["run", "--locked", "-p", "ainc-generate", "--"])
+        .args(args)
+        .current_dir(root)
+        .status()
+        .context("could not run cargo")?;
+    anyhow::ensure!(status.success(), "generate failed");
     Ok(())
 }
 
 /// Run one command from the repo root and fail the check if it fails.
 fn step(root: &Path, command: &[&str]) -> Result<()> {
     println!("$ {}", command.join(" "));
-    let status = Command::new(command[0])
+    let status = spawn::command(command[0])
         .args(&command[1..])
         .current_dir(root)
         .status()
@@ -429,40 +317,189 @@ fn step(root: &Path, command: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// The native UI rules: colors, spacing and component forks. CI runs this on its own, after
+/// The native UI rules: colors, spacing, component forks and presentation vocabulary. CI runs this on its own, after
 /// its tests have built xtask; `check` runs it as part of the static gate.
 fn check_ui(root: &Path) -> Result<()> {
     let app = root.join("crates/ainc-mac");
     checks::colors::run(&app)?;
     checks::ui_spacing::run(&app)?;
-    checks::ui_core::run(&app)
+    checks::ui_core::run(&app)?;
+    checks::ui_vocabulary::run(&app)
+}
+
+/// `--profile NAME` from the argument list, if present: CI passes `ci`, local runs use `dev`.
+fn profile(args: &[String]) -> Result<Option<String>> {
+    match args {
+        [] => Ok(None),
+        [flag, name] if flag == "--profile" => Ok(Some(name.clone())),
+        _ => bail!("expected only `--profile NAME`, got {args:?}"),
+    }
 }
 
 /// The static gate: everything CI checks that needs no database and no test run.
 /// `just check`, the pre-commit hook and CI all come through here.
-fn check(root: &Path) -> Result<()> {
+fn check(root: &Path, profile: Option<&str>) -> Result<()> {
     step(root, &["cargo", "fmt", "--all", "--", "--check"])?;
     check_ui(root)?;
-    step(
-        root,
-        &[
-            "cargo",
-            "clippy",
-            "--locked",
-            "--workspace",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )
+    let mut clippy = vec![
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+    ];
+    if let Some(profile) = profile {
+        clippy.extend(["--profile", profile]);
+    }
+    clippy.extend(["--", "-D", "warnings"]);
+    step(root, &clippy)?;
+    optional_tools(root)
+}
+
+/// Linters that run only when installed: a missing one prints a note instead of failing, so
+/// a fresh machine still passes `just check` and CI installs the ones it wants.
+fn optional_tools(root: &Path) -> Result<()> {
+    const TOOLS: [(&str, &str, &[&str]); 4] = [
+        ("cargo-deny", "cargo-deny", &["cargo", "deny", "check"]),
+        ("cargo-machete", "cargo-machete", &["cargo", "machete"]),
+        ("typos", "typos-cli", &["typos"]),
+        ("taplo", "taplo-cli", &["taplo", "fmt", "--check"]),
+    ];
+    for (binary, package, command) in TOOLS {
+        if installed(binary) {
+            step(root, command)?;
+        } else {
+            println!(
+                "note: {binary} is not installed; skipping (cargo install {package} --locked)"
+            );
+        }
+    }
+    Ok(())
+}
+
+fn installed(binary: &str) -> bool {
+    env::var_os("PATH")
+        .is_some_and(|path| env::split_paths(&path).any(|dir| dir.join(binary).is_file()))
+}
+
+/// A throwaway Postgres in Docker, stopped when dropped. `--rm` removes the container.
+struct Postgres {
+    container: String,
+}
+
+impl Postgres {
+    const READY_ATTEMPTS: u32 = 120;
+
+    fn start() -> Result<(Self, String)> {
+        let output = spawn::command("docker")
+            .args([
+                "run",
+                "-d",
+                "--rm",
+                "-e",
+                "POSTGRES_PASSWORD=test",
+                "-p",
+                "127.0.0.1::5432",
+                "postgres:16-alpine",
+            ])
+            .output()
+            .context("could not run docker; set DATABASE_URL to use an existing Postgres")?;
+        if !output.status.success() {
+            bail!(
+                "docker run failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        let postgres = Self {
+            container: String::from_utf8(output.stdout)?.trim().to_owned(),
+        };
+        let mut ready = false;
+        for _ in 0..Self::READY_ATTEMPTS {
+            let status = spawn::command("docker")
+                .args(["exec", &postgres.container, "pg_isready", "-U", "postgres"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+            if status.success() {
+                ready = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(500));
+        }
+        if !ready {
+            bail!("Postgres did not become ready");
+        }
+        let output = spawn::command("docker")
+            .args(["port", &postgres.container, "5432/tcp"])
+            .output()?;
+        let port = String::from_utf8(output.stdout)?
+            .lines()
+            .next()
+            .and_then(|line| line.rsplit(':').next())
+            .context("docker port gave no mapping")?
+            .to_owned();
+        let url = format!("postgres://postgres:test@127.0.0.1:{port}/postgres");
+        Ok((postgres, url))
+    }
+}
+
+impl Drop for Postgres {
+    fn drop(&mut self) {
+        let _ = spawn::command("docker")
+            .args(["stop", &self.container])
+            .stdout(Stdio::null())
+            .status();
+    }
+}
+
+/// Every test CI runs: nextest over the workspace, then the doctests nextest cannot run.
+/// Starts a throwaway Postgres unless `DATABASE_URL` is set. Does not run `check`.
+fn test(root: &Path, profile: Option<&str>) -> Result<()> {
+    let postgres = match env::var_os("DATABASE_URL") {
+        Some(_) => None,
+        None => {
+            let (postgres, url) = Postgres::start()?;
+            println!("DATABASE_URL={url}");
+            // SAFETY: xtask is single-threaded here; the child processes read this.
+            unsafe { env::set_var("DATABASE_URL", url) };
+            Some(postgres)
+        }
+    };
+    let mut nextest = vec!["cargo", "nextest", "run", "--workspace", "--locked"];
+    let mut doctests = vec!["cargo", "test", "--doc", "--workspace", "--locked"];
+    if let Some(profile) = profile {
+        nextest.extend(["--cargo-profile", profile]);
+        doctests.extend(["--profile", profile]);
+    }
+    let result = step(root, &nextest).and_then(|()| step(root, &doctests));
+    drop(postgres);
+    result
+}
+
+/// Remove every profile's incremental cache under `target/`. Our own crates rebuild from
+/// scratch next time; dependencies are unaffected.
+fn clean_incremental(root: &Path) -> Result<()> {
+    let target = env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("target"));
+    let Ok(profiles) = fs::read_dir(&target) else {
+        return Ok(());
+    };
+    for profile in profiles {
+        let incremental = profile?.path().join("incremental");
+        if incremental.is_dir() {
+            println!("removing {}", incremental.display());
+            fs::remove_dir_all(&incremental)?;
+        }
+    }
+    Ok(())
 }
 
 fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args.next().ok_or_else(|| {
         anyhow!(
-            "usage: cargo xtask dev|down|doctor|check|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
+            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
             release::NAMES,
             readme::NAMES
         )
@@ -472,11 +509,13 @@ fn main() -> Result<()> {
     match operation.as_str() {
         op if release::handles(op) => release::run(op, args.collect(), &root),
         op if readme::handles(op) => readme::run(op, args.collect(), &root),
-        "check" => check(&root),
+        "check" => check(&root, profile(&args.collect::<Vec<_>>())?.as_deref()),
+        "test" => test(&root, profile(&args.collect::<Vec<_>>())?.as_deref()),
+        "clean-incremental" => clean_incremental(&root),
         "check-ui" => check_ui(&root),
         "check-commit-msg" => checks::commit_msg::run(&args.collect::<Vec<_>>()),
         "vendor-pilot-gpui" => vendor_pilot_gpui::cli(&args.collect::<Vec<_>>(), &root),
-        "generate" => generate(&root, args.next().as_deref() == Some("--check")),
+        "generate" => generate(&root, args.collect()),
         "dev" => {
             let mut instance = write_instance(&instance)?;
             if TcpListener::bind(("127.0.0.1", instance.tilt_port)).is_err() {
@@ -563,12 +602,6 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn generated_api_and_clients_are_current() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        generate(&root, true).unwrap();
-    }
 
     #[test]
     fn canonical_path_controls_identity() {

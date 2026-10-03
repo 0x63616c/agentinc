@@ -24,6 +24,7 @@ mod recurring;
 mod run;
 mod runtime;
 mod session;
+#[cfg(feature = "testing")]
 pub mod testing;
 mod tool;
 

@@ -4,12 +4,16 @@
 #![allow(dead_code, unused_imports)]
 #[path = "../src/about.rs"]
 mod about;
+#[path = "../src/action.rs"]
+mod action;
 #[path = "../src/assistant.rs"]
 mod assistant;
 #[path = "../src/automations.rs"]
 mod automations;
 #[path = "../src/components.rs"]
 mod components;
+#[path = "../src/daemon.rs"]
+mod daemon;
 #[path = "../src/evee.rs"]
 mod evee;
 #[path = "../src/input.rs"]
@@ -22,8 +26,8 @@ mod native_update;
 mod profile;
 #[path = "../src/shell.rs"]
 mod shell;
-#[path = "../src/storage.rs"]
-mod storage;
+#[path = "../src/sync.rs"]
+mod sync;
 #[path = "../src/temporal.rs"]
 mod temporal;
 #[path = "../src/terminal.rs"]

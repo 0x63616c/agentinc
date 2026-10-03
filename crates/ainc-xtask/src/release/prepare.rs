@@ -196,7 +196,7 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
     } else {
         build
     };
-    let mut command = Command::new("cargo");
+    let mut command = crate::spawn::cargo();
     command
         .args([
             "build",

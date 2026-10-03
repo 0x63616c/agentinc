@@ -26,7 +26,10 @@ stored as SHA-256 hashes and restricted to a run's Ticket/generation. Agent read
 show only their assigned Ticket; Comments and permitted completion commands pass
 the same domain boundary as owner commands. Authorization is checked again inside
 the transaction, including receipt reads, so stale credentials cannot write after
-cancellation/reassignment. Agents cannot register another agent or reassign Tickets.
+cancellation/reassignment. "Is this agent's assignment still live?" (same assignee, same
+generation, actionable status, a queued or running run) is answered once, by
+`src/tickets/fence.rs`, and every writer acting for an agent asks it. Agents cannot
+register another agent or reassign Tickets.
 
 Real Postgres tests cover in-place migration, repeat/concurrent commands, payload
 and revision conflicts, rollback of invalid assignment, outbox atomicity, cross-workspace

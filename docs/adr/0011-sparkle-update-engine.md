@@ -11,6 +11,9 @@ reply does not prevent this. Therefore we never release Sparkle's initial Instal
 reply until the user has chosen installation and the runtime has drained. Cached
 bytes enter Sparkle through its public mutable download-request hook, retaining
 Sparkle's signature verification, delta application and full-download fallback.
+If an armed installation is interrupted, the startup fence pins that target's signed
+appcast, published beside its immutable release assets, so the same version stays
+retryable after the latest feed advances; a newer release cannot supersede it.
 
 The full compressed bundle was approximately 174 MB at version 0.5.0 because it
 includes the app, daemon and local runtimes. Unchanged runtime binaries should not

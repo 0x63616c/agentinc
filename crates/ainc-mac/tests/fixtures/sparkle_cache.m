@@ -71,6 +71,38 @@ static void verifyCachedRequest(void) {
             NSCAssert(readFence(sparkle.fenceURL) && !sparkle.prepared, @"post-extraction failure cannot prove installer death and remains fenced for retry");
             releaseFenceLease();
             NSCAssert(!restoreFence(sparkle.fenceURL, @"1") && readFence(sparkle.fenceURL), @"old startup remains blocked after ambiguous installer failure");
+
+            // A proxy page cached for the full archive must not be replayed.
+            NSDictionary *armed = readFence(sparkle.fenceURL);
+            TestItem *full = [TestItem new];
+            full.displayVersionString = @"2";
+            full.propertiesDictionary = @{@"signature":@"signed-full-identity"};
+            full.fileURL = [origin.url.URLByDeletingLastPathComponent URLByAppendingPathComponent:@"AgentInc.tar.gz"];
+            NSData *poison = [@"200 OK proxy block page" dataUsingEncoding:NSUTF8StringEncoding];
+            sparkle.item = (SUAppcastItem *)full;
+            NSURL *poisoned = [sparkle cachedArchive];
+            NSCAssert(!writePrivateData(poison, poisoned), @"seed poisoned full archive");
+            full.contentLength = poison.length + 1;
+            NSCAssert(![sparkle hasCachedArchive], @"a cached size differing from the signed enclosure is never served");
+            full.contentLength = poison.length;
+            NSCAssert([sparkle hasCachedArchive], @"matching size alone leaves verification to Sparkle");
+            __block NSUInteger fullInstalls = 0;
+            sparkle.choice = ^(SPUUserUpdateChoice choice) { fullInstalls++; };
+            [sparkle action:3 automatic:YES];
+            ainc_sparkle_prepared(NULL);
+            NSMutableURLRequest *served = [NSMutableURLRequest requestWithURL:full.fileURL];
+            [sparkle updater:sparkle.updater willDownloadUpdate:(SUAppcastItem *)full withRequest:served];
+            NSCAssert(fullInstalls == 1 && [served.URL.host isEqualToString:@"127.0.0.1"] && ![served.URL isEqual:full.fileURL], @"retry serves the cached full archive");
+            [sparkle updater:sparkle.updater willExtractUpdate:(SUAppcastItem *)full];
+            [sparkle updater:sparkle.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:[NSError errorWithDomain:@"SUSparkleErrorDomain" code:3001 userInfo:nil]];
+            NSCAssert(![NSFileManager.defaultManager fileExistsAtPath:poisoned.path] && [readFence(sparkle.fenceURL) isEqualToDictionary:armed], @"rejected served bytes are evicted while the armed recovery fence remains");
+            sparkle.choice = ^(SPUUserUpdateChoice choice) { fullInstalls++; };
+            [sparkle action:3 automatic:YES];
+            ainc_sparkle_prepared(NULL);
+            NSMutableURLRequest *refetch = [NSMutableURLRequest requestWithURL:full.fileURL];
+            [sparkle updater:sparkle.updater willDownloadUpdate:(SUAppcastItem *)full withRequest:refetch];
+            NSCAssert(fullInstalls == 2 && [refetch.URL isEqual:full.fileURL], @"the next retry fetches the authenticated release instead of replaying the cache");
+            releaseFenceLease();
             finish();
         });
     }] resume];

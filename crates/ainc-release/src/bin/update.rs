@@ -8,6 +8,8 @@ use std::{
     time::{Duration, Instant},
 };
 fn main() {
+    // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     if let Err(error) = ainc_release::process::reset_inherited_signals()
         .map_err(anyhow::Error::from)
         .and_then(|()| install())

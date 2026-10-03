@@ -91,7 +91,7 @@ fn select_discovery(override_path: Option<PathBuf>, installed: PathBuf, dev: Pat
 fn discovery_path() -> PathBuf {
     select_discovery(
         env::var_os("AINC_DISCOVERY_FILE").map(PathBuf::from),
-        ainc_release::identity::support_dir().join("daemon/api-url"),
+        ainc_identity::identity::discovery_file(),
         dev_discovery(),
     )
 }
@@ -304,6 +304,8 @@ fn install_cli() -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let spec = schema();
     let mut tree = command_tree(&spec);
     let matches = tree.clone().get_matches();

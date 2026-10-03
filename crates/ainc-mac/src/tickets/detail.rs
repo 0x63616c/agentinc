@@ -2,7 +2,7 @@
 //! history and Comments with the composer, and a properties column for status,
 //! priority, assignee, labels, relationships, work and where it came from.
 use super::*;
-use crate::storage::{ActivityKind, Comment};
+use ainc_client::types::{ActivityKind, Comment};
 
 /// Attempts listed under Work, newest first.
 const RECENT_RUNS: usize = 3;
@@ -58,7 +58,7 @@ impl TicketsPage {
                     .id("tickets-page")
                     .track_focus(&self.page_focus)
                     .gap(px(SPACE_4))
-                    .when_some(self.error.clone(), |s, error| {
+                    .when_some(self.sync.read(cx).message(), |s, error| {
                         s.child(banner(Tone::Danger, error))
                     })
                     .when_some(
@@ -79,7 +79,7 @@ impl TicketsPage {
         let revision = ticket.revision;
         let running = self.running(ticket);
         let has_runs = self.state.runs.iter().any(|r| r.ticket_id == id);
-        let enabled = !self.pending;
+        let enabled = !self.pending.busy();
         // The properties column holds status and times; the line under the
         // title says only which Ticket this is and who holds it.
         let meta = format!(
@@ -202,7 +202,7 @@ impl TicketsPage {
                             Button::new("tickets.description.save", "Save")
                                 .primary()
                                 .small()
-                                .enabled(!self.pending)
+                                .enabled(!self.pending.busy())
                                 .build(
                                     &self.hover,
                                     move |this: &mut Self, _, cx| {
@@ -253,7 +253,7 @@ impl TicketsPage {
                                 .ghost()
                                 .small()
                                 .tint(TEXT_SECONDARY)
-                                .enabled(!self.pending)
+                                .enabled(!self.pending.busy())
                                 .build(
                                     &self.hover,
                                     move |this: &mut Self, window, cx| {
@@ -273,7 +273,7 @@ impl TicketsPage {
     }
 
     fn timeline(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> Div {
-        let now = list::now();
+        let now = time::now();
         let history: &[TicketActivity] =
             if self.activity_for.as_ref().map(|s| s.0) == Some(ticket.id) {
                 &self.activity
@@ -335,7 +335,8 @@ impl TicketsPage {
                         Button::new("tickets.post", "Post")
                             .primary()
                             .enabled(
-                                !self.pending && !self.comment.read(cx).content.trim().is_empty(),
+                                !self.pending.busy()
+                                    && !self.comment.read(cx).content.trim().is_empty(),
                             )
                             .build(&self.hover, |this, _, cx| this.add_comment(cx), cx),
                     ),
@@ -382,7 +383,7 @@ impl TicketsPage {
             .child(
                 div()
                     .pt(px(SPACE_HALF))
-                    .child(hint(relative_time(entry.created_at, now))),
+                    .child(hint(time::relative(entry.created_at, now))),
             )
     }
 
@@ -476,12 +477,12 @@ impl TicketsPage {
             }
             ActivityKind::Work => (
                 "play",
-                match to {
-                    "queued" => "started work".into(),
-                    "completed" => "finished the work".into(),
-                    "failed" => "stopped: the work failed".into(),
-                    "cancelled" => "cancelled the work".into(),
-                    state => format!("work is {state}"),
+                match WorkState::parse(to) {
+                    Some(WorkState::Queued) => "started work".into(),
+                    Some(WorkState::Done) => "finished the work".into(),
+                    Some(WorkState::Failed) => "stopped: the work failed".into(),
+                    Some(WorkState::Cancelled) => "cancelled the work".into(),
+                    _ => format!("work is {}", state_label(to).to_lowercase()),
                 },
             ),
         }
@@ -509,7 +510,7 @@ impl TicketsPage {
                                     .font_weight(FontWeight::MEDIUM)
                                     .child(author),
                             )
-                            .child(hint(relative_time(comment.created_at, now))),
+                            .child(hint(time::relative(comment.created_at, now))),
                     )
                     .child(
                         div()
@@ -528,7 +529,7 @@ impl TicketsPage {
     fn properties(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> Div {
         let id = ticket.id;
         let revision = ticket.revision;
-        let enabled = !self.pending;
+        let enabled = !self.pending.busy();
         // Quiet selects bleed left by their inset, so their glyph starts on the
         // value column's edge, and end on the content edge with their fill.
         let width =
@@ -657,11 +658,11 @@ impl TicketsPage {
             .child(divider().my(px(SPACE_3)))
             .child(property_row(
                 "Created",
-                caption(timestamp(ticket.created_at)),
+                caption(time::absolute(ticket.created_at)),
             ))
             .child(property_row(
                 "Updated",
-                caption(timestamp(ticket.updated_at)),
+                caption(time::absolute(ticket.updated_at)),
             ))
     }
 
@@ -682,7 +683,7 @@ impl TicketsPage {
                             .icon("plus")
                             .icon_only()
                             .tint(TEXT_SECONDARY)
-                            .enabled(!self.pending && self.state.tickets.len() > 1)
+                            .enabled(!self.pending.busy() && self.state.tickets.len() > 1)
                             .build(
                                 &self.hover,
                                 move |this: &mut Self, window, cx| {
@@ -784,7 +785,7 @@ impl TicketsPage {
                 .icon("close")
                 .icon_only()
                 .tint(TEXT_TERTIARY)
-                .enabled(!self.pending)
+                .enabled(!self.pending.busy())
                 .build(
                     &self.hover,
                     move |this: &mut Self, _, cx| {
@@ -814,11 +815,11 @@ impl TicketsPage {
         runs.sort_by_key(|r| std::cmp::Reverse(r.generation));
         let conversation = ticket.conversation_id.map(|id| {
             let title = self
-                .store
+                .daemon
                 .as_ref()
-                .and_then(|store| {
-                    store
-                        .snapshot()
+                .and_then(|daemon| {
+                    daemon
+                        .product()
                         .conversations
                         .into_iter()
                         .find(|c| c.id == id)
@@ -858,21 +859,8 @@ impl TicketsPage {
                 }))
             })
             .children(runs.into_iter().take(RECENT_RUNS).map(|run| {
-                let tone = match run.state.as_str() {
-                    "running" => Tone::Info,
-                    "completed" => Tone::Success,
-                    "failed" => Tone::Danger,
-                    "cancelled" => Tone::Neutral,
-                    _ => Tone::Warning,
-                };
-                let label = match run.state.as_str() {
-                    "queued" => "Queued",
-                    "running" => "Running",
-                    "completed" => "Completed",
-                    "failed" => "Failed",
-                    "cancelled" => "Cancelled",
-                    other => other,
-                };
+                let tone = state_tone(&run.state);
+                let label = state_label(&run.state);
                 row()
                     .debug_selector({
                         let id = run.run_id.clone();

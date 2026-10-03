@@ -6,14 +6,18 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "ainc"
 path = "src/main.rs"
 
 [dependencies]
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "charset", "http2", "system-proxy", "json"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 ainc-client = { path = "../ainc-client" }
-ainc-release = { path = "../ainc-release" }
+ainc-identity = { path = "../ainc-identity" }
 clap_complete = "4"
 tempfile = "3"
 uuid.workspace = true

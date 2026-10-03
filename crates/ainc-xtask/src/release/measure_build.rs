@@ -6,7 +6,7 @@ use std::{
     env,
     fs::OpenOptions,
     io::Write,
-    process::{Command, exit},
+    process::exit,
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -66,7 +66,7 @@ pub fn cli(args: &[String]) -> Result<()> {
         bail!("usage: cargo xtask release-measure-build COMMAND [ARG ...]");
     };
     let started = Instant::now();
-    let mut child = Command::new(program).args(rest).spawn()?;
+    let mut child = crate::spawn::command(program).args(rest).spawn()?;
     let pid = child.id() as i32;
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {

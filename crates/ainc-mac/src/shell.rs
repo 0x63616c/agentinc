@@ -13,7 +13,8 @@ mod pane;
 #[path = "shell/sidebar.rs"]
 mod sidebar;
 
-use crate::storage::Store;
+use crate::action::Run;
+use crate::daemon::Daemon;
 use crate::{
     input::TextInput,
     model::{FontChoice, FontSize, Overlay, PAGES, Route, Session},
@@ -67,7 +68,8 @@ pub(crate) enum Control {
     DismissToast(u64),
 }
 pub struct Shell {
-    store: Option<std::sync::Arc<Store>>,
+    daemon: Option<std::sync::Arc<Daemon>>,
+    _sync_subscription: Subscription,
     session: Session,
     overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     assistant: Entity<crate::evee::AssistantPage>,
@@ -133,36 +135,33 @@ impl Shell {
     /// The daemon's current workspace id; the app has one workspace and no switcher.
     #[cfg(target_os = "macos")]
     fn workspace_id(&self) -> String {
-        self.store
+        self.daemon
             .as_ref()
-            .map(|store| store.workspaces())
-            .unwrap_or_else(|| Store::new().workspaces())
+            .map(|daemon| daemon.workspaces())
+            .unwrap_or_else(crate::daemon::default_workspaces)
             .current_id
     }
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let path = std::env::var_os("AGENTINC_SESSION_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|| ainc_release::identity::support_dir().join("session.json"));
-        let store = Some(std::sync::Arc::new(crate::storage::Store::new()));
-        let storage_error = None;
-        let request = cx
-            .background_executor()
-            .spawn(async { crate::profile::Profile::local() });
-        cx.spawn(async move |this, cx| {
-            let profile = request.await;
-            let _ = this.update(cx, |this, cx| {
+        let daemon = Some(std::sync::Arc::new(crate::daemon::Daemon::connect()));
+        let clock = crate::sync::Timers(cx.background_executor().clone());
+        cx.run(
+            &crate::action::Pending::default(),
+            || Ok(crate::profile::Profile::local()),
+            |this, profile, cx| {
+                let Ok(profile) = profile else { return };
                 let (name, photo) = (profile.name.clone(), profile.photo.clone());
                 this.tickets
                     .update(cx, |tickets, cx| tickets.set_owner(&name, photo, cx));
                 this.profile = profile;
-                cx.notify();
-            });
-        })
-        .detach();
+            },
+        );
         Self::with_state(
             path,
-            store,
-            storage_error,
+            daemon,
+            clock,
             crate::profile::Profile {
                 name: "Profile".into(),
                 photo: None,
@@ -174,20 +173,22 @@ impl Shell {
 
     fn with_state(
         path: PathBuf,
-        store: Option<std::sync::Arc<crate::storage::Store>>,
-        storage_error: Option<String>,
+        daemon: Option<std::sync::Arc<crate::daemon::Daemon>>,
+        clock: impl crate::sync::Clock,
         profile: crate::profile::Profile,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let overlays = Rc::new(RefCell::new(OverlayHost::default()));
+        let sync = cx.new(|cx| crate::sync::Sync::new(daemon.clone(), clock, cx));
+        let sync_subscription = window.observe_window_visibility({
+            let sync = sync.clone();
+            move |visibility, _, cx| {
+                sync.update(cx, |sync, cx| sync.set_paused(!visibility.is_visible(), cx))
+            }
+        });
         let assistant = cx.new(|cx| {
-            crate::evee::AssistantPage::new(
-                store.clone(),
-                storage_error.clone(),
-                overlays.clone(),
-                cx,
-            )
+            crate::evee::AssistantPage::new(daemon.clone(), sync.clone(), overlays.clone(), cx)
         });
         let assistant_subscriptions = vec![
             cx.observe(&assistant, |_, _, cx| cx.notify()),
@@ -208,19 +209,14 @@ impl Shell {
             ),
         ];
         let tickets = cx.new(|cx| {
-            crate::tickets::TicketsPage::new(
-                store.clone(),
-                storage_error.clone(),
-                overlays.clone(),
-                cx,
-            )
+            crate::tickets::TicketsPage::new(daemon.clone(), sync.clone(), overlays.clone(), cx)
         });
         tickets.update(cx, |tickets, cx| {
             tickets.set_owner(&profile.name, profile.photo.clone(), cx)
         });
         let automations =
-            cx.new(|cx| crate::automations::AutomationsPage::new(store.clone(), storage_error, cx));
-        let temporal = cx.new(crate::temporal::TemporalPage::new);
+            cx.new(|cx| crate::automations::AutomationsPage::new(daemon.clone(), sync.clone(), cx));
+        let temporal = cx.new(|cx| crate::temporal::TemporalPage::new(daemon.clone(), cx));
         let temporal_subscription = cx.observe(&temporal, |_, _, cx| cx.notify());
         let components = cx.new(crate::components::ComponentsPage::new);
         let components_subscription = cx.observe(&components, |_, _, cx| cx.notify());
@@ -277,7 +273,8 @@ impl Shell {
             .cloned()
             .map(|updates| cx.observe(&updates.0, |_, _, cx| cx.notify()));
         let mut shell = Self {
-            store,
+            daemon,
+            _sync_subscription: sync_subscription,
             session,
             overlays,
             assistant,
@@ -340,11 +337,11 @@ impl Shell {
     }
     #[cfg(test)]
     pub(crate) fn fixture(path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let store = crate::storage::Store::open(&path.with_extension("sqlite3")).unwrap();
+        let daemon = crate::daemon::Daemon::in_memory();
         let mut shell = Self::with_state(
             path,
-            Some(std::sync::Arc::new(store)),
-            None,
+            Some(std::sync::Arc::new(daemon)),
+            crate::sync::Timers(cx.background_executor().clone()),
             crate::profile::Profile {
                 name: "QA Profile".into(),
                 photo: None,
@@ -459,23 +456,23 @@ impl Shell {
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
     pub(crate) fn fixture_ticket_detail(&mut self, cx: &mut Context<Self>) {
-        use crate::storage::TicketCommand;
-        let store = self.store.clone().expect("fixture store");
-        store
-            .ticket_command(TicketCommand::RegisterAgent {
+        use ainc_client::types::TicketCommand;
+        let daemon = self.daemon.clone().expect("fixture daemon");
+        daemon
+            .send(TicketCommand::RegisterAgent {
                 name: "Evee".into(),
                 instructions: "Plan and execute".into(),
                 model: "connection-default".into(),
             })
             .expect("fixture agent");
-        let id = store
-            .ticket_command(TicketCommand::Create {
+        let id = daemon
+            .send(TicketCommand::Create {
                 title: "Reconcile weekly budget and receipts".into(),
             })
             .expect("fixture ticket")
             .expect("ticket id");
-        store
-            .ticket_command(TicketCommand::AddComment {
+        daemon
+            .send(TicketCommand::AddComment {
                 ticket_id: id,
                 body: "Pulled the last four statements; two receipts are still missing.".into(),
             })
@@ -855,7 +852,7 @@ impl Shell {
     fn icon_button(
         &self,
         id: &'static str,
-        label: &'static str,
+        label: impl Into<SharedString>,
         name: &'static str,
         control: Control,
         cx: &mut Context<Self>,
@@ -903,7 +900,11 @@ impl Shell {
 }
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if ainc_client::update_required() {
+        if self
+            .daemon
+            .as_ref()
+            .is_some_and(|daemon| daemon.update_required())
+        {
             return column()
                 .size_full()
                 .items_center()
@@ -1266,16 +1267,24 @@ pub fn bind_keys(cx: &mut App) {
             });
         }
     });
-    cx.bind_keys(
-        (0..=9).map(|n| KeyBinding::new(&format!("cmd-{n}"), NavigateRoute(n), Some("Control"))),
-    );
+    cx.bind_keys((0..=9).map(|n| {
+        KeyBinding::new(
+            &shortcuts::route(n as usize).0,
+            NavigateRoute(n),
+            Some("Control"),
+        )
+    }));
     cx.bind_keys([
-        KeyBinding::new("cmd-[", GoBack, Some("Control")),
-        KeyBinding::new("cmd-]", GoForward, Some("Control")),
-        KeyBinding::new("cmd-k", Search, None),
-        KeyBinding::new("cmd-,", OpenSettings, Some("Control")),
-        KeyBinding::new("cmd-b", ToggleSidebar, Some("Control")),
-        KeyBinding::new("escape", Escape, Some("Control")),
+        KeyBinding::new(shortcuts::BACK.keystroke, GoBack, Some("Control")),
+        KeyBinding::new(shortcuts::FORWARD.keystroke, GoForward, Some("Control")),
+        KeyBinding::new(shortcuts::SEARCH.keystroke, Search, None),
+        KeyBinding::new(shortcuts::SETTINGS.keystroke, OpenSettings, Some("Control")),
+        KeyBinding::new(
+            shortcuts::TOGGLE_SIDEBAR.keystroke,
+            ToggleSidebar,
+            Some("Control"),
+        ),
+        KeyBinding::new(shortcuts::DISMISS.keystroke, Escape, Some("Control")),
         KeyBinding::new("tab", FocusNext, Some("Control")),
         KeyBinding::new("shift-tab", FocusPrevious, Some("Control")),
         KeyBinding::new("cmd-q", Quit, None),

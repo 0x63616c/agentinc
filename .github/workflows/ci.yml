@@ -10,18 +10,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: cargo fmt --all -- --check
+  # The same two commands `just check` and `just test` run locally; nothing is re-listed here.
   workspace:
     name: workspace (${{ matrix.check }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        check: [clippy, test]
+        check: [check, test]
     services:
       postgres:
         image: postgres:16-alpine
@@ -36,47 +32,29 @@ jobs:
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libxkbcommon-dev libwayland-dev libfontconfig1-dev libasound2-dev protobuf-compiler
-      - uses: actions/cache/restore@v4
-        id: cache
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libfontconfig1-dev libasound2-dev
+      - uses: Swatinem/rust-cache@v2
         with:
-          # Immutable exact cache hits used to replay an incomplete dependency
-          # cache forever. Restore the previous lane, save successful main runs.
-          path: |
-            ~/.cargo/registry/cache
-            ~/.cargo/registry/index
-            ~/.cargo/git
-            target
-          key: ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-${{ github.sha }}
-          restore-keys: |
-            ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '**/Cargo.toml', '.cargo/config.toml') }}-
-            ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('rust-toolchain.toml') }}-
-      - if: matrix.check == 'clippy'
-        run: cargo clippy --locked --profile ci --workspace --all-targets -- -D warnings
+          # One cache per lane; only main writes it so pull requests cannot poison it.
+          key: ${{ matrix.check }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - if: matrix.check == 'test'
-        # Includes generated_api_and_clients_are_current: no second xtask build.
-        run: cargo test --locked --profile ci --workspace
-      - if: matrix.check == 'test'
-        # Reuses the xtask build the tests just made.
-        run: cargo run --locked --profile ci -p ainc-xtask -- check-ui
-      - uses: actions/cache/save@v4
-        if: success() && github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+        uses: taiki-e/install-action@v2
         with:
-          path: |
-            ~/.cargo/registry/cache
-            ~/.cargo/registry/index
-            ~/.cargo/git
-            target
-          key: ${{ steps.cache.outputs.cache-primary-key }}
+          tool: cargo-nextest
+      - if: matrix.check == 'check'
+        run: cargo xtask check --profile ci
+      - if: matrix.check == 'test'
+        # Includes generated_api_and_clients_are_current from ainc-generate: no second build.
+        run: cargo xtask test --profile ci
   # Preserve the required check/release gate name, and fail closed on skipped or
   # cancelled lanes as well as failures. Never let one green matrix lane suffice.
   rust:
-    needs: [checks, workspace]
+    needs: [workspace]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require every CI lane
         env:
-          CHECKS: ${{ needs.checks.result }}
           WORKSPACE: ${{ needs.workspace.result }}
-        run: test "$CHECKS" = success && test "$WORKSPACE" = success
+        run: test "$WORKSPACE" = success

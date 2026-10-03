@@ -1,0 +1,19 @@
+# typos configuration; `cargo xtask check` runs `typos` when it is installed.
+[files]
+extend-exclude = [
+    "vendor/",
+    "target/",
+    ".local/",
+    "crates/ainc-mac/dist/",
+    "crates/ainc-mac/ghostty-bridge/",
+    "crates/*/src/generated.rs",
+    "api/",
+    "Cargo.lock",
+    "*.json",
+]
+
+[default.extend-words]
+# Abbreviations and names that are not typos.
+PN = "PN"
+flate = "flate"
+Sur = "Sur"

@@ -378,6 +378,8 @@
             "type": "object"
           },
           {
+            "deprecated": true,
+            "description": "Phase-2 name for the Ticket command `create`.",
             "properties": {
               "kind": {
                 "enum": [
@@ -396,6 +398,8 @@
             "type": "object"
           },
           {
+            "deprecated": true,
+            "description": "Phase-2 name for the Ticket command `set_status` on a human-owned Ticket.",
             "properties": {
               "completed": {
                 "type": "boolean"
@@ -419,6 +423,8 @@
             "type": "object"
           },
           {
+            "deprecated": true,
+            "description": "Phase-2 name for the Ticket command `delete`.",
             "properties": {
               "id": {
                 "format": "int64",
@@ -504,10 +510,6 @@
       },
       "ConnectionStatus": {
         "properties": {
-          "account": {
-            "nullable": true,
-            "type": "string"
-          },
           "auth_url": {
             "nullable": true,
             "type": "string"
@@ -521,6 +523,11 @@
               "$ref": "#/components/schemas/Model"
             },
             "type": "array"
+          },
+          "signed_in_as": {
+            "description": "Who is signed in, as \"email · plan\", or `None`.",
+            "nullable": true,
+            "type": "string"
           },
           "signing_in": {
             "type": "boolean"

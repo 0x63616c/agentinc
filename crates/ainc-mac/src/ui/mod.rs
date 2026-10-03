@@ -4,6 +4,7 @@ mod avatar;
 mod badge;
 mod banner;
 mod button;
+pub mod copy;
 mod display;
 mod empty;
 mod field;
@@ -17,12 +18,15 @@ mod palette;
 mod segmented;
 mod select;
 mod settings;
+pub mod shortcuts;
 mod table;
 #[cfg(target_os = "macos")]
 mod terminal;
+pub mod time;
 mod toast;
 mod toggle;
 mod tokens;
+mod work_state;
 
 pub use avatar::*;
 pub use badge::*;
@@ -47,3 +51,4 @@ pub use terminal::*;
 pub use toast::*;
 pub use toggle::*;
 pub use tokens::*;
+pub use work_state::*;

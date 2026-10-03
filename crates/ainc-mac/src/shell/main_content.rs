@@ -1,15 +1,6 @@
 use super::*;
 use crate::ui::*;
 
-const SHORTCUTS: &[(&str, &str)] = &[
-    ("Go to…", "⌘ + K"),
-    ("Toggle sidebar", "⌘ + B"),
-    ("Back / Forward", "⌘ + [ / ⌘ + ]"),
-    ("Tickets, Assistant, Agents…", "⌘ + 1–6"),
-    ("Settings", "⌘ + ,"),
-    ("Dismiss", "ESC"),
-];
-
 impl Shell {
     pub(super) fn main_area(&self, content: AnyElement) -> Div {
         let terminal = self.session.current() == Route::Terminal;
@@ -130,7 +121,7 @@ impl Shell {
 
     fn shortcuts_section(&self) -> Div {
         let mut rows = column();
-        for (index, (action, keys)) in SHORTCUTS.iter().enumerate() {
+        for (index, shortcut) in shortcuts::ALL.iter().enumerate() {
             if index > 0 {
                 rows = rows.child(settings_divider());
             }
@@ -140,8 +131,8 @@ impl Shell {
                     .px(px(SETTINGS_INSET))
                     .justify_between()
                     .gap(px(SPACE_4))
-                    .child(div().text_size(type_size(BODY_SIZE)).child(*action))
-                    .child(kbd(*keys).debug_selector(move || keys.to_string())),
+                    .child(div().text_size(type_size(BODY_SIZE)).child(shortcut.action))
+                    .child(kbd(shortcut.glyph).debug_selector(move || shortcut.glyph.to_string())),
             );
         }
         settings_section("Keyboard shortcuts", rows)
@@ -182,8 +173,9 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-    use super::{SHORTCUTS, Shell};
+    use super::Shell;
     use crate::model::Route;
+    use crate::ui::shortcuts;
     use gpui::{TestAppContext, px};
 
     #[gpui::test]
@@ -198,13 +190,13 @@ mod tests {
         });
         cx.update(|window, cx| window.draw(cx).clear(cx));
         assert_eq!(
-            SHORTCUTS.iter().map(|(_, keys)| *keys).collect::<Vec<_>>(),
-            ["⌘ + K", "⌘ + B", "⌘ + [ / ⌘ + ]", "⌘ + 1–6", "⌘ + ,", "ESC"]
+            shortcuts::ALL.iter().map(|s| s.glyph).collect::<Vec<_>>(),
+            ["⌘K", "⌘[", "⌘]", "⌘1–6", "⌘,", "⌘B", "⎋", "↵", "⇧↵"]
         );
-        for (_, keys) in SHORTCUTS {
-            let pill = cx.debug_bounds(keys).unwrap();
+        for shortcut in shortcuts::ALL {
+            let pill = cx.debug_bounds(shortcut.glyph).unwrap();
             assert_eq!(pill.size.height, px(20.));
-            assert!(pill.size.width > px(20.));
+            assert!(pill.size.width >= px(20.));
         }
     }
 }

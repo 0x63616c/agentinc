@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Proc macros for the turnkeel SDK"
 
+[lints]
+workspace = true
+
 [lib]
 proc-macro = true
 

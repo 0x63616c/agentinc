@@ -27,6 +27,7 @@ void ainc_update_free_notes(char *text) { free(text); }
 @property(strong) NSURL *infoURL;
 @property(strong) NSURL *fileURL;
 @property(strong) NSDictionary *propertiesDictionary;
+@property uint64_t contentLength;
 - (BOOL)isInformationOnlyUpdate;
 @end
 @implementation TestItem
@@ -203,6 +204,133 @@ int main(void) {
         [NSFileManager.defaultManager removeItemAtPath:cachePath error:nil];
         [sparkle dismissUpdateInstallation];
 
+        // Exact-target recovery over a persisted release layout: arm X, the
+        // latest feed advances to Y, and the old UI restarts after an
+        // ambiguous installer failure.
+        AincSparkleDriver *primary = sparkle;
+        NSFileManager *files = NSFileManager.defaultManager;
+        NSURL *recovery = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
+        NSURL *releaseX = [recovery URLByAppendingPathComponent:@"releases/v2" isDirectory:YES];
+        NSURL *latestFeed = [recovery URLByAppendingPathComponent:@"latest/appcast.xml"];
+        NSData *feedX = [@"signed appcast for 2" dataUsingEncoding:NSUTF8StringEncoding];
+        NSCAssert(!writePrivateData(feedX, [releaseX URLByAppendingPathComponent:@"appcast.xml"]) && !writePrivateData(feedX, latestFeed), @"publish X");
+        NSURL *recoveryCache = [recovery URLByAppendingPathComponent:@"cache" isDirectory:YES];
+        NSURL *recoveryFence = [recovery URLByAppendingPathComponent:@"install.fence"];
+        AincSparkleDriver *(^launch)(NSString *) = ^(NSString *current) {
+            AincSparkleDriver *driver = [AincSparkleDriver new];
+            driver.current = current;
+            driver.updater = (SPUUpdater *)[TestUpdater new];
+            driver.defaults = primary.defaults;
+            driver.cacheDirectory = recoveryCache;
+            driver.fenceURL = recoveryFence;
+            sparkle = driver;
+            return driver;
+        };
+        TestItem *(^releaseItem)(NSURL *, NSString *) = ^(NSURL *directory, NSString *version) {
+            TestItem *target = [TestItem new];
+            target.displayVersionString = version;
+            target.propertiesDictionary = @{@"deltaFrom":@"1"};
+            target.fileURL = [directory URLByAppendingPathComponent:@"AgentInc-2-from-1.delta"];
+            return target;
+        };
+        NSArray<NSString *> *(^cached)(void) = ^{
+            return [[files contentsOfDirectoryAtPath:recoveryCache.path error:nil] sortedArrayUsingSelector:@selector(compare:)];
+        };
+        [primary.defaults setBool:NO forKey:@"AINCAutomaticallyDownloadUpdates"];
+        state.userInitiated = YES;
+        AincSparkleDriver *old = launch(@"1");
+        old.item = (SUAppcastItem *)releaseItem(releaseX, @"2");
+        NSString *archiveX = [old cachedArchive].lastPathComponent;
+        NSCAssert(!writePrivateData([@"cached X" dataUsingEncoding:NSUTF8StringEncoding], [old cachedArchive])
+            && !writePrivateData([@"superseded" dataUsingEncoding:NSUTF8StringEncoding], [recoveryCache URLByAppendingPathComponent:@"old-AgentInc.tar.gz"])
+            && !writePrivateData([@"partial" dataUsingEncoding:NSUTF8StringEncoding], [[old cachedArchive] URLByAppendingPathExtension:NSUUID.UUID.UUIDString]), @"seed cache");
+        void (^found)(AincSparkleDriver *, TestItem *) = ^(AincSparkleDriver *driver, TestItem *target) {
+            [driver showUpdateFoundWithAppcastItem:(SUAppcastItem *)target state:(SPUUserUpdateState *)state reply:reply];
+            [ui() dismiss:nil];
+        };
+        found(old, releaseItem(releaseX, @"2"));
+        old.download = [AincArchiveDownload new];
+        [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdatesInBackground error:nil];
+        NSCAssert(cached().count == 3, @"an active download keeps every cache entry");
+        old.download = nil;
+        found(old, releaseItem(releaseX, @"2"));
+        [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdatesInBackground error:nil];
+        NSCAssert([cached() isEqualToArray:@[archiveX]], @"a resolved cycle removes superseded archives and interrupted copies, retaining the current item");
+        NSCAssert(!writePrivateData([@"partial" dataUsingEncoding:NSUTF8StringEncoding], [[old cachedArchive] URLByAppendingPathExtension:NSUUID.UUID.UUIDString]), @"seed abandoned copy");
+        old = launch(@"1");
+        [old pruneArchives:NO];
+        NSCAssert([cached() isEqualToArray:@[archiveX]], @"unfenced restart keeps downloaded X and removes only the abandoned copy");
+        [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdatesInBackground error:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorNotConnectedToInternet userInfo:nil]];
+        NSCAssert([cached() isEqualToArray:@[archiveX]], @"an offline check keeps downloaded X");
+        [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdateInformation error:nil];
+        NSCAssert([cached() isEqualToArray:@[archiveX]], @"a history-only probe keeps downloaded X");
+        __block NSUInteger checkCancellations = 0;
+        [old showUserInitiatedUpdateCheckWithCancellation:^{ checkCancellations++; }];
+        [ui().offer performClose:nil];
+        NSCAssert(checkCancellations == 1 && old.cancellationRequested, @"closing the check window cancels Sparkle's check");
+        [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:nil];
+        NSCAssert([cached() isEqualToArray:@[archiveX]] && !old.item, @"a cancelled check with no outcome keeps downloaded X");
+        old.item = (SUAppcastItem *)releaseItem(releaseX, @"2");
+        NSCAssert(![old feedURLStringForUpdater:old.updater], @"unfenced checks use the bundle's latest feed");
+        NSUInteger beforeRecovery = replies;
+        [old showUpdateFoundWithAppcastItem:old.item state:(SPUUserUpdateState *)state reply:reply];
+        event = 0;
+        [findButton(@"Install Update") performClick:nil];
+        NSCAssert(event == 8 && replies == beforeRecovery, @"install waits for drain");
+        ainc_sparkle_prepared(NULL);
+        NSString *pinned = [releaseX URLByAppendingPathComponent:@"appcast.xml"].absoluteString;
+        NSDictionary *armed = readFence(recoveryFence);
+        NSCAssert(replies == beforeRecovery + 1 && choice == SPUUserUpdateChoiceInstall
+            && [armed[@"phase"] isEqualToString:@"armed"] && [armed[@"feed"] isEqualToString:pinned], @"immutable signed appcast is pinned before the Install reply");
+        [old updater:old.updater willExtractUpdate:old.item];
+        [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:[NSError errorWithDomain:@"fixture" code:1 userInfo:nil]];
+        NSCAssert([readFence(recoveryFence) isEqualToDictionary:armed] && [cached() isEqualToArray:@[archiveX]], @"ambiguous failure keeps fence, pinned feed and pending bytes");
+        NSCAssert(!writePrivateData([@"signed appcast for 3" dataUsingEncoding:NSUTF8StringEncoding], latestFeed), @"latest advances to Y");
+        [ui() dismiss:nil];
+        releaseFenceLease(); // UI killed.
+
+        NSCAssert(!restoreFence(recoveryFence, @"1") && [readFence(recoveryFence) isEqualToDictionary:armed], @"old UI restart stays fenced");
+        AincSparkleDriver *restarted = launch(@"1");
+        [restarted pruneArchives:NO];
+        NSCAssert([cached() isEqualToArray:@[archiveX]], @"startup pruning retains the armed target's bytes");
+        NSString *routed = [restarted feedURLStringForUpdater:restarted.updater];
+        NSCAssert([routed isEqualToString:pinned] && [[NSData dataWithContentsOfURL:[NSURL URLWithString:routed]] isEqualToData:feedX], @"fenced checks obtain X's signed appcast after latest moved to Y");
+        TestItem *retried = releaseItem([NSURL URLWithString:routed].URLByDeletingLastPathComponent, @"2");
+        [restarted showUpdateFoundWithAppcastItem:(SUAppcastItem *)retried state:(SPUUserUpdateState *)state reply:reply];
+        NSCAssert(restarted.ready, @"retried target finds its retained cache");
+        event = 0;
+        [findButton(@"Install Update") performClick:nil];
+        NSCAssert(!restarted.preparationFailed && event == 8, @"the armed target itself can be retried");
+        ainc_sparkle_prepared(NULL);
+        NSCAssert(replies == beforeRecovery + 2 && choice == SPUUserUpdateChoiceInstall && [readFence(recoveryFence) isEqualToDictionary:armed], @"retry installs X under the same pinned fence");
+        [restarted updater:restarted.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:[NSError errorWithDomain:@"fixture" code:2 userInfo:nil]];
+        NSCAssert([readFence(recoveryFence) isEqualToDictionary:armed], @"a recovery abort cannot prove the original installer exited");
+        NSCAssert(acquireFence(recoveryFence, @"3") != nil, @"Y cannot supersede the armed target");
+        [ui() dismiss:nil];
+        releaseFenceLease(); // Sparkle terminates the old UI.
+
+        NSCAssert(!restoreFence(recoveryFence, @"2") && ![files fileExistsAtPath:recoveryFence.path], @"matching replacement startup clears recovery metadata");
+        AincSparkleDriver *replacement = launch(@"2");
+        NSCAssert(![replacement feedURLStringForUpdater:replacement.updater], @"replacement checks the latest feed again, offering Y");
+        [replacement pruneArchives:NO];
+        NSCAssert([cached() isEqualToArray:@[archiveX]], @"replacement startup alone does not resolve the current update");
+        TestItem *newer = releaseItem([recovery URLByAppendingPathComponent:@"releases/v3" isDirectory:YES], @"3");
+        replacement.item = (SUAppcastItem *)newer;
+        NSString *archiveY = [replacement cachedArchive].lastPathComponent;
+        NSCAssert(!writePrivateData([@"cached Y" dataUsingEncoding:NSUTF8StringEncoding], [replacement cachedArchive]), @"download Y");
+        replacement.item = nil;
+        found(replacement, newer);
+        [replacement updater:replacement.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdatesInBackground error:nil];
+        NSCAssert([cached() isEqualToArray:@[archiveY]], @"a successful newer-item cycle prunes superseded X");
+        NSError *latest = [NSError errorWithDomain:@"SUSparkleErrorDomain" code:SUNoUpdateError userInfo:nil];
+        [replacement updater:replacement.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:latest];
+        NSCAssert([cached() isEqualToArray:@[archiveY]], @"a no-update error without Sparkle's outcome callback is not a resolution");
+        [replacement updaterDidNotFindUpdate:replacement.updater error:latest];
+        [replacement updater:replacement.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:latest];
+        NSCAssert(cached().count == 0 && !replacement.item, @"a resolved no-update outcome prunes every archive");
+        [files removeItemAtURL:recovery error:nil];
+        sparkle = primary;
+
         // One-time migration only touches this random test suite.
         TestBundle *bundle = [TestBundle new];
         bundle.domain = [@"test.agentinc.sparkle." stringByAppendingString:NSUUID.UUID.UUIDString];
@@ -276,7 +404,7 @@ int main(void) {
         NSCAssert(!restoreFence(fence, @"1") && readFence(fence), @"live preparing owner cannot be unfenced by a second UI startup");
         releaseFenceLease(); // Simulated owner crash before the initial reply.
         NSCAssert(!restoreFence(fence, @"1") && !readFence(fence), @"interrupted pre-drain is recoverable without arming Sparkle");
-        NSCAssert(!acquireFence(fence, @"2") && !armFence(fence, @"2"), @"arm durably before replying Install");
+        NSCAssert(!acquireFence(fence, @"2") && !armFence(fence, @"2", nil), @"arm durably before replying Install");
         releaseFenceLease();
         NSCAssert(!restoreFence(fence, @"1") && readFence(fence), @"old UI restart stays fenced after armed crash");
         NSCAssert(acquireFence(fence, @"3") != nil, @"different target cannot erase the pending installation");

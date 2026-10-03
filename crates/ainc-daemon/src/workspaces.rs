@@ -1,5 +1,8 @@
 //! Owner-managed workspaces. The legacy `local` identity remains stable.
-use crate::product::{ApiError, ErrorBody, Product};
+use crate::{
+    product::{ApiError, ErrorBody, Product},
+    receipts::{self, OperationId, Scope},
+};
 use axum::{
     Json, Router,
     extract::State,
@@ -75,10 +78,7 @@ pub async fn current(pool: &PgPool) -> Result<String, sqlx::Error> {
 }
 
 pub async fn snapshot(pool: &PgPool) -> Result<WorkspaceState, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .execute(&mut *tx)
-        .await?;
+    let mut tx = crate::pg::snapshot_tx(pool).await?;
     let current_id =
         sqlx::query_scalar("SELECT workspace_id FROM selected_workspace WHERE owner_id='owner'")
             .fetch_one(&mut *tx)
@@ -106,86 +106,68 @@ pub async fn execute(
     pool: &PgPool,
     request: WorkspaceRequest,
 ) -> Result<WorkspaceReceipt, ApiError> {
-    if uuid::Uuid::parse_str(&request.operation_id).is_err() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_operation",
-            "Use a UUID operation ID.",
-        ));
-    }
-    let payload = serde_json::to_value(&request.command).expect("serializable command");
+    let operation_id = OperationId::parse(&request.operation_id)?;
+    let WorkspaceRequest { command, .. } = request;
+    let payload = serde_json::to_value(&command).expect("serializable command");
     let mut tx = pool.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
-        .bind(format!("workspace/{}", request.operation_id))
-        .execute(&mut *tx)
-        .await?;
-    let prior: Option<(serde_json::Value, String)> =
-        sqlx::query_as("SELECT command,result_id FROM workspace_receipts WHERE operation_id=$1")
-            .bind(&request.operation_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-    if let Some((command, result_id)) = prior {
-        if command != payload {
-            return Err(ApiError::conflict());
-        }
-        return Ok(WorkspaceReceipt { result_id });
-    }
-    let result_id = match request.command {
-        WorkspaceCommand::Create { name, icon, color } => {
-            validate_name(&name)?;
-            if icon
-                .as_ref()
-                .is_some_and(|v| v.is_empty() || v.chars().count() > 4)
-                || color.as_ref().is_some_and(|v| !is_color(v))
-            {
-                return Err(invalid());
-            }
-            let id = uuid::Uuid::new_v4().to_string();
-            sqlx::query("INSERT INTO workspaces(id,name,icon,color) VALUES ($1,$2,$3,$4)")
-                .bind(&id)
-                .bind(name.trim())
-                .bind(icon)
-                .bind(color)
-                .execute(&mut *tx)
-                .await?;
-            sqlx::query("INSERT INTO principals(workspace_id,id,kind,name) VALUES ($1,'owner','human','You')")
-                .bind(&id).execute(&mut *tx).await?;
-            sqlx::query("UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner'")
-                .bind(&id)
-                .execute(&mut *tx)
-                .await?;
-            id
-        }
-        WorkspaceCommand::Rename { id, name } => {
-            validate_name(&name)?;
-            let changed = sqlx::query("UPDATE workspaces SET name=$2 WHERE id=$1")
-                .bind(&id)
-                .bind(name.trim())
-                .execute(&mut *tx)
-                .await?
-                .rows_affected();
-            if changed == 0 {
-                return Err(ApiError::conflict());
-            }
-            id
-        }
-        WorkspaceCommand::Switch { id } => {
-            let changed = sqlx::query("UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner' AND EXISTS(SELECT 1 FROM workspaces WHERE id=$1)")
-                .bind(&id).execute(&mut *tx).await?.rows_affected();
-            if changed == 0 {
-                return Err(ApiError::conflict());
-            }
-            id
-        }
-    };
-    sqlx::query("INSERT INTO workspace_receipts(operation_id,command,result_id) VALUES ($1,$2,$3)")
-        .bind(request.operation_id)
-        .bind(payload)
-        .bind(&result_id)
-        .execute(&mut *tx)
-        .await?;
+    let receipt = receipts::execute(&mut tx, Scope::Workspace, operation_id, &payload, |tx| {
+        Box::pin(async move {
+            let result_id = match command {
+                WorkspaceCommand::Create { name, icon, color } => {
+                    validate_name(&name)?;
+                    if icon
+                        .as_ref()
+                        .is_some_and(|v| v.is_empty() || v.chars().count() > 4)
+                        || color.as_ref().is_some_and(|v| !is_color(v))
+                    {
+                        return Err(invalid());
+                    }
+                    let id = uuid::Uuid::new_v4().to_string();
+                    sqlx::query("INSERT INTO workspaces(id,name,icon,color) VALUES ($1,$2,$3,$4)")
+                        .bind(&id)
+                        .bind(name.trim())
+                        .bind(icon)
+                        .bind(color)
+                        .execute(&mut **tx)
+                        .await?;
+                    sqlx::query("INSERT INTO principals(workspace_id,id,kind,name) VALUES ($1,'owner','human','You')")
+                        .bind(&id).execute(&mut **tx).await?;
+                    sqlx::query("UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner'")
+                        .bind(&id)
+                        .execute(&mut **tx)
+                        .await?;
+                    id
+                }
+                WorkspaceCommand::Rename { id, name } => {
+                    validate_name(&name)?;
+                    let changed = sqlx::query("UPDATE workspaces SET name=$2 WHERE id=$1")
+                        .bind(&id)
+                        .bind(name.trim())
+                        .execute(&mut **tx)
+                        .await?
+                        .rows_affected();
+                    if changed == 0 {
+                        return Err(ApiError::conflict());
+                    }
+                    id
+                }
+                WorkspaceCommand::Switch { id } => {
+                    let changed = sqlx::query("UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner' AND EXISTS(SELECT 1 FROM workspaces WHERE id=$1)")
+                        .bind(&id).execute(&mut **tx).await?.rows_affected();
+                    if changed == 0 {
+                        return Err(ApiError::conflict());
+                    }
+                    id
+                }
+            };
+            Ok(result_id)
+        })
+    })
+    .await?;
     tx.commit().await?;
-    Ok(WorkspaceReceipt { result_id })
+    Ok(WorkspaceReceipt {
+        result_id: receipt.result,
+    })
 }
 
 fn invalid() -> ApiError {

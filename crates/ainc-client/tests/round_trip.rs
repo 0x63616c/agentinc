@@ -22,7 +22,7 @@ async fn generated_ticket_operation_round_trips() {
     assert_eq!(result.title, "round trip");
     assert_eq!(
         result.headers().get("agent-inc-server").unwrap(),
-        ainc_release::server_header().as_str()
+        ainc_identity::server_header().as_str()
     );
     server.abort();
 }

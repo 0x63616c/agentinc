@@ -1,6 +1,9 @@
 //! Owned coding tools. Every subprocess is confined by the OS to an explicitly
 //! configured directory, and every effect has a durable unknown/completed receipt.
-use crate::tickets::Actor;
+use crate::{
+    receipts::OperationId,
+    tickets::{self, Actor, LiveAssignment, TicketCommand, TicketCommandRequest},
+};
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -126,15 +129,10 @@ impl CodingTool {
         }
         let (program, arguments, input) = self.invocation(&args)?;
         let mut tx = self.pool.begin().await.map_err(failed)?;
-        let (ticket, generation) = self
-            .actor
-            .assignment
-            .ok_or_else(|| invalid("Coding requires an assigned Ticket."))?;
-        let live:Option<i64>=sqlx::query_scalar("SELECT t.id FROM tickets t JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE t.id=$1 AND t.workspace_id=$2 AND t.generation=$3 AND t.assignee_id=$4 AND r.run_id=$5 AND r.state='running' AND t.status='in_progress' FOR UPDATE OF t")
-            .bind(ticket).bind(&self.actor.workspace).bind(generation).bind(&self.actor.id).bind(&self.run_id).fetch_optional(&mut *tx).await.map_err(failed)?;
-        if live.is_none() {
-            return Err(invalid("The Ticket assignment is no longer active."));
-        }
+        LiveAssignment::try_lock(&mut tx, &self.actor)
+            .await
+            .map_err(failed)?
+            .ok_or_else(|| invalid("The Ticket assignment is no longer active."))?;
         let prior: Option<(String, Value, Option<Value>)> = sqlx::query_as(
             "SELECT tool,arguments,result FROM tool_effects WHERE run_id=$1 AND effect_key=$2",
         )
@@ -159,31 +157,59 @@ impl CodingTool {
         .execute(&mut *tx)
         .await
         .map_err(failed)?;
-        sqlx::query(
-            "INSERT INTO comments(ticket_id,author_id,body,effect_key) VALUES ($1,$2,$3,$4)",
+        self.comment(
+            &mut tx,
+            &format!("{}/started", ctx.idempotency_key()),
+            format!("Started {}: {}", self.name(), summary(&args)),
         )
-        .bind(ticket)
-        .bind(&self.actor.id)
-        .bind(format!("Started {}: {}", self.name(), summary(&args)))
-        .bind(format!("{}/started", ctx.idempotency_key()))
-        .execute(&mut *tx)
-        .await
-        .map_err(failed)?;
+        .await?;
         tx.commit().await.map_err(failed)?;
         let result = run_process(&self.policy, &program, &arguments, input).await?;
         let mut tx = self.pool.begin().await.map_err(failed)?;
-        sqlx::query("UPDATE tool_effects SET result=$3 WHERE run_id=$1 AND effect_key=$2 AND result IS NULL").bind(&self.run_id).bind(ctx.idempotency_key()).bind(&result).execute(&mut *tx).await.map_err(failed)?;
-        // Serialize evidence projection with cancel/reassign, including a cancellation
-        // that commits while the subprocess is finishing.
-        sqlx::query("SELECT id FROM tickets WHERE id=$1 FOR UPDATE")
-            .bind(ticket)
-            .execute(&mut *tx)
+        // The fence serializes evidence projection with cancel/reassign, including a
+        // cancellation that commits while the subprocess is finishing.
+        let live = LiveAssignment::try_lock(&mut tx, &self.actor)
             .await
             .map_err(failed)?;
+        sqlx::query("UPDATE tool_effects SET result=$3 WHERE run_id=$1 AND effect_key=$2 AND result IS NULL").bind(&self.run_id).bind(ctx.idempotency_key()).bind(&result).execute(&mut *tx).await.map_err(failed)?;
         // Historical receipts survive reassignment; stale agents cannot project Comments.
-        sqlx::query("INSERT INTO comments(ticket_id,author_id,body,effect_key) SELECT id,$2,$3,$4 FROM tickets WHERE id=$1 AND generation=$5 AND assignee_id=$2 AND status='in_progress' ON CONFLICT(effect_key) DO NOTHING").bind(ticket).bind(&self.actor.id).bind(format!("{} result: {}",self.name(),result).chars().take(32000).collect::<String>()).bind(ctx.idempotency_key()).bind(generation).execute(&mut *tx).await.map_err(failed)?;
+        if live.is_some() {
+            self.comment(
+                &mut tx,
+                ctx.idempotency_key(),
+                format!("{} result: {}", self.name(), result)
+                    .chars()
+                    .take(32000)
+                    .collect(),
+            )
+            .await?;
+        }
         tx.commit().await.map_err(failed)?;
         Ok(result)
+    }
+    /// Record evidence as a Comment through the Ticket module, so it is fenced,
+    /// receipted and replayed on the same key like any other Ticket write.
+    async fn comment(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        key: &str,
+        body: String,
+    ) -> Result<(), ToolError> {
+        let (ticket_id, _) = self
+            .actor
+            .assignment
+            .ok_or_else(|| invalid("Coding requires an assigned Ticket."))?;
+        tickets::execute_in(
+            tx,
+            &self.actor,
+            TicketCommandRequest {
+                operation_id: OperationId::from_idempotency_key(key).to_string(),
+                command: TicketCommand::AddComment { ticket_id, body },
+            },
+        )
+        .await
+        .map_err(|error| failed(format!("Comment refused: {error:?}")))?;
+        Ok(())
     }
     fn invocation(&self, args: &Value) -> Result<(String, Vec<String>, Option<String>), ToolError> {
         let string = |key| {
@@ -354,7 +380,6 @@ impl Tool for CommentTool {
         json!({"type":"object","properties":{"body":{"type":"string"}},"required":["body"],"additionalProperties":false})
     }
     fn call(&self, ctx: ToolCtx, args: Value) -> BoxFuture<'static, Result<Value, ToolError>> {
-        use sha2::{Digest, Sha256};
         let tool = self.clone();
         Box::pin(async move {
             let body = args["body"]
@@ -364,8 +389,7 @@ impl Tool for CommentTool {
                 .actor
                 .assignment
                 .ok_or_else(|| invalid("Comments require an assignment."))?;
-            let digest = Sha256::digest(ctx.idempotency_key().as_bytes());
-            let id = uuid::Uuid::from_bytes(digest[..16].try_into().expect("SHA-256 has 32 bytes"));
+            let id = crate::receipts::OperationId::from_idempotency_key(ctx.idempotency_key());
             let receipt = crate::tickets::execute(
                 &tool.pool,
                 &tool.actor,

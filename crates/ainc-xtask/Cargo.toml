@@ -6,26 +6,24 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "xtask"
 path = "src/main.rs"
 
 [dependencies]
 ainc-release = { path = "../ainc-release" }
-ainc-daemon = { path = "../ainc-daemon" }
 anyhow.workspace = true
 base64 = "0.22"
 flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 libc = "0.2"
-openapiv3 = "2"
-prettyplease = "0.2"
-progenitor = "0.14"
 regex = "1"
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
-syn = { version = "2", features = ["full"] }
 tar = "0.4"
 tempfile = "3"
 toml = { version = "0.8", features = ["preserve_order"] }

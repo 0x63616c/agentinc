@@ -151,15 +151,13 @@ fn split_session_survives_app_quit_and_relaunch() -> Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
     runtime
         .block_on(async {
-            let http = reqwest::Client::new();
+            let http = ainc_client::connect(&url, &token)?;
             for id in [first, second] {
-                http.post(format!("{url}/v1/terminal/sessions"))
-                    .bearer_auth(&token)
-                    .header("agent-inc-client", ainc_release::client_header())
-                    .json(&serde_json::json!({"id": id.to_string()}))
+                http.terminal_sessions_create()
+                    .body(ainc_client::types::CreateTerminalSession { id: id.to_string() })
                     .send()
-                    .await?
-                    .error_for_status()?;
+                    .await
+                    .map_err(ainc_client::classify)?;
             }
             let fifo = root.join("gate");
             let path = std::ffi::CString::new(fifo.to_string_lossy().as_bytes())?;
@@ -224,21 +222,16 @@ fn split_session_survives_app_quit_and_relaunch() -> Result<()> {
                         }
                     }
                 }
-                let sessions: serde_json::Value = http
-                    .get(format!("{url}/v1/terminal/sessions"))
-                    .bearer_auth(&token)
-                    .header("agent-inc-client", ainc_release::client_header())
+                let sessions = http
+                    .terminal_sessions_list()
                     .send()
-                    .await?
-                    .error_for_status()?
-                    .json()
-                    .await?;
+                    .await
+                    .map_err(ainc_client::classify)?
+                    .into_inner();
                 ensure!(
-                    sessions.as_array().is_some_and(|items| {
-                        items.iter().any(|item| {
-                            item["id"] == second.to_string() && item["state"] == "running"
-                        })
-                    }),
+                    sessions
+                        .iter()
+                        .any(|item| item.id == second.to_string() && item.state == "running"),
                     "long-running session ended when app quit"
                 );
                 Ok::<_, anyhow::Error>(())
@@ -255,12 +248,11 @@ fn split_session_survives_app_quit_and_relaunch() -> Result<()> {
             drop(app);
             runtime.block_on(async {
                 for id in [first, second] {
-                    http.delete(format!("{url}/v1/terminal/sessions/{id}"))
-                        .bearer_auth(&token)
-                        .header("agent-inc-client", ainc_release::client_header())
+                    http.terminal_sessions_close()
+                        .id(id.to_string())
                         .send()
-                        .await?
-                        .error_for_status()?;
+                        .await
+                        .map_err(ainc_client::classify)?;
                 }
                 Ok::<_, anyhow::Error>(())
             })?;

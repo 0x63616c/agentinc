@@ -1,0 +1,16 @@
+[package]
+name = "ainc-identity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Product version, build channel, wire headers and compatibility shared by every AgentInc binary"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+semver = { version = "1", features = ["serde"] }
+libc = "0.2"

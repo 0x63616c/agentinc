@@ -98,7 +98,7 @@ impl UpdateView {
         let result = (|| -> anyhow::Result<_> {
             let host = cx.global::<UpdateHost>().0;
             host.update(cx, |shell, _, cx| shell.flush_for_update(cx))??;
-            crate::storage::discovery_path()
+            crate::daemon::discovery_path()
         })();
         let discovery = match result {
             Ok(path) => path,
@@ -117,7 +117,7 @@ impl UpdateView {
         INSTALLATION_PENDING.store(true, Ordering::Release);
         let external = std::env::var_os("AINC_DAEMON_URL").is_some();
         let request = cx.background_executor().spawn(async move {
-            crate::storage::background(async move {
+            crate::daemon::block_on(async move {
                 if external {
                     let _launches = COMPANION_LAUNCHES.write().await;
                     Ok(Vec::new())
@@ -337,7 +337,7 @@ pub fn start_upgrade_test(cx: &mut App) {
         let marker = std::env::var("AINC_UPGRADE_TEST_SUCCESS_FILE").expect("upgrade test marker");
         cx.background_executor()
             .spawn(async move {
-                crate::storage::background(async move {
+                crate::daemon::block_on(async move {
                     // client() starts the exact new bundled companion and waits for
                     // its readiness endpoint, using the isolated discovery profile.
                     let client = crate::storage::client().await?;
@@ -382,7 +382,7 @@ fn publish_downloaded_marker(cx: &mut App) {
     let marker = std::env::var("AINC_UPGRADE_TEST_DOWNLOADED_FILE").expect("download-only marker");
     cx.background_executor()
         .spawn(async move {
-            crate::storage::background(async move {
+            crate::daemon::block_on(async move {
                 let client = crate::storage::client().await?;
                 let version = client.get_version().send().await?;
                 anyhow::ensure!(

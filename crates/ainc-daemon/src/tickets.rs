@@ -3,9 +3,14 @@
 //! mutation still enters through [`execute_in`].
 mod activity;
 mod board;
+mod fence;
 mod links;
+mod transition;
 
-use crate::product::{ApiError, ErrorBody, Product};
+use crate::{
+    product::{ApiError, ErrorBody, Product},
+    receipts::{self, OperationId, Scope},
+};
 pub use activity::{ActivityKind, TicketActivity};
 pub(crate) use activity::{Entry, record};
 use axum::{
@@ -15,9 +20,9 @@ use axum::{
     routing::{get, post},
 };
 pub(crate) use board::{enter_column, lock as lock_board};
+pub(crate) use fence::LiveAssignment;
 pub use links::{LinkKind, TicketLink};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use utoipa::ToSchema;
@@ -346,7 +351,9 @@ async fn authorize(product: &Product, headers: &HeaderMap) -> Result<Actor, ApiE
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or_else(denied)?;
-    let row:Option<(String,String,i64,i64)> = sqlx::query_as("SELECT c.workspace_id,r.agent_id,r.ticket_id,r.generation FROM agent_credentials c JOIN ticket_runs r ON r.run_id=c.run_id JOIN tickets t ON t.id=r.ticket_id WHERE c.token_hash=$1 AND t.workspace_id=c.workspace_id AND t.generation=r.generation AND t.assignee_kind='agent' AND t.assignee_id=r.agent_id AND r.state IN ('queued','running')")
+    // The credential names an assignment; whether it is still live is decided
+    // by the fence inside each read or write transaction.
+    let row:Option<(String,String,i64,i64)> = sqlx::query_as("SELECT c.workspace_id,r.agent_id,r.ticket_id,r.generation FROM agent_credentials c JOIN ticket_runs r ON r.run_id=c.run_id WHERE c.token_hash=$1")
         .bind(token_hash(token)).fetch_optional(&product.pool).await?;
     let (workspace, id, ticket, generation) = row.ok_or_else(denied)?;
     Ok(Actor {
@@ -402,19 +409,15 @@ pub async fn history(
 /// An agent reads only while its assignment's run is live; a stale credential
 /// sees nothing, in the same transaction as the read.
 async fn fence_read(tx: &mut Transaction<'_, Postgres>, actor: &Actor) -> Result<(), ApiError> {
-    let Some((id, generation)) = actor.assignment else {
-        return Ok(());
-    };
-    let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tickets t JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE t.id=$1 AND t.workspace_id=$2 AND t.generation=$3 AND t.assignee_id=$4 AND t.assignee_kind='agent' AND r.state IN ('queued','running'))").bind(id).bind(&actor.workspace).bind(generation).bind(&actor.id).fetch_one(&mut **tx).await?;
-    if active { Ok(()) } else { Err(denied()) }
+    if actor.assignment.is_some() {
+        LiveAssignment::check(tx, actor).await?;
+    }
+    Ok(())
 }
 
 pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<TicketSnapshot, ApiError> {
     let ticket = actor.assignment.map(|a| a.0);
-    let mut tx = pool.begin().await?;
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        .execute(&mut *tx)
-        .await?;
+    let mut tx = crate::pg::snapshot_tx(pool).await?;
     fence_read(&mut tx, actor).await?;
     let tickets = sqlx::query_as(&format!("SELECT {TICKET_COLUMNS} FROM tickets WHERE workspace_id=$1 AND ($2::bigint IS NULL OR id=$2) ORDER BY array_position($3::text[],status),position,id DESC"))
         .bind(&actor.workspace)
@@ -447,30 +450,23 @@ async fn lock_ticket(
     id: i64,
     revision: Option<i64>,
 ) -> Result<Ticket, ApiError> {
-    if actor.assignment.is_some_and(|a| a.0 != id) {
-        return Err(denied());
-    }
-    let ticket: Ticket = sqlx::query_as(&format!(
-        "SELECT {TICKET_COLUMNS} FROM tickets WHERE id=$1 AND workspace_id=$2 FOR UPDATE"
-    ))
-    .bind(id)
-    .bind(&actor.workspace)
-    .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(denied)?;
-    if actor.assignment.is_some_and(|(_, generation)| {
-        ticket.generation != generation
-            || ticket.assignee_kind != AssigneeKind::Agent
-            || ticket.assignee_id != actor.id
-    }) {
-        return Err(denied());
-    }
-    if actor.assignment.is_some() {
-        let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs WHERE ticket_id=$1 AND generation=$2 AND agent_id=$3 AND state IN ('queued','running'))").bind(id).bind(ticket.generation).bind(&actor.id).fetch_one(&mut **tx).await?;
-        if !active {
+    let ticket = if actor.assignment.is_some() {
+        // An agent touches only the Ticket it is assigned to, while that assignment is live.
+        let live = LiveAssignment::lock(tx, actor).await?;
+        if live.ticket.id != id {
             return Err(denied());
         }
-    }
+        live.ticket
+    } else {
+        sqlx::query_as(&format!(
+            "SELECT {TICKET_COLUMNS} FROM tickets WHERE id=$1 AND workspace_id=$2 FOR UPDATE"
+        ))
+        .bind(id)
+        .bind(&actor.workspace)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or_else(denied)?
+    };
     if revision.is_some_and(|revision| ticket.revision != revision) {
         return Err(ApiError::conflict());
     }
@@ -493,9 +489,7 @@ pub(crate) async fn execute_in(
     actor: &Actor,
     request: TicketCommandRequest,
 ) -> Result<TicketReceipt, ApiError> {
-    if uuid::Uuid::parse_str(&request.operation_id).is_err() {
-        return Err(invalid("Use a UUID operation ID."));
-    }
+    let operation_id = OperationId::parse(&request.operation_id)?;
     if actor.assignment.is_some()
         && !matches!(
             request.command,
@@ -508,40 +502,32 @@ pub(crate) async fn execute_in(
     {
         return Err(denied());
     }
-    let payload =
-        serde_json::to_value(&request.command).map_err(|_| invalid("Invalid command."))?;
     // Every command may move Tickets or relate them; one writer per board.
     board::lock(tx, &actor.workspace).await?;
     // Fence even receipt reads after reassignment, within the same transaction.
     if let Some((id, _)) = actor.assignment {
         lock_ticket(tx, actor, id, None).await?;
     }
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
-        .bind(format!(
-            "{}/{}/{}",
-            actor.workspace, actor.id, request.operation_id
-        ))
-        .execute(&mut **tx)
-        .await?;
-    let prior:Option<(Value,Option<i64>)>=sqlx::query_as("SELECT command,result_id FROM ticket_receipts WHERE workspace_id=$1 AND actor_id=$2 AND operation_id=$3")
-        .bind(&actor.workspace).bind(&actor.id).bind(&request.operation_id).fetch_optional(&mut **tx).await?;
-    if let Some((old, result_id)) = prior {
-        if old != payload {
-            return Err(ApiError::conflict());
-        }
-        return Ok(TicketReceipt {
-            operation_id: request.operation_id,
-            result_id,
-        });
-    }
-    let result_id = apply(tx, actor, request.command).await?;
-    sqlx::query("INSERT INTO ticket_receipts(workspace_id,actor_id,operation_id,command,result_id) VALUES ($1,$2,$3,$4,$5)").bind(&actor.workspace).bind(&actor.id).bind(&request.operation_id).bind(payload).bind(result_id).execute(&mut **tx).await?;
-    sqlx::query("SELECT pg_notify('agentinc_dispatch','')")
-        .execute(&mut **tx)
-        .await?;
+    let scope = Scope::Ticket {
+        workspace: actor.workspace.clone(),
+        actor: actor.id.clone(),
+    };
+    let TicketCommandRequest { command, .. } = request;
+    let payload = serde_json::to_value(&command).map_err(|_| invalid("Invalid command."))?;
+    let actor = actor.clone();
+    let receipt = receipts::execute(tx, scope, operation_id, &payload, |tx| {
+        Box::pin(async move {
+            let result_id = apply(tx, &actor, command).await?;
+            sqlx::query("SELECT pg_notify('agentinc_dispatch','')")
+                .execute(&mut **tx)
+                .await?;
+            Ok(result_id)
+        })
+    })
+    .await?;
     Ok(TicketReceipt {
-        operation_id: request.operation_id,
-        result_id,
+        operation_id: receipt.operation_id.to_string(),
+        result_id: receipt.result,
     })
 }
 
@@ -909,26 +895,29 @@ async fn change_status(
     ticket: &Ticket,
     status: TicketStatus,
 ) -> Result<(), ApiError> {
-    if ticket.status == status {
+    let Some(plan) = transition::plan(
+        actor.assignment.is_none(),
+        ticket.status,
+        status,
+        ticket.assignee_kind,
+    )
+    .map_err(|transition::Refused| denied())?
+    else {
         return Ok(());
-    }
-    let owner = actor.assignment.is_none();
-    if !owner && ticket.status != TicketStatus::InProgress {
-        return Err(denied());
-    }
-    if owner {
+    };
+    if plan.cancel {
         cancel_generation(tx, actor, ticket).await?;
     }
     sqlx::query("UPDATE tickets SET revision=revision+1,generation=generation+$2 WHERE id=$1")
         .bind(ticket.id)
-        .bind(i64::from(owner))
+        .bind(i64::from(plan.bump_generation))
         .execute(&mut **tx)
         .await?;
     board::enter_column(tx, ticket.id, status).await?;
     actor
         .log(tx, Entry::status(ticket.id, ticket.status, status))
         .await?;
-    if owner && status.actionable() && ticket.assignee_kind == AssigneeKind::Agent {
+    if plan.start {
         start_generation(tx, actor, ticket.id).await?;
     }
     Ok(())

@@ -6,17 +6,29 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "aincd"
 path = "src/main.rs"
 
+# Test fixture only: a fake Codex app-server for AGENTINC_CODEX_PATH.
+[[bin]]
+name = "codex-fixture"
+path = "src/bin/codex_fixture.rs"
+
 [dependencies]
-ainc-release = { path = "../ainc-release" }
+# The daemon needs only the product identity. Kept under the old crate name until the
+# sources switch to `ainc_identity::` (a mechanical rename deferred to avoid merge churn).
+ainc-release = { package = "ainc-identity", path = "../ainc-identity" }
 libc = "0.2"
 sha2 = "0.10"
 turnkeel.workspace = true
 futures.workspace = true
-reqwest = { version = "0.13", features = ["json", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "charset", "http2", "system-proxy", "json", "stream"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+eventsource-stream = "0.2"
 anyhow.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 serde.workspace = true
@@ -31,5 +43,6 @@ rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 utoipa = { version = "5.5", features = ["axum_extras"] }
 
 [dev-dependencies]
+turnkeel = { workspace = true, features = ["testing"] }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }

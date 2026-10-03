@@ -84,7 +84,7 @@ impl Shell {
                     .child(self.titlebar_space("titlebar-left-space", cx).flex_1())
                     .child(self.icon_button(
                         "sidebar",
-                        "Toggle sidebar · ⌘ B",
+                        shortcuts::TOGGLE_SIDEBAR.labelled("Toggle sidebar"),
                         "panel",
                         Control::Sidebar,
                         cx,

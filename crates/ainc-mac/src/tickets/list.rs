@@ -15,12 +15,6 @@ fn columns() -> [TableColumn; 3] {
     ]
 }
 
-pub(super) fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64)
-}
-
 impl TicketsPage {
     pub(super) fn list(&self, visible: &[Ticket], cx: &mut Context<Self>) -> Div {
         if visible.is_empty() {
@@ -46,7 +40,7 @@ impl TicketsPage {
                 .build();
         }
         let columns = columns();
-        let now = now();
+        let now = time::now();
         let mut table = table_container()
             .debug_selector(|| "tickets.list".into())
             .child(table_header(&columns));
@@ -89,7 +83,7 @@ impl TicketsPage {
                         .icon("plus")
                         .icon_only()
                         .tint(TEXT_TERTIARY)
-                        .enabled(self.store.is_some() && !self.pending)
+                        .enabled(self.daemon.is_some() && !self.pending.busy())
                         .build(
                             &self.hover,
                             move |this: &mut Self, window, cx| {
@@ -176,7 +170,7 @@ impl TicketsPage {
             vec![
                 summary.into_any_element(),
                 assignee.into_any_element(),
-                hint(relative_time(ticket.updated_at, now)).into_any_element(),
+                hint(time::relative(ticket.updated_at, now)).into_any_element(),
             ],
             true,
             &self.hover,

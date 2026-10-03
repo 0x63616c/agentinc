@@ -14,9 +14,16 @@ impl TicketsPage {
             Button::new(id, "New Agent")
                 .primary()
                 .icon("plus")
-                .enabled(this.store.is_some() && !this.pending)
+                .enabled(this.daemon.is_some() && !this.pending.busy())
                 .build(&this.hover, Self::open_agent, cx)
         };
+        let sync = self.sync.read(cx);
+        let (loaded, error, reconnecting, loading_started) = (
+            sync.loaded,
+            sync.message(),
+            sync.reconnecting(),
+            sync.loading_started,
+        );
         Page::document(
             PageHeader::new("Agents")
                 .description("Agents pick up the Tickets you assign to them.")
@@ -25,14 +32,14 @@ impl TicketsPage {
         .child(
             column()
                 .gap(px(SPACE_4))
-                .when_some(self.error.clone(), |s, error| s.child(banner(Tone::Danger, error)))
-                .when(self.refreshing && self.error.is_some(), |s| {
-                    s.child(LoadingFrame::new(self.loading_started, window).inline("Reconnecting…"))
+                .when_some(error.clone(), |s, error| s.child(banner(Tone::Danger, error)))
+                .when(reconnecting, |s| {
+                    s.child(LoadingFrame::new(loading_started, window).inline("Reconnecting…"))
                 })
-                .when(!self.loaded && self.error.is_none(), |s| {
+                .when(!loaded && error.is_none(), |s| {
                     s.child(skeleton_rows("agents.loading", 3))
                 })
-                .when(self.loaded && agents.is_empty() && self.error.is_none(), |s| {
+                .when(loaded && agents.is_empty() && error.is_none(), |s| {
                     s.child(
                         EmptyState::new("agents", "No Agents yet")
                             .description("Register an agent with instructions and a model, then assign Tickets to it.")
@@ -41,7 +48,7 @@ impl TicketsPage {
                                 Button::new("agents.create.empty", "New Agent")
                                     .secondary()
                                     .icon("plus")
-                                    .enabled(self.store.is_some() && !self.pending)
+                                    .enabled(self.daemon.is_some() && !self.pending.busy())
                                     .build(&self.hover, Self::open_agent, cx),
                             )
                             .build(),
@@ -62,16 +69,12 @@ impl TicketsPage {
                                 })
                                 .count();
                             let running = self.state.runs.iter().any(|r| {
-                                matches!(r.state.as_str(), "queued" | "running")
+                                is_active(&r.state)
                                     && self.state.tickets.iter().any(|t| {
                                         t.id == r.ticket_id && t.assignee_id == agent.id
                                     })
                             });
-                            let subtitle = match assigned {
-                                0 => "No open Tickets".to_owned(),
-                                1 => "1 open Ticket".to_owned(),
-                                n => format!("{n} open Tickets"),
-                            };
+                            let subtitle = copy::pluralize(assigned, "open Ticket", "open Tickets");
                             list_item(SharedString::from(format!("agent.{}", agent.id)), name.clone())
                                 .accessibility_id(format!("agent.{}", agent.id))
                                 .min_h(px(LIST_ROW_HEIGHT))

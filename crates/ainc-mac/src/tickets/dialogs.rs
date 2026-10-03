@@ -68,25 +68,31 @@ impl TicketsPage {
             ),
             Overlay::DeleteTicket(id) => {
                 let ticket = self.ticket(id)?;
+                let (title, body, button) = copy::confirm_delete(
+                    &ticket.title,
+                    "This Ticket, its Comments and its relationships",
+                );
                 (
-                    format!("Delete “{}”?", ticket.title),
+                    title,
                     column()
                         .gap(px(SPACE_2))
-                        .child(caption(
-                            "This Ticket, its Comments and its relationships will be removed.",
-                        ))
+                        .child(caption(body))
                         .when_some(self.form_error.clone(), |s, error| {
                             s.child(error_text(error))
                         })
                         .into_any_element(),
                     true,
-                    "Delete",
+                    button,
                 )
             }
             _ => return None,
         };
         let deleting = matches!(active, Overlay::DeleteTicket(_));
-        let submit_label = if self.pending { "Saving…" } else { submit };
+        let submit_label = if self.pending.busy() {
+            "Saving…"
+        } else {
+            submit
+        };
         let footer = dialog_footer(
             Button::new("tickets.cancel", "Cancel")
                 .secondary()
@@ -106,7 +112,7 @@ impl TicketsPage {
                 } else {
                     ButtonKind::Primary
                 })
-                .enabled(enabled && !self.pending)
+                .enabled(enabled && !self.pending.busy())
                 .track_focus(&self.submit_focus)
                 .build(
                     &self.hover,

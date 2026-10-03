@@ -222,7 +222,7 @@ fn sparkle_feed(
                 sparkle::create_delta(&crate::root()?, app, next_app, &patch)?;
             }
             Payload::BrokenDelta => {
-                // A signed but unapplicable patch exercises real extraction fallback.
+                // A signed but inapplicable patch exercises real extraction fallback.
                 fs::write(&patch, b"deliberately invalid delta for the upgrade gate")?;
             }
             Payload::Full => unreachable!(),

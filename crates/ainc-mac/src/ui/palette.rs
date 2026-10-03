@@ -374,7 +374,7 @@ pub fn render_palette<V: HoverHost>(
             .child(kbd_hint("↑ ↓", "Navigate"))
             .child(kbd_hint("↵", "Open"))
             .child(div().flex_1())
-            .child(kbd_hint("ESC", "Close")),
+            .child(kbd_hint(super::shortcuts::DISMISS.glyph, "Close")),
     )
 }
 

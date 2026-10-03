@@ -29,9 +29,9 @@ impl Shell {
                 PaletteEntry::new(format!("page.{}", page.title.to_lowercase()), page.title)
                     .icon(page.icon);
             if page.in_sidebar {
-                entry = entry.shortcut(format!("⌘{}", index + 1));
+                entry = entry.shortcut(shortcuts::route(index + 1).1);
             } else if page.route == Route::Settings {
-                entry = entry.shortcut("⌘,");
+                entry = entry.shortcut(shortcuts::SETTINGS.glyph);
             }
             items.push(PaletteCandidate {
                 group: "Pages",
@@ -51,7 +51,7 @@ impl Shell {
                 },
             )
             .icon("panel")
-            .shortcut("⌘B"),
+            .shortcut(shortcuts::TOGGLE_SIDEBAR.glyph),
             control: Control::Sidebar,
         });
         items.push(PaletteCandidate {
@@ -92,8 +92,8 @@ impl Shell {
             });
         }
 
-        if let Some(store) = &self.store {
-            for ticket in store.tickets().tickets {
+        if let Some(daemon) = &self.daemon {
+            for ticket in daemon.tickets().tickets {
                 let status = ticket.status;
                 items.push(PaletteCandidate {
                     group: "Tickets",

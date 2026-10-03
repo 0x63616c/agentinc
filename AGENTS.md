@@ -118,7 +118,8 @@ objects from a registry keyed by agent name.
 
 ## Testing
 
-Tests never call a real model provider. Use `turnkeel::testing`: `ScriptedModel` for
+Tests never call a real model provider. Use `turnkeel::testing` (behind turnkeel's `testing`
+cargo feature, which only dev-dependencies enable): `ScriptedModel` for
 rule-based replies, `Script` for call-by-call control, `testing::run()` to execute an
 agent end to end, `assert_transcript()` for ordered assertions. Tests run against a real local Temporal
 dev server, so they exercise the real workflow and real activities.
@@ -138,7 +139,7 @@ if it has to, the public API has leaked.
 
 Personal packaging, update signing and bundled runtime ownership: [docs/distribution.md](docs/distribution.md).
 The production/development channel and isolation rule is also documented there;
-`ainc-release::identity` is its single code source.
+`ainc-identity` is its single code source.
 
 Stable runtime deployment and process-recovery checks: [docs/runtime.md](docs/runtime.md).
 

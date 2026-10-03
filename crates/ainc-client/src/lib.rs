@@ -4,8 +4,8 @@ include!("generated.rs");
 /// The generated operations call this before every request.
 pub async fn client_header(request: &mut reqwest::Request) -> Result<(), std::convert::Infallible> {
     request.headers_mut().insert(
-        "agent-inc-client",
-        reqwest::header::HeaderValue::from_str(&ainc_release::client_header())
+        ainc_identity::CLIENT_HEADER,
+        reqwest::header::HeaderValue::from_str(&ainc_identity::client_header())
             .expect("compiled product version is a valid header"),
     );
     Ok(())
@@ -19,23 +19,113 @@ pub fn update_required() -> bool {
 /// Central response gate used by every generated operation.
 pub async fn server_compatibility(
     result: &Result<reqwest::Response, reqwest::Error>,
-) -> Result<(), ainc_release::CompatibilityError> {
+) -> Result<(), ainc_identity::CompatibilityError> {
     let Ok(response) = result else {
         return Ok(());
     };
     let checked = (|| {
         if response.status() == reqwest::StatusCode::UPGRADE_REQUIRED {
-            return Err(ainc_release::CompatibilityError::UpgradeRequired);
+            return Err(ainc_identity::CompatibilityError::UpgradeRequired);
         }
-        if let Some(header) = response.headers().get("agent-inc-server") {
+        if let Some(header) = response.headers().get(ainc_identity::SERVER_HEADER) {
             let header = header
                 .to_str()
-                .map_err(|_| ainc_release::CompatibilityError::ServerTooOld)?;
-            ainc_release::check_client(header, ainc_release::MIN_CLIENT, ainc_release::API)
-                .map_err(|_| ainc_release::CompatibilityError::ServerTooOld)?;
+                .map_err(|_| ainc_identity::CompatibilityError::ServerTooOld)?;
+            ainc_identity::check_client(header, ainc_identity::MIN_CLIENT, ainc_identity::API)
+                .map_err(|_| ainc_identity::CompatibilityError::ServerTooOld)?;
         }
         Ok(())
     })();
     UPDATE_REQUIRED.store(checked.is_err(), std::sync::atomic::Ordering::Relaxed);
     checked
+}
+
+/// How a caller should react to a failed daemon request. Every generated
+/// operation's error classifies into exactly one of these; see [`classify`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClientError {
+    /// The request may never have reached the daemon. Sending the same
+    /// operation again is safe and worthwhile.
+    Retryable(String),
+    /// The daemon refused the request and would refuse an identical one.
+    Rejected(types::ErrorBody),
+    /// The daemon no longer accepts this client version.
+    UpdateRequired,
+    /// The daemon is unreachable or failed; retrying later may help.
+    Unavailable(String),
+}
+impl std::fmt::Display for ClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientError::Retryable(message) | ClientError::Unavailable(message) => {
+                f.write_str(message)
+            }
+            ClientError::Rejected(body) => f.write_str(&body.message),
+            ClientError::UpdateRequired => f.write_str("Update AgentInc to continue"),
+        }
+    }
+}
+impl std::error::Error for ClientError {}
+impl PartialEq for types::ErrorBody {
+    fn eq(&self, other: &Self) -> bool {
+        self.code == other.code && self.message == other.message
+    }
+}
+impl Eq for types::ErrorBody {}
+
+/// Sort a generated operation's error into a [`ClientError`].
+pub fn classify(error: Error<types::ErrorBody>) -> ClientError {
+    match error {
+        Error::CommunicationError(error) => ClientError::Retryable(error.to_string()),
+        Error::ErrorResponse(response) if response.status().is_client_error() => {
+            if response.status() == reqwest::StatusCode::UPGRADE_REQUIRED {
+                ClientError::UpdateRequired
+            } else {
+                ClientError::Rejected(response.into_inner())
+            }
+        }
+        Error::UnexpectedResponse(response)
+            if response.status() == reqwest::StatusCode::UPGRADE_REQUIRED =>
+        {
+            ClientError::UpdateRequired
+        }
+        Error::UnexpectedResponse(response) if response.status().is_client_error() => {
+            ClientError::Rejected(types::ErrorBody {
+                code: response.status().as_u16().to_string(),
+                message: format!("Daemon refused the request ({})", response.status()),
+            })
+        }
+        Error::Custom(_) if update_required() => ClientError::UpdateRequired,
+        other => ClientError::Unavailable(other.to_string()),
+    }
+}
+
+/// Whether a daemon answers at `url`. Bounded to one second.
+pub async fn ready(url: &str) -> bool {
+    let Ok(probe) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(1))
+        .build()
+    else {
+        return false;
+    };
+    probe
+        .get(format!("{}/health/ready", url.trim_end_matches('/')))
+        .send()
+        .await
+        .is_ok_and(|response| response.status().is_success())
+}
+
+/// An authenticated client for the daemon at `url`.
+pub fn connect(url: &str, token: &str) -> Result<Client, ClientError> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    let bearer = format!("Bearer {}", token.trim())
+        .parse()
+        .map_err(|_| ClientError::Unavailable("Daemon owner credential is malformed".into()))?;
+    headers.insert(reqwest::header::AUTHORIZATION, bearer);
+    let http = reqwest::Client::builder()
+        .default_headers(headers)
+        .timeout(std::time::Duration::from_secs(40))
+        .build()
+        .map_err(|error| ClientError::Unavailable(error.to_string()))?;
+    Ok(Client::new_with_client(url.trim_end_matches('/'), http))
 }

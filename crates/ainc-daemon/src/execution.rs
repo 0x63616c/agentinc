@@ -1,7 +1,10 @@
 //! At-least-once dispatch and fenced, idempotent projection of SDK results.
 use crate::{
     coding::{CodingTool, Permission, WorkspacePolicy},
-    tickets::{self, Actor, Entry, TicketStatus},
+    receipts::OperationId,
+    tickets::{
+        self, Actor, Entry, LiveAssignment, TicketCommand, TicketCommandRequest, TicketStatus,
+    },
 };
 use futures::future::BoxFuture;
 use sqlx::{FromRow, PgPool, postgres::PgListener};
@@ -40,18 +43,22 @@ struct Definition {
     workspace_id: String,
 }
 impl Definition {
+    /// The agent acting for this assignment.
+    fn actor(&self) -> Actor {
+        Actor {
+            workspace: self.workspace_id.clone(),
+            id: self.agent_id.clone(),
+            assignment: Some((self.ticket_id, self.generation)),
+            conversation: None,
+        }
+    }
     fn agent(
         &self,
         pool: &PgPool,
         models: &dyn ModelCatalog,
         policy: &Arc<WorkspacePolicy>,
     ) -> anyhow::Result<Agent> {
-        let actor = Actor {
-            workspace: self.workspace_id.clone(),
-            id: self.agent_id.clone(),
-            assignment: Some((self.ticket_id, self.generation)),
-            conversation: None,
-        };
+        let actor = self.actor();
         let mut builder=Agent::builder(format!("ticket-{}-v1",self.run_id))
             .model(SharedModel(models.resolve(&self.model)?))
             .instructions(format!("{}\nWork only on this assigned Ticket. Tool effects are recorded as Comments. Inspect unknown outcomes before taking more action. Finish with a concise account of work and evidence.",self.instructions));
@@ -266,19 +273,10 @@ async fn project(
     result: Result<String, String>,
 ) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
-    // The board lock comes before the Ticket's row lock, as in every command.
-    tickets::lock_board(&mut tx, &definition.workspace_id).await?;
-    let current:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tickets t JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE r.run_id=$1 AND r.state='running')").bind(&definition.run_id).fetch_one(&mut *tx).await?;
-    if !current {
-        return Ok(());
-    }
-    // The row lock serializes completion with cancellation/reassignment.
-    let generation: i64 =
-        sqlx::query_scalar("SELECT generation FROM tickets WHERE id=$1 FOR UPDATE")
-            .bind(definition.ticket_id)
-            .fetch_one(&mut *tx)
-            .await?;
-    if generation != definition.generation {
+    // The fence takes the board lock, then the Ticket's row, and serializes
+    // completion with cancellation/reassignment; a stale result changes nothing.
+    let actor = definition.actor();
+    if LiveAssignment::try_lock(&mut tx, &actor).await?.is_none() {
         return Ok(());
     }
     let (state, body, error) = match result {
@@ -293,6 +291,25 @@ async fn project(
         ),
         Err(error) => ("failed", format!("Work stopped: {error}"), Some(error)),
     };
+    // The run's account is a Comment like any other, posted while the assignment is
+    // still live; the transaction rolls back if the run turns out not to be running.
+    tickets::execute_in(
+        &mut tx,
+        &actor,
+        TicketCommandRequest {
+            operation_id: OperationId::from_idempotency_key(&format!(
+                "{}/result",
+                definition.run_id
+            ))
+            .to_string(),
+            command: TicketCommand::AddComment {
+                ticket_id: definition.ticket_id,
+                body: body.chars().take(32000).collect(),
+            },
+        },
+    )
+    .await
+    .map_err(|error| anyhow::anyhow!("result Comment refused: {error:?}"))?;
     let changed =
         sqlx::query("UPDATE ticket_runs SET state=$2,error=$3 WHERE run_id=$1 AND state='running'")
             .bind(&definition.run_id)
@@ -304,7 +321,6 @@ async fn project(
     if changed == 0 {
         return Ok(());
     }
-    sqlx::query("INSERT INTO comments(ticket_id,author_id,body,effect_key) VALUES ($1,$2,$3,$4) ON CONFLICT(effect_key) DO NOTHING").bind(definition.ticket_id).bind(&definition.agent_id).bind(body.chars().take(32000).collect::<String>()).bind(format!("{}/result",definition.run_id)).execute(&mut *tx).await?;
     tickets::record(
         &mut tx,
         &definition.agent_id,

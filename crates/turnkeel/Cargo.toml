@@ -5,6 +5,14 @@ edition.workspace = true
 license.workspace = true
 description = "Durable AI agents in Rust"
 
+[lints]
+workspace = true
+
+[package.metadata.cargo-machete]
+# sdk-core only turns on TLS for the dev-server download; the workflow crate is named by the
+# temporalio macros' expansion.
+ignored = ["temporalio-sdk-core", "temporalio-workflow"]
+
 [dependencies]
 turnkeel-macros.workspace = true
 
@@ -25,5 +33,11 @@ temporalio-macros.workspace = true
 temporalio-workflow.workspace = true
 temporalio-sdk-core.workspace = true
 
+[features]
+# The `testing` module and the local Temporal dev server (downloads a pinned Temporal CLI).
+# Tests and the daemon's dev-dependencies enable it; shipped binaries do not.
+testing = ["temporalio-sdk/testing"]
+
 [dev-dependencies]
+turnkeel = { path = ".", features = ["testing"] }
 tokio = { workspace = true, features = ["full"] }

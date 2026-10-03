@@ -1,23 +1,22 @@
-use crate::{storage, ui::*};
-use ainc_client::types::{ExecutionPage, ExecutionView};
+use crate::{
+    action::{Pending, Run},
+    daemon::Daemon,
+    ui::*,
+};
+use ainc_client::types::ExecutionView;
+use anyhow::Context as _;
 use gpui::{prelude::*, *};
+use std::sync::Arc;
 
-const FILTERS: &[(&str, &str)] = &[
-    ("All", "All"),
-    ("Running", "Running"),
-    ("Completed", "Completed"),
-    ("Failed", "Failed"),
-    ("Canceled", "Cancelled"),
-    ("Terminated", "Terminated"),
-    ("TimedOut", "Timed out"),
-    ("ContinuedAsNew", "Continued as new"),
-];
-
-fn status_label(status: &str) -> &str {
-    FILTERS
-        .iter()
-        .find(|(value, _)| *value == status)
-        .map_or(status, |(_, label)| label)
+/// `(Temporal status, label)`: every state Temporal reports, after "All".
+fn filters() -> Vec<(&'static str, &'static str)> {
+    std::iter::once(("All", "All"))
+        .chain(
+            WorkState::ALL
+                .iter()
+                .filter_map(|state| state.temporal().map(|value| (value, state.label()))),
+        )
+        .collect()
 }
 
 fn workflow_label(workflow_type: &str) -> &str {
@@ -26,50 +25,6 @@ fn workflow_label(workflow_type: &str) -> &str {
         "agentinc.session" => "Conversation",
         "turnkeel.occurrence" => "Automation occurrence",
         other => other,
-    }
-}
-
-fn status_tone(status: &str) -> Tone {
-    match status {
-        "Running" => Tone::Info,
-        "Completed" => Tone::Success,
-        "Failed" | "Terminated" | "TimedOut" => Tone::Danger,
-        "ContinuedAsNew" => Tone::Accent,
-        _ => Tone::Warning,
-    }
-}
-
-fn relative_time(started_at: i64, now: i64) -> String {
-    let seconds = (now - started_at).max(0) / 1000;
-    if seconds < 60 {
-        "just now".into()
-    } else if seconds < 3600 {
-        format!("{}m ago", seconds / 60)
-    } else if seconds < 86_400 {
-        format!("{}h ago", seconds / 3600)
-    } else {
-        format!("{}d ago", seconds / 86_400)
-    }
-}
-
-fn absolute_time(timestamp: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(timestamp)
-        .map(|time| {
-            time.with_timezone(&chrono::Local)
-                .format("%b %-d, %Y · %H:%M:%S")
-                .to_string()
-        })
-        .unwrap_or_else(|| "Time unavailable".into())
-}
-
-fn duration(started_at: i64, closed_at: Option<i64>, now: i64) -> String {
-    let seconds = (closed_at.unwrap_or(now) - started_at).max(0) / 1000;
-    if seconds < 60 {
-        format!("{seconds}s")
-    } else if seconds < 3600 {
-        format!("{}m {:02}s", seconds / 60, seconds % 60)
-    } else {
-        format!("{}h {:02}m", seconds / 3600, (seconds % 3600) / 60)
     }
 }
 
@@ -83,11 +38,12 @@ fn columns() -> [TableColumn; 4] {
 }
 
 pub struct TemporalPage {
+    daemon: Option<Arc<Daemon>>,
     rows: Vec<ExecutionView>,
     filter: &'static str,
     next_page: Option<String>,
     ui_available: bool,
-    loading: bool,
+    loading: Pending,
     loaded: bool,
     error: Option<String>,
     hover: HoverFade,
@@ -100,13 +56,14 @@ impl HoverHost for TemporalPage {
 }
 
 impl TemporalPage {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(daemon: Option<Arc<Daemon>>, cx: &mut Context<Self>) -> Self {
         let page = Self {
+            daemon,
             rows: Vec::new(),
             filter: "All",
             next_page: None,
             ui_available: false,
-            loading: false,
+            loading: Pending::default(),
             loaded: false,
             error: None,
             hover: HoverFade::default(),
@@ -133,18 +90,21 @@ impl TemporalPage {
     }
 
     pub(crate) fn ensure_loaded(&mut self, cx: &mut Context<Self>) {
-        if !self.loaded && !self.loading {
+        if !self.loaded && !self.loading.busy() {
             self.load(false, cx);
         }
     }
 
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
-    pub(crate) fn fixture(&mut self, page: ExecutionPage, cx: &mut Context<Self>) {
+    pub(crate) fn fixture(
+        &mut self,
+        page: ainc_client::types::ExecutionPage,
+        cx: &mut Context<Self>,
+    ) {
         self.rows = page.executions;
         self.next_page = page.next_page;
         self.ui_available = page.ui_available;
-        self.loading = false;
         self.loaded = true;
         self.error = None;
         cx.notify();
@@ -154,9 +114,8 @@ impl TemporalPage {
     #[allow(dead_code)]
     pub(crate) fn fixture_error(&mut self, cx: &mut Context<Self>) {
         self.rows.clear();
-        self.loading = false;
         self.loaded = true;
-        self.error = Some("Temporal is unavailable. Try again.".into());
+        self.error = Some(copy::unavailable("Temporal", "Try again"));
         cx.notify();
     }
 
@@ -165,14 +124,14 @@ impl TemporalPage {
     pub(crate) fn fixture_loading(&mut self, cx: &mut Context<Self>) {
         self.rows.clear();
         self.next_page = None;
-        self.loading = true;
+        self.loading.hold();
         self.loaded = false;
         self.error = None;
         cx.notify();
     }
 
     fn load(&mut self, more: bool, cx: &mut Context<Self>) {
-        if self.loading {
+        if self.loading.busy() {
             return;
         }
         let status = self.filter.to_owned();
@@ -186,23 +145,14 @@ impl TemporalPage {
             self.loaded = false;
         }
         self.error = None;
-        self.loading = true;
-        cx.notify();
-        let work = cx.background_executor().spawn(async move {
-            storage::background(async {
-                let client = storage::client().await?;
-                let mut request = client.temporal_executions().status(status);
-                if let Some(page) = page {
-                    request = request.page(page);
-                }
-                let response = request.send().await?;
-                anyhow::Ok(response.into_inner())
-            })
-        });
-        cx.spawn(async move |this, cx| {
-            let result: anyhow::Result<ExecutionPage> = work.await;
-            let _ = this.update(cx, |this, cx| {
-                this.loading = false;
+        let daemon = self.daemon.clone();
+        cx.run(
+            &self.loading.clone(),
+            move || {
+                let daemon = daemon.context("Daemon unavailable")?;
+                anyhow::Ok(daemon.fetch(crate::daemon::Executions { status, page })?)
+            },
+            |this, result, _| {
                 this.loaded = true;
                 match result {
                     Ok(page) => {
@@ -210,14 +160,10 @@ impl TemporalPage {
                         this.next_page = page.next_page;
                         this.ui_available = page.ui_available;
                     }
-                    Err(error) => {
-                        this.error = Some(format!("Workflow history unavailable: {error}"))
-                    }
+                    Err(failure) => this.error = Some(failure.message("Workflow history")),
                 }
-                cx.notify();
-            });
-        })
-        .detach();
+            },
+        );
     }
 
     fn table(&self, now: i64, cx: &mut Context<Self>) -> Div {
@@ -254,25 +200,24 @@ impl TemporalPage {
                         )
                         .into_any_element(),
                     row()
-                        .child(status_pill(
-                            status_label(&status).to_owned(),
-                            status_tone(&status),
-                        ))
+                        .child(status_pill(state_label(&status), state_tone(&status)))
                         .into_any_element(),
                     column()
                         .gap(px(SPACE_HALF))
                         .child(
                             div()
                                 .text_color(rgb(TEXT))
-                                .child(relative_time(execution.started_at, now)),
+                                .child(time::relative(execution.started_at / 1000, now)),
                         )
-                        .child(caption(absolute_time(execution.started_at)))
+                        .child(caption(time::absolute(execution.started_at / 1000)))
                         .into_any_element(),
                     div()
                         .font_family("SF Mono")
                         .text_size(type_size(LABEL_SIZE))
                         .text_color(rgb(TEXT))
-                        .child(duration(execution.started_at, execution.closed_at, now))
+                        .child(time::duration(
+                            execution.closed_at.unwrap_or(now * 1000) - execution.started_at,
+                        ))
                         .into_any_element(),
                 ];
                 table_row(
@@ -303,8 +248,9 @@ impl TemporalPage {
 impl Render for TemporalPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
-        let now = chrono::Utc::now().timestamp_millis();
-        let filter = FILTERS
+        let now = time::now();
+        let filters = filters();
+        let filter = filters
             .iter()
             .position(|(value, _)| *value == self.filter)
             .unwrap_or(0);
@@ -314,7 +260,7 @@ impl Render for TemporalPage {
                 Button::new("temporal.refresh", "Refresh")
                     .secondary()
                     .icon("refresh")
-                    .enabled(!self.loading)
+                    .enabled(!self.loading.busy())
                     .build(&self.hover, |this, _, cx| this.load(false, cx), cx),
             );
         let mut content = column()
@@ -322,12 +268,12 @@ impl Render for TemporalPage {
             .gap(px(SPACE_5))
             .child(row().child(segmented(
                 "temporal.filter",
-                FILTERS.iter().map(|(_, label)| *label),
+                filters.iter().map(|(_, label)| *label),
                 filter,
-                !self.loading,
+                !self.loading.busy(),
                 &self.hover,
                 |this, index, _, cx| {
-                    this.filter = FILTERS[index].0;
+                    this.filter = self::filters()[index].0;
                     this.load(false, cx);
                 },
                 cx,
@@ -349,7 +295,7 @@ impl Render for TemporalPage {
                     .debug_selector(|| "temporal.error".into()),
             );
         }
-        if !self.loaded && self.loading {
+        if !self.loaded {
             content = content.child(
                 div()
                     .id("temporal.loading")
@@ -383,7 +329,7 @@ impl Render for TemporalPage {
                 row().child(
                     Button::new("temporal.more", "Load more")
                         .secondary()
-                        .enabled(!self.loading)
+                        .enabled(!self.loading.busy())
                         .build(&self.hover, |this, _, cx| this.load(true, cx), cx),
                 ),
             );

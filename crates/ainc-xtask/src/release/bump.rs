@@ -3,7 +3,7 @@
 use super::{checked, output, read_to_string};
 use anyhow::{Result, anyhow, bail};
 use regex::Regex;
-use std::{fs, path::Path, process::Command, process::exit};
+use std::{fs, path::Path, process::exit};
 
 type Version = (u64, u64, u64);
 
@@ -82,8 +82,9 @@ pub fn bump(root: &Path, args: &[String]) -> Result<()> {
         );
     }
     fs::write(&path, with_version(&manifest, new)?)?;
-    let run =
-        |program: &str, args: &[&str]| checked(Command::new(program).args(args).current_dir(root));
+    let run = |program: &str, args: &[&str]| {
+        checked(crate::spawn::command(program).args(args).current_dir(root))
+    };
     run("cargo", &["update", "--workspace"])?;
     run("cargo", &["xtask", "generate"])?;
     run("git", &["add", "-A"])?;
