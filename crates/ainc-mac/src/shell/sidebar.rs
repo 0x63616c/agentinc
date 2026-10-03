@@ -152,9 +152,12 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::model::PANE_WIDTHS;
-    use gpui::{TestAppContext, VisualTestContext};
+    use super::{Shell, bind_keys};
+    use crate::{
+        model::{Overlay, PANE_WIDTHS},
+        ui::tokens::SIDEBAR_PROFILE_INSET,
+    };
+    use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext, px};
 
     fn draw_sidebar(shell: &Entity<Shell>, width: f32, cx: &mut VisualTestContext) {
         cx.update(|window, cx| {
