@@ -245,7 +245,7 @@ pub struct Daemon {
     pending: [Mutex<Option<Pending>>; 4],
     workspaces: Mutex<WorkspaceSnapshot>,
     product: Mutex<Snapshot>,
-    tickets: Mutex<TicketSnapshot>,
+    tickets: Mutex<Arc<TicketSnapshot>>,
     automations: Mutex<AutomationSnapshot>,
     update_required: AtomicBool,
     #[cfg(test)]
@@ -272,7 +272,7 @@ impl Daemon {
             pending: Default::default(),
             workspaces: Mutex::new(default_workspaces()),
             product: Mutex::new(default_product()),
-            tickets: Mutex::new(default_tickets()),
+            tickets: Mutex::new(Arc::new(default_tickets())),
             automations: Mutex::new(AutomationSnapshot {
                 rules: vec![],
                 occurrences: vec![],
@@ -316,7 +316,7 @@ impl Daemon {
                 *self.automations.lock().expect("Automation snapshot") = self.fetch(Automations)?
             }
             Family::Ticket => {
-                *self.tickets.lock().expect("Ticket snapshot") = self.fetch(Tickets)?
+                *self.tickets.lock().expect("Ticket snapshot") = Arc::new(self.fetch(Tickets)?)
             }
             Family::Product => {
                 *self.product.lock().expect("product snapshot") = self.fetch(Product)?
@@ -422,7 +422,8 @@ impl Daemon {
     pub fn product(&self) -> Snapshot {
         self.product.lock().expect("product snapshot").clone()
     }
-    pub fn tickets(&self) -> TicketSnapshot {
+    /// Shared, not copied: the palette reads it on every keystroke.
+    pub fn tickets(&self) -> Arc<TicketSnapshot> {
         self.tickets.lock().expect("Ticket snapshot").clone()
     }
     pub fn automations(&self) -> AutomationSnapshot {

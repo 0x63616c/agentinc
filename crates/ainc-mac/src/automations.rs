@@ -135,8 +135,9 @@ impl AutomationsPage {
             .daemon
             .tickets()
             .assignees
-            .into_iter()
+            .iter()
             .filter(|a| a.kind == AssigneeKind::Agent)
+            .cloned()
             .collect();
     }
     fn command(&mut self, command: AutomationCommand, cx: &mut Context<Self>) {

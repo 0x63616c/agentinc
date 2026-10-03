@@ -251,7 +251,7 @@ impl TicketsPage {
         cx.notify();
     }
     pub(crate) fn reload(&mut self) {
-        self.state = self.daemon.tickets();
+        self.state = (*self.daemon.tickets()).clone();
         self.conversation_titles = self
             .daemon
             .product()

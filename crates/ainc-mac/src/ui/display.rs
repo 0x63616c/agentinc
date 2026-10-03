@@ -232,7 +232,6 @@ impl AssetSource for Assets {
             "agents.svg" => include_bytes!("../../assets/agents.svg"),
             "arrowRight.svg" => include_bytes!("../../assets/arrowRight.svg"),
             "arrowUpRight.svg" => include_bytes!("../../assets/arrowUpRight.svg"),
-            "bell.svg" => include_bytes!("../../assets/bell.svg"),
             "chevronLeft.svg" => include_bytes!("../../assets/chevronLeft.svg"),
             "chevronRight.svg" => include_bytes!("../../assets/chevronRight.svg"),
             "close.svg" => include_bytes!("../../assets/close.svg"),

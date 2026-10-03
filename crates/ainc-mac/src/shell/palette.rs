@@ -96,7 +96,8 @@ impl Shell {
         }
 
         {
-            for ticket in self.daemon.tickets().tickets {
+            let tickets = self.daemon.tickets();
+            for ticket in &tickets.tickets {
                 let status = ticket.status;
                 items.push(PaletteCandidate {
                     group: "Tickets",

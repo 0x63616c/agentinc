@@ -89,7 +89,7 @@ impl AgentsPage {
         this
     }
     fn reload(&mut self) {
-        self.state = self.daemon.tickets();
+        self.state = (*self.daemon.tickets()).clone();
     }
     fn inputs(&self) -> [(&'static str, &Entity<TextInput>); 3] {
         [

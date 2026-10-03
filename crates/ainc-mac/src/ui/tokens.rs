@@ -173,7 +173,7 @@ pub const SIDEBAR_TEXT_GAP: f32 = 11.;
 pub const SIDEBAR_PROFILE_INSET: f32 = SPACE_2;
 
 pub const HEADER_CONTROL: f32 = 30.;
-/// The title bar's right inset, shared by the bell and the panel under it.
+/// The title bar's right inset, shared by the title bar controls.
 pub const HEADER_EDGE_INSET: f32 = 9.;
 pub const HEADER_ICON_SIZE: f32 = 16.;
 pub const ICON_SIZE: f32 = 16.;
