@@ -3,13 +3,13 @@
 //! tests and captures show what the real app would. Pure: state in, state out.
 use crate::tickets::model::{apply_move, history_sides, priority_key, status_key};
 use ainc_client::types::{
-    ActivityKind, Assignee, AssigneeKind, Comment, ErrorBody, LinkKind, Ticket, TicketActivity,
-    TicketCommand, TicketLink, TicketPriority, TicketSnapshot, TicketStatus,
+    ActivityKind, Assignee, AssigneeKind, Comment, ErrorBody, ErrorCode, LinkKind, Ticket,
+    TicketActivity, TicketCommand, TicketLink, TicketPriority, TicketSnapshot, TicketStatus,
 };
 
 fn refused(message: &str) -> ErrorBody {
     ErrorBody {
-        code: "refused".into(),
+        code: ErrorCode::Invalid,
         message: message.into(),
     }
 }

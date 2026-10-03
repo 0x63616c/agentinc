@@ -161,8 +161,7 @@ async fn run() -> Result<()> {
         async {
             axum::serve(
                 listener,
-                ainc_daemon::product_router_with(product.clone(), connection)
-                    .merge(ainc_daemon::work::router(product, config))
+                ainc_daemon::app_with_runtime(product, connection, config)
                     .route("/internal/drain", drain),
             )
             .with_graceful_shutdown(stopping(receiver.clone()))

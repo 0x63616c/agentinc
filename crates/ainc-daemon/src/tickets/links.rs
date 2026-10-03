@@ -1,7 +1,7 @@
 //! Relationships between two Tickets in one workspace. Each is stored once from
 //! its source; blocked-by, duplicated-by and sub-issue are the reverse reading.
 use super::{ActivityKind, Actor, Entry, invalid, lock_ticket};
-use crate::product::ApiError;
+use crate::api::CommandError;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Postgres, Transaction};
 use utoipa::ToSchema;
@@ -65,7 +65,7 @@ async fn lock_pair(
     actor: &Actor,
     from: i64,
     to: i64,
-) -> Result<(), ApiError> {
+) -> Result<(), CommandError> {
     if from == to {
         return Err(invalid("A Ticket cannot relate to itself."));
     }
@@ -81,7 +81,7 @@ async fn touch_and_log(
     to: i64,
     kind: LinkKind,
     activity: ActivityKind,
-) -> Result<(), ApiError> {
+) -> Result<(), CommandError> {
     sqlx::query(
         "UPDATE tickets SET updated_at=extract(epoch FROM clock_timestamp())::bigint WHERE id=ANY($1)",
     )
@@ -109,7 +109,7 @@ pub(super) async fn link(
     from: i64,
     to: i64,
     kind: LinkKind,
-) -> Result<(), ApiError> {
+) -> Result<(), CommandError> {
     let (from, to) = canonical(from, to, kind);
     lock_pair(tx, actor, from, to).await?;
     if kind != LinkKind::RelatesTo {
@@ -155,7 +155,7 @@ pub(super) async fn detach_all(
     tx: &mut Transaction<'_, Postgres>,
     actor: &Actor,
     id: i64,
-) -> Result<(), ApiError> {
+) -> Result<(), CommandError> {
     let links: Vec<TicketLink> =
         sqlx::query_as("SELECT from_id,to_id,kind FROM ticket_links WHERE from_id=$1 OR to_id=$1")
             .bind(id)
@@ -186,7 +186,7 @@ pub(super) async fn unlink(
     from: i64,
     to: i64,
     kind: LinkKind,
-) -> Result<(), ApiError> {
+) -> Result<(), CommandError> {
     let (from, to) = canonical(from, to, kind);
     lock_pair(tx, actor, from, to).await?;
     let deleted = sqlx::query(

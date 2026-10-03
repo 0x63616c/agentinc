@@ -88,13 +88,21 @@ impl Tool for TicketsTool {
                 })?;
                 let operation_id =
                     OperationId::from_idempotency_key(ctx.idempotency_key()).to_string();
-                let receipt=tickets::execute(&this.pool,&actor,TicketCommandRequest{operation_id,command}).await.map_err(|_|ToolError::InvalidArguments("Command refused. Read current Ticket revisions before retrying; verify the assignee and arguments.".into()))?;
+                let receipt = tickets::execute(
+                    &this.pool,
+                    &actor,
+                    TicketCommandRequest {
+                        operation_id,
+                        command,
+                    },
+                )
+                .await?;
                 Ok(json!(receipt))
             } else {
                 tickets::snapshot(&this.pool, &actor)
                     .await
                     .map(|s| json!(s))
-                    .map_err(|_| ToolError::Failed("Ticket service unavailable".into()))
+                    .map_err(ToolError::from)
             }
         })
     }
@@ -149,13 +157,21 @@ impl Tool for AutomationsTool {
                 })?;
                 let operation_id =
                     OperationId::from_idempotency_key(ctx.idempotency_key()).to_string();
-                let receipt=crate::automations::execute(&this.pool,&actor,crate::automations::AutomationRequest{operation_id,command}).await.map_err(|_|ToolError::InvalidArguments("Command refused. Read current Automation revisions before retrying; verify the assignee and arguments.".into()))?;
+                let receipt = crate::automations::execute(
+                    &this.pool,
+                    &actor,
+                    crate::automations::AutomationRequest {
+                        operation_id,
+                        command,
+                    },
+                )
+                .await?;
                 Ok(json!(receipt))
             } else {
                 crate::automations::snapshot(&this.pool, &actor)
                     .await
                     .map(|s| json!(s))
-                    .map_err(|_| ToolError::Failed("Automation service unavailable".into()))
+                    .map_err(ToolError::from)
             }
         })
     }

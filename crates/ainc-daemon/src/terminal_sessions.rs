@@ -1,12 +1,12 @@
 //! Owner-scoped terminal PTYs. A disconnected viewer does not own the shell.
-use crate::product::{ApiError, ErrorBody, Product};
+use crate::api::{AppState, CommandError, ErrorBody, Owner};
 use axum::{
-    Json, Router,
+    Json,
     extract::{
-        Path, State, WebSocketUpgrade,
+        FromRef, Path, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::IntoResponse,
     routing::get,
 };
@@ -28,14 +28,24 @@ use tokio::{
     sync::{broadcast, mpsc, watch},
 };
 use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
 const SCROLLBACK_BYTES: usize = 2 * 1024 * 1024;
 
+/// The open terminals, shared by every request for the daemon's lifetime.
+#[derive(Clone, Default)]
+pub(crate) struct Sessions(Arc<Mutex<HashMap<Uuid, Arc<Session>>>>);
 #[derive(Clone)]
 struct Service {
-    product: Product,
     sessions: Arc<Mutex<HashMap<Uuid, Arc<Session>>>>,
+}
+impl FromRef<AppState> for Service {
+    fn from_ref(state: &AppState) -> Self {
+        Self {
+            sessions: state.terminals.0.clone(),
+        }
+    }
 }
 struct Session {
     workspace_id: String,
@@ -65,42 +75,28 @@ pub struct TerminalSession {
     pub workspace_id: String,
     pub state: String,
 }
-fn api_error(error: impl std::fmt::Display) -> ApiError {
+fn api_error(error: impl std::fmt::Display) -> CommandError {
     tracing::error!(%error, "terminal session failed");
-    ApiError::new(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "terminal_unavailable",
-        "Terminal unavailable. Try again.",
-    )
+    CommandError::Unavailable("Terminal unavailable. Try again.".into())
 }
-fn missing() -> ApiError {
-    ApiError::new(
-        StatusCode::NOT_FOUND,
-        "session_ended",
-        "This terminal session has ended.",
-    )
+fn missing() -> CommandError {
+    CommandError::NotFound
 }
-fn bad_id() -> ApiError {
-    ApiError::new(StatusCode::BAD_REQUEST, "invalid", "Use a UUID session ID.")
+fn bad_id() -> CommandError {
+    CommandError::Invalid("Use a UUID session ID.".into())
 }
-pub fn router(product: Product) -> Router {
-    let service = Service {
-        product,
-        sessions: Arc::new(Mutex::new(HashMap::new())),
-    };
-    Router::new()
-        .route("/v1/terminal/sessions", get(list).post(create))
-        .route("/v1/terminal/sessions/{id}", axum::routing::delete(close))
+pub(crate) fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list, create))
+        .routes(routes!(close))
         .route("/v1/terminal/sessions/{id}/attach", get(attach))
-        .with_state(service)
 }
-#[utoipa::path(get, path = "/v1/terminal/sessions", operation_id = "terminal_sessions_list", responses((status = 200, body = Vec<TerminalSession>), (status = 401, body = ErrorBody)))]
+#[utoipa::path(get, path = "/v1/terminal/sessions", operation_id = "terminal_sessions_list", responses((status = 200, body = Vec<TerminalSession>)))]
 async fn list(
     State(service): State<Service>,
-    headers: HeaderMap,
-) -> Result<Json<Vec<TerminalSession>>, ApiError> {
-    service.product.authorize(&headers)?;
-    let workspace_id = crate::workspaces::current(&service.product.pool).await?;
+    owner: Owner,
+) -> Result<Json<Vec<TerminalSession>>, CommandError> {
+    let workspace_id = owner.workspace;
     let sessions = service
         .sessions
         .lock()
@@ -120,14 +116,13 @@ async fn list(
         .collect();
     Ok(Json(sessions))
 }
-#[utoipa::path(post, path = "/v1/terminal/sessions", operation_id = "terminal_sessions_create", request_body = CreateTerminalSession, responses((status = 200, body = TerminalSession), (status = 401, body = ErrorBody), (status = 503, body = ErrorBody)))]
+#[utoipa::path(post, path = "/v1/terminal/sessions", operation_id = "terminal_sessions_create", request_body = CreateTerminalSession, responses((status = 200, body = TerminalSession), (status = 503, body = ErrorBody)))]
 async fn create(
     State(service): State<Service>,
-    headers: HeaderMap,
+    owner: Owner,
     Json(request): Json<CreateTerminalSession>,
-) -> Result<Json<TerminalSession>, ApiError> {
-    service.product.authorize(&headers)?;
-    let workspace_id = crate::workspaces::current(&service.product.pool).await?;
+) -> Result<Json<TerminalSession>, CommandError> {
+    let workspace_id = owner.workspace;
     let id = Uuid::parse_str(&request.id).map_err(|_| bad_id())?;
     if id.is_nil() {
         return Err(bad_id());
@@ -152,14 +147,13 @@ async fn create(
         .into(),
     }))
 }
-#[utoipa::path(delete, path = "/v1/terminal/sessions/{id}", operation_id = "terminal_sessions_close", params(("id" = String, Path)), responses((status = 204), (status = 400, body = ErrorBody), (status = 401, body = ErrorBody), (status = 404, body = ErrorBody)))]
+#[utoipa::path(delete, path = "/v1/terminal/sessions/{id}", operation_id = "terminal_sessions_close", params(("id" = String, Path)), responses((status = 204), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody)))]
 async fn close(
     State(service): State<Service>,
-    headers: HeaderMap,
+    owner: Owner,
     Path(id): Path<String>,
-) -> Result<StatusCode, ApiError> {
-    service.product.authorize(&headers)?;
-    let workspace_id = crate::workspaces::current(&service.product.pool).await?;
+) -> Result<StatusCode, CommandError> {
+    let workspace_id = owner.workspace;
     let id = Uuid::parse_str(&id).map_err(|_| bad_id())?;
     let mut sessions = service.sessions.lock().unwrap();
     if sessions
@@ -177,12 +171,11 @@ async fn close(
 }
 async fn attach(
     State(service): State<Service>,
-    headers: HeaderMap,
+    owner: Owner,
     Path(id): Path<String>,
     upgrade: WebSocketUpgrade,
-) -> Result<impl IntoResponse, ApiError> {
-    service.product.authorize(&headers)?;
-    let workspace_id = crate::workspaces::current(&service.product.pool).await?;
+) -> Result<impl IntoResponse, CommandError> {
+    let workspace_id = owner.workspace;
     let id = Uuid::parse_str(&id).map_err(|_| bad_id())?;
     let session = service
         .sessions
@@ -405,12 +398,21 @@ mod tests {
 
     #[sqlx::test]
     async fn disconnected_viewer_keeps_shell_and_replays_output(pool: sqlx::PgPool) {
-        let app = router(Product::new(pool.clone(), "owner".into()).unwrap());
+        let app =
+            crate::product_router(crate::api::Product::new(pool.clone(), "owner".into()).unwrap());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let id = Uuid::new_v4();
-        let client = crate::http_client().build().unwrap();
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            crate::api::CLIENT_HEADER,
+            ainc_release::client_header().parse().unwrap(),
+        );
+        let client = crate::http_client()
+            .default_headers(headers)
+            .build()
+            .unwrap();
         client
             .post(format!("http://{address}/v1/terminal/sessions"))
             .bearer_auth("owner")
@@ -429,6 +431,10 @@ mod tests {
         request
             .headers_mut()
             .insert("authorization", "Bearer owner".parse().unwrap());
+        request.headers_mut().insert(
+            crate::api::CLIENT_HEADER,
+            ainc_release::client_header().parse().unwrap(),
+        );
         let (mut first, _) = connect_async(request.clone()).await.unwrap();
         let command = format!(
             "IFS= read -r line < {}; printf '__AFTER__:%s\\n' \"$line\"\n",

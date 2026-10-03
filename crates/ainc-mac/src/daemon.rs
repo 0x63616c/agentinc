@@ -23,9 +23,9 @@ use transport::{Envelope, Reply, Request, Slice, Transport};
 
 use ainc_client::types::{
     Assignee, AssigneeKind, AutomationCommand, AutomationRequest, AutomationSnapshot,
-    Command as ProductCommand, CommandRequest, ConnectionStatus, ErrorBody, Snapshot,
+    Command as ProductCommand, CommandRequest, ConnectionStatus, ErrorBody, ErrorCode, Snapshot,
     TicketActivity, TicketCommand, TicketCommandRequest, TicketSnapshot, WorkPage, Workspace,
-    WorkspaceCommand, WorkspaceRequest, WorkspaceState,
+    WorkspaceCommand, WorkspaceRequest, WorkspaceSnapshot,
 };
 use std::sync::{
     Arc, Mutex,
@@ -171,7 +171,7 @@ macro_rules! fetch {
 }
 fetch!(
     Workspaces,
-    WorkspaceState,
+    WorkspaceSnapshot,
     |_s| Slice::Workspaces,
     Workspaces
 );
@@ -199,8 +199,8 @@ fetch!(
     Executions
 );
 
-pub(crate) fn default_workspaces() -> WorkspaceState {
-    WorkspaceState {
+pub(crate) fn default_workspaces() -> WorkspaceSnapshot {
+    WorkspaceSnapshot {
         current_id: "local".into(),
         workspaces: vec![Workspace {
             id: "local".into(),
@@ -243,7 +243,7 @@ pub struct Daemon {
     // newer acknowledgement. Never acquire this lock on the foreground.
     serial: Mutex<()>,
     pending: [Mutex<Option<Pending>>; 4],
-    workspaces: Mutex<WorkspaceState>,
+    workspaces: Mutex<WorkspaceSnapshot>,
     product: Mutex<Snapshot>,
     tickets: Mutex<TicketSnapshot>,
     automations: Mutex<AutomationSnapshot>,
@@ -360,7 +360,7 @@ impl Daemon {
                 Some(prior) if prior.command == value => prior.envelope.clone(),
                 Some(_) => {
                     return Err(DaemonError::Rejected(ErrorBody {
-                        code: "pending".into(),
+                        code: ErrorCode::Conflict,
                         message: format!(
                             "Retry the unacknowledged {} change before another change.",
                             family.name()
@@ -416,7 +416,7 @@ impl Daemon {
         self.call(Request::Connection(action)).map(|_| ())
     }
 
-    pub fn workspaces(&self) -> WorkspaceState {
+    pub fn workspaces(&self) -> WorkspaceSnapshot {
         self.workspaces.lock().expect("Workspace snapshot").clone()
     }
     pub fn product(&self) -> Snapshot {
@@ -464,9 +464,9 @@ mod tests {
             })
             .collect()
     }
-    fn refused(code: &str) -> DaemonError {
+    fn refused(code: ErrorCode) -> DaemonError {
         DaemonError::Rejected(ErrorBody {
-            code: code.into(),
+            code,
             message: "refused".into(),
         })
     }
@@ -497,8 +497,11 @@ mod tests {
     #[test]
     fn a_rejection_clears_the_pending_slot() {
         let daemon = Daemon::in_memory();
-        daemon.memory().fail_next(refused("invalid"));
-        assert_eq!(daemon.send(create("Pay rent")), Err(refused("invalid")));
+        daemon.memory().fail_next(refused(ErrorCode::Invalid));
+        assert_eq!(
+            daemon.send(create("Pay rent")),
+            Err(refused(ErrorCode::Invalid))
+        );
         daemon.send(create("Walk the dog")).unwrap();
         let sent = commands(&daemon);
         assert_eq!(sent.len(), 2);
@@ -517,7 +520,7 @@ mod tests {
         ));
         let blocked = daemon.send(create("Walk the dog"));
         assert!(
-            matches!(&blocked, Err(DaemonError::Rejected(body)) if body.code == "pending"),
+            matches!(&blocked, Err(DaemonError::Rejected(body)) if body.code == ErrorCode::Conflict),
             "{blocked:?}"
         );
         daemon.send(create("Pay rent")).unwrap();

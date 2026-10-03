@@ -1,45 +1,33 @@
 //! Single-owner product commands. A committed receipt is the acknowledgement;
 //! clients never own SQL or the lifetime of accepted turns.
-use axum::{
-    Json, Router,
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
-    routing::{get, post},
-};
+use axum::{Json, extract::State};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
+pub use crate::api::{ErrorBody, Product};
 use crate::{
+    api::{AppState, CommandError, Owner},
     receipts::{self, OperationId, Scope},
     tickets::{self, Actor, TicketCommand, TicketCommandRequest, TicketStatus},
 };
 
-#[derive(Clone)]
-pub struct Product {
-    pub pool: PgPool,
-    token: String,
-}
-impl Product {
-    pub fn new(pool: PgPool, token: String) -> anyhow::Result<Self> {
-        anyhow::ensure!(
-            !token.trim().is_empty(),
-            "owner credential must not be empty"
-        );
-        Ok(Self { pool, token })
-    }
-    pub(crate) fn authorize(&self, headers: &HeaderMap) -> Result<(), ApiError> {
-        if headers.get("authorization").and_then(|h| h.to_str().ok())
-            != Some(&format!("Bearer {}", self.token))
-        {
-            return Err(ApiError::new(
-                StatusCode::UNAUTHORIZED,
-                "unauthorized",
-                "Owner credential required.",
-            ));
+/// Legacy name for [`CommandError`], kept for `temporal.rs` until WP-D5 lands.
+pub(crate) type ApiError = CommandError;
+impl CommandError {
+    /// Legacy constructor for `temporal.rs`; new code names a variant.
+    pub(crate) fn new(status: axum::http::StatusCode, _code: &str, message: &str) -> Self {
+        use axum::http::StatusCode;
+        match status {
+            StatusCode::BAD_REQUEST => Self::Invalid(message.into()),
+            StatusCode::CONFLICT => Self::Conflict(message.into()),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized,
+            StatusCode::FORBIDDEN => Self::Forbidden,
+            StatusCode::NOT_FOUND => Self::NotFound,
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(message.into()),
+            _ => Self::Internal,
         }
-        Ok(())
     }
 }
 
@@ -125,85 +113,23 @@ pub struct CommandRequest {
     pub command: Command,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
-pub struct Acknowledgement {
+pub struct CommandReceipt {
     pub operation_id: String,
     pub result_id: Option<i64>,
 }
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct ErrorBody {
-    pub code: String,
-    pub message: String,
-}
-#[derive(Debug)]
-pub struct ApiError {
-    status: StatusCode,
-    body: ErrorBody,
-}
-impl ApiError {
-    #[cfg(test)]
-    pub(crate) fn status(&self) -> StatusCode {
-        self.status
-    }
-    pub(crate) fn new(status: StatusCode, code: &str, message: &str) -> Self {
-        Self {
-            status,
-            body: ErrorBody {
-                code: code.into(),
-                message: message.into(),
-            },
-        }
-    }
-    pub(crate) fn conflict() -> Self {
-        Self::new(
-            StatusCode::CONFLICT,
-            "conflict",
-            "The record changed or has a reply in progress. Refresh and try again.",
-        )
-    }
-}
-impl From<sqlx::Error> for ApiError {
-    fn from(error: sqlx::Error) -> Self {
-        if let sqlx::Error::Database(ref e) = error {
-            if e.is_unique_violation() || e.is_foreign_key_violation() {
-                return Self::conflict();
-            }
-            if e.is_check_violation() {
-                return Self::new(
-                    StatusCode::BAD_REQUEST,
-                    "invalid",
-                    "The value is empty or too long.",
-                );
-            }
-        }
-        tracing::error!(%error, "product database request failed");
-        Self::new(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "unavailable",
-            "Data is unavailable. Try again.",
-        )
-    }
-}
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        (self.status, Json(self.body)).into_response()
-    }
+
+pub(crate) fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(state))
+        .routes(routes!(command))
 }
 
-pub fn router(product: Product) -> Router {
-    Router::new()
-        .route("/v1/state", get(state))
-        .route("/v1/commands", post(command))
-        .with_state(product)
-}
-
-#[utoipa::path(get, path = "/v1/state", operation_id = "product_state", responses((status = 200, body = Snapshot), (status = 401, body = ErrorBody), (status = 503, body = ErrorBody)))]
-pub async fn state(
+#[utoipa::path(get, path = "/v1/state", operation_id = "product_state", responses((status = 200, body = Snapshot)))]
+async fn state(
     State(product): State<Product>,
-    headers: HeaderMap,
-) -> Result<Json<Snapshot>, ApiError> {
-    product.authorize(&headers)?;
-    let workspace = crate::workspaces::current(&product.pool).await?;
-    Ok(Json(snapshot_in(&product.pool, &workspace).await?))
+    owner: Owner,
+) -> Result<Json<Snapshot>, CommandError> {
+    Ok(Json(snapshot_in(&product.pool, &owner.workspace).await?))
 }
 
 pub async fn snapshot(pool: &PgPool) -> Result<Snapshot, sqlx::Error> {
@@ -234,18 +160,21 @@ pub async fn snapshot_in(pool: &PgPool, workspace: &str) -> Result<Snapshot, sql
     })
 }
 
-#[utoipa::path(post, path = "/v1/commands", operation_id = "product_command", request_body = CommandRequest, responses((status = 200, body = Acknowledgement), (status = 400, body = ErrorBody), (status = 401, body = ErrorBody), (status = 409, body = ErrorBody), (status = 503, body = ErrorBody)))]
-pub async fn command(
+#[utoipa::path(post, path = "/v1/commands", operation_id = "product_command", request_body = CommandRequest, responses((status = 200, body = CommandReceipt), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)))]
+async fn command(
     State(product): State<Product>,
-    headers: HeaderMap,
+    owner: Owner,
     Json(request): Json<CommandRequest>,
-) -> Result<Json<Acknowledgement>, ApiError> {
-    product.authorize(&headers)?;
-    let workspace = crate::workspaces::current(&product.pool).await?;
-    Ok(Json(execute_in(&product.pool, &workspace, request).await?))
+) -> Result<Json<CommandReceipt>, CommandError> {
+    Ok(Json(
+        execute_in(&product.pool, &owner.workspace, request).await?,
+    ))
 }
 
-pub async fn execute(pool: &PgPool, request: CommandRequest) -> Result<Acknowledgement, ApiError> {
+pub async fn execute(
+    pool: &PgPool,
+    request: CommandRequest,
+) -> Result<CommandReceipt, CommandError> {
     execute_in(pool, "local", request).await
 }
 
@@ -253,7 +182,7 @@ pub async fn execute_in(
     pool: &PgPool,
     workspace: &str,
     request: CommandRequest,
-) -> Result<Acknowledgement, ApiError> {
+) -> Result<CommandReceipt, CommandError> {
     let operation_id = OperationId::parse(&request.operation_id)?;
     let mut tx = pool.begin().await?;
     if let Some(command) = todo_as_ticket(&mut tx, workspace, &request.command).await? {
@@ -267,7 +196,7 @@ pub async fn execute_in(
         )
         .await?;
         tx.commit().await?;
-        return Ok(Acknowledgement {
+        return Ok(CommandReceipt {
             operation_id: receipt.operation_id,
             result_id: receipt.result_id,
         });
@@ -312,11 +241,11 @@ pub async fn execute_in(
                     .fetch_optional(&mut **tx)
                     .await?;
                     if row.is_none() {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::NotFound);
                     }
                     let pending: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM turns WHERE conversation_id=$1 AND state IN ('queued','running'))").bind(id).fetch_one(&mut **tx).await?;
                     if pending {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::Conflict("Wait for the reply in progress.".into()));
                     }
                     sqlx::query("UPDATE conversation_sessions SET state='closed' WHERE conversation_id=$1 AND state='active'").bind(id).execute(&mut **tx).await?;
                     sqlx::query("DELETE FROM conversations WHERE id=$1")
@@ -334,7 +263,7 @@ pub async fn execute_in(
                     .fetch_one(&mut **tx)
                     .await?;
                     if !exists {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::NotFound);
                     }
                     sqlx::query("INSERT INTO assistant_settings(workspace_id,key,value) VALUES ($1,'selected_conversation',$2) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value").bind(workspace).bind(id.to_string()).execute(&mut **tx).await?;
                     Some(id)
@@ -351,7 +280,7 @@ pub async fn execute_in(
                     .fetch_optional(&mut **tx)
                     .await?;
                     if parent.is_none() {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::NotFound);
                     }
                     let id = sqlx::query_scalar("INSERT INTO turns(conversation_id,prompt,state,model) VALUES ($1,$2,'queued',(SELECT value FROM assistant_settings WHERE workspace_id=$3 AND key='model')) RETURNING id").bind(conversation_id).bind(prompt.trim()).bind(workspace).fetch_one(&mut **tx).await?;
                     sqlx::query("UPDATE conversations SET updated_at=extract(epoch FROM now())::bigint,title=CASE WHEN title='New conversation' THEN left($2,60) ELSE title END WHERE id=$1").bind(conversation_id).bind(prompt.trim()).execute(&mut **tx).await?;
@@ -360,17 +289,20 @@ pub async fn execute_in(
                 Command::Retry { id } => {
                     let parent: Option<i64> = sqlx::query_scalar("SELECT c.id FROM conversations c JOIN turns t ON c.id=t.conversation_id WHERE t.id=$1 AND c.workspace_id=$2 FOR UPDATE OF c").bind(id).bind(workspace).fetch_optional(&mut **tx).await?;
                     if parent.is_none() {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::NotFound);
                     }
-                    changed(
-                        sqlx::query(
-                            "UPDATE turns SET error=NULL,response=NULL,state='queued',attempt=attempt+1,session_id=NULL WHERE id=$1 AND state='failed'",
-                        )
-                        .bind(id)
-                        .execute(&mut **tx)
-                        .await?
-                        .rows_affected(),
-                    )?;
+                    let retried = sqlx::query(
+                        "UPDATE turns SET error=NULL,response=NULL,state='queued',attempt=attempt+1,session_id=NULL WHERE id=$1 AND state='failed'",
+                    )
+                    .bind(id)
+                    .execute(&mut **tx)
+                    .await?
+                    .rows_affected();
+                    if retried == 0 {
+                        return Err(CommandError::Conflict(
+                            "Only a failed reply can be retried.".into(),
+                        ));
+                    }
                     Some(id)
                 }
                 #[allow(deprecated)]
@@ -390,7 +322,7 @@ pub async fn execute_in(
     })
     .await?;
     tx.commit().await?;
-    Ok(Acknowledgement {
+    Ok(CommandReceipt {
         operation_id: receipt.operation_id.to_string(),
         result_id: receipt.result,
     })
@@ -403,7 +335,7 @@ async fn todo_as_ticket(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     workspace: &str,
     command: &Command,
-) -> Result<Option<TicketCommand>, ApiError> {
+) -> Result<Option<TicketCommand>, CommandError> {
     Ok(Some(match command {
         Command::CreateTodo { title } => TicketCommand::Create {
             title: title.clone(),
@@ -435,7 +367,7 @@ async fn todo_revision(
     workspace: &str,
     id: i64,
     human_only: bool,
-) -> Result<i64, ApiError> {
+) -> Result<i64, CommandError> {
     tickets::lock_board(tx, workspace).await?;
     sqlx::query_scalar("SELECT revision FROM tickets WHERE id=$1 AND workspace_id=$2 AND (NOT $3 OR assignee_kind='human')")
         .bind(id)
@@ -443,11 +375,12 @@ async fn todo_revision(
         .bind(human_only)
         .fetch_optional(&mut **tx)
         .await?
-        .ok_or_else(ApiError::conflict)
+        .ok_or(CommandError::NotFound)
 }
-fn changed(rows: u64) -> Result<(), ApiError> {
+/// An UPDATE that matched no row: the record is gone.
+fn changed(rows: u64) -> Result<(), CommandError> {
     if rows == 0 {
-        Err(ApiError::conflict())
+        Err(CommandError::NotFound)
     } else {
         Ok(())
     }

@@ -208,7 +208,7 @@ impl CodingTool {
             },
         )
         .await
-        .map_err(|error| failed(format!("Comment refused: {error:?}")))?;
+        .map_err(|error| failed(format!("Comment refused: {error}")))?;
         Ok(())
     }
     fn invocation(&self, args: &Value) -> Result<(String, Vec<String>, Option<String>), ToolError> {
@@ -401,10 +401,7 @@ impl Tool for CommentTool {
                     },
                 },
             )
-            .await
-            .map_err(|_| {
-                invalid("Comment refused: the assignment changed or the text is invalid.")
-            })?;
+            .await?;
             Ok(json!({"comment_id":receipt.result_id}))
         })
     }

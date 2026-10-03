@@ -1,6 +1,6 @@
 //! Real ain cd processes, Postgres, SDK service and loopback Responses fixtures.
 //! No user's profile, repository or subscription is touched.
-use ainc_daemon::product::{Acknowledgement, Command, CommandRequest};
+use ainc_daemon::product::{Command, CommandReceipt, CommandRequest};
 use axum::{Json, Router, extract::State, routing::post};
 use serde_json::{Value, json};
 use sqlx::{ConnectOptions, PgPool, postgres::PgListener};
@@ -130,7 +130,7 @@ impl Stack {
         self.server.shutdown().await.unwrap();
     }
 }
-async fn command(client: &reqwest::Client, url: &str, command: Command) -> Acknowledgement {
+async fn command(client: &reqwest::Client, url: &str, command: Command) -> CommandReceipt {
     client
         .post(format!("{url}/v1/commands"))
         .json(&CommandRequest {

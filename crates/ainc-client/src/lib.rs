@@ -91,7 +91,13 @@ pub fn classify(error: Error<types::ErrorBody>) -> ClientError {
         }
         Error::UnexpectedResponse(response) if response.status().is_client_error() => {
             ClientError::Rejected(types::ErrorBody {
-                code: response.status().as_u16().to_string(),
+                code: match response.status() {
+                    reqwest::StatusCode::UNAUTHORIZED => types::ErrorCode::Unauthorized,
+                    reqwest::StatusCode::FORBIDDEN => types::ErrorCode::Forbidden,
+                    reqwest::StatusCode::NOT_FOUND => types::ErrorCode::NotFound,
+                    reqwest::StatusCode::CONFLICT => types::ErrorCode::Conflict,
+                    _ => types::ErrorCode::Invalid,
+                },
                 message: format!("Daemon refused the request ({})", response.status()),
             })
         }

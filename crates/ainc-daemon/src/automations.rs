@@ -1,15 +1,11 @@
 //! Saved Ticket proposals, recurring authorization, and idempotent occurrence commits.
+use crate::api::Product;
 use crate::{
-    product::{ApiError, ErrorBody, Product},
+    api::{AppState, CommandError, ErrorBody, Owner},
     receipts::{self, OperationId, Scope},
     tickets::{self, Actor, TicketCommand, TicketCommandRequest, TicketProposal},
 };
-use axum::{
-    Json, Router,
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    routing::{get, post},
-};
+use axum::{Json, extract::State};
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -17,6 +13,7 @@ use sqlx::{FromRow, PgPool, postgres::PgListener};
 use std::{sync::Arc, time::Duration};
 use turnkeel::{Occurrence, RecurringAction, RecurringRule, Runtime, RuntimeConfig};
 use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema, FromRow)]
 pub struct Automation {
@@ -84,35 +81,33 @@ pub struct AutomationRequest {
 pub struct AutomationReceipt {
     pub result_id: String,
 }
-fn invalid(message: &str) -> ApiError {
-    ApiError::new(StatusCode::BAD_REQUEST, "invalid", message)
+fn invalid(message: &str) -> CommandError {
+    CommandError::Invalid(message.into())
 }
-pub fn router(product: Product) -> Router {
-    Router::new()
-        .route("/v1/automations", get(state))
-        .route("/v1/automations/commands", post(command))
-        .with_state(product)
+pub(crate) fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(state))
+        .routes(routes!(command))
 }
-#[utoipa::path(get,path="/v1/automations",operation_id="automations_state",responses((status=200,body=AutomationSnapshot),(status=401,body=ErrorBody),(status=503,body=ErrorBody)))]
-pub async fn state(
+#[utoipa::path(get,path="/v1/automations",operation_id="automations_state",responses((status=200,body=AutomationSnapshot)))]
+async fn state(
     State(product): State<Product>,
-    headers: HeaderMap,
-) -> Result<Json<AutomationSnapshot>, ApiError> {
-    product.authorize(&headers)?;
-    let actor = Actor::owner_in(crate::workspaces::current(&product.pool).await?);
-    Ok(Json(snapshot(&product.pool, &actor).await?))
+    owner: Owner,
+) -> Result<Json<AutomationSnapshot>, CommandError> {
+    Ok(Json(snapshot(&product.pool, &owner.actor()).await?))
 }
-#[utoipa::path(post,path="/v1/automations/commands",operation_id="automations_command",request_body=AutomationRequest,responses((status=200,body=AutomationReceipt),(status=400,body=ErrorBody),(status=401,body=ErrorBody),(status=409,body=ErrorBody),(status=503,body=ErrorBody)))]
-pub async fn command(
+#[utoipa::path(post,path="/v1/automations/commands",operation_id="automations_command",request_body=AutomationRequest,responses((status=200,body=AutomationReceipt),(status=400,body=ErrorBody),(status=403,body=ErrorBody),(status=404,body=ErrorBody),(status=409,body=ErrorBody)))]
+async fn command(
     State(product): State<Product>,
-    headers: HeaderMap,
+    owner: Owner,
     Json(request): Json<AutomationRequest>,
-) -> Result<Json<AutomationReceipt>, ApiError> {
-    product.authorize(&headers)?;
-    let actor = Actor::owner_in(crate::workspaces::current(&product.pool).await?);
-    Ok(Json(execute(&product.pool, &actor, request).await?))
+) -> Result<Json<AutomationReceipt>, CommandError> {
+    Ok(Json(execute(&product.pool, &owner.actor(), request).await?))
 }
-pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<AutomationSnapshot, ApiError> {
+pub(crate) async fn snapshot(
+    pool: &PgPool,
+    actor: &Actor,
+) -> Result<AutomationSnapshot, CommandError> {
     let mut tx = crate::pg::snapshot_tx(pool).await?;
     let rules = sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id").bind(&actor.workspace).fetch_all(&mut *tx).await?;
     // An Occurrence shows the run of its Ticket's current generation, whichever that is.
@@ -129,13 +124,9 @@ pub(crate) async fn execute(
     pool: &PgPool,
     actor: &Actor,
     request: AutomationRequest,
-) -> Result<AutomationReceipt, ApiError> {
+) -> Result<AutomationReceipt, CommandError> {
     if actor.assignment.is_some() {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "forbidden",
-            "Assigned agents cannot grant recurring work.",
-        ));
+        return Err(CommandError::Forbidden);
     }
     let operation_id = OperationId::parse(&request.operation_id)?;
     let mut tx = pool.begin().await?;
@@ -178,7 +169,7 @@ pub(crate) async fn execute(
                     if let Some(id) = id {
                         let changed=sqlx::query("UPDATE automations SET name=$4,prompt=$5,agent_id=$6,every_minutes=$7,revision=revision+1,error=NULL WHERE id=$1 AND workspace_id=$2 AND revision=$3").bind(&id).bind(&actor.workspace).bind(revision).bind(name.trim()).bind(proposal.title.trim()).bind(proposal.agent_id).bind(every_minutes).execute(&mut **tx).await?.rows_affected();
                         if changed == 0 {
-                            return Err(ApiError::conflict());
+                            return Err(CommandError::conflict());
                         }
                         id
                     } else {
@@ -197,7 +188,7 @@ pub(crate) async fn execute(
                 } => {
                     let changed=sqlx::query("UPDATE automations SET paused=$4,revision=revision+1,error=NULL WHERE id=$1 AND workspace_id=$2 AND revision=$3").bind(&id).bind(&actor.workspace).bind(revision).bind(paused).execute(&mut **tx).await?.rows_affected();
                     if changed == 0 {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::conflict());
                     }
                     id
                 }
@@ -209,8 +200,11 @@ pub(crate) async fn execute(
                     .bind(&actor.workspace)
                     .fetch_optional(&mut **tx)
                     .await?;
+                    if current.is_none() {
+                        return Err(CommandError::NotFound);
+                    }
                     if current != Some(revision) {
-                        return Err(ApiError::conflict());
+                        return Err(CommandError::conflict());
                     }
                     let occurrence = format!("manual-{operation_id}");
                     sqlx::query(
@@ -337,7 +331,7 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
                 },
             )
             .await
-            .map_err(|e| anyhow::anyhow!("Ticket proposal refused: {e:?}"))?
+            .map_err(|e| anyhow::anyhow!("Ticket proposal refused: {e}"))?
             .result_id;
             sqlx::query("UPDATE occurrences SET ticket_id=$2,state='queued' WHERE id=$1")
                 .bind(&occurrence.id)

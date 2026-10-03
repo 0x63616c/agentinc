@@ -121,8 +121,6 @@ fn operation_group(id: &str) -> (&str, &str) {
     match id {
         "health_live" => ("health", "live"),
         "health_ready" => ("health", "ready"),
-        "get_version" => ("version", "show"),
-        "ticket_contract" => ("tickets", "contract"),
         _ => {
             let (group, action) = id.split_once('_').unwrap_or(("api", id));
             (

@@ -4,12 +4,12 @@ use axum::{
     Json, Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use turnkeel::{RunKind, RunStatus, Runtime, RuntimeConfig};
 use utoipa::ToSchema;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(Clone)]
 pub struct WorkState {
@@ -63,16 +63,18 @@ pub struct WorkPage {
     pub next_page: Option<String>,
 }
 
+pub(crate) fn routes() -> OpenApiRouter<WorkState> {
+    OpenApiRouter::new().routes(routes!(list))
+}
 pub fn router(product: Product, config: RuntimeConfig) -> Router {
-    Router::new()
-        .route("/v1/work", get(list))
+    routes()
         .with_state(WorkState {
             product,
             config,
             runtime: Arc::default(),
         })
-        .layer(axum::middleware::from_fn(crate::compatibility))
-        .layer(axum::middleware::map_response(crate::server_version_header))
+        .split_for_parts()
+        .0
 }
 
 impl From<RunKind> for WorkKind {
@@ -116,7 +118,7 @@ fn unavailable(error: turnkeel::Error) -> ApiError {
     )
 }
 
-#[utoipa::path(get,path="/v1/work",operation_id="work",params(("status" = Option<WorkStatus>, Query, description = "Only work in this status"),("page" = Option<String>, Query, description = "Opaque next-page token")),responses((status=200,body=WorkPage),(status=400,body=ErrorBody),(status=401,body=ErrorBody),(status=503,body=ErrorBody)))]
+#[utoipa::path(get,path="/v1/work",operation_id="work_list",params(("status" = Option<WorkStatus>, Query, description = "Only work in this status"),("page" = Option<String>, Query, description = "Opaque next-page token")),responses((status=200,body=WorkPage),(status=400,body=ErrorBody),(status=401,body=ErrorBody),(status=503,body=ErrorBody)))]
 pub async fn list(
     State(state): State<WorkState>,
     headers: HeaderMap,

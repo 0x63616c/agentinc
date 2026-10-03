@@ -4,8 +4,8 @@
 //! queued or running. Every writer acting for an agent proves this inside its
 //! own transaction, so a credential made stale by cancellation or reassignment
 //! writes nothing.
-use super::{Actor, AssigneeKind, TICKET_COLUMNS, Ticket, TicketStatus, denied};
-use crate::product::ApiError;
+use super::{Actor, AssigneeKind, TICKET_COLUMNS, Ticket, TicketStatus};
+use crate::api::CommandError;
 use sqlx::{Postgres, Transaction};
 
 /// Proof, inside one transaction, that the actor's assignment is live.
@@ -21,8 +21,10 @@ impl LiveAssignment {
     pub(crate) async fn lock(
         tx: &mut Transaction<'_, Postgres>,
         actor: &Actor,
-    ) -> Result<Self, ApiError> {
-        Self::try_lock(tx, actor).await?.ok_or_else(denied)
+    ) -> Result<Self, CommandError> {
+        Self::try_lock(tx, actor)
+            .await?
+            .ok_or(CommandError::Forbidden)
     }
 
     /// [`Self::lock`] without the refusal: `None` when the assignment is stale,
@@ -39,8 +41,10 @@ impl LiveAssignment {
     pub(crate) async fn check(
         tx: &mut Transaction<'_, Postgres>,
         actor: &Actor,
-    ) -> Result<Self, ApiError> {
-        Self::find(tx, actor, false).await?.ok_or_else(denied)
+    ) -> Result<Self, CommandError> {
+        Self::find(tx, actor, false)
+            .await?
+            .ok_or(CommandError::Forbidden)
     }
 
     async fn find(

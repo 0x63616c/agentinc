@@ -1,22 +1,38 @@
 {
   "components": {
-    "schemas": {
-      "Acknowledgement": {
-        "properties": {
-          "operation_id": {
-            "type": "string"
-          },
-          "result_id": {
-            "format": "int64",
-            "nullable": true,
-            "type": "integer"
+    "responses": {
+      "Internal": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
           }
         },
-        "required": [
-          "operation_id"
-        ],
-        "type": "object"
+        "description": "The daemon failed; see its log."
       },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        },
+        "description": "Owner credential required."
+      },
+      "UpgradeRequired": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorBody"
+            }
+          }
+        },
+        "description": "Update to continue."
+      }
+    },
+    "schemas": {
       "ActivityKind": {
         "enum": [
           "created",
@@ -463,6 +479,22 @@
           }
         ]
       },
+      "CommandReceipt": {
+        "properties": {
+          "operation_id": {
+            "type": "string"
+          },
+          "result_id": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation_id"
+        ],
+        "type": "object"
+      },
       "CommandRequest": {
         "properties": {
           "command": {
@@ -580,9 +612,10 @@
         "type": "object"
       },
       "ErrorBody": {
+        "description": "The one shape every non-2xx response has.",
         "properties": {
           "code": {
-            "type": "string"
+            "$ref": "#/components/schemas/ErrorCode"
           },
           "message": {
             "type": "string"
@@ -593,6 +626,20 @@
           "message"
         ],
         "type": "object"
+      },
+      "ErrorCode": {
+        "description": "The closed set of error codes a client can switch on.",
+        "enum": [
+          "invalid",
+          "conflict",
+          "unauthorized",
+          "forbidden",
+          "not_found",
+          "unavailable",
+          "internal",
+          "upgrade_required"
+        ],
+        "type": "string"
       },
       "Health": {
         "properties": {
@@ -1336,17 +1383,6 @@
         ],
         "type": "object"
       },
-      "TicketContract": {
-        "properties": {
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "type": "object"
-      },
       "TicketLink": {
         "properties": {
           "from_id": {
@@ -1753,7 +1789,7 @@
         ],
         "type": "object"
       },
-      "WorkspaceState": {
+      "WorkspaceSnapshot": {
         "properties": {
           "current_id": {
             "type": "string"
@@ -1797,8 +1833,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/health/ready": {
@@ -1816,10 +1851,16 @@
             "description": ""
           },
           "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/automations": {
@@ -1837,29 +1878,15 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "automations"
-        ]
+        }
       }
     },
     "/v1/automations/commands": {
@@ -1897,6 +1924,19 @@
             "description": ""
           },
           "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1916,20 +1956,13 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "automations"
-        ]
+        }
       }
     },
     "/v1/commands": {
@@ -1950,7 +1983,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Acknowledgement"
+                  "$ref": "#/components/schemas/CommandReceipt"
                 }
               }
             },
@@ -1967,6 +2000,9 @@
             "description": ""
           },
           "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1986,20 +2022,13 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "product"
-        ]
+        }
       }
     },
     "/v1/connection": {
@@ -2017,14 +2046,13 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           },
           "503": {
             "content": {
@@ -2036,8 +2064,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/connection/cancel": {
@@ -2055,14 +2082,13 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           },
           "503": {
             "content": {
@@ -2074,8 +2100,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/connection/login": {
@@ -2093,14 +2118,13 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           },
           "503": {
             "content": {
@@ -2112,8 +2136,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/connection/logout": {
@@ -2131,14 +2154,7 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
           },
           "409": {
             "content": {
@@ -2150,6 +2166,12 @@
             },
             "description": ""
           },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -2160,8 +2182,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/state": {
@@ -2179,29 +2200,15 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "product"
-        ]
+        }
       }
     },
     "/v1/terminal/sessions": {
@@ -2222,19 +2229,15 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "terminal_sessions"
-        ]
+        }
       },
       "post": {
         "operationId": "terminal_sessions_create",
@@ -2260,14 +2263,13 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           },
           "503": {
             "content": {
@@ -2279,10 +2281,7 @@
             },
             "description": ""
           }
-        },
-        "tags": [
-          "terminal_sessions"
-        ]
+        }
       }
     },
     "/v1/terminal/sessions/{id}": {
@@ -2313,14 +2312,7 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
           },
           "404": {
             "content": {
@@ -2331,11 +2323,14 @@
               }
             },
             "description": ""
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "terminal_sessions"
-        ]
+        }
       }
     },
     "/v1/tickets": {
@@ -2352,6 +2347,9 @@
             },
             "description": ""
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "403": {
             "content": {
               "application/json": {
@@ -2362,20 +2360,13 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "tickets"
-        ]
+        }
       }
     },
     "/v1/tickets/commands": {
@@ -2412,7 +2403,20 @@
             },
             "description": ""
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2432,48 +2436,13 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "tags": [
-          "tickets"
-        ]
-      }
-    },
-    "/v1/tickets/contract": {
-      "post": {
-        "operationId": "ticket_contract",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TicketContract"
-              }
-            }
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
           },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TicketContract"
-                }
-              }
-            },
-            "description": ""
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": []
+        }
       }
     },
     "/v1/tickets/{id}/activity": {
@@ -2505,6 +2474,9 @@
             },
             "description": ""
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "403": {
             "content": {
               "application/json": {
@@ -2515,26 +2487,19 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
         },
-        "summary": "One Ticket's history, oldest first. Comments stay in the snapshot.",
-        "tags": [
-          "tickets"
-        ]
+        "summary": "One Ticket's history, oldest first. Comments stay in the snapshot."
       }
     },
     "/v1/work": {
       "get": {
-        "operationId": "work",
+        "operationId": "work_list",
         "parameters": [
           {
             "description": "Only work in this status",
@@ -2577,14 +2542,13 @@
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           },
           "503": {
             "content": {
@@ -2596,10 +2560,7 @@
             },
             "description": ""
           }
-        },
-        "tags": [
-          "work"
-        ]
+        }
       }
     },
     "/v1/workspaces": {
@@ -2610,36 +2571,22 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceState"
+                  "$ref": "#/components/schemas/WorkspaceSnapshot"
                 }
               }
             },
             "description": ""
           },
           "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+            "$ref": "#/components/responses/Unauthorized"
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "workspaces"
-        ]
+        }
       }
     },
     "/v1/workspaces/commands": {
@@ -2677,6 +2624,9 @@
             "description": ""
           },
           "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2696,25 +2646,18 @@
             },
             "description": ""
           },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
           }
-        },
-        "tags": [
-          "workspaces"
-        ]
+        }
       }
     },
     "/version": {
       "get": {
-        "operationId": "get_version",
+        "operationId": "version_show",
         "responses": {
           "200": {
             "content": {
@@ -2726,8 +2669,7 @@
             },
             "description": ""
           }
-        },
-        "tags": []
+        }
       }
     }
   }

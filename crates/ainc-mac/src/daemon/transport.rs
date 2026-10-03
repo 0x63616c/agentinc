@@ -4,7 +4,7 @@ pub use ainc_client::ClientError as DaemonError;
 use ainc_client::types::{
     AutomationRequest, AutomationSnapshot, CommandRequest, ConnectionStatus, Snapshot,
     TicketActivity, TicketCommandRequest, TicketSnapshot, WorkPage, WorkspaceRequest,
-    WorkspaceState,
+    WorkspaceSnapshot,
 };
 
 /// One request to the daemon, already carrying any operation id.
@@ -63,7 +63,7 @@ pub enum ConnectionAction {
 /// The daemon's answer to one [`Request`].
 #[derive(Debug, Clone)]
 pub enum Reply {
-    Workspaces(WorkspaceState),
+    Workspaces(WorkspaceSnapshot),
     Product(Snapshot),
     Tickets(TicketSnapshot),
     Automations(AutomationSnapshot),
