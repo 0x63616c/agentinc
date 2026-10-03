@@ -206,8 +206,6 @@ pub const LIST_ROW_HEIGHT: f32 = 44.;
 pub const TABLE_ROW_HEIGHT: f32 = 48.;
 pub const TABLE_HEADER_HEIGHT: f32 = 36.;
 pub const DIALOG_WIDTH: f32 = 440.;
-/// The widest an inline form grows; wider fields read as search bars.
-pub const FORM_WIDTH: f32 = 560.;
 pub const SHEET_WIDTH: f32 = 420.;
 /// The search field at the start of a page toolbar.
 pub const TOOLBAR_SEARCH_WIDTH: f32 = 260.;

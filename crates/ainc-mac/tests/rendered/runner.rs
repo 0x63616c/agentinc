@@ -1368,9 +1368,10 @@ pub fn run() -> Result<()> {
             suite.capture(
                 &format!("automation-fields-{round}"),
                 Route::Automations,
-                None,
+                Some(Overlay::Dialog(Route::Automations)),
                 false,
             )?;
+            suite.keys("escape");
         }
         for (shortcut, route) in [(5, Route::Terminal), (6, Route::Temporal)] {
             suite.keys(&format!("cmd-{shortcut}"));

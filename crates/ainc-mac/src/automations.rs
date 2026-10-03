@@ -3,7 +3,8 @@ use crate::{
     action::{Pending, Run},
     daemon::Daemon,
     input::TextInput,
-    page::{Drafts, Page},
+    overlay::Overlay,
+    page::{Drafts, Page, PageOverlays},
     routes::{Destination, Route},
     sync::{SliceChanged, Sync},
     ui::*,
@@ -12,7 +13,13 @@ use ainc_client::types::{
     AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, TicketProposal,
 };
 use gpui::{prelude::*, *};
-use std::sync::Arc;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
+
+/// The one dialog this page can have open: the rule editor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Dialog {
+    Edit,
+}
 
 pub struct AutomationsPage {
     daemon: Arc<Daemon>,
@@ -20,12 +27,15 @@ pub struct AutomationsPage {
     state: AutomationSnapshot,
     error: Option<String>,
     pending: Pending,
-    editing: bool,
+    overlays: PageOverlays<Dialog>,
+    /// Reopen the editor at the next render: an update install closed it.
+    reopen: bool,
+    cancel_focus: FocusHandle,
+    submit_focus: FocusHandle,
     selected: Option<String>,
     editing_revision: Option<i64>,
     page_focus: FocusHandle,
     restore_focus: bool,
-    focus_editor: bool,
     agent: Option<String>,
     name: Entity<TextInput>,
     prompt: Entity<TextInput>,
@@ -57,7 +67,12 @@ fn every(minutes: i64) -> String {
     )
 }
 impl AutomationsPage {
-    pub fn new(daemon: Arc<Daemon>, sync: Entity<Sync>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        daemon: Arc<Daemon>,
+        sync: Entity<Sync>,
+        overlays: Rc<RefCell<OverlayHost<Overlay>>>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let name =
             cx.new(|cx| TextInput::field("Rule name", false, cx).identified("automations.name"));
         let prompt = cx.new(|cx| {
@@ -88,12 +103,14 @@ impl AutomationsPage {
             },
             error: None,
             pending: Pending::default(),
-            editing: false,
+            overlays: PageOverlays::new(overlays, Route::Automations),
+            reopen: false,
+            cancel_focus: cx.focus_handle(),
+            submit_focus: cx.focus_handle(),
             selected: None,
             editing_revision: None,
             page_focus: cx.focus_handle(),
             restore_focus: false,
-            focus_editor: false,
             agent: None,
             name,
             prompt,
@@ -116,7 +133,7 @@ impl AutomationsPage {
                 Ok(id) => {
                     this.reload();
                     this.error = None;
-                    this.editing = false;
+                    this.overlays.close();
                     this.restore_focus = true;
                     if this.state.rules.iter().any(|r| r.id == id) {
                         this.selected = Some(id);
@@ -126,7 +143,8 @@ impl AutomationsPage {
             },
         );
     }
-    fn edit(&mut self, rule: Option<Automation>, cx: &mut Context<Self>) {
+    fn edit(&mut self, rule: Option<Automation>, window: &mut Window, cx: &mut Context<Self>) {
+        self.error = None;
         self.selected = rule.as_ref().map(|r| r.id.clone());
         self.editing_revision = rule.as_ref().map(|r| r.revision);
         self.agent = rule.as_ref().map(|r| r.agent_id.clone());
@@ -144,8 +162,8 @@ impl AutomationsPage {
                 cx,
             )
         });
-        self.editing = true;
-        self.focus_editor = true;
+        let focus = self.name.focus_handle(cx);
+        self.overlays.open_dialog(Dialog::Edit, focus, window, cx);
         cx.notify();
     }
     fn save(&mut self, cx: &mut Context<Self>) {
@@ -173,7 +191,8 @@ impl AutomationsPage {
             cx,
         );
     }
-    fn editor(&self, window: &Window, cx: &mut Context<Self>) -> Div {
+    fn dialog(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.overlays.active()?;
         let agents: Vec<_> = self
             .daemon
             .tickets()
@@ -192,61 +211,56 @@ impl AutomationsPage {
                 .parse::<i64>()
                 .is_ok_and(|m| m > 0)
             && self.agent.is_some();
-        let close = |this: &mut Self, _: &mut Window, cx: &mut Context<Self>| {
-            this.editing = false;
+        let close = |this: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
+            this.overlays.dismiss(window, cx);
             cx.notify();
         };
-        card()
-            .max_w(px(FORM_WIDTH))
-            .p(px(SPACE_5))
-            .gap(px(FORM_STACK_GAP))
-            .child(heading(if self.selected.is_some() {
-                "Edit Automation"
-            } else {
-                "New Automation"
-            }))
-            .child(text_field("Name", self.name.clone(), window, cx))
-            .child(
-                Field::new(self.prompt.clone())
-                    .label("Ticket prompt")
-                    .multiline()
-                    .hint("Each firing creates a Ticket with this prompt and assigns it.")
-                    .build(window, cx),
-            )
-            .child(
-                div().w(px(180.)).child(
-                    Field::new(self.minutes.clone())
-                        .label("Repeat every")
-                        .selector("Every (minutes)")
-                        .suffix("min")
+        let title = if self.selected.is_some() {
+            "Edit Automation"
+        } else {
+            "New Automation"
+        };
+        let body =
+            column_gap(FORM_STACK_GAP)
+                .child(text_field("Name", self.name.clone(), window, cx))
+                .child(
+                    Field::new(self.prompt.clone())
+                        .label("Ticket prompt")
+                        .multiline()
+                        .hint("Each firing creates a Ticket with this prompt and assigns it.")
                         .build(window, cx),
-                ),
-            )
-            .child(
-                column()
-                    .gap(px(SPACE_2))
-                    .child(
-                        div()
-                            .text_size(type_size(LABEL_SIZE))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(rgb(TEXT_SECONDARY))
-                            .child("Assign to"),
-                    )
-                    .when(agents.is_empty(), |s| {
-                        s.child(
-                            Select::new("automations.agent", vec![])
-                                .placeholder("No agents yet")
-                                .enabled(false)
-                                .width(240.)
-                                .build(&self.hover, |_, _, _| {}, |_, _, _, _| {}, cx),
+                )
+                .child(
+                    div().w(px(180.)).child(
+                        Field::new(self.minutes.clone())
+                            .label("Repeat every")
+                            .selector("Every (minutes)")
+                            .suffix("min")
+                            .build(window, cx),
+                    ),
+                )
+                .child(
+                    column()
+                        .gap(px(SPACE_2))
+                        .child(
+                            div()
+                                .text_size(type_size(LABEL_SIZE))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(rgb(TEXT_SECONDARY))
+                                .child("Assign to"),
                         )
-                        .child(caption("Register an agent on the Agents page first."))
-                    })
-                    .child(
-                        row()
-                            .gap(px(CHIP_GAP))
-                            .flex_wrap()
-                            .children(agents.into_iter().map(|a| {
+                        .when(agents.is_empty(), |s| {
+                            s.child(
+                                Select::new("automations.agent", vec![])
+                                    .placeholder("No agents yet")
+                                    .enabled(false)
+                                    .width(240.)
+                                    .build(&self.hover, |_, _, _| {}, |_, _, _, _| {}, cx),
+                            )
+                            .child(caption("Register an agent on the Agents page first."))
+                        })
+                        .child(row().gap(px(CHIP_GAP)).flex_wrap().children(
+                            agents.into_iter().map(|a| {
                                 let id = a.id.clone();
                                 let selected = self.agent.as_ref() == Some(&a.id);
                                 chip(
@@ -261,17 +275,18 @@ impl AutomationsPage {
                                     },
                                     cx,
                                 )
-                            })),
-                    ),
-            )
-            .child(
-                DialogFooter::new(Verb::Save)
-                    .label("Save Automation")
-                    .ids("automations.cancel", "automations.save")
-                    .enabled(valid)
-                    .pending(!enabled)
-                    .build(&self.hover, close, |this, _, cx| this.save(cx), cx),
-            )
+                            }),
+                        )),
+                )
+                .when_some(self.error.clone(), |s, error| s.child(error_text(error)));
+        let footer = DialogFooter::new(Verb::Save)
+            .label("Save Automation")
+            .ids("automations.cancel", "automations.save")
+            .enabled(valid)
+            .pending(!enabled)
+            .focus(&self.cancel_focus, &self.submit_focus)
+            .build(&self.hover, close, |this, _, cx| this.save(cx), cx);
+        Some(dialog_shell(title, body, footer).into_any_element())
     }
 
     fn detail_header(&self, rule: &Automation, cx: &mut Context<Self>) -> PageHeader {
@@ -307,7 +322,7 @@ impl AutomationsPage {
                             .enabled(enabled)
                             .build(
                                 &self.hover,
-                                move |this, _, cx| this.edit(Some(edit.clone()), cx),
+                                move |this, window, cx| this.edit(Some(edit.clone()), window, cx),
                                 cx,
                             ),
                     )
@@ -483,9 +498,9 @@ impl AutomationsPage {
 impl Render for AutomationsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
-        if self.focus_editor {
-            window.focus(&self.name.read(cx).focus_handle(cx), cx);
-            self.focus_editor = false;
+        if std::mem::take(&mut self.reopen) {
+            let focus = self.name.focus_handle(cx);
+            self.overlays.open_dialog(Dialog::Edit, focus, window, cx);
         }
         if self.restore_focus {
             window.focus(&self.page_focus, cx);
@@ -502,7 +517,11 @@ impl Render for AutomationsPage {
                 .primary()
                 .icon("plus")
                 .enabled(!this.pending.busy())
-                .build(&this.hover, |this, _, cx| this.edit(None, cx), cx)
+                .build(
+                    &this.hover,
+                    |this, window, cx| this.edit(None, window, cx),
+                    cx,
+                )
         };
         let sync = self.sync.read(cx);
         let (loaded, load_error, reconnecting, loading_started, fetching) = (
@@ -512,11 +531,9 @@ impl Render for AutomationsPage {
             sync.loading_started,
             sync.fetching(),
         );
-        let header = match (&selected, self.editing) {
-            (Some(rule), false) => self.detail_header(rule, cx),
-            (_, true) => PageHeader::new(self.title())
-                .description("Recurring rules that create and assign Tickets on a schedule."),
-            _ => PageHeader::new(self.title())
+        let header = match &selected {
+            Some(rule) => self.detail_header(rule, cx),
+            None => PageHeader::new(self.title())
                 .description("Recurring rules that create and assign Tickets on a schedule.")
                 .actions(
                     row_gap(CONTROL_GAP)
@@ -539,7 +556,11 @@ impl Render for AutomationsPage {
                 ),
         };
         let mut content = column().gap(px(SECTION_GAP)).w_full();
-        if let Some(error) = load_error.as_ref().or(self.error.as_ref()) {
+        let dialog_open = self.overlays.active().is_some();
+        if let Some(error) = load_error
+            .as_ref()
+            .or(self.error.as_ref().filter(|_| !dialog_open))
+        {
             content = content.child(
                 banner(Tone::Danger, error.clone())
                     .id("automations.error")
@@ -553,9 +574,7 @@ impl Render for AutomationsPage {
         if !loaded && load_error.is_none() {
             content = content.child(skeleton_rows("automations.loading", 3));
         }
-        if self.editing {
-            content = content.child(self.editor(window, cx));
-        } else if let Some(rule) = selected {
+        if let Some(rule) = selected {
             content = content.child(self.detail(rule, cx));
         } else {
             if loaded && self.state.rules.is_empty() && load_error.is_none() {
@@ -570,7 +589,11 @@ impl Render for AutomationsPage {
                                 .secondary()
                                 .icon("plus")
                                 .enabled(!self.pending.busy())
-                                .build(&self.hover, |this, _, cx| this.edit(None, cx), cx),
+                                .build(
+                                    &self.hover,
+                                    |this, window, cx| this.edit(None, window, cx),
+                                    cx,
+                                ),
                         )
                         .build(),
                 );
@@ -593,13 +616,25 @@ impl Render for AutomationsPage {
 
 impl Page for AutomationsPage {
     const ROUTE: Route = Route::Automations;
+    fn overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.dialog(window, cx)
+    }
+    fn focus_handles(&self, cx: &App) -> Vec<FocusHandle> {
+        vec![
+            self.name.focus_handle(cx),
+            self.prompt.focus_handle(cx),
+            self.minutes.focus_handle(cx),
+            self.cancel_focus.clone(),
+            self.submit_focus.clone(),
+        ]
+    }
     fn drafts(&self, cx: &App) -> anyhow::Result<Drafts> {
         anyhow::ensure!(
             !self.pending.busy(),
             "Wait for the current change to finish before installing"
         );
         let mut drafts = Drafts::default();
-        drafts.set("editing", self.editing);
+        drafts.set("editing", self.overlays.active().is_some());
         drafts.set("selected", &self.selected);
         drafts.set("editing_revision", self.editing_revision);
         drafts.set("agent", &self.agent);
@@ -609,9 +644,7 @@ impl Page for AutomationsPage {
         Ok(drafts)
     }
     fn restore(&mut self, drafts: Drafts, cx: &mut Context<Self>) {
-        if let Some(editing) = drafts.get("editing") {
-            self.editing = editing;
-        }
+        self.reopen = drafts.get("editing") == Some(true);
         if let Some(selected) = drafts.get("selected") {
             self.selected = selected;
         }

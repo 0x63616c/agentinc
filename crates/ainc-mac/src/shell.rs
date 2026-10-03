@@ -257,7 +257,12 @@ impl Shell {
             ),
             PageHandle::new(
                 cx.new(|cx| {
-                    crate::automations::AutomationsPage::new(daemon.clone(), sync.clone(), cx)
+                    crate::automations::AutomationsPage::new(
+                        daemon.clone(),
+                        sync.clone(),
+                        overlays.clone(),
+                        cx,
+                    )
                 }),
                 cx,
                 queue,
