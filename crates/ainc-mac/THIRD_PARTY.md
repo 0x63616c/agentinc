@@ -2,7 +2,7 @@ The native text input in `src/input.rs` is adapted from Zed Industries' GPUI 0.2
 Source: https://docs.rs/crate/gpui/0.2.2/source/examples/input.rs
 License: https://www.apache.org/licenses/LICENSE-2.0
 
-Outline icon paths in `assets/` originated in the imported Agentinc OS prototype. The Evee logo `assets/evee.png` is copied unchanged from the existing Evee project’s `web/public/evee-icon.png`, as requested in the implementation feedback.
+Outline icon paths in `assets/` originated in the imported prototype app. The Evee logo `assets/evee.png` is copied unchanged from the existing Evee project’s `web/public/evee-icon.png`, as requested in the implementation feedback.
 
 `assets/settings.svg` uses the [Lucide Settings outline](https://github.com/lucide-icons/lucide/blob/main/icons/settings.svg), adjusted to the app's 1.5 stroke width. Lucide is licensed under [ISC](https://github.com/lucide-icons/lucide/blob/main/LICENSE).
 

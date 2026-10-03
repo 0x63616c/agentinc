@@ -111,7 +111,7 @@ impl Stack {
             format!("Bearer {}", token.trim()).parse().unwrap(),
         );
         headers.insert(
-            "agent-inc-client",
+            ainc_release::CLIENT_HEADER,
             ainc_release::client_header().parse().unwrap(),
         );
         (

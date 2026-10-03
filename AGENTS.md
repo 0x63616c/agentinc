@@ -57,7 +57,7 @@ Refactors in flight and the standards they enforce: [docs/cohesion-plan.md](docs
 - `crates/turnkeel-macros` — the `#[tool]` attribute. Re-exported from `turnkeel`; users
   never depend on it directly.
 - `crates/ainc-mac` — the native GPUI AgentInc app. Its Cargo package and binary are named
-  `agentinc-os`. Build its bundle with `crates/ainc-mac/scripts/bundle.sh`; see its README.
+  `ainc-mac` and `AgentInc`. Build its bundle with `crates/ainc-mac/scripts/bundle.sh`; see its README.
 - `crates/ainc-daemon` — `aincd`, the daemon: HTTP API, Postgres state, agent execution.
 - `crates/ainc-client`, `crates/ainc-cli` — the API client generated from `api/` by
   `cargo xtask generate`, and the `ainc` CLI built on it.

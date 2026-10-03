@@ -166,7 +166,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     let output = PathBuf::from("target/pilot-acceptance");
     fs::create_dir_all(&output)?;
     let log = fs::File::create(output.join("app.log"))?;
-    let mut app = App(Process::new(env!("CARGO_BIN_EXE_agentinc-os"))
+    let mut app = App(Process::new(env!("CARGO_BIN_EXE_AgentInc"))
         .args(["--gpui-pilot-session", pilot.to_str().unwrap()])
         .env("AGENTINC_SESSION_PATH", directory.join("session.json"))
         .env(
@@ -176,7 +176,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         )
         .env("AINC_LEGACY_DIR", directory.join("legacy"))
         .env("AGENTINC_CODEX_HOME", directory.join("codex"))
-        .env("AGENTINC_WINDOW_TITLE", "Agentinc Pilot Acceptance")
+        .env("AGENTINC_WINDOW_TITLE", "AgentInc Pilot Acceptance")
         .stdout(Stdio::null())
         .stderr(log)
         .spawn()?);

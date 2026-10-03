@@ -93,7 +93,7 @@ fn main() {
             (Some(std::path::PathBuf::from(&args[1])), args.len() == 3)
         } else {
             eprintln!(
-                "Usage: agentinc-os [--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY [--gpui-pilot-visible]]"
+                "Usage: AgentInc [--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY [--gpui-pilot-visible]]"
             );
             std::process::exit(2);
         }

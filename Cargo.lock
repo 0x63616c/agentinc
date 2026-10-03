@@ -110,40 +110,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agentinc-os"
-version = "0.5.0"
-dependencies = [
- "accesskit",
- "ainc-client",
- "ainc-release",
- "anyhow",
- "cc",
- "chrono",
- "futures",
- "gpui",
- "gpui-pilot",
- "gpui_platform",
- "image",
- "libc",
- "libloading",
- "log",
- "objc2 0.6.4",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
- "pulldown-cmark",
- "raw-window-handle",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-tungstenite",
- "unicode-segmentation",
- "uuid",
-]
-
-[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -250,6 +216,41 @@ dependencies = [
  "libc",
  "semver",
  "serde",
+]
+
+[[package]]
+name = "ainc-mac"
+version = "0.5.0"
+dependencies = [
+ "accesskit",
+ "ainc-client",
+ "ainc-identity",
+ "ainc-release",
+ "anyhow",
+ "cc",
+ "chrono",
+ "futures",
+ "gpui",
+ "gpui-pilot",
+ "gpui_platform",
+ "image",
+ "libc",
+ "libloading",
+ "log",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "pulldown-cmark",
+ "raw-window-handle",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "unicode-segmentation",
+ "uuid",
 ]
 
 [[package]]

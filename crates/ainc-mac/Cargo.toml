@@ -1,15 +1,20 @@
 [package]
-name = "agentinc-os"
+name = "ainc-mac"
 version.workspace = true
 edition = "2024"
 license.workspace = true
 rust-version = "1.98"
 publish = false
 
+[[bin]]
+name = "AgentInc"
+path = "src/main.rs"
+
 [lints]
 workspace = true
 
 [dependencies]
+ainc-identity = { path = "../ainc-identity" }
 ainc-release = { path = "../ainc-release" }
 gpui-pilot = { path = "../gpui-pilot", optional = true, features = ["host"] }
 accesskit = "0.24.0"

@@ -45,7 +45,7 @@ Workspace CI runs formatting, Clippy and tests on Linux. Run the native rendered
 The ordinary GPUI interaction tests run with `cargo test --locked`. On macOS, run the real Metal shell regression with:
 
 ```sh
-cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
+cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell
 ```
 
 It captures frames across every route, three window sizes, dialogs, Temporal states and full-page Evee conversations. It checks rendered shell regions and the shared page frame, content width and Settings/Automations right edges. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
@@ -88,7 +88,7 @@ For an isolated session without changing the regular app's state:
 mkdir -p .local
 AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
   AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" \
-  AGENTINC_WINDOW_TITLE='Agentinc QA' \
+  AGENTINC_WINDOW_TITLE='AgentInc QA' \
   'crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc'
 ```
 

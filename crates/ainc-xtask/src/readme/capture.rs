@@ -32,7 +32,7 @@ fn ten_seconds() -> Instant {
     Instant::now() + Duration::from_secs(10)
 }
 
-/// Run one `gpui-pilot` command against an instance and return its `output`.
+/// Run one `gpui-pilot-cli` command against an instance and return its `output`.
 fn pilot(pilot: &Path, manifest: &Path, args: &[&str], typed: Option<&str>) -> Result<Value> {
     let mut command = Command::new(pilot);
     command
@@ -287,7 +287,7 @@ fn stop(app: &mut ManagedChild) -> Result<()> {
 /// Seed Tickets in a fresh isolated app, restart it, and screenshot the board.
 fn capture(root: &Path, state: &Path, output: &Path) -> Result<()> {
     let app_path = root.join("crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc");
-    let pilot_path = root.join("target/debug/gpui-pilot");
+    let pilot_path = root.join("target/debug/gpui-pilot-cli");
     let discovery = root.join(".local/dev/api-url");
     let env = [
         ("AGENTINC_SESSION_PATH", state.join("session.json")),
@@ -401,7 +401,7 @@ pub fn cli(root: &Path, args: &[String]) -> Result<()> {
     let root = resolve(root);
     let app = root.join("crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc");
     if !app.is_file()
-        || !root.join("target/debug/gpui-pilot").is_file()
+        || !root.join("target/debug/gpui-pilot-cli").is_file()
         || !root.join(".local/dev/api-url").is_file()
     {
         usage_error(
@@ -429,9 +429,9 @@ mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
-    /// A stand-in `gpui-pilot`: echoes a canned reply per sub-command and records stdin.
+    /// A stand-in `gpui-pilot-cli`: echoes a canned reply per sub-command and records stdin.
     fn fake_pilot(dir: &Path) -> PathBuf {
-        let path = dir.join("gpui-pilot");
+        let path = dir.join("gpui-pilot-cli");
         let script = r#"#!/bin/sh
 # args: --instance M --json CMD ...
 cmd="$4"

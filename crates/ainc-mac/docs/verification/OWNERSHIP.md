@@ -4,8 +4,8 @@ Verified on this Mac in the isolated `agentinc-phase2-ownership` worktree. All P
 
 - Workspace formatting, Clippy (`--workspace --all-targets -- -D warnings`) and tests passed, including the real Postgres import/command tests and the real daemon process test with a gated Codex fixture.
 - `cargo xtask generate --check` verified the checked-in OpenAPI/client/CLI output.
-- `cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell`: all 38 real Metal frames and region-removal negative controls passed.
-- `AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" cargo test --locked -p agentinc-os --features automation --test pilot_acceptance -- --nocapture`: Search → Tasks → Unicode task creation, overlay occlusion, stale refs, keyboard selection/undo, concurrent condition wait, screenshot regions and normal quit passed against `cargo xtask dev`.
+- `cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell`: all 38 real Metal frames and region-removal negative controls passed.
+- `AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" cargo test --locked -p ainc-mac --features automation --test pilot_acceptance -- --nocapture`: Search → Tasks → Unicode task creation, overlay occlusion, stale refs, keyboard selection/undo, concurrent condition wait, screenshot regions and normal quit passed against `cargo xtask dev`.
 - Built and launched `crates/ainc-mac/dist/AgentInc.app` with `scripts/bundle.sh automation`. `codesign --verify --deep --strict --verbose=2` passed for the app and nested daemon.
 
 ## Bundled companion click-through

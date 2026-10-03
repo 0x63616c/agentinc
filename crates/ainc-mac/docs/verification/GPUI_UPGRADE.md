@@ -4,7 +4,7 @@ Verified on 23 September 2026 on Apple M2 Pro, macOS 27.0 (26A428), with `rustc 
 
 ## Dependency provenance
 
-Agentinc OS now uses Zed git commit **`4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`**, the inspected upstream main revision, instead of the crates.io GPUI 0.2.2 release. Both direct GPUI dependencies have an exact `rev` and version requirement; `Cargo.lock` records their shared source. Zed still calls its core crate `gpui 0.2.2` internally: that metadata does **not** mean Cargo uses the old published release.
+AgentInc now uses Zed git commit **`4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`**, the inspected upstream main revision, instead of the crates.io GPUI 0.2.2 release. Both direct GPUI dependencies have an exact `rev` and version requirement; `Cargo.lock` records their shared source. Zed still calls its core crate `gpui 0.2.2` internally: that metadata does **not** mean Cargo uses the old published release.
 
 | Resolved package | Version | Source revision |
 | --- | --- | --- |

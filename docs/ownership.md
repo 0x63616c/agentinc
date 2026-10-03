@@ -54,9 +54,9 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 # DATABASE_URL must point to a disposable Postgres admin database (SQLx creates test databases).
 cargo test --locked --workspace
 cargo xtask generate --check
-cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
+cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell
 AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" \
-  cargo test --locked -p agentinc-os --features automation --test pilot_acceptance -- --nocapture
+  cargo test --locked -p ainc-mac --features automation --test pilot_acceptance -- --nocapture
 ```
 
 Native acceptance is recorded in `crates/ainc-mac/docs/verification/OWNERSHIP.md`. Live subscription calls are opt-in; the default tests never use a real account or paid model.

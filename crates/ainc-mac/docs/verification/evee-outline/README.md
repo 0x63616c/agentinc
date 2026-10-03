@@ -36,7 +36,7 @@ Home, and Calendar icons using the app's normal and selected tints.
 - `python3 crates/ainc-mac/scripts/check-colors.py`
 - `DATABASE_URL=<disposable local Postgres> cargo test --locked`
 - `cargo clippy --locked --all-targets -- -D warnings`
-- `cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell`
+- `cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell`
 
 All checks passed. Workspace tests: 98 passed, 6 ignored. Both baseline and
 changed native runs passed all 38 Metal frames and region-removal negative

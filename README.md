@@ -27,11 +27,11 @@ You need an Apple Silicon Mac with Xcode command-line tools, Rust (pinned in `ru
 
 ## Repository
 
-Every crate lives directly under `crates/`. The Mac app's directory is `crates/ainc-mac`, but its Cargo package and binary are named `agentinc-os`, which is what `cargo` commands and error messages show.
+Every crate lives directly under `crates/`. The Mac app lives at `crates/ainc-mac`; its Cargo package is `ainc-mac` and its binary is `AgentInc`.
 
 | Path | What it is |
 | --- | --- |
-| [`crates/ainc-mac`](crates/ainc-mac) | The native macOS app (GPUI), package `agentinc-os`. [App guide](crates/ainc-mac/README.md) |
+| [`crates/ainc-mac`](crates/ainc-mac) | The native macOS app (GPUI), package `ainc-mac`, binary `AgentInc`. [App guide](crates/ainc-mac/README.md) |
 | [`crates/ainc-daemon`](crates/ainc-daemon) | `aincd`, the headless daemon: HTTP API, Postgres state and agent execution. The app and CLI are its clients. |
 | [`crates/ainc-client`](crates/ainc-client) | Rust API client generated from the daemon's OpenAPI spec (`api/`). Don't edit by hand; run `cargo xtask generate`. |
 | [`crates/ainc-cli`](crates/ainc-cli) | `ainc`, the command-line client for the daemon, built on `ainc-client`. [Usage](crates/ainc-cli/README.md) |

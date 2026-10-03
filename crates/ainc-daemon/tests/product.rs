@@ -70,7 +70,7 @@ async fn closing_client_does_not_drop_acknowledged_turn_or_completed_reply(pool:
         .clone()
         .oneshot(
             Request::post("/v1/commands")
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .header("authorization", "Bearer fixture")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&command).unwrap()))
@@ -160,7 +160,7 @@ async fn owner_credential_required_for_reads_and_writes(pool: PgPool) {
     let response = app
         .oneshot(
             Request::get("/v1/state")
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -266,7 +266,7 @@ mod todo_adapter {
             .clone()
             .oneshot(
                 HttpRequest::post("/v1/tickets/commands")
-                    .header("agent-inc-client", ainc_release::client_header())
+                    .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                     .header("authorization", "Bearer owner-fixture")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&request).unwrap()))
@@ -296,7 +296,7 @@ mod todo_adapter {
             .clone()
             .oneshot(
                 HttpRequest::get(format!("/v1/tickets/{id}/activity"))
-                    .header("agent-inc-client", ainc_release::client_header())
+                    .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                     .header("authorization", "Bearer owner-fixture")
                     .body(Body::empty())
                     .unwrap(),

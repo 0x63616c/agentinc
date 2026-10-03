@@ -233,11 +233,11 @@ impl Smoke {
                     "build",
                     "--locked",
                     "-p",
-                    "agentinc-os",
+                    "ainc-mac",
                     "-p",
                     "gpui-pilot-cli",
                     "--features",
-                    "agentinc-os/automation",
+                    "ainc-mac/automation",
                 ],
             )?;
             self.cargo(
@@ -247,7 +247,7 @@ impl Smoke {
                     "test",
                     "--locked",
                     "-p",
-                    "agentinc-os",
+                    "ainc-mac",
                     "--features",
                     "automation",
                     "--test",

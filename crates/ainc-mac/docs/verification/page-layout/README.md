@@ -2,7 +2,7 @@
 
 Archived pre-trim evidence: Today and the Evee side pane shown here were removed in the Assistant full-page navigation change. These images are historical, not current acceptance targets.
 
-These are full native Metal window captures from `gpui-pilot screenshot` at 2×
+These are full native Metal window captures from `gpui-pilot-cli screenshot` at 2×
 backing scale. Each page was opened through its keyboard route shortcut in an
 isolated Pilot session. The companion daemon was unavailable in both sets, so
 Tickets and Automations show their existing unavailable/loading states; the

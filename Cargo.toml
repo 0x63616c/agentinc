@@ -4,7 +4,7 @@ members = ["crates/ainc-identity", "crates/ainc-release", "crates/turnkeel", "cr
 exclude = ["vendor/gpui"]
 
 [workspace.package]
-# Product version for ainc-release, ainc-cli, ainc-client, ainc-daemon and agentinc-os.
+# Product version for ainc-release, ainc-cli, ainc-client, ainc-daemon and ainc-mac.
 # After editing, run `cargo xtask generate` and commit its generated API/client changes.
 version = "0.5.0"
 edition = "2024"

@@ -1,6 +1,6 @@
 # GPUI Pilot (Phase 1)
 
-`gpui-pilot` is an opt-in library and `gpui-pilot-cli` builds the `gpui-pilot` command. They contain no Agentinc navigation, storage or entity types. Both crates are unpublished. The app owns startup and accessible component declarations.
+`gpui-pilot` is an opt-in library and `gpui-pilot-cli` builds the `gpui-pilot-cli` command. They contain no AgentInc navigation, storage or entity types. Both crates are unpublished. The app owns startup and accessible component declarations.
 
 ## Launch and use
 
@@ -10,15 +10,15 @@ Normal `cargo build` and `crates/ainc-mac/scripts/bundle.sh [release]` omit the 
 # Start cargo xtask dev first. This uses its isolated daemon and a fresh UI session.
 crates/ainc-mac/scripts/pilot.sh "$PWD/.local/pilot-qa"
 # In another terminal, use the explicit manifest printed at startup.
-target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" snapshot
-target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" --json snapshot
+target/debug/gpui-pilot-cli --instance "$PWD/.local/pilot-qa/s/instance.json" snapshot
+target/debug/gpui-pilot-cli --instance "$PWD/.local/pilot-qa/s/instance.json" --json snapshot
 ```
 
 Commands: `hello`, `snapshot`, `click REF`, `press KEY`, `type REF --stdin`, `wait CONDITION_JSON [TIMEOUT_MS]`, `screenshot`. Keys use GPUI syntax, e.g. `cmd-k`, `enter`, `cmd-a`, `escape`. `type` inserts Unicode at the focused input's current selection through its normal GPUI input handler. Click the input first if it is not focused. There is no direct state-setting/fill endpoint. Read text from stdin to avoid putting it into process arguments.
 
 ```sh
-printf 'Tickets' | target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" type 'REF_FROM_SNAPSHOT' --stdin
-target/debug/gpui-pilot --instance "$PWD/.local/pilot-qa/s/instance.json" wait '{"kind":"present","author_id":"tickets.create"}' 3000
+printf 'Tickets' | target/debug/gpui-pilot-cli --instance "$PWD/.local/pilot-qa/s/instance.json" type 'REF_FROM_SNAPSHOT' --stdin
+target/debug/gpui-pilot-cli --instance "$PWD/.local/pilot-qa/s/instance.json" wait '{"kind":"present","author_id":"tickets.create"}' 3000
 ```
 
 Copy a **fresh** ref from the latest snapshot. Refs encode the random app session, explicit window, committed frame and AccessKit node ID. Any subsequent committed frame invalidates them, including animation frames. A `stale_ref` response means no input was dispatched: observe again. A timeout or broken connection after dispatch is uncertain; do not automatically replay a create/delete click. Phase 1 has no request replay cache.
@@ -57,10 +57,10 @@ Linux CI checks formatting, default workspace Clippy and tests. Protocol/client 
 cargo fmt --all --check
 cargo test --locked --workspace
 cargo clippy --locked --workspace --all-targets -- -D warnings
-cargo build --locked -p agentinc-os -p gpui-pilot-cli --features agentinc-os/automation
-cargo test --locked -p agentinc-os --features automation --test pilot_acceptance -- --nocapture
-cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
-cargo test --locked -p agentinc-os --features automation --test pilot_cli_smoke -- --ignored --nocapture
+cargo build --locked -p ainc-mac -p gpui-pilot-cli --features ainc-mac/automation
+cargo test --locked -p ainc-mac --features automation --test pilot_acceptance -- --nocapture
+cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell
+cargo test --locked -p ainc-mac --features automation --test pilot_cli_smoke -- --ignored --nocapture
 ```
 
 `pilot_acceptance` launches the actual app executable with isolated UI, daemon discovery, import/profile and title variables and a fresh private driver session. Its only UI operations/assertions use the socket driver. It follows Search → Tickets → Add Ticket → Unicode title → Create, checks the resulting Ticket row, four statuses, assignee changes, Comments, agent registration, and Assistant new-conversation/list navigation; it exercises stale refs, overlay rejection, selection/undo, a concurrent wait and a deadline, and checks screenshot pixels in independent shell regions. Artifacts and small-sample latency distributions are written to `target/pilot-acceptance/`. The test process stops only its own child.
@@ -100,7 +100,7 @@ cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo build --locked --workspace --features automation
 cargo test --locked --features automation --test pilot_acceptance -- --nocapture
 cargo test --locked --features rendered-tests --test rendered_shell
-cargo tree --locked -p agentinc-os -e normal --depth 1
+cargo tree --locked -p ainc-mac -e normal --depth 1
 cargo test --locked --features automation --test pilot_cli_smoke -- --ignored --nocapture
 cargo xtask vendor-pilot-gpui .local/cargo-home/git/checkouts/zed-a70e2ad075855582/4c902c9
 ```
@@ -131,7 +131,7 @@ Fresh Unix socket connection per request, measured in Rust with `Instant`; no pr
 `tests/pilot_os_acceptance.swift` queries WindowServer for the exact owned PID and unique QA title, then asserts one visible native window and reasonable dimensions. It does not synthesize desktop events. The CLI QA instance passed at **1360×828**, independently of GPUI's snapshot dimensions; [recorded result](verification/gpui-pilot/os-window.json).
 
 ```sh
-swift tests/pilot_os_acceptance.swift OWNED_PID 'Agentinc Pilot CLI QA'
+swift tests/pilot_os_acceptance.swift OWNED_PID 'AgentInc Pilot CLI QA'
 ```
 
 Native menus, system dialogs, screen-reader output and IME composition were not exercised in this driver task. Earlier native shell acceptance remains in [`verification/GPUI_UPGRADE.md`](verification/GPUI_UPGRADE.md); the in-process test is not a substitute for those OS checks. No new macOS CI runner is configured. Linux CI is configured to run nonvisual tests and all-feature compilation; the local results above are macOS results, not a claim of Linux execution or hosted CI success.

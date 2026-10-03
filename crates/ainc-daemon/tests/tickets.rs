@@ -30,7 +30,7 @@ async fn command(app: &Router, token: &str, request: &Request) -> (StatusCode, V
         .clone()
         .oneshot(
             HttpRequest::post("/v1/tickets/commands")
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .header("authorization", format!("Bearer {token}"))
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(request).unwrap()))
@@ -53,7 +53,7 @@ async fn snapshot(app: &Router, token: &str) -> (StatusCode, Value) {
         .clone()
         .oneshot(
             HttpRequest::get("/v1/tickets")
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
@@ -439,7 +439,7 @@ async fn activity(app: &Router, token: &str, id: i64) -> (StatusCode, Value) {
         .clone()
         .oneshot(
             HttpRequest::get(format!("/v1/tickets/{id}/activity"))
-                .header("agent-inc-client", ainc_release::client_header())
+                .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),

@@ -39,7 +39,7 @@ resource paths instead of `/v1/state` and `/v1/commands` (S11).
 3. Wire it in `shell.rs`: hold the view on `Shell`, construct it in `Shell::new`, and add the
    `Route::<Page> => ...` arm to the content `match` in `render`.
 4. Add a `suite.capture("<page>", Route::<Page>, ...)` frame to `crates/ainc-mac/tests/rendered/runner.rs`
-   and run `cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell`
+   and run `cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell`
    on macOS; `routes_and_history_use_shell_actions` in `shell.rs` covers navigation.
 
 Planned: a `Page` trait with `Page::title()` from `PAGES` (M3, S20); page dialogs leave the shell.
