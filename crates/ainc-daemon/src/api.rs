@@ -241,8 +241,7 @@ impl FromRef<AppState> for PgPool {
     }
 }
 
-pub(crate) const CLIENT_HEADER: &str = "agent-inc-client";
-pub(crate) const SERVER_HEADER: &str = "agent-inc-server";
+pub(crate) use ainc_release::{CLIENT_HEADER, SERVER_HEADER};
 
 /// Every product endpoint, each registered once by its module.
 fn routes() -> OpenApiRouter<AppState> {

@@ -10,6 +10,7 @@ pub mod commit_msg;
 pub mod env_names;
 pub mod layout;
 pub mod naming;
+pub mod openapi;
 pub mod sdk_vocabulary;
 pub mod ui_core;
 pub mod ui_spacing;

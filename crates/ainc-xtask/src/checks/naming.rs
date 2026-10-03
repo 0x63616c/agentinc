@@ -20,11 +20,8 @@ const LEGACY_EXECUTABLE_OWNER: &str = "crates/ainc-xtask/src/release/prepare.rs"
 /// code that resolves the legacy data directory.
 const LEGACY_NAME_OWNERS: [&str; 2] = ["CONTEXT.md", "crates/ainc-identity/src/lib.rs"];
 
-/// Header literals still to be replaced by the daemon lane; remove entries as they land.
-const HEADER_LITERAL_FOLLOW_UPS: [&str; 2] = [
-    "crates/ainc-daemon/src/lib.rs",
-    "crates/ainc-daemon/src/terminal_attach.rs",
-];
+/// Header literals still to be replaced; none today.
+const HEADER_LITERAL_FOLLOW_UPS: [&str; 0] = [];
 
 fn skipped(path: &str) -> bool {
     SKIPPED
@@ -130,7 +127,10 @@ mod tests {
             )
             .is_empty()
         );
-        assert!(violations("crates/ainc-daemon/src/lib.rs", "\"agent-inc-server\",").is_empty());
+        assert_eq!(
+            violations("crates/ainc-daemon/src/lib.rs", "\"agent-inc-server\",").len(),
+            1
+        );
     }
 
     #[test]

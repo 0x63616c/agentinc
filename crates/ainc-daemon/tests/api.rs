@@ -23,7 +23,7 @@ async fn send(app: &Router, request: Request<Body>) -> (StatusCode, Value) {
     assert_eq!(
         response
             .headers()
-            .get_all("agent-inc-server")
+            .get_all(ainc_release::SERVER_HEADER)
             .iter()
             .count(),
         1,
@@ -39,7 +39,8 @@ async fn send(app: &Router, request: Request<Body>) -> (StatusCode, Value) {
 }
 
 fn get(path: &str, token: Option<&str>) -> Request<Body> {
-    let mut request = Request::get(path).header("agent-inc-client", ainc_release::client_header());
+    let mut request =
+        Request::get(path).header(ainc_release::CLIENT_HEADER, ainc_release::client_header());
     if let Some(token) = token {
         request = request.header("authorization", format!("Bearer {token}"));
     }
@@ -48,7 +49,7 @@ fn get(path: &str, token: Option<&str>) -> Request<Body> {
 
 fn post(path: &str, token: &str, body: &impl serde::Serialize) -> Request<Body> {
     Request::post(path)
-        .header("agent-inc-client", ainc_release::client_header())
+        .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
         .header("authorization", format!("Bearer {token}"))
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(body).unwrap()))
@@ -107,7 +108,7 @@ async fn a_missing_record_is_not_found_everywhere(pool: PgPool) {
     let (status, body) = send(
         &app,
         Request::delete(format!("/v1/terminal/sessions/{}", uuid::Uuid::new_v4()))
-            .header("agent-inc-client", ainc_release::client_header())
+            .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
             .header("authorization", "Bearer owner-fixture")
             .body(Body::empty())
             .unwrap(),
@@ -123,7 +124,7 @@ async fn an_old_client_gets_the_shared_error_body(pool: PgPool) {
     let (status, body) = send(
         &app,
         Request::get("/v1/state")
-            .header("agent-inc-client", "mac/0.0.1 (api 1)")
+            .header(ainc_release::CLIENT_HEADER, "mac/0.0.1 (api 1)")
             .header("authorization", "Bearer owner-fixture")
             .body(Body::empty())
             .unwrap(),
