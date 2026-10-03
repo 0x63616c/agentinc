@@ -16,33 +16,9 @@ use serde_json::Value;
 use std::{fs, path::Path};
 
 /// Operation IDs whose resource is not yet a CONTEXT.md noun.
-const LEGACY_OPERATIONS: &[(&str, &str)] = &[
-    (
-        "product_state",
-        "deprecated for /v1/conversations; removed in a later release",
-    ),
-    (
-        "product_command",
-        "deprecated for /v1/conversations/commands; removed in a later release",
-    ),
-    ("terminal_sessions_list", "terminal is not a construct yet"),
-    (
-        "terminal_sessions_create",
-        "terminal is not a construct yet",
-    ),
-    ("terminal_sessions_close", "terminal is not a construct yet"),
-];
+const LEGACY_OPERATIONS: &[(&str, &str)] = &[];
 /// Schema names carrying an avoid-word until their rename lands.
-const LEGACY_SCHEMAS: &[(&str, &str)] = &[
-    (
-        "TerminalSession",
-        "rename to Terminal with the Mac terminal page",
-    ),
-    (
-        "CreateTerminalSession",
-        "rename to CreateTerminal with the Mac terminal page",
-    ),
-];
+const LEGACY_SCHEMAS: &[(&str, &str)] = &[];
 const SHARED_ERRORS: [&str; 3] = ["401", "426", "500"];
 
 pub fn run(root: &Path) -> Result<()> {

@@ -25,9 +25,9 @@ use transport::{Envelope, Reply, Request, Slice, Transport};
 
 use ainc_client::types::{
     Assignee, AssigneeKind, AutomationCommand, AutomationRequest, AutomationSnapshot,
-    Command as ProductCommand, CommandRequest, ConnectionStatus, ErrorBody, ErrorCode, Snapshot,
-    TicketActivity, TicketCommand, TicketCommandRequest, TicketSnapshot, WorkPage, Workspace,
-    WorkspaceCommand, WorkspaceRequest, WorkspaceSnapshot,
+    ConnectionStatus, ConversationCommand, ConversationCommandRequest, ConversationSnapshot,
+    ErrorBody, ErrorCode, TicketActivity, TicketCommand, TicketCommandRequest, TicketSnapshot,
+    WorkPage, Workspace, WorkspaceCommand, WorkspaceRequest, WorkspaceSnapshot,
 };
 use std::sync::{
     Arc, Mutex,
@@ -84,13 +84,13 @@ impl Command for TicketCommand {
         }
     }
 }
-impl Command for ProductCommand {
+impl Command for ConversationCommand {
     type Ack = Option<i64>;
     fn family() -> Family {
         Family::Product
     }
     fn envelope(self, operation_id: String) -> Envelope {
-        Envelope::Product(CommandRequest {
+        Envelope::Product(ConversationCommandRequest {
             command: self,
             operation_id,
         })
@@ -177,7 +177,7 @@ fetch!(
     |_s| Slice::Workspaces,
     Workspaces
 );
-fetch!(Product, Snapshot, |_s| Slice::Product, Product);
+fetch!(Product, ConversationSnapshot, |_s| Slice::Product, Product);
 fetch!(Tickets, TicketSnapshot, |_s| Slice::Tickets, Tickets);
 fetch!(
     Automations,
@@ -212,11 +212,10 @@ pub(crate) fn default_workspaces() -> WorkspaceSnapshot {
         }],
     }
 }
-fn default_product() -> Snapshot {
-    Snapshot {
+fn default_product() -> ConversationSnapshot {
+    ConversationSnapshot {
         conversations: vec![],
         turns: vec![],
-        todos: vec![],
         settings: Default::default(),
     }
 }
@@ -246,7 +245,7 @@ pub struct Daemon {
     serial: Mutex<()>,
     pending: [Mutex<Option<Pending>>; 4],
     workspaces: Mutex<WorkspaceSnapshot>,
-    product: Mutex<Snapshot>,
+    product: Mutex<ConversationSnapshot>,
     tickets: Mutex<Arc<TicketSnapshot>>,
     automations: Mutex<AutomationSnapshot>,
     update_required: AtomicBool,
@@ -276,7 +275,7 @@ impl Daemon {
             product: Mutex::new(default_product()),
             tickets: Mutex::new(Arc::new(default_tickets())),
             automations: Mutex::new(AutomationSnapshot {
-                rules: vec![],
+                automations: vec![],
                 occurrences: vec![],
                 history: vec![],
             }),
@@ -421,7 +420,7 @@ impl Daemon {
     pub fn workspaces(&self) -> WorkspaceSnapshot {
         self.workspaces.lock().expect("Workspace snapshot").clone()
     }
-    pub fn product(&self) -> Snapshot {
+    pub fn product(&self) -> ConversationSnapshot {
         self.product.lock().expect("product snapshot").clone()
     }
     /// Shared, not copied: the palette reads it on every keystroke.

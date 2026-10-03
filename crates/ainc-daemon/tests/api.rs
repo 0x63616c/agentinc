@@ -1,7 +1,8 @@
 //! The HTTP seam every module shares: one error shape, one status per failure,
 //! the shared layers applied once.
 use ainc_daemon::{
-    product::{Command, CommandRequest, Product},
+    conversations::{ConversationCommand as Command, ConversationCommandRequest as CommandRequest},
+    product::Product,
     tickets::{TicketCommand, TicketCommandRequest},
 };
 use axum::{
@@ -60,12 +61,12 @@ fn post(path: &str, token: &str, body: &impl serde::Serialize) -> Request<Body> 
 async fn an_unknown_credential_is_unauthorized_on_every_endpoint(pool: PgPool) {
     let app = app(&pool);
     for path in [
-        "/v1/state",
+        "/v1/conversations",
         "/v1/tickets",
         "/v1/tickets/1/activity",
         "/v1/automations",
         "/v1/workspaces",
-        "/v1/terminal/sessions",
+        "/v1/terminals",
         "/v1/connection",
     ] {
         for token in [None, Some("wrong-token")] {
@@ -93,9 +94,13 @@ async fn a_missing_record_is_not_found_everywhere(pool: PgPool) {
     assert_eq!(body["code"], "not_found");
     let product = CommandRequest {
         operation_id: uuid::Uuid::new_v4().to_string(),
-        command: Command::SelectConversation { id: 404 },
+        command: Command::Select { id: 404 },
     };
-    let (status, body) = send(&app, post("/v1/commands", "owner-fixture", &product)).await;
+    let (status, body) = send(
+        &app,
+        post("/v1/conversations/commands", "owner-fixture", &product),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["code"], "not_found");
     let workspace = serde_json::json!({"operation_id": uuid::Uuid::new_v4().to_string(), "command": {"kind": "switch", "id": "nowhere"}});
@@ -107,7 +112,7 @@ async fn a_missing_record_is_not_found_everywhere(pool: PgPool) {
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     let (status, body) = send(
         &app,
-        Request::delete(format!("/v1/terminal/sessions/{}", uuid::Uuid::new_v4()))
+        Request::delete(format!("/v1/terminals/{}", uuid::Uuid::new_v4()))
             .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
             .header("authorization", "Bearer owner-fixture")
             .body(Body::empty())
@@ -123,7 +128,7 @@ async fn an_old_client_gets_the_shared_error_body(pool: PgPool) {
     let app = app(&pool);
     let (status, body) = send(
         &app,
-        Request::get("/v1/state")
+        Request::get("/v1/conversations")
             .header(ainc_release::CLIENT_HEADER, "mac/0.0.1 (api 1)")
             .header("authorization", "Bearer owner-fixture")
             .body(Body::empty())

@@ -26,7 +26,7 @@ async fn generated_version_operation_round_trips() {
 }
 
 #[sqlx::test(migrations = "../ainc-daemon/migrations")]
-async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::PgPool) {
+async fn generated_commands_and_nullable_state_round_trip(pool: sqlx::PgPool) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move {
@@ -50,18 +50,17 @@ async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::Pg
             .unwrap(),
     );
     let ack = client
-        .product_command()
-        .body(ainc_client::types::CommandRequest {
+        .tickets_command()
+        .body(ainc_client::types::TicketCommandRequest {
             operation_id: "797a8c57-7931-4884-88cd-49c85ab224e0".into(),
-            command: ainc_client::types::Command::CreateTodo {
+            command: ainc_client::types::TicketCommand::Create {
                 title: "generated client".into(),
             },
         })
         .send()
         .await
         .unwrap();
-    let state = client.product_state().send().await.unwrap();
-    assert_eq!(state.todos[0].id, ack.result_id.unwrap());
+    let state = client.conversations_state().send().await.unwrap();
     assert_eq!(state.settings.model, None);
     assert_eq!(state.settings.selected_conversation, None);
     let accepted = client
@@ -100,15 +99,6 @@ async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::Pg
     assert_eq!(workspace_state.current_id, workspace.result_id);
     assert!(
         client
-            .product_state()
-            .send()
-            .await
-            .unwrap()
-            .todos
-            .is_empty()
-    );
-    assert!(
-        client
             .tickets_state()
             .send()
             .await
@@ -126,7 +116,7 @@ async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::Pg
         .await
         .unwrap();
     assert_eq!(
-        client.product_state().send().await.unwrap().todos[0].id,
+        client.tickets_state().send().await.unwrap().tickets[0].id,
         ack.result_id.unwrap()
     );
     server.abort();
@@ -239,7 +229,7 @@ async fn generated_automation_rule_pause_and_run_now_round_trip(pool: sqlx::PgPo
         .clone();
     assert_eq!(first, second);
     let state = client.automations_state().send().await.unwrap();
-    assert!(state.rules[0].paused);
+    assert!(state.automations[0].paused);
     assert_eq!(state.occurrences.len(), 1);
     assert_eq!(state.occurrences[0].state, "waiting_for_worker");
     server.abort();

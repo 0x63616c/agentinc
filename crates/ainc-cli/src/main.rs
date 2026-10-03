@@ -144,7 +144,6 @@ fn variants(spec: &Value, group: &str) -> Vec<Variant> {
         "tickets" => "TicketCommand",
         "automations" => "AutomationCommand",
         "conversations" => "ConversationCommand",
-        "product" => "Command",
         _ => return vec![],
     };
     let variants = &spec["components"]["schemas"][request]["oneOf"];
@@ -217,7 +216,7 @@ fn command_tree(spec: &Value) -> Command {
             .or_insert_with(|| Command::new(group).subcommand_required(true));
         *entry = entry.clone().subcommand(command);
     }
-    for group in ["tickets", "automations", "conversations", "product"] {
+    for group in ["tickets", "automations", "conversations"] {
         if let Some(entry) = groups.get_mut(group) {
             for (kind, fields) in variants(spec, group) {
                 let mut command =
@@ -384,7 +383,6 @@ async fn main() -> Result<()> {
         "tickets" => "tickets_command",
         "automations" => "automations_command",
         "conversations" => "conversations_command",
-        "product" => "product_command",
         _ => bail!("unsupported command"),
     });
     let body = if let Some(path) = action_args.get_one::<String>("json-body") {

@@ -18,7 +18,7 @@ pub mod legacy;
 pub mod pg;
 pub mod product;
 pub mod receipts;
-pub mod terminal_sessions;
+pub mod terminals;
 pub mod testing;
 pub mod tickets;
 pub mod work;

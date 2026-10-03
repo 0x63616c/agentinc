@@ -532,11 +532,17 @@ pub mod types {
     ///{
     ///  "type": "object",
     ///  "required": [
+    ///    "automations",
     ///    "history",
-    ///    "occurrences",
-    ///    "rules"
+    ///    "occurrences"
     ///  ],
     ///  "properties": {
+    ///    "automations": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Automation"
+    ///      }
+    ///    },
     ///    "history": {
     ///      "type": "array",
     ///      "items": {
@@ -548,12 +554,6 @@ pub mod types {
     ///      "items": {
     ///        "$ref": "#/components/schemas/OccurrenceView"
     ///      }
-    ///    },
-    ///    "rules": {
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/Automation"
-    ///      }
     ///    }
     ///  }
     ///}
@@ -561,325 +561,12 @@ pub mod types {
     /// </details>
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
     pub struct AutomationSnapshot {
+        pub automations: ::std::vec::Vec<Automation>,
         pub history: ::std::vec::Vec<HistoryEntry>,
         pub occurrences: ::std::vec::Vec<OccurrenceView>,
-        pub rules: ::std::vec::Vec<Automation>,
     }
     impl AutomationSnapshot {
         pub fn builder() -> builder::AutomationSnapshot {
-            Default::default()
-        }
-    }
-    ///`Command`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "oneOf": [
-    ///    {
-    ///      "type": "object",
-    ///      "required": [
-    ///        "kind"
-    ///      ],
-    ///      "properties": {
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "create_conversation"
-    ///          ]
-    ///        }
-    ///      }
-    ///    },
-    ///    {
-    ///      "type": "object",
-    ///      "required": [
-    ///        "id",
-    ///        "kind",
-    ///        "title"
-    ///      ],
-    ///      "properties": {
-    ///        "id": {
-    ///          "type": "integer",
-    ///          "format": "int64"
-    ///        },
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "rename_conversation"
-    ///          ]
-    ///        },
-    ///        "title": {
-    ///          "type": "string"
-    ///        }
-    ///      }
-    ///    },
-    ///    {
-    ///      "type": "object",
-    ///      "required": [
-    ///        "id",
-    ///        "kind"
-    ///      ],
-    ///      "properties": {
-    ///        "id": {
-    ///          "type": "integer",
-    ///          "format": "int64"
-    ///        },
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "delete_conversation"
-    ///          ]
-    ///        }
-    ///      }
-    ///    },
-    ///    {
-    ///      "type": "object",
-    ///      "required": [
-    ///        "id",
-    ///        "kind"
-    ///      ],
-    ///      "properties": {
-    ///        "id": {
-    ///          "type": "integer",
-    ///          "format": "int64"
-    ///        },
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "select_conversation"
-    ///          ]
-    ///        }
-    ///      }
-    ///    },
-    ///    {
-    ///      "type": "object",
-    ///      "required": [
-    ///        "conversation_id",
-    ///        "kind",
-    ///        "prompt"
-    ///      ],
-    ///      "properties": {
-    ///        "conversation_id": {
-    ///          "type": "integer",
-    ///          "format": "int64"
-    ///        },
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "send"
-    ///          ]
-    ///        },
-    ///        "prompt": {
-    ///          "type": "string"
-    ///        }
-    ///      }
-    ///    },
-    ///    {
-    ///      "type": "object",
-    ///      "required": [
-    ///        "id",
-    ///        "kind"
-    ///      ],
-    ///      "properties": {
-    ///        "id": {
-    ///          "type": "integer",
-    ///          "format": "int64"
-    ///        },
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "retry"
-    ///          ]
-    ///        }
-    ///      }
-    ///    },
-    ///    {
-    ///      "description": "Phase-2 name for the Ticket command `create`.",
-    ///      "deprecated": true,
-    ///      "type": "object",
-    ///      "required": [
-    ///        "kind",
-    ///        "title"
-    ///      ],
-    ///      "properties": {
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "create_todo"
-    ///          ]
-    ///        },
-    ///        "title": {
-    ///          "type": "string"
-    ///        }
-    ///      }
-    ///    },
-    ///    {
-    ///      "description": "Phase-2 name for the Ticket command `set_status` on a human-owned Ticket.",
-    ///      "deprecated": true,
-    ///      "type": "object",
-    ///      "required": [
-    ///        "completed",
-    ///        "id",
-    ///        "kind"
-    ///      ],
-    ///      "properties": {
-    ///        "completed": {
-    ///          "type": "boolean"
-    ///        },
-    ///        "id": {
-    ///          "type": "integer",
-    ///          "format": "int64"
-    ///        },
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "complete_todo"
-    ///          ]
-    ///        }
-    ///      }
-    ///    },
-    ///    {
-    ///      "description": "Phase-2 name for the Ticket command `delete`.",
-    ///      "deprecated": true,
-    ///      "type": "object",
-    ///      "required": [
-    ///        "id",
-    ///        "kind"
-    ///      ],
-    ///      "properties": {
-    ///        "id": {
-    ///          "type": "integer",
-    ///          "format": "int64"
-    ///        },
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "delete_todo"
-    ///          ]
-    ///        }
-    ///      }
-    ///    },
-    ///    {
-    ///      "type": "object",
-    ///      "required": [
-    ///        "kind",
-    ///        "model"
-    ///      ],
-    ///      "properties": {
-    ///        "kind": {
-    ///          "type": "string",
-    ///          "enum": [
-    ///            "select_model"
-    ///          ]
-    ///        },
-    ///        "model": {
-    ///          "type": "string"
-    ///        }
-    ///      }
-    ///    }
-    ///  ]
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    #[serde(tag = "kind")]
-    pub enum Command {
-        #[serde(rename = "create_conversation")]
-        CreateConversation,
-        #[serde(rename = "rename_conversation")]
-        RenameConversation {
-            id: i64,
-            title: ::std::string::String,
-        },
-        #[serde(rename = "delete_conversation")]
-        DeleteConversation { id: i64 },
-        #[serde(rename = "select_conversation")]
-        SelectConversation { id: i64 },
-        #[serde(rename = "send")]
-        Send {
-            conversation_id: i64,
-            prompt: ::std::string::String,
-        },
-        #[serde(rename = "retry")]
-        Retry { id: i64 },
-        ///Phase-2 name for the Ticket command `create`.
-        #[serde(rename = "create_todo")]
-        CreateTodo { title: ::std::string::String },
-        ///Phase-2 name for the Ticket command `set_status` on a human-owned Ticket.
-        #[serde(rename = "complete_todo")]
-        CompleteTodo { completed: bool, id: i64 },
-        ///Phase-2 name for the Ticket command `delete`.
-        #[serde(rename = "delete_todo")]
-        DeleteTodo { id: i64 },
-        #[serde(rename = "select_model")]
-        SelectModel { model: ::std::string::String },
-    }
-    ///`CommandReceipt`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "operation_id"
-    ///  ],
-    ///  "properties": {
-    ///    "operation_id": {
-    ///      "type": "string"
-    ///    },
-    ///    "result_id": {
-    ///      "type": [
-    ///        "integer",
-    ///        "null"
-    ///      ],
-    ///      "format": "int64"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct CommandReceipt {
-        pub operation_id: ::std::string::String,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub result_id: ::std::option::Option<i64>,
-    }
-    impl CommandReceipt {
-        pub fn builder() -> builder::CommandReceipt {
-            Default::default()
-        }
-    }
-    ///`CommandRequest`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "command",
-    ///    "operation_id"
-    ///  ],
-    ///  "properties": {
-    ///    "command": {
-    ///      "$ref": "#/components/schemas/Command"
-    ///    },
-    ///    "operation_id": {
-    ///      "type": "string"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct CommandRequest {
-        pub command: Command,
-        pub operation_id: ::std::string::String,
-    }
-    impl CommandRequest {
-        pub fn builder() -> builder::CommandRequest {
             Default::default()
         }
     }
@@ -1319,7 +1006,7 @@ pub mod types {
             Default::default()
         }
     }
-    ///`CreateTerminalSession`
+    ///`CreateTerminal`
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -1338,11 +1025,11 @@ pub mod types {
     /// ```
     /// </details>
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct CreateTerminalSession {
+    pub struct CreateTerminal {
         pub id: ::std::string::String,
     }
-    impl CreateTerminalSession {
-        pub fn builder() -> builder::CreateTerminalSession {
+    impl CreateTerminal {
+        pub fn builder() -> builder::CreateTerminal {
             Default::default()
         }
     }
@@ -1780,58 +1467,7 @@ pub mod types {
             Default::default()
         }
     }
-    ///`Snapshot`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "conversations",
-    ///    "settings",
-    ///    "todos",
-    ///    "turns"
-    ///  ],
-    ///  "properties": {
-    ///    "conversations": {
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/Conversation"
-    ///      }
-    ///    },
-    ///    "settings": {
-    ///      "$ref": "#/components/schemas/Settings"
-    ///    },
-    ///    "todos": {
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/Todo"
-    ///      }
-    ///    },
-    ///    "turns": {
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/Turn"
-    ///      }
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct Snapshot {
-        pub conversations: ::std::vec::Vec<Conversation>,
-        pub settings: Settings,
-        pub todos: ::std::vec::Vec<Todo>,
-        pub turns: ::std::vec::Vec<Turn>,
-    }
-    impl Snapshot {
-        pub fn builder() -> builder::Snapshot {
-            Default::default()
-        }
-    }
-    ///`TerminalSession`
+    ///`Terminal`
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -1858,13 +1494,13 @@ pub mod types {
     /// ```
     /// </details>
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct TerminalSession {
+    pub struct Terminal {
         pub id: ::std::string::String,
         pub state: ::std::string::String,
         pub workspace_id: ::std::string::String,
     }
-    impl TerminalSession {
-        pub fn builder() -> builder::TerminalSession {
+    impl Terminal {
+        pub fn builder() -> builder::Terminal {
             Default::default()
         }
     }
@@ -3002,44 +2638,6 @@ pub mod types {
             value.parse()
         }
     }
-    ///`Todo`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "completed",
-    ///    "id",
-    ///    "title"
-    ///  ],
-    ///  "properties": {
-    ///    "completed": {
-    ///      "type": "boolean"
-    ///    },
-    ///    "id": {
-    ///      "type": "integer",
-    ///      "format": "int64"
-    ///    },
-    ///    "title": {
-    ///      "type": "string"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
-    pub struct Todo {
-        pub completed: bool,
-        pub id: i64,
-        pub title: ::std::string::String,
-    }
-    impl Todo {
-        pub fn builder() -> builder::Todo {
-            Default::default()
-        }
-    }
     ///`Turn`
     ///
     /// <details><summary>JSON schema</summary>
@@ -4037,24 +3635,35 @@ pub mod types {
         }
         #[derive(Clone, Debug)]
         pub struct AutomationSnapshot {
+            automations:
+                ::std::result::Result<::std::vec::Vec<super::Automation>, ::std::string::String>,
             history:
                 ::std::result::Result<::std::vec::Vec<super::HistoryEntry>, ::std::string::String>,
             occurrences: ::std::result::Result<
                 ::std::vec::Vec<super::OccurrenceView>,
                 ::std::string::String,
             >,
-            rules: ::std::result::Result<::std::vec::Vec<super::Automation>, ::std::string::String>,
         }
         impl ::std::default::Default for AutomationSnapshot {
             fn default() -> Self {
                 Self {
+                    automations: Err("no value supplied for automations".to_string()),
                     history: Err("no value supplied for history".to_string()),
                     occurrences: Err("no value supplied for occurrences".to_string()),
-                    rules: Err("no value supplied for rules".to_string()),
                 }
             }
         }
         impl AutomationSnapshot {
+            pub fn automations<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Automation>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.automations = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for automations: {e}"));
+                self
+            }
             pub fn history<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<::std::vec::Vec<super::HistoryEntry>>,
@@ -4075,16 +3684,6 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for occurrences: {e}"));
                 self
             }
-            pub fn rules<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::vec::Vec<super::Automation>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.rules = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for rules: {e}"));
-                self
-            }
         }
         impl ::std::convert::TryFrom<AutomationSnapshot> for super::AutomationSnapshot {
             type Error = super::error::ConversionError;
@@ -4092,126 +3691,18 @@ pub mod types {
                 value: AutomationSnapshot,
             ) -> ::std::result::Result<Self, super::error::ConversionError> {
                 Ok(Self {
+                    automations: value.automations?,
                     history: value.history?,
                     occurrences: value.occurrences?,
-                    rules: value.rules?,
                 })
             }
         }
         impl ::std::convert::From<super::AutomationSnapshot> for AutomationSnapshot {
             fn from(value: super::AutomationSnapshot) -> Self {
                 Self {
+                    automations: Ok(value.automations),
                     history: Ok(value.history),
                     occurrences: Ok(value.occurrences),
-                    rules: Ok(value.rules),
-                }
-            }
-        }
-        #[derive(Clone, Debug)]
-        pub struct CommandReceipt {
-            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
-            result_id: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
-        }
-        impl ::std::default::Default for CommandReceipt {
-            fn default() -> Self {
-                Self {
-                    operation_id: Err("no value supplied for operation_id".to_string()),
-                    result_id: Ok(Default::default()),
-                }
-            }
-        }
-        impl CommandReceipt {
-            pub fn operation_id<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.operation_id = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
-                self
-            }
-            pub fn result_id<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::option::Option<i64>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.result_id = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<CommandReceipt> for super::CommandReceipt {
-            type Error = super::error::ConversionError;
-            fn try_from(
-                value: CommandReceipt,
-            ) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    operation_id: value.operation_id?,
-                    result_id: value.result_id?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::CommandReceipt> for CommandReceipt {
-            fn from(value: super::CommandReceipt) -> Self {
-                Self {
-                    operation_id: Ok(value.operation_id),
-                    result_id: Ok(value.result_id),
-                }
-            }
-        }
-        #[derive(Clone, Debug)]
-        pub struct CommandRequest {
-            command: ::std::result::Result<super::Command, ::std::string::String>,
-            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
-        }
-        impl ::std::default::Default for CommandRequest {
-            fn default() -> Self {
-                Self {
-                    command: Err("no value supplied for command".to_string()),
-                    operation_id: Err("no value supplied for operation_id".to_string()),
-                }
-            }
-        }
-        impl CommandRequest {
-            pub fn command<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<super::Command>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.command = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for command: {e}"));
-                self
-            }
-            pub fn operation_id<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.operation_id = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<CommandRequest> for super::CommandRequest {
-            type Error = super::error::ConversionError;
-            fn try_from(
-                value: CommandRequest,
-            ) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    command: value.command?,
-                    operation_id: value.operation_id?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::CommandRequest> for CommandRequest {
-            fn from(value: super::CommandRequest) -> Self {
-                Self {
-                    command: Ok(value.command),
-                    operation_id: Ok(value.operation_id),
                 }
             }
         }
@@ -4676,17 +4167,17 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
-        pub struct CreateTerminalSession {
+        pub struct CreateTerminal {
             id: ::std::result::Result<::std::string::String, ::std::string::String>,
         }
-        impl ::std::default::Default for CreateTerminalSession {
+        impl ::std::default::Default for CreateTerminal {
             fn default() -> Self {
                 Self {
                     id: Err("no value supplied for id".to_string()),
                 }
             }
         }
-        impl CreateTerminalSession {
+        impl CreateTerminal {
             pub fn id<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<::std::string::String>,
@@ -4698,16 +4189,16 @@ pub mod types {
                 self
             }
         }
-        impl ::std::convert::TryFrom<CreateTerminalSession> for super::CreateTerminalSession {
+        impl ::std::convert::TryFrom<CreateTerminal> for super::CreateTerminal {
             type Error = super::error::ConversionError;
             fn try_from(
-                value: CreateTerminalSession,
+                value: CreateTerminal,
             ) -> ::std::result::Result<Self, super::error::ConversionError> {
                 Ok(Self { id: value.id? })
             }
         }
-        impl ::std::convert::From<super::CreateTerminalSession> for CreateTerminalSession {
-            fn from(value: super::CreateTerminalSession) -> Self {
+        impl ::std::convert::From<super::CreateTerminal> for CreateTerminal {
+            fn from(value: super::CreateTerminal) -> Self {
                 Self { id: Ok(value.id) }
             }
         }
@@ -5127,95 +4618,12 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
-        pub struct Snapshot {
-            conversations:
-                ::std::result::Result<::std::vec::Vec<super::Conversation>, ::std::string::String>,
-            settings: ::std::result::Result<super::Settings, ::std::string::String>,
-            todos: ::std::result::Result<::std::vec::Vec<super::Todo>, ::std::string::String>,
-            turns: ::std::result::Result<::std::vec::Vec<super::Turn>, ::std::string::String>,
-        }
-        impl ::std::default::Default for Snapshot {
-            fn default() -> Self {
-                Self {
-                    conversations: Err("no value supplied for conversations".to_string()),
-                    settings: Err("no value supplied for settings".to_string()),
-                    todos: Err("no value supplied for todos".to_string()),
-                    turns: Err("no value supplied for turns".to_string()),
-                }
-            }
-        }
-        impl Snapshot {
-            pub fn conversations<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::vec::Vec<super::Conversation>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.conversations = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for conversations: {e}"));
-                self
-            }
-            pub fn settings<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<super::Settings>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.settings = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for settings: {e}"));
-                self
-            }
-            pub fn todos<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::vec::Vec<super::Todo>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.todos = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for todos: {e}"));
-                self
-            }
-            pub fn turns<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::vec::Vec<super::Turn>>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.turns = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for turns: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<Snapshot> for super::Snapshot {
-            type Error = super::error::ConversionError;
-            fn try_from(
-                value: Snapshot,
-            ) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    conversations: value.conversations?,
-                    settings: value.settings?,
-                    todos: value.todos?,
-                    turns: value.turns?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::Snapshot> for Snapshot {
-            fn from(value: super::Snapshot) -> Self {
-                Self {
-                    conversations: Ok(value.conversations),
-                    settings: Ok(value.settings),
-                    todos: Ok(value.todos),
-                    turns: Ok(value.turns),
-                }
-            }
-        }
-        #[derive(Clone, Debug)]
-        pub struct TerminalSession {
+        pub struct Terminal {
             id: ::std::result::Result<::std::string::String, ::std::string::String>,
             state: ::std::result::Result<::std::string::String, ::std::string::String>,
             workspace_id: ::std::result::Result<::std::string::String, ::std::string::String>,
         }
-        impl ::std::default::Default for TerminalSession {
+        impl ::std::default::Default for Terminal {
             fn default() -> Self {
                 Self {
                     id: Err("no value supplied for id".to_string()),
@@ -5224,7 +4632,7 @@ pub mod types {
                 }
             }
         }
-        impl TerminalSession {
+        impl Terminal {
             pub fn id<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<::std::string::String>,
@@ -5256,10 +4664,10 @@ pub mod types {
                 self
             }
         }
-        impl ::std::convert::TryFrom<TerminalSession> for super::TerminalSession {
+        impl ::std::convert::TryFrom<Terminal> for super::Terminal {
             type Error = super::error::ConversionError;
             fn try_from(
-                value: TerminalSession,
+                value: Terminal,
             ) -> ::std::result::Result<Self, super::error::ConversionError> {
                 Ok(Self {
                     id: value.id?,
@@ -5268,8 +4676,8 @@ pub mod types {
                 })
             }
         }
-        impl ::std::convert::From<super::TerminalSession> for TerminalSession {
-            fn from(value: super::TerminalSession) -> Self {
+        impl ::std::convert::From<super::Terminal> for Terminal {
+            fn from(value: super::Terminal) -> Self {
                 Self {
                     id: Ok(value.id),
                     state: Ok(value.state),
@@ -5989,72 +5397,6 @@ pub mod types {
                     links: Ok(value.links),
                     runs: Ok(value.runs),
                     tickets: Ok(value.tickets),
-                }
-            }
-        }
-        #[derive(Clone, Debug)]
-        pub struct Todo {
-            completed: ::std::result::Result<bool, ::std::string::String>,
-            id: ::std::result::Result<i64, ::std::string::String>,
-            title: ::std::result::Result<::std::string::String, ::std::string::String>,
-        }
-        impl ::std::default::Default for Todo {
-            fn default() -> Self {
-                Self {
-                    completed: Err("no value supplied for completed".to_string()),
-                    id: Err("no value supplied for id".to_string()),
-                    title: Err("no value supplied for title".to_string()),
-                }
-            }
-        }
-        impl Todo {
-            pub fn completed<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<bool>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.completed = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for completed: {e}"));
-                self
-            }
-            pub fn id<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<i64>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.id = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for id: {e}"));
-                self
-            }
-            pub fn title<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.title = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for title: {e}"));
-                self
-            }
-        }
-        impl ::std::convert::TryFrom<Todo> for super::Todo {
-            type Error = super::error::ConversionError;
-            fn try_from(value: Todo) -> ::std::result::Result<Self, super::error::ConversionError> {
-                Ok(Self {
-                    completed: value.completed?,
-                    id: value.id?,
-                    title: value.title?,
-                })
-            }
-        }
-        impl ::std::convert::From<super::Todo> for Todo {
-            fn from(value: super::Todo) -> Self {
-                Self {
-                    completed: Ok(value.completed),
-                    id: Ok(value.id),
-                    title: Ok(value.title),
                 }
             }
         }
@@ -6829,20 +6171,6 @@ impl Client {
     pub fn automations_command(&self) -> builder::AutomationsCommand<'_> {
         builder::AutomationsCommand::new(self)
     }
-    /*Deprecated: send Conversation commands to `/v1/conversations/commands` and Ticket
-    commands to `/v1/tickets/commands`. Removed in a later release
-
-    Sends a `POST` request to `/v1/commands`
-
-    ```ignore
-    let response = client.product_command()
-        .body(body)
-        .send()
-        .await;
-    ```*/
-    pub fn product_command(&self) -> builder::ProductCommand<'_> {
-        builder::ProductCommand::new(self)
-    }
     /*Sends a `GET` request to `/v1/connection`
 
     ```ignore
@@ -6904,49 +6232,37 @@ impl Client {
     pub fn conversations_command(&self) -> builder::ConversationsCommand<'_> {
         builder::ConversationsCommand::new(self)
     }
-    /*Deprecated: read `/v1/conversations` and `/v1/tickets`. Removed in a later release
-
-    Sends a `GET` request to `/v1/state`
+    /*Sends a `GET` request to `/v1/terminals`
 
     ```ignore
-    let response = client.product_state()
+    let response = client.terminals_list()
         .send()
         .await;
     ```*/
-    pub fn product_state(&self) -> builder::ProductState<'_> {
-        builder::ProductState::new(self)
+    pub fn terminals_list(&self) -> builder::TerminalsList<'_> {
+        builder::TerminalsList::new(self)
     }
-    /*Sends a `GET` request to `/v1/terminal/sessions`
+    /*Sends a `POST` request to `/v1/terminals`
 
     ```ignore
-    let response = client.terminal_sessions_list()
-        .send()
-        .await;
-    ```*/
-    pub fn terminal_sessions_list(&self) -> builder::TerminalSessionsList<'_> {
-        builder::TerminalSessionsList::new(self)
-    }
-    /*Sends a `POST` request to `/v1/terminal/sessions`
-
-    ```ignore
-    let response = client.terminal_sessions_create()
+    let response = client.terminals_create()
         .body(body)
         .send()
         .await;
     ```*/
-    pub fn terminal_sessions_create(&self) -> builder::TerminalSessionsCreate<'_> {
-        builder::TerminalSessionsCreate::new(self)
+    pub fn terminals_create(&self) -> builder::TerminalsCreate<'_> {
+        builder::TerminalsCreate::new(self)
     }
-    /*Sends a `DELETE` request to `/v1/terminal/sessions/{id}`
+    /*Sends a `DELETE` request to `/v1/terminals/{id}`
 
     ```ignore
-    let response = client.terminal_sessions_close()
+    let response = client.terminals_close()
         .id(id)
         .send()
         .await;
     ```*/
-    pub fn terminal_sessions_close(&self) -> builder::TerminalSessionsClose<'_> {
-        builder::TerminalSessionsClose::new(self)
+    pub fn terminals_close(&self) -> builder::TerminalsClose<'_> {
+        builder::TerminalsClose::new(self)
     }
     /*Sends a `GET` request to `/v1/tickets`
 
@@ -7291,103 +6607,6 @@ pub mod builder {
                     ResponseValue::from_response(response).await?,
                 )),
                 403u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                404u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                409u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                426u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                500u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                _ => Err(Error::UnexpectedResponse(response)),
-            }
-        }
-    }
-    /*Builder for [`Client::product_command`]
-
-    [`Client::product_command`]: super::Client::product_command*/
-    #[derive(Debug, Clone)]
-    pub struct ProductCommand<'a> {
-        client: &'a super::Client,
-        body: Result<types::builder::CommandRequest, String>,
-    }
-    impl<'a> ProductCommand<'a> {
-        pub fn new(client: &'a super::Client) -> Self {
-            Self {
-                client: client,
-                body: Ok(::std::default::Default::default()),
-            }
-        }
-        pub fn body<V>(mut self, value: V) -> Self
-        where
-            V: std::convert::TryInto<types::CommandRequest>,
-            <V as std::convert::TryInto<types::CommandRequest>>::Error: std::fmt::Display,
-        {
-            self.body = value
-                .try_into()
-                .map(From::from)
-                .map_err(|s| format!("conversion to `CommandRequest` for body failed: {}", s));
-            self
-        }
-        pub fn body_map<F>(mut self, f: F) -> Self
-        where
-            F: std::ops::FnOnce(types::builder::CommandRequest) -> types::builder::CommandRequest,
-        {
-            self.body = self.body.map(f);
-            self
-        }
-        ///Sends a `POST` request to `/v1/commands`
-        pub async fn send(
-            self,
-        ) -> Result<ResponseValue<types::CommandReceipt>, Error<types::ErrorBody>> {
-            let Self { client, body } = self;
-            let body = body
-                .and_then(|v| types::CommandRequest::try_from(v).map_err(|e| e.to_string()))
-                .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/v1/commands", client.baseurl,);
-            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-            header_map.append(
-                ::reqwest::header::HeaderName::from_static("api-version"),
-                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
-            );
-            #[allow(unused_mut)]
-            let mut request = client
-                .client
-                .post(url)
-                .header(
-                    ::reqwest::header::ACCEPT,
-                    ::reqwest::header::HeaderValue::from_static("application/json"),
-                )
-                .json(&body)
-                .headers(header_map)
-                .build()?;
-            let info = OperationInfo {
-                operation_id: "product_command",
-            };
-            match (crate::client_header)(&mut request).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            client.pre(&mut request, &info).await?;
-            let result = client.exec(request, &info).await;
-            client.post(&result, &info).await?;
-            match (crate::server_compatibility)(&result).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            let response = result?;
-            match response.status().as_u16() {
-                200u16 => ResponseValue::from_response(response).await,
-                400u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 404u16 => Err(Error::ErrorResponse(
@@ -7835,84 +7054,24 @@ pub mod builder {
             }
         }
     }
-    /*Builder for [`Client::product_state`]
+    /*Builder for [`Client::terminals_list`]
 
-    [`Client::product_state`]: super::Client::product_state*/
+    [`Client::terminals_list`]: super::Client::terminals_list*/
     #[derive(Debug, Clone)]
-    pub struct ProductState<'a> {
+    pub struct TerminalsList<'a> {
         client: &'a super::Client,
     }
-    impl<'a> ProductState<'a> {
+    impl<'a> TerminalsList<'a> {
         pub fn new(client: &'a super::Client) -> Self {
             Self { client: client }
         }
-        ///Sends a `GET` request to `/v1/state`
-        pub async fn send(self) -> Result<ResponseValue<types::Snapshot>, Error<types::ErrorBody>> {
-            let Self { client } = self;
-            let url = format!("{}/v1/state", client.baseurl,);
-            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-            header_map.append(
-                ::reqwest::header::HeaderName::from_static("api-version"),
-                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
-            );
-            #[allow(unused_mut)]
-            let mut request = client
-                .client
-                .get(url)
-                .header(
-                    ::reqwest::header::ACCEPT,
-                    ::reqwest::header::HeaderValue::from_static("application/json"),
-                )
-                .headers(header_map)
-                .build()?;
-            let info = OperationInfo {
-                operation_id: "product_state",
-            };
-            match (crate::client_header)(&mut request).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            client.pre(&mut request, &info).await?;
-            let result = client.exec(request, &info).await;
-            client.post(&result, &info).await?;
-            match (crate::server_compatibility)(&result).await {
-                Ok(_) => {}
-                Err(e) => return Err(Error::Custom(e.to_string())),
-            }
-            let response = result?;
-            match response.status().as_u16() {
-                200u16 => ResponseValue::from_response(response).await,
-                401u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                426u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                500u16 => Err(Error::ErrorResponse(
-                    ResponseValue::from_response(response).await?,
-                )),
-                _ => Err(Error::UnexpectedResponse(response)),
-            }
-        }
-    }
-    /*Builder for [`Client::terminal_sessions_list`]
-
-    [`Client::terminal_sessions_list`]: super::Client::terminal_sessions_list*/
-    #[derive(Debug, Clone)]
-    pub struct TerminalSessionsList<'a> {
-        client: &'a super::Client,
-    }
-    impl<'a> TerminalSessionsList<'a> {
-        pub fn new(client: &'a super::Client) -> Self {
-            Self { client: client }
-        }
-        ///Sends a `GET` request to `/v1/terminal/sessions`
+        ///Sends a `GET` request to `/v1/terminals`
         pub async fn send(
             self,
-        ) -> Result<ResponseValue<::std::vec::Vec<types::TerminalSession>>, Error<types::ErrorBody>>
+        ) -> Result<ResponseValue<::std::vec::Vec<types::Terminal>>, Error<types::ErrorBody>>
         {
             let Self { client } = self;
-            let url = format!("{}/v1/terminal/sessions", client.baseurl,);
+            let url = format!("{}/v1/terminals", client.baseurl,);
             let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
             header_map.append(
                 ::reqwest::header::HeaderName::from_static("api-version"),
@@ -7929,7 +7088,7 @@ pub mod builder {
                 .headers(header_map)
                 .build()?;
             let info = OperationInfo {
-                operation_id: "terminal_sessions_list",
+                operation_id: "terminals_list",
             };
             match (crate::client_header)(&mut request).await {
                 Ok(_) => {}
@@ -7958,15 +7117,15 @@ pub mod builder {
             }
         }
     }
-    /*Builder for [`Client::terminal_sessions_create`]
+    /*Builder for [`Client::terminals_create`]
 
-    [`Client::terminal_sessions_create`]: super::Client::terminal_sessions_create*/
+    [`Client::terminals_create`]: super::Client::terminals_create*/
     #[derive(Debug, Clone)]
-    pub struct TerminalSessionsCreate<'a> {
+    pub struct TerminalsCreate<'a> {
         client: &'a super::Client,
-        body: Result<types::builder::CreateTerminalSession, String>,
+        body: Result<types::builder::CreateTerminal, String>,
     }
-    impl<'a> TerminalSessionsCreate<'a> {
+    impl<'a> TerminalsCreate<'a> {
         pub fn new(client: &'a super::Client) -> Self {
             Self {
                 client: client,
@@ -7975,35 +7134,29 @@ pub mod builder {
         }
         pub fn body<V>(mut self, value: V) -> Self
         where
-            V: std::convert::TryInto<types::CreateTerminalSession>,
-            <V as std::convert::TryInto<types::CreateTerminalSession>>::Error: std::fmt::Display,
+            V: std::convert::TryInto<types::CreateTerminal>,
+            <V as std::convert::TryInto<types::CreateTerminal>>::Error: std::fmt::Display,
         {
-            self.body = value.try_into().map(From::from).map_err(|s| {
-                format!(
-                    "conversion to `CreateTerminalSession` for body failed: {}",
-                    s
-                )
-            });
+            self.body = value
+                .try_into()
+                .map(From::from)
+                .map_err(|s| format!("conversion to `CreateTerminal` for body failed: {}", s));
             self
         }
         pub fn body_map<F>(mut self, f: F) -> Self
         where
-            F: std::ops::FnOnce(
-                    types::builder::CreateTerminalSession,
-                ) -> types::builder::CreateTerminalSession,
+            F: std::ops::FnOnce(types::builder::CreateTerminal) -> types::builder::CreateTerminal,
         {
             self.body = self.body.map(f);
             self
         }
-        ///Sends a `POST` request to `/v1/terminal/sessions`
-        pub async fn send(
-            self,
-        ) -> Result<ResponseValue<types::TerminalSession>, Error<types::ErrorBody>> {
+        ///Sends a `POST` request to `/v1/terminals`
+        pub async fn send(self) -> Result<ResponseValue<types::Terminal>, Error<types::ErrorBody>> {
             let Self { client, body } = self;
             let body = body
-                .and_then(|v| types::CreateTerminalSession::try_from(v).map_err(|e| e.to_string()))
+                .and_then(|v| types::CreateTerminal::try_from(v).map_err(|e| e.to_string()))
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/v1/terminal/sessions", client.baseurl,);
+            let url = format!("{}/v1/terminals", client.baseurl,);
             let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
             header_map.append(
                 ::reqwest::header::HeaderName::from_static("api-version"),
@@ -8021,7 +7174,7 @@ pub mod builder {
                 .headers(header_map)
                 .build()?;
             let info = OperationInfo {
-                operation_id: "terminal_sessions_create",
+                operation_id: "terminals_create",
             };
             match (crate::client_header)(&mut request).await {
                 Ok(_) => {}
@@ -8053,15 +7206,15 @@ pub mod builder {
             }
         }
     }
-    /*Builder for [`Client::terminal_sessions_close`]
+    /*Builder for [`Client::terminals_close`]
 
-    [`Client::terminal_sessions_close`]: super::Client::terminal_sessions_close*/
+    [`Client::terminals_close`]: super::Client::terminals_close*/
     #[derive(Debug, Clone)]
-    pub struct TerminalSessionsClose<'a> {
+    pub struct TerminalsClose<'a> {
         client: &'a super::Client,
         id: Result<::std::string::String, String>,
     }
-    impl<'a> TerminalSessionsClose<'a> {
+    impl<'a> TerminalsClose<'a> {
         pub fn new(client: &'a super::Client) -> Self {
             Self {
                 client: client,
@@ -8077,12 +7230,12 @@ pub mod builder {
             });
             self
         }
-        ///Sends a `DELETE` request to `/v1/terminal/sessions/{id}`
+        ///Sends a `DELETE` request to `/v1/terminals/{id}`
         pub async fn send(self) -> Result<ResponseValue<()>, Error<types::ErrorBody>> {
             let Self { client, id } = self;
             let id = id.map_err(Error::InvalidRequest)?;
             let url = format!(
-                "{}/v1/terminal/sessions/{}",
+                "{}/v1/terminals/{}",
                 client.baseurl,
                 encode_path(&id.to_string()),
             );
@@ -8102,7 +7255,7 @@ pub mod builder {
                 .headers(header_map)
                 .build()?;
             let info = OperationInfo {
-                operation_id: "terminal_sessions_close",
+                operation_id: "terminals_close",
             };
             match (crate::client_header)(&mut request).await {
                 Ok(_) => {}

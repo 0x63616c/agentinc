@@ -145,7 +145,7 @@ async fn perform(client: &Client, request: Request) -> Result<Reply, DaemonError
         ),
         Request::Fetch(Slice::Product) => Reply::Product(
             client
-                .product_state()
+                .conversations_state()
                 .send()
                 .await
                 .map_err(classify)?
@@ -218,7 +218,7 @@ async fn perform(client: &Client, request: Request) -> Result<Reply, DaemonError
         ),
         Request::Command(Envelope::Product(body)) => Reply::Acknowledgement(
             client
-                .product_command()
+                .conversations_command()
                 .body(body)
                 .send()
                 .await

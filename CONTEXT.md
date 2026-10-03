@@ -67,6 +67,10 @@ _Avoid_: run, job
 A user's link to an external account or provider that makes its capabilities available in AgentInc.
 _Avoid_: integration, account
 
+**Terminal**:
+A shell the daemon keeps running for a Workspace, which the Mac app attaches to and detaches from without ending it.
+_Avoid_: session, pty
+
 **Route**:
 A named destination in the AgentInc app's navigation.
 _Avoid_: tab index, screen ID

@@ -1,6 +1,9 @@
 //! Real ain cd processes, Postgres, SDK service and loopback Responses fixtures.
 //! No user's profile, repository or subscription is touched.
-use ainc_daemon::product::{Command, CommandReceipt, CommandRequest};
+use ainc_daemon::conversations::{
+    ConversationCommand as Command, ConversationCommandRequest as CommandRequest,
+    ConversationReceipt as CommandReceipt,
+};
 use axum::{Json, Router, extract::State, routing::post};
 use serde_json::{Value, json};
 use sqlx::{ConnectOptions, PgPool, postgres::PgListener};
@@ -132,7 +135,7 @@ impl Stack {
 }
 async fn command(client: &reqwest::Client, url: &str, command: Command) -> CommandReceipt {
     client
-        .post(format!("{url}/v1/commands"))
+        .post(format!("{url}/v1/conversations/commands"))
         .json(&CommandRequest {
             operation_id: uuid::Uuid::new_v4().to_string(),
             command,
@@ -152,7 +155,7 @@ async fn daemon_finishes_reply_after_http_client_exits(pool: PgPool) {
     let (stack, entered, release) = Stack::new().await;
     let mut daemon = stack.daemon(&pool).await;
     let (client, url) = stack.client();
-    let conversation = command(&client, &url, Command::CreateConversation)
+    let conversation = command(&client, &url, Command::Create)
         .await
         .result_id
         .unwrap();
@@ -214,7 +217,7 @@ async fn killed_daemon_recovers_accepted_conversation_in_a_new_process(pool: PgP
     let (stack, entered, release) = Stack::new().await;
     let mut daemon = stack.daemon(&pool).await;
     let (client, url) = stack.client();
-    let conversation = command(&client, &url, Command::CreateConversation)
+    let conversation = command(&client, &url, Command::Create)
         .await
         .result_id
         .unwrap();

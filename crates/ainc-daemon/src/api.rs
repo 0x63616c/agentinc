@@ -1,7 +1,7 @@
 //! The HTTP seam every product module shares: who is calling (`Owner`, `Actor`),
 //! how a refused command is reported (`CommandError` → one `ErrorBody`), and the
 //! one router every endpoint is registered on exactly once.
-use crate::{connection::Connection, terminal_sessions, tickets::Actor, workspaces};
+use crate::{connection::Connection, terminals, tickets::Actor, workspaces};
 use axum::{
     Json, Router,
     extract::{FromRef, FromRequestParts, Request},
@@ -228,7 +228,7 @@ pub struct ErrorBody {
 pub struct AppState {
     pub product: Product,
     pub connection: Connection,
-    pub(crate) terminals: terminal_sessions::Sessions,
+    pub(crate) terminals: terminals::Sessions,
 }
 impl FromRef<AppState> for Product {
     fn from_ref(state: &AppState) -> Self {
@@ -248,11 +248,10 @@ fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .merge(crate::health::routes())
         .merge(crate::conversations::routes())
-        .merge(crate::product::routes())
         .merge(crate::connection::routes())
         .merge(crate::tickets::routes())
         .merge(crate::automations::routes())
-        .merge(terminal_sessions::routes())
+        .merge(terminals::routes())
         .merge(workspaces::routes())
 }
 
@@ -330,7 +329,7 @@ pub fn app(product: Product, connection: Connection, extra: Router) -> Router {
     let state = AppState {
         product,
         connection,
-        terminals: terminal_sessions::Sessions::default(),
+        terminals: terminals::Sessions::default(),
     };
     let (router, _) = routes().with_state(state).split_for_parts();
     router

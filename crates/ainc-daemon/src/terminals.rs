@@ -66,11 +66,11 @@ impl Drop for Session {
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
-pub struct CreateTerminalSession {
+pub struct CreateTerminal {
     pub id: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
-pub struct TerminalSession {
+pub struct Terminal {
     pub id: String,
     pub workspace_id: String,
     pub state: String,
@@ -89,13 +89,13 @@ pub(crate) fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(list, create))
         .routes(routes!(close))
-        .route("/v1/terminal/sessions/{id}/attach", get(attach))
+        .route("/v1/terminals/{id}/attach", get(attach))
 }
-#[utoipa::path(get, path = "/v1/terminal/sessions", operation_id = "terminal_sessions_list", responses((status = 200, body = Vec<TerminalSession>)))]
+#[utoipa::path(get, path = "/v1/terminals", operation_id = "terminals_list", responses((status = 200, body = Vec<Terminal>)))]
 async fn list(
     State(service): State<Service>,
     owner: Owner,
-) -> Result<Json<Vec<TerminalSession>>, CommandError> {
+) -> Result<Json<Vec<Terminal>>, CommandError> {
     let workspace_id = owner.workspace;
     let sessions = service
         .sessions
@@ -103,7 +103,7 @@ async fn list(
         .unwrap()
         .iter()
         .filter(|(_, session)| session.workspace_id == workspace_id)
-        .map(|(id, session)| TerminalSession {
+        .map(|(id, session)| Terminal {
             id: id.to_string(),
             workspace_id: session.workspace_id.clone(),
             state: if session.ended.load(Ordering::SeqCst) {
@@ -116,12 +116,12 @@ async fn list(
         .collect();
     Ok(Json(sessions))
 }
-#[utoipa::path(post, path = "/v1/terminal/sessions", operation_id = "terminal_sessions_create", request_body = CreateTerminalSession, responses((status = 200, body = TerminalSession), (status = 503, body = ErrorBody)))]
+#[utoipa::path(post, path = "/v1/terminals", operation_id = "terminals_create", request_body = CreateTerminal, responses((status = 200, body = Terminal), (status = 503, body = ErrorBody)))]
 async fn create(
     State(service): State<Service>,
     owner: Owner,
-    Json(request): Json<CreateTerminalSession>,
-) -> Result<Json<TerminalSession>, CommandError> {
+    Json(request): Json<CreateTerminal>,
+) -> Result<Json<Terminal>, CommandError> {
     let workspace_id = owner.workspace;
     let id = Uuid::parse_str(&request.id).map_err(|_| bad_id())?;
     if id.is_nil() {
@@ -136,7 +136,7 @@ async fn create(
     if session.workspace_id != workspace_id {
         return Err(missing());
     }
-    Ok(Json(TerminalSession {
+    Ok(Json(Terminal {
         id: request.id,
         workspace_id,
         state: if session.ended.load(Ordering::SeqCst) {
@@ -147,7 +147,7 @@ async fn create(
         .into(),
     }))
 }
-#[utoipa::path(delete, path = "/v1/terminal/sessions/{id}", operation_id = "terminal_sessions_close", params(("id" = String, Path)), responses((status = 204), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody)))]
+#[utoipa::path(delete, path = "/v1/terminals/{id}", operation_id = "terminals_close", params(("id" = String, Path)), responses((status = 204), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody)))]
 async fn close(
     State(service): State<Service>,
     owner: Owner,
@@ -414,7 +414,7 @@ mod tests {
             .build()
             .unwrap();
         client
-            .post(format!("http://{address}/v1/terminal/sessions"))
+            .post(format!("http://{address}/v1/terminals"))
             .bearer_auth("owner")
             .json(&serde_json::json!({"id": id.to_string()}))
             .send()
@@ -426,7 +426,7 @@ mod tests {
         let fifo = temp.path().join("gate");
         let c_path = CString::new(fifo.to_string_lossy().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
-        let uri = format!("ws://{address}/v1/terminal/sessions/{id}/attach");
+        let uri = format!("ws://{address}/v1/terminals/{id}/attach");
         let mut request = uri.as_str().into_client_request().unwrap();
         request
             .headers_mut()
@@ -486,8 +486,8 @@ mod tests {
         )
         .await
         .unwrap();
-        let listed: Vec<TerminalSession> = client
-            .get(format!("http://{address}/v1/terminal/sessions"))
+        let listed: Vec<Terminal> = client
+            .get(format!("http://{address}/v1/terminals"))
             .bearer_auth("owner")
             .send()
             .await
@@ -512,7 +512,7 @@ mod tests {
         .await
         .unwrap();
         client
-            .delete(format!("http://{address}/v1/terminal/sessions/{id}"))
+            .delete(format!("http://{address}/v1/terminals/{id}"))
             .bearer_auth("owner")
             .send()
             .await

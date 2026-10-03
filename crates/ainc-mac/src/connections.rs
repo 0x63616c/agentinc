@@ -10,7 +10,7 @@ use crate::{
     routes::{Destination, Route},
     ui::{OverlayHost, *},
 };
-use ainc_client::types::Command;
+use ainc_client::types::ConversationCommand;
 use gpui::{prelude::*, *};
 use std::{
     cell::RefCell,
@@ -131,7 +131,7 @@ impl ConnectionsPage {
         cx.run(
             &self.pending.clone(),
             move || {
-                Ok(daemon.send(Command::SelectModel {
+                Ok(daemon.send(ConversationCommand::SelectModel {
                     model: model.unwrap_or_default(),
                 })?)
             },

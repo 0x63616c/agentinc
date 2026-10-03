@@ -96,7 +96,7 @@ impl AutomationsPage {
             daemon,
             sync,
             state: AutomationSnapshot {
-                rules: vec![],
+                automations: vec![],
                 occurrences: vec![],
                 history: vec![],
             },
@@ -144,7 +144,7 @@ impl AutomationsPage {
                     this.error = None;
                     this.overlays.close();
                     this.restore_focus = true;
-                    if this.state.rules.iter().any(|r| r.id == id) {
+                    if this.state.automations.iter().any(|r| r.id == id) {
                         this.selected = Some(id);
                     }
                 }
@@ -474,7 +474,7 @@ impl AutomationsPage {
     fn list(&self, ui: &mut Ui<Self>) -> Div {
         column()
             .gap(px(SPACE_HALF))
-            .children(self.state.rules.iter().map(|r| {
+            .children(self.state.automations.iter().map(|r| {
                 let id = r.id.clone();
                 let (state, tone) = automation_state(r);
                 ListRow::new(
@@ -508,7 +508,7 @@ impl Render for AutomationsPage {
         }
         let selected = self
             .state
-            .rules
+            .automations
             .iter()
             .find(|r| Some(&r.id) == self.selected.as_ref())
             .cloned();
@@ -561,7 +561,7 @@ impl Render for AutomationsPage {
                 }
                 column()
                     .gap(px(SECTION_GAP))
-                    .when(self.state.rules.is_empty() && !load_failed, |s| {
+                    .when(self.state.automations.is_empty() && !load_failed, |s| {
                         s.child(
                             EmptyState::new(Icon::Repeat, "No Automations yet.")
                                 .description(

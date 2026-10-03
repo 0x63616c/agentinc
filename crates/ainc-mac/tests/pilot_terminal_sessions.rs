@@ -153,8 +153,8 @@ fn split_session_survives_app_quit_and_relaunch() -> Result<()> {
         .block_on(async {
             let http = ainc_client::connect(&url, &token)?;
             for id in [first, second] {
-                http.terminal_sessions_create()
-                    .body(ainc_client::types::CreateTerminalSession { id: id.to_string() })
+                http.terminals_create()
+                    .body(ainc_client::types::CreateTerminal { id: id.to_string() })
                     .send()
                     .await
                     .map_err(ainc_client::classify)?;
@@ -167,7 +167,7 @@ fn split_session_survives_app_quit_and_relaunch() -> Result<()> {
             );
             let ws_url = url.replacen("http://", "ws://", 1);
             let mut request =
-                format!("{ws_url}/v1/terminal/sessions/{second}/attach").into_client_request()?;
+                format!("{ws_url}/v1/terminals/{second}/attach").into_client_request()?;
             request
                 .headers_mut()
                 .insert("authorization", format!("Bearer {token}").parse()?);
@@ -224,7 +224,7 @@ fn split_session_survives_app_quit_and_relaunch() -> Result<()> {
                     }
                 }
                 let sessions = http
-                    .terminal_sessions_list()
+                    .terminals_list()
                     .send()
                     .await
                     .map_err(ainc_client::classify)?
@@ -249,7 +249,7 @@ fn split_session_survives_app_quit_and_relaunch() -> Result<()> {
             drop(app);
             runtime.block_on(async {
                 for id in [first, second] {
-                    http.terminal_sessions_close()
+                    http.terminals_close()
                         .id(id.to_string())
                         .send()
                         .await

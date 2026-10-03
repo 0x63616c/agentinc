@@ -77,7 +77,7 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
         if !existing {
             let response = ainc_daemon::http_client()
                 .build()?
-                .post(format!("{url}/v1/terminal/sessions"))
+                .post(format!("{url}/v1/terminals"))
                 .header("authorization", format!("Bearer {token}"))
                 .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
                 .json(&serde_json::json!({"id": id.to_string()}))
@@ -102,8 +102,7 @@ pub async fn run(id: Uuid, mut existing: bool) -> Result<()> {
             }
         }
         let ws_url = url.replacen("http://", "ws://", 1);
-        let mut request =
-            format!("{ws_url}/v1/terminal/sessions/{id}/attach").into_client_request()?;
+        let mut request = format!("{ws_url}/v1/terminals/{id}/attach").into_client_request()?;
         request.headers_mut().insert(
             "authorization",
             HeaderValue::from_str(&format!("Bearer {token}"))?,
@@ -164,7 +163,7 @@ pub async fn close(id: Uuid) -> Result<()> {
     let (url, token) = connection()?;
     ainc_daemon::http_client()
         .build()?
-        .delete(format!("{url}/v1/terminal/sessions/{id}"))
+        .delete(format!("{url}/v1/terminals/{id}"))
         .header("authorization", format!("Bearer {token}"))
         .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
         .send()

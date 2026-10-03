@@ -248,6 +248,12 @@
       },
       "AutomationSnapshot": {
         "properties": {
+          "automations": {
+            "items": {
+              "$ref": "#/components/schemas/Automation"
+            },
+            "type": "array"
+          },
           "history": {
             "items": {
               "$ref": "#/components/schemas/HistoryEntry"
@@ -259,254 +265,12 @@
               "$ref": "#/components/schemas/OccurrenceView"
             },
             "type": "array"
-          },
-          "rules": {
-            "items": {
-              "$ref": "#/components/schemas/Automation"
-            },
-            "type": "array"
           }
         },
         "required": [
-          "rules",
+          "automations",
           "occurrences",
           "history"
-        ],
-        "type": "object"
-      },
-      "Command": {
-        "oneOf": [
-          {
-            "properties": {
-              "kind": {
-                "enum": [
-                  "create_conversation"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "id": {
-                "format": "int64",
-                "type": "integer"
-              },
-              "kind": {
-                "enum": [
-                  "rename_conversation"
-                ],
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "title",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "id": {
-                "format": "int64",
-                "type": "integer"
-              },
-              "kind": {
-                "enum": [
-                  "delete_conversation"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "id": {
-                "format": "int64",
-                "type": "integer"
-              },
-              "kind": {
-                "enum": [
-                  "select_conversation"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "conversation_id": {
-                "format": "int64",
-                "type": "integer"
-              },
-              "kind": {
-                "enum": [
-                  "send"
-                ],
-                "type": "string"
-              },
-              "prompt": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "conversation_id",
-              "prompt",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "id": {
-                "format": "int64",
-                "type": "integer"
-              },
-              "kind": {
-                "enum": [
-                  "retry"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "deprecated": true,
-            "description": "Phase-2 name for the Ticket command `create`.",
-            "properties": {
-              "kind": {
-                "enum": [
-                  "create_todo"
-                ],
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "title",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "deprecated": true,
-            "description": "Phase-2 name for the Ticket command `set_status` on a human-owned Ticket.",
-            "properties": {
-              "completed": {
-                "type": "boolean"
-              },
-              "id": {
-                "format": "int64",
-                "type": "integer"
-              },
-              "kind": {
-                "enum": [
-                  "complete_todo"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "completed",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "deprecated": true,
-            "description": "Phase-2 name for the Ticket command `delete`.",
-            "properties": {
-              "id": {
-                "format": "int64",
-                "type": "integer"
-              },
-              "kind": {
-                "enum": [
-                  "delete_todo"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "kind": {
-                "enum": [
-                  "select_model"
-                ],
-                "type": "string"
-              },
-              "model": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "model",
-              "kind"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "CommandReceipt": {
-        "properties": {
-          "operation_id": {
-            "type": "string"
-          },
-          "result_id": {
-            "format": "int64",
-            "nullable": true,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "operation_id"
-        ],
-        "type": "object"
-      },
-      "CommandRequest": {
-        "properties": {
-          "command": {
-            "$ref": "#/components/schemas/Command"
-          },
-          "operation_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "operation_id",
-          "command"
         ],
         "type": "object"
       },
@@ -791,7 +555,7 @@
         ],
         "type": "object"
       },
-      "CreateTerminalSession": {
+      "CreateTerminal": {
         "properties": {
           "id": {
             "type": "string"
@@ -944,39 +708,7 @@
         },
         "type": "object"
       },
-      "Snapshot": {
-        "properties": {
-          "conversations": {
-            "items": {
-              "$ref": "#/components/schemas/Conversation"
-            },
-            "type": "array"
-          },
-          "settings": {
-            "$ref": "#/components/schemas/Settings"
-          },
-          "todos": {
-            "items": {
-              "$ref": "#/components/schemas/Todo"
-            },
-            "type": "array"
-          },
-          "turns": {
-            "items": {
-              "$ref": "#/components/schemas/Turn"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "conversations",
-          "turns",
-          "todos",
-          "settings"
-        ],
-        "type": "object"
-      },
-      "TerminalSession": {
+      "Terminal": {
         "properties": {
           "id": {
             "type": "string"
@@ -1692,26 +1424,6 @@
         ],
         "type": "string"
       },
-      "Todo": {
-        "properties": {
-          "completed": {
-            "type": "boolean"
-          },
-          "id": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "title",
-          "completed"
-        ],
-        "type": "object"
-      },
       "Turn": {
         "properties": {
           "conversation_id": {
@@ -2156,74 +1868,6 @@
         }
       }
     },
-    "/v1/commands": {
-      "post": {
-        "deprecated": true,
-        "operationId": "product_command",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CommandRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommandReceipt"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": ""
-          },
-          "426": {
-            "$ref": "#/components/responses/UpgradeRequired"
-          },
-          "500": {
-            "$ref": "#/components/responses/Internal"
-          }
-        },
-        "summary": "Deprecated: send Conversation commands to `/v1/conversations/commands` and Ticket\ncommands to `/v1/tickets/commands`. Removed in a later release."
-      }
-    },
     "/v1/connection": {
       "get": {
         "operationId": "connection_status",
@@ -2470,44 +2114,16 @@
         }
       }
     },
-    "/v1/state": {
+    "/v1/terminals": {
       "get": {
-        "deprecated": true,
-        "operationId": "product_state",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Snapshot"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "426": {
-            "$ref": "#/components/responses/UpgradeRequired"
-          },
-          "500": {
-            "$ref": "#/components/responses/Internal"
-          }
-        },
-        "summary": "Deprecated: read `/v1/conversations` and `/v1/tickets`. Removed in a later release."
-      }
-    },
-    "/v1/terminal/sessions": {
-      "get": {
-        "operationId": "terminal_sessions_list",
+        "operationId": "terminals_list",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/TerminalSession"
+                    "$ref": "#/components/schemas/Terminal"
                   },
                   "type": "array"
                 }
@@ -2527,12 +2143,12 @@
         }
       },
       "post": {
-        "operationId": "terminal_sessions_create",
+        "operationId": "terminals_create",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateTerminalSession"
+                "$ref": "#/components/schemas/CreateTerminal"
               }
             }
           },
@@ -2543,7 +2159,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TerminalSession"
+                  "$ref": "#/components/schemas/Terminal"
                 }
               }
             },
@@ -2571,9 +2187,9 @@
         }
       }
     },
-    "/v1/terminal/sessions/{id}": {
+    "/v1/terminals/{id}": {
       "delete": {
-        "operationId": "terminal_sessions_close",
+        "operationId": "terminals_close",
         "parameters": [
           {
             "in": "path",

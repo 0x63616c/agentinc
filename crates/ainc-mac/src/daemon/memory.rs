@@ -3,8 +3,8 @@
 use super::board;
 use super::transport::{DaemonError, Envelope, Reply, Request, Slice, Transport};
 use ainc_client::types::{
-    AutomationSnapshot, ErrorBody, ErrorCode, Snapshot, TicketActivity, TicketSnapshot, Workspace,
-    WorkspaceCommand, WorkspaceSnapshot,
+    AutomationSnapshot, ConversationSnapshot, ErrorBody, ErrorCode, TicketActivity, TicketSnapshot,
+    Workspace, WorkspaceCommand, WorkspaceSnapshot,
 };
 use std::{
     collections::VecDeque,
@@ -14,7 +14,7 @@ use std::{
 /// Everything the in-memory daemon knows.
 pub struct State {
     pub workspaces: WorkspaceSnapshot,
-    pub product: Snapshot,
+    pub product: ConversationSnapshot,
     pub tickets: TicketSnapshot,
     pub automations: AutomationSnapshot,
     pub activity: Vec<TicketActivity>,
@@ -26,7 +26,7 @@ impl Default for State {
             product: super::default_product(),
             tickets: super::default_tickets(),
             automations: AutomationSnapshot {
-                rules: vec![],
+                automations: vec![],
                 occurrences: vec![],
                 history: vec![],
             },
@@ -136,7 +136,7 @@ impl Transport for MemoryTransport {
                 Ok(Reply::Receipt(id))
             }
             Request::Command(Envelope::Product(request)) => match request.command {
-                ainc_client::types::Command::SelectModel { model } => {
+                ainc_client::types::ConversationCommand::SelectModel { model } => {
                     state.product.settings.model = Some(model).filter(|model| !model.is_empty());
                     Ok(Reply::Acknowledgement(None))
                 }

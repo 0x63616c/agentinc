@@ -185,7 +185,7 @@ fn is_color(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{automations, product, tickets};
+    use crate::{automations, conversations, tickets};
 
     fn request(command: WorkspaceCommand) -> WorkspaceRequest {
         WorkspaceRequest {
@@ -201,24 +201,24 @@ mod tests {
         assert_eq!(initial.workspaces[0].name, "World Wide Webb");
 
         let conversation_operation = uuid::Uuid::new_v4().to_string();
-        let conversation = product::execute_in(
+        let conversation = conversations::execute(
             &pool,
             "local",
-            product::CommandRequest {
+            conversations::ConversationCommandRequest {
                 operation_id: conversation_operation.clone(),
-                command: product::Command::CreateConversation,
+                command: conversations::ConversationCommand::Create,
             },
         )
         .await
         .unwrap()
         .result_id
         .unwrap();
-        product::execute_in(
+        conversations::execute(
             &pool,
             "local",
-            product::CommandRequest {
+            conversations::ConversationCommandRequest {
                 operation_id: uuid::Uuid::new_v4().to_string(),
-                command: product::Command::SelectModel {
+                command: conversations::ConversationCommand::SelectModel {
                     model: "original".into(),
                 },
             },
@@ -239,24 +239,23 @@ mod tests {
         .result_id;
         assert_eq!(current(&pool).await.unwrap(), created);
         assert_eq!(snapshot(&pool).await.unwrap().workspaces.len(), 2);
-        let fresh = product::snapshot_in(&pool, &created).await.unwrap();
+        let fresh = conversations::snapshot(&pool, &created).await.unwrap();
         assert!(fresh.conversations.is_empty());
-        assert!(fresh.todos.is_empty());
         assert!(fresh.settings.model.is_none());
         assert!(
-            product::execute_in(
+            conversations::execute(
                 &pool,
                 &created,
-                product::CommandRequest {
+                conversations::ConversationCommandRequest {
                     operation_id: conversation_operation,
-                    command: product::Command::CreateConversation,
+                    command: conversations::ConversationCommand::Create,
                 }
             )
             .await
             .is_err()
         );
         assert_eq!(
-            product::snapshot_in(&pool, "local")
+            conversations::snapshot(&pool, "local")
                 .await
                 .unwrap()
                 .conversations[0]
@@ -264,12 +263,12 @@ mod tests {
             conversation
         );
         assert!(
-            product::execute_in(
+            conversations::execute(
                 &pool,
                 &created,
-                product::CommandRequest {
+                conversations::ConversationCommandRequest {
                     operation_id: uuid::Uuid::new_v4().to_string(),
-                    command: product::Command::SelectConversation { id: conversation },
+                    command: conversations::ConversationCommand::Select { id: conversation },
                 }
             )
             .await
@@ -283,7 +282,7 @@ mod tests {
         .unwrap();
         assert_eq!(current(&pool).await.unwrap(), "local");
         assert_eq!(
-            product::snapshot_in(&pool, "local")
+            conversations::snapshot(&pool, "local")
                 .await
                 .unwrap()
                 .settings
@@ -371,7 +370,7 @@ mod tests {
             automations::snapshot(&pool, &actor)
                 .await
                 .unwrap()
-                .rules
+                .automations
                 .len(),
             1
         );
@@ -394,7 +393,7 @@ mod tests {
             automations::snapshot(&pool, &tickets::Actor::owner())
                 .await
                 .unwrap()
-                .rules
+                .automations
                 .is_empty()
         );
     }

@@ -50,7 +50,7 @@ pub struct HistoryEntry {
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 pub struct AutomationSnapshot {
-    pub rules: Vec<Automation>,
+    pub automations: Vec<Automation>,
     pub occurrences: Vec<OccurrenceView>,
     pub history: Vec<HistoryEntry>,
 }
@@ -111,13 +111,13 @@ pub(crate) async fn snapshot(
     actor: &Actor,
 ) -> Result<AutomationSnapshot, CommandError> {
     let mut tx = crate::pg::snapshot_tx(pool).await?;
-    let rules = sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id").bind(&actor.workspace).fetch_all(&mut *tx).await?;
+    let automations = sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations WHERE workspace_id=$1 ORDER BY name,id").bind(&actor.workspace).fetch_all(&mut *tx).await?;
     // An Occurrence shows the run of its Ticket's current generation, whichever that is.
     let occurrences = sqlx::query_as("SELECT o.id,o.automation_id,o.ticket_id,CASE WHEN r.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM worker_health WHERE id='tickets' AND last_seen > extract(epoch FROM clock_timestamp())::bigint-5) THEN 'worker_unavailable' ELSE COALESCE(r.state,o.state) END AS state,o.detail,o.scheduled_at FROM occurrences o JOIN automations a ON a.id=o.automation_id LEFT JOIN tickets t ON t.id=o.ticket_id LEFT JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE a.workspace_id=$1 ORDER BY o.scheduled_at DESC,o.id").bind(&actor.workspace).fetch_all(&mut *tx).await?;
     let history = sqlx::query_as("SELECT h.id,h.automation_id,h.kind,h.count,h.observed_at FROM automation_history h JOIN automations a ON a.id=h.automation_id WHERE a.workspace_id=$1 ORDER BY h.id DESC").bind(&actor.workspace).fetch_all(&mut *tx).await?;
     tx.commit().await?;
     Ok(AutomationSnapshot {
-        rules,
+        automations,
         occurrences,
         history,
     })
@@ -624,7 +624,13 @@ mod tests {
         };
         assert!(execute(&pool, &Actor::owner(), other).await.is_err());
         let alien = Actor::owner_in("other".into());
-        assert!(snapshot(&pool, &alien).await.unwrap().rules.is_empty());
+        assert!(
+            snapshot(&pool, &alien)
+                .await
+                .unwrap()
+                .automations
+                .is_empty()
+        );
         assert!(execute(&pool, &alien, request.clone()).await.is_err());
         let assigned = Actor {
             assignment: Some((1, 1)),
@@ -663,7 +669,7 @@ mod tests {
         let mut runner = Runner::start(pool.clone(), server.config()).await.unwrap();
         reconcile(&mut runner).await;
         assert_eq!(
-            snapshot(&pool, &Actor::owner()).await.unwrap().rules[0].applied_revision,
+            snapshot(&pool, &Actor::owner()).await.unwrap().automations[0].applied_revision,
             0
         );
         runner.rules.runtime.shutdown().await.unwrap();
@@ -680,7 +686,7 @@ mod tests {
         loop {
             reconcile(&mut runner).await;
             let history = snapshot(&pool, &Actor::owner()).await.unwrap();
-            if history.rules[0].overlap_skipped > 0 {
+            if history.automations[0].overlap_skipped > 0 {
                 assert!(
                     history
                         .history

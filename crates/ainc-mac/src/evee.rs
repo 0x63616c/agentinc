@@ -9,7 +9,7 @@ use crate::{
     sync::{SliceChanged, Sync},
     ui::*,
 };
-use ainc_client::types::{Command, Conversation, Turn};
+use ainc_client::types::{Conversation, ConversationCommand as Command, Turn};
 use anyhow::Context as _;
 use gpui::{prelude::*, *};
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
@@ -210,7 +210,7 @@ impl AssistantPage {
             return;
         }
         self.mutate(
-            move |db| Ok(db.send(Command::SelectConversation { id })?),
+            move |db| Ok(db.send(Command::Select { id })?),
             move |this, _, cx| {
                 this.overlays.close();
                 this.show_conversation(id, cx);
@@ -222,7 +222,7 @@ impl AssistantPage {
         self.mutate(
             |db| {
                 let id = new_conversation(&db)?;
-                db.send(Command::SelectConversation { id })?;
+                db.send(Command::Select { id })?;
                 Ok(id)
             },
             |this, id, cx| this.show_conversation(id, cx),
@@ -236,7 +236,7 @@ impl AssistantPage {
                 return;
             }
             self.mutate(
-                move |db| Ok(db.send(Command::RenameConversation { id, title })?),
+                move |db| Ok(db.send(Command::Rename { id, title })?),
                 |this, _, _| {
                     this.overlays.close();
                     this.form_error = None;
@@ -248,7 +248,7 @@ impl AssistantPage {
     fn delete(&mut self, cx: &mut Context<Self>) {
         if let Some(Dialog::Delete(id)) = self.overlays.active() {
             self.mutate(
-                move |db| Ok(db.send(Command::DeleteConversation { id })?),
+                move |db| Ok(db.send(Command::Delete { id })?),
                 |this, _, _| {
                     this.overlays.close();
                     this.form_error = None;
@@ -896,7 +896,7 @@ impl Render for AssistantPage {
 
 fn new_conversation(daemon: &Daemon) -> anyhow::Result<i64> {
     daemon
-        .send(Command::CreateConversation)?
+        .send(Command::Create)?
         .context("Missing conversation acknowledgement")
 }
 

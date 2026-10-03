@@ -2,9 +2,9 @@
 //! requests: the real daemon over HTTP, or an in-memory stand-in in tests.
 pub use ainc_client::ClientError as DaemonError;
 use ainc_client::types::{
-    AutomationRequest, AutomationSnapshot, CommandRequest, ConnectionStatus, Snapshot,
-    TicketActivity, TicketCommandRequest, TicketSnapshot, WorkPage, WorkspaceRequest,
-    WorkspaceSnapshot,
+    AutomationRequest, AutomationSnapshot, ConnectionStatus, ConversationCommandRequest,
+    ConversationSnapshot, TicketActivity, TicketCommandRequest, TicketSnapshot, WorkPage,
+    WorkspaceRequest, WorkspaceSnapshot,
 };
 
 /// One request to the daemon, already carrying any operation id.
@@ -38,7 +38,7 @@ pub enum Envelope {
     Workspace(WorkspaceRequest),
     Automation(AutomationRequest),
     Ticket(TicketCommandRequest),
-    Product(CommandRequest),
+    Product(ConversationCommandRequest),
 }
 impl Envelope {
     #[cfg(any(test, feature = "fixtures"))]
@@ -64,7 +64,7 @@ pub enum ConnectionAction {
 #[derive(Debug, Clone)]
 pub enum Reply {
     Workspaces(WorkspaceSnapshot),
-    Product(Snapshot),
+    Product(ConversationSnapshot),
     Tickets(TicketSnapshot),
     Automations(AutomationSnapshot),
     Activity(Vec<TicketActivity>),

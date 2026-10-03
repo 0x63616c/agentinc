@@ -20,7 +20,7 @@ pane is focused, forwarding them to AgentInc. Its Swift test verifies the focus 
 all other Ghostty keybinds pass through.
 Each pane runs `aincd --terminal-attach` through Ghostty's exec backend. The
 daemon owns its login shell, PTY and bounded output buffer in
-`crates/ainc-daemon/src/terminal_sessions.rs`; the attach client reconnects and
+`crates/ainc-daemon/src/terminals.rs`; the attach client reconnects and
 replays output. Drag either split divider to resize its panes. The bridge saves
 pane IDs, split proportions and zoom beside the daemon's
 discovery file as `terminal-layout.json`. Closing a pane calls the authenticated
