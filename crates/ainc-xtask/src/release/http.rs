@@ -109,7 +109,21 @@ mod tests {
             let (mut stream, _) = listener.accept().unwrap();
             let mut seen = Vec::new();
             let mut chunk = [0u8; 1024];
-            while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+            // Read the whole request, body included: closing with unread data resets the
+            // connection on Linux and the client then loses the response.
+            loop {
+                let end = seen.windows(4).position(|w| w == b"\r\n\r\n");
+                if let Some(end) = end {
+                    let head = String::from_utf8_lossy(&seen[..end]).to_ascii_lowercase();
+                    let length = head
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:"))
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if seen.len() >= end + 4 + length {
+                        break;
+                    }
+                }
                 let n = stream.read(&mut chunk).unwrap();
                 seen.extend_from_slice(&chunk[..n]);
             }

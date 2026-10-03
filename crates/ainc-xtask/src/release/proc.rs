@@ -96,11 +96,10 @@ mod tests {
                 .success()
         );
         assert!(quick.poll().is_some());
+        // Not `read`: waiting closes the child's stdin, so a reader would see EOF and exit.
         let mut hung = ManagedChild::spawn({
-            let mut command = Command::new("sh");
-            command
-                .args(["-c", "read line"])
-                .stdin(std::process::Stdio::piped());
+            let mut command = Command::new("sleep");
+            command.arg("30");
             command
         })
         .unwrap();

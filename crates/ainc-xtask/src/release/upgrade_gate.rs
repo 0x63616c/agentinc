@@ -7,8 +7,7 @@ use anyhow::{Result, anyhow, bail};
 use serde_json::Value;
 use std::{
     collections::HashMap,
-    env,
-    fs::{self, File},
+    env, fs,
     io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -77,7 +76,7 @@ fn wait_for(
     description: &str,
 ) -> Result<()> {
     use std::os::fd::{AsRawFd, FromRawFd};
-    let watched = File::open(directory)?;
+    let watched = fs::File::open(directory)?;
     let queue = unsafe { libc::kqueue() };
     if queue < 0 {
         return Err(std::io::Error::last_os_error().into());
