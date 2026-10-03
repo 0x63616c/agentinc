@@ -194,7 +194,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     let mut client = Client::connect(&manifest)?;
     client.call(Command::Hello)?;
     let initial = snap(&mut client)?;
-    ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Search"));
+    ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Go to…"));
     ensure!(
         initial.by_id("sidebar.version")?.name.as_deref()
             == Some(ainc_release::identity::version().as_str())
@@ -515,7 +515,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     screenshot(&mut client, "update-settings", &output)?;
     act(&mut client, "nav.assistant", None)?;
     screenshot(&mut client, "assistant-conversations", &output)?;
-    act(&mut client, "new-chat", None)?;
+    act(&mut client, "new-conversation", None)?;
     wait(
         &mut client,
         Condition::Present {
@@ -527,7 +527,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     wait(
         &mut client,
         Condition::Present {
-            author_id: "new-chat".into(),
+            author_id: "new-conversation".into(),
         },
     )?;
     let metrics = serde_json::json!({

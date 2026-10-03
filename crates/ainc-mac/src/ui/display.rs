@@ -243,7 +243,7 @@ impl AssetSource for Assets {
             "search.svg" => include_bytes!("../../assets/search.svg"),
             "settings.svg" => include_bytes!("../../assets/settings.svg"),
             "spark.svg" => include_bytes!("../../assets/spark.svg"),
-            "tasks.svg" => include_bytes!("../../assets/tasks.svg"),
+            "tickets.svg" => include_bytes!("../../assets/tickets.svg"),
             "terminal.svg" => include_bytes!("../../assets/terminal.svg"),
             _ => return Ok(None),
         };

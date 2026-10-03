@@ -31,7 +31,7 @@ pub const PAGES: &[PageSpec] = &[
     PageSpec {
         route: Route::Tickets,
         title: "Tickets",
-        icon: "tasks",
+        icon: "tickets",
         in_sidebar: true,
     },
     PageSpec {

@@ -75,11 +75,13 @@ impl UpdateView {
             .and_then(|p| p.parent().map(|p| p.join("updates")))
             .unwrap_or_else(|| ainc_release::identity::support_dir().join("updates"));
         let loaded = Preferences::load(&directory.join("preferences.json"));
-        let message = loaded
-            .as_ref()
-            .err()
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| format!("AgentInc {}", ainc_release::identity::version()));
+        let message = match &loaded {
+            Ok(_) => format!("AgentInc {}", ainc_release::identity::version()),
+            Err(error) => {
+                tracing::warn!(%error, "could not read update preferences");
+                copy::unavailable("Update preferences", "Defaults are in use")
+            }
+        };
         let preferences = loaded.unwrap_or_default();
         cx.spawn(async move |this, cx| {
             loop {
@@ -180,7 +182,9 @@ impl UpdateView {
             .preferences
             .save(&self.directory.join("preferences.json"))
         {
-            self.message = error.to_string();
+            tracing::warn!(%error, "could not save update preferences");
+            self.message =
+                "Update preferences could not be saved. Changes remain in this window.".into();
         }
     }
     fn present(&self) {
@@ -334,7 +338,8 @@ impl UpdateView {
                             this.release = Some((signed, manifest));
                         }
                         Err(error) => {
-                            this.message = error.to_string();
+                            tracing::warn!(%error, "could not compare the update version");
+                            this.message = copy::unavailable("The update check", "Try again");
                             this.failure = Some(Retry::Check);
                         }
                     },
@@ -446,7 +451,11 @@ impl UpdateView {
                 cx.quit()
             }
             Err(error) => {
-                self.message = format!("Install failed: {error:#}");
+                tracing::warn!(
+                    error = format!("{error:#}"),
+                    "could not start the installer"
+                );
+                self.message = copy::unavailable("The update install", "Try again");
                 self.failure = Some(Retry::Install);
                 self.present();
                 cx.notify();
@@ -537,7 +546,7 @@ impl UpdateView {
                 .child(settings_row(
                     "Release notes",
                     "Browse the full release history.",
-                    Button::new("updates.notes", "View Changelog")
+                    Button::new("updates.notes", "View Release Notes")
                         .secondary()
                         .build(&self.hover, |_: &mut Self, _, cx| open_changelog(cx), cx),
                 )),

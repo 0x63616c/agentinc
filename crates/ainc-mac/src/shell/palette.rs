@@ -46,9 +46,9 @@ impl Shell {
             entry: PaletteEntry::new(
                 "action.toggle-sidebar",
                 if sidebar_open {
-                    "Hide sidebar"
+                    "Hide Sidebar"
                 } else {
-                    "Show sidebar"
+                    "Show Sidebar"
                 },
             )
             .icon("panel")
@@ -59,11 +59,6 @@ impl Shell {
             group: "Actions",
             entry: PaletteEntry::new("action.new-ticket", "New Ticket").icon("plus"),
             control: Control::Go(Destination::NewTicket),
-        });
-        items.push(PaletteCandidate {
-            group: "Actions",
-            entry: PaletteEntry::new("action.notifications", "Show notifications").icon("bell"),
-            control: Control::Notifications,
         });
         items.push(PaletteCandidate {
             group: "Actions",
@@ -78,7 +73,7 @@ impl Shell {
         if let Some((size, label)) = FontSize::ALL.get(current + 1) {
             items.push(PaletteCandidate {
                 group: "Actions",
-                entry: PaletteEntry::new("action.font-size.larger", "Increase font size")
+                entry: PaletteEntry::new("action.font-size.larger", "Increase Font Size")
                     .icon("plus")
                     .detail(*label),
                 control: Control::Appearance(Appearance {
@@ -90,7 +85,7 @@ impl Shell {
         if let Some((size, label)) = current.checked_sub(1).and_then(|i| FontSize::ALL.get(i)) {
             items.push(PaletteCandidate {
                 group: "Actions",
-                entry: PaletteEntry::new("action.font-size.smaller", "Decrease font size")
+                entry: PaletteEntry::new("action.font-size.smaller", "Decrease Font Size")
                     .icon("settings")
                     .detail(*label),
                 control: Control::Appearance(Appearance {

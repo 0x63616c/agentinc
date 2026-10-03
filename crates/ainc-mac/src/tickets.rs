@@ -113,6 +113,8 @@ pub struct TicketsPage {
     link_relation: Relation,
     link_target: Option<i64>,
     activity: Vec<TicketActivity>,
+    /// Conversation titles by id, for the "From" row; read with the snapshot.
+    conversation_titles: Vec<(i64, String)>,
     /// The open Ticket's history was read at this stamp.
     activity_for: Option<ActivityStamp>,
     drag: board::DragState,
@@ -157,14 +159,14 @@ impl TicketsPage {
         let field = |placeholder: &str, id: &'static str, cx: &mut Context<Self>| {
             cx.new(|cx| TextInput::field(placeholder, false, cx).identified(id))
         };
-        let input = field("What needs doing?", "tickets.title", cx);
+        let input = field("Ticket title", "tickets.title", cx);
         let search = field("Search Tickets", "tickets.search", cx);
-        let draft_description = field("Add details (optional)", "tickets.draft.description", cx);
-        let comment = field("Add a Comment…", "tickets.comment", cx);
-        let description = field("Describe the work", "tickets.description", cx);
+        let draft_description = field("Description", "tickets.draft.description", cx);
+        let comment = field("Comment", "tickets.comment", cx);
+        let description = field("Description", "tickets.description", cx);
         let rename = field("Ticket title", "tickets.rename", cx);
-        let label_input = field("Add or find a label", "tickets.label", cx);
-        let link_search = field("Find a Ticket by title or ID", "tickets.link.search", cx);
+        let label_input = field("Label", "tickets.label", cx);
+        let link_search = field("Search Tickets", "tickets.link.search", cx);
         let subscriptions = vec![
             cx.subscribe(&input, |this, _, _: &Submit, cx| this.create(cx)),
             cx.observe(&input, |this, input, cx| {
@@ -191,7 +193,7 @@ impl TicketsPage {
             }),
             cx.observe(&sync, |_, _, cx| cx.notify()),
             cx.subscribe(&sync, |this, _, event: &SliceChanged, cx| {
-                if *event == SliceChanged::Tickets {
+                if matches!(*event, SliceChanged::Tickets | SliceChanged::Product) {
                     this.reload();
                     this.load_activity(cx);
                     cx.notify();
@@ -227,6 +229,7 @@ impl TicketsPage {
             link_relation: Relation::BlockedBy,
             link_target: None,
             activity: vec![],
+            conversation_titles: vec![],
             activity_for: None,
             drag: board::DragState::default(),
             form_error: None,
@@ -249,6 +252,13 @@ impl TicketsPage {
     }
     pub(crate) fn reload(&mut self) {
         self.state = self.daemon.tickets();
+        self.conversation_titles = self
+            .daemon
+            .product()
+            .conversations
+            .into_iter()
+            .map(|c| (c.id, c.title))
+            .collect();
         if self
             .selected
             .is_some_and(|id| !self.state.tickets.iter().any(|t| t.id == id))
@@ -498,6 +508,48 @@ impl TicketsPage {
             .filter(|c| c.ticket_id == id)
             .count()
     }
+    /// Open blockers read the same on a board card and a list row: a red
+    /// glyph, then the blockers' keys in quiet text so the title leads.
+    fn blockers_marker(&self, blockers: &[i64]) -> Div {
+        let keys = blockers
+            .iter()
+            .map(|id| ticket_key(*id))
+            .collect::<Vec<_>>()
+            .join(", ");
+        row()
+            .gap(px(SPACE_1))
+            .text_size(type_size(CAPTION_SIZE))
+            .text_color(rgb(TEXT_SECONDARY))
+            .child(icon("status-blocked", ICON_SIZE_XS).text_color(rgb(STATUS_RED)))
+            .child(keys)
+    }
+    /// The header's icon-only Refresh: every page that polls the daemon has one.
+    fn refresh_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let fetching = self.sync.read(cx).fetching();
+        Button::new("tickets.refresh", "Refresh")
+            .icon("refresh")
+            .icon_only()
+            .secondary()
+            .enabled(!fetching)
+            .build(
+                &self.hover,
+                |this: &mut Self, _, cx| this.sync.update(cx, |sync, cx| sync.wake(cx)),
+                cx,
+            )
+    }
+    /// The load state every polled page shows the same way: a danger banner for
+    /// the error and a "Reconnecting…" line while the next fetch is in flight.
+    fn sync_notices(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let sync = self.sync.read(cx);
+        let (message, reconnecting, loading_started) =
+            (sync.message(), sync.reconnecting(), sync.loading_started);
+        column()
+            .gap(px(SPACE_4))
+            .when_some(message, |s, message| s.child(banner(Tone::Danger, message)))
+            .when(reconnecting, |s| {
+                s.child(LoadingFrame::new(loading_started, window).inline("Reconnecting…"))
+            })
+    }
 
     /// A filter's menu button; the page decides which menu is open.
     #[allow(clippy::too_many_arguments)]
@@ -738,36 +790,33 @@ impl TicketsPage {
         let header = PageHeader::new(self.title())
             .description(self.summary())
             .actions(
-                Button::new("tickets.create", "New Ticket")
-                    .primary()
-                    .icon("plus")
-                    .enabled(!self.pending.busy())
-                    .track_focus(&self.add_focus)
-                    .build(
-                        &self.hover,
-                        |this: &mut Self, window, cx| this.open_create(None, window, cx),
-                        cx,
-                    )
-                    .debug_selector(|| "tickets.create".into()),
+                row_gap(CONTROL_GAP).child(self.refresh_button(cx)).child(
+                    Button::new("tickets.create", "New Ticket")
+                        .primary()
+                        .icon("plus")
+                        .enabled(!self.pending.busy())
+                        .track_focus(&self.add_focus)
+                        .build(
+                            &self.hover,
+                            |this: &mut Self, window, cx| this.open_create(None, window, cx),
+                            cx,
+                        )
+                        .debug_selector(|| "tickets.create".into()),
+                ),
             );
         let sync = self.sync.read(cx);
         let (loaded, error) = (sync.loaded, sync.message());
-        let notices: Vec<String> = error
-            .iter()
-            .chain(
-                self.form_error
-                    .iter()
-                    .filter(|_| self.overlays.active().is_none()),
-            )
-            .cloned()
-            .collect();
+        let form_error = self
+            .form_error
+            .clone()
+            .filter(|_| self.overlays.active().is_none());
         let visible = self.visible();
         let body = if !loaded && error.is_none() {
-            skeleton_rows("tickets.loading", 4).into_any_element()
+            skeleton_rows("tickets.loading", SKELETON_ROWS).into_any_element()
         } else if self.view == View::Board {
             self.board(&visible, window, cx).into_any_element()
         } else if self.state.tickets.is_empty() {
-            EmptyState::new("tasks", "No Tickets yet")
+            EmptyState::new("tickets", "No Tickets yet.")
                 .description("Create a Ticket and assign it to an agent to start work.")
                 .selector("tickets.empty")
                 .action(
@@ -798,11 +847,8 @@ impl TicketsPage {
                 .when(self.view == View::Board, |s| s.flex_1().min_h_0())
                 .gap(px(SPACE_4))
                 .child(self.filter_bar(window, cx))
-                .children(
-                    notices
-                        .into_iter()
-                        .map(|notice| banner(Tone::Danger, notice)),
-                )
+                .child(self.sync_notices(window, cx))
+                .when_some(form_error, |s, error| s.child(banner(Tone::Danger, error)))
                 .child(body),
         )
         .build()

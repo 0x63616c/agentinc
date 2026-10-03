@@ -53,7 +53,7 @@ impl AgentsPage {
         };
         let name = field("Name", "agents.name", cx);
         let instructions = field("Instructions", "agents.instructions", cx);
-        let model = field("Connection default", "agents.model", cx);
+        let model = field("Model", "agents.model", cx);
         let subscriptions = vec![
             cx.observe(&name, |_, _, cx| cx.notify()),
             cx.observe(&sync, |_, _, cx| cx.notify()),
@@ -197,7 +197,7 @@ impl AgentsPage {
         .when(index + 1 < count, |s| {
             s.border_b_1().border_color(rgb(BORDER_SUBTLE))
         })
-        .child(avatar(&name, None, AVATAR_SIZE))
+        .child(agent_avatar(&name, AVATAR_SIZE))
         .child(
             column()
                 .flex_1()
@@ -289,17 +289,33 @@ impl Render for AgentsPage {
             .cloned()
             .collect();
         let sync = self.sync.read(cx);
-        let (loaded, error, reconnecting, loading_started) = (
+        let (loaded, error, reconnecting, loading_started, fetching) = (
             sync.loaded,
             sync.message(),
             sync.reconnecting(),
             sync.loading_started,
+            sync.fetching(),
         );
         let count = agents.len();
         PageFrame::document(
             PageHeader::new(self.title())
                 .description("Agents pick up the Tickets you assign to them.")
-                .actions(self.add_button("agents.create", false, cx)),
+                .actions(
+                    row_gap(CONTROL_GAP)
+                        .child(
+                            Button::new("agents.refresh", "Refresh")
+                                .icon("refresh")
+                                .icon_only()
+                                .secondary()
+                                .enabled(!fetching)
+                                .build(
+                                    &self.hover,
+                                    |this, _, cx| this.sync.update(cx, |sync, cx| sync.wake(cx)),
+                                    cx,
+                                ),
+                        )
+                        .child(self.add_button("agents.create", false, cx)),
+                ),
         )
         .child(
             column()
@@ -309,11 +325,11 @@ impl Render for AgentsPage {
                     s.child(LoadingFrame::new(loading_started, window).inline("Reconnecting…"))
                 })
                 .when(!loaded && error.is_none(), |s| {
-                    s.child(skeleton_rows("agents.loading", 3))
+                    s.child(skeleton_rows("agents.loading", SKELETON_ROWS))
                 })
                 .when(loaded && agents.is_empty() && error.is_none(), |s| {
                     s.child(
-                        EmptyState::new("agents", "No Agents yet")
+                        EmptyState::new("agents", "No Agents yet.")
                             .description("Register an agent with instructions and a model, then assign Tickets to it.")
                             .selector("agents.empty")
                             .action(self.add_button("agents.create.empty", true, cx))

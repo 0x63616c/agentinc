@@ -1,12 +1,11 @@
 //! The one surface that can float over the shell at a time. The shell owns
-//! the palette, notifications and the user menu; a page's dialogs and
+//! the palette and the user menu; a page's dialogs and
 //! popovers are registered under its route and drawn by the page.
 use crate::routes::Route;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Overlay {
-    Search,
-    Notifications,
+    GoTo,
     UserMenu {
         support: bool,
     },
@@ -22,10 +21,7 @@ impl Overlay {
     }
     /// Light surfaces that close when the pointer lands outside them.
     pub fn is_popover(self) -> bool {
-        matches!(
-            self,
-            Self::Popover(_) | Self::Notifications | Self::UserMenu { .. }
-        )
+        matches!(self, Self::Popover(_) | Self::UserMenu { .. })
     }
 }
 
@@ -39,6 +35,6 @@ mod tests {
         assert!(Overlay::Dialog(Route::Tickets).is_dialog());
         assert!(!Overlay::Dialog(Route::Tickets).is_popover());
         assert!(Overlay::Popover(Route::Assistant).is_popover());
-        assert!(!Overlay::Search.is_dialog());
+        assert!(!Overlay::GoTo.is_dialog());
     }
 }

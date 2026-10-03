@@ -39,9 +39,9 @@ fn filters() -> Vec<(Option<WorkStatus>, &'static str)> {
 
 fn kind_label(kind: WorkKind) -> &'static str {
     match kind {
-        WorkKind::Run => "Agent run",
+        WorkKind::Run => "Work",
         WorkKind::Session => "Conversation",
-        WorkKind::Occurrence => "Automation occurrence",
+        WorkKind::Occurrence => "Occurrence",
     }
 }
 
@@ -272,8 +272,9 @@ impl Render for TemporalPage {
             )
             .actions(
                 Button::new("temporal.refresh", "Refresh")
-                    .secondary()
                     .icon("refresh")
+                    .icon_only()
+                    .secondary()
                     .enabled(!self.loading.busy())
                     .build(&self.hover, |this, _, cx| this.load(false, cx), cx),
             );
@@ -305,20 +306,20 @@ impl Render for TemporalPage {
                 div()
                     .id("temporal.loading")
                     .accessibility_id("temporal.loading")
-                    .child(skeleton_rows("temporal.loading", 5)),
+                    .child(skeleton_rows("temporal.loading", SKELETON_ROWS)),
             );
         } else if self.rows.is_empty() && self.error.is_none() {
             content = content.child(
                 EmptyState::new(
                     "temporal",
                     if self.filter.is_none() {
-                        "No work yet"
+                        "No work yet."
                     } else {
-                        "No matching work"
+                        "No matching work."
                     },
                 )
                 .description(if self.filter.is_none() {
-                    "Runs appear here the moment AgentInc starts work."
+                    "Work appears here the moment an Agent starts."
                 } else {
                     "Try another status or refresh the list."
                 })
@@ -332,7 +333,7 @@ impl Render for TemporalPage {
         if self.next_page.is_some() {
             content = content.child(
                 row().child(
-                    Button::new("temporal.more", "Load more")
+                    Button::new("temporal.more", "Load More")
                         .secondary()
                         .enabled(!self.loading.busy())
                         .build(&self.hover, |this, _, cx| this.load(true, cx), cx),

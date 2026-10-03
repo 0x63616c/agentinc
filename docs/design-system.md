@@ -26,7 +26,7 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 | Borders | `BORDER`, `BORDER_SUBTLE`, `BORDER_STRONG`, `ERROR_BORDER` | Around surfaces, inside them, on overlays, on invalid fields. |
 | Text | `TEXT`, `TEXT_SECONDARY`, `TEXT_TERTIARY`, `TEXT_PLACEHOLDER`, `TEXT_ON_PRIMARY` | Body, descriptions, eyebrows and hints, placeholders, ink on white. |
 | Actions | `PRIMARY`, `PRIMARY_HOVER`, `PRIMARY_ACTIVE`, `DESTRUCTIVE`, `DESTRUCTIVE_HOVER`, `DESTRUCTIVE_TEXT`, `ERROR` | The white button, the red button, red text. |
-| Status | `STATUS_{NEUTRAL,GREEN,BLUE,AMBER,RED,PURPLE}` and `_SURFACE` pairs, `ACCENT`, `LABEL_COLORS` | Badge and pill tones; the unread dot; eight muted label hues. |
+| Status | `STATUS_{NEUTRAL,GREEN,BLUE,AMBER,RED,PURPLE}` and `_SURFACE` pairs, `LABEL_COLORS` | Badge and pill tones; eight muted label hues. |
 | Spacing | `SPACE_HALF`, `SPACE_1` … `SPACE_10`, `PAGE_X`, `PANEL_GAP`, `SIDEBAR_INSET`, `SECTION_GAP`, control and row sizes | Every gap, inset and control dimension. |
 | Radius | `RADIUS_XS` … `RADIUS_XL`, `PANEL_RADIUS`, `CONTROL_RADIUS`, `FIELD_RADIUS` | Chips and hints, controls, cards, panels. |
 | Type | `DISPLAY_SIZE`, `TITLE_SIZE`, `HEADING_SIZE`, `BODY_SIZE`, `LABEL_SIZE`, `CAPTION_SIZE`, `MICRO_SIZE`; `type_size()` | Page titles, dialog titles, section headings, body, labels, captions, hints. |
@@ -74,11 +74,11 @@ providers) and are exercised only on the Components page today.
 ## Shell
 
 The shell (`src/shell.rs` and `src/shell/`) composes the sidebar (workspace card,
-⌘K search, navigation, user row), the title bar with the current tab contour,
-the content card with its status bar, the command palette, the user
-menu popover, the notification panel and toasts. Pages receive the content card and
-render inside `PageFrame::document` (header plus scrolling content) or `PageFrame::canvas`
-(the Conversation view, the Terminal).
+⌘K Go to…, navigation, user row), the title bar with the current Page tab contour,
+the content card with its status bar, the Go to… palette, the user menu popover and
+toasts. Pages receive the content card and render inside `PageFrame::document` (header
+plus scrolling content), `PageFrame::fill` (header plus content that fills the height: the
+board, the Conversation view) or `PageFrame::canvas` (the Terminal).
 
 ## Copy
 
@@ -104,11 +104,36 @@ Every string a person reads in the app follows these rules. Constructs are the n
    never interpolated. Validation errors go to `Field::error`, load errors to `banner`.
 10. Empty states read `No {things} yet.` plus one action, always through `EmptyState`.
 11. British spelling: Cancelled.
-12. People are round avatars; agents are rounded squares. Everywhere.
+12. People are round avatars (`avatar`); agents are rounded squares (`agent_avatar`). Everywhere.
 
-Planned: `cargo xtask check-copy` will enforce these over the string literals passed to
-`Button::new`, `MenuEntry::new`, `PageHeader::new`, `EmptyState` and `dialog_shell`
-(`...`, straight apostrophes, "Canceled", avoid-words, case).
+The decisions the rules leave open, settled once:
+
+- Placeholders name the value as a sentence-case noun phrase ("Ticket title", "Name",
+  "Automation name", "Minutes", "Comment"); search fields read "Search {Things}"; the
+  composer reads "Message Evee".
+- An empty state reads `No {things} yet.` when nothing exists and `No matching {things}.`
+  when a filter hides everything. The title keeps its period; it is a sentence.
+- A detail page is a `PageHeader` whose `leading` is a small ghost back control (the parent
+  page's name with `chevronLeft`), on Tickets, Automations and the Conversation view alike.
+- Every page that polls the daemon through `Sync` has an icon-only secondary Refresh as the
+  first header action and shows `banner` + "Reconnecting…" the same way; Temporal, which
+  loads on demand, has the same icon-only Refresh. Nothing else offers a refresh.
+- Loading lists show `SKELETON_ROWS` skeleton rows, never a page-specific count.
+- A toast stays until dismissed; a transient one follows `Toasts::push` with
+  `Toasts::dismiss_later`, which removes it after `TOAST_MS`.
+- A disabled destructive control stays visible and the nearest section says why ("A Ticket
+  with Work cannot be deleted.").
+
+`cargo xtask check-copy` (`crates/ainc-xtask/src/checks/copy.rs`) enforces the mechanical
+rules over the string literals passed to `Button::new`, `MenuEntry::new`, `PaletteEntry::new`,
+`PageHeader::new`, `EmptyState::new`, `dialog_shell`, `DialogFooter::label` and
+`TextInput::field`: no `...`, no straight apostrophe in prose, no "Canceled", none of
+CONTEXT.md's avoid-words, Title Case for buttons, menu and palette entries and dialog titles,
+and a period on every `EmptyState` title. The case heuristic is deliberately simple: every
+word longer than three letters is capitalized unless it is in the small-word list (a, an, and,
+as, at, by, for, from, in, of, on, or, the, to, with); a literal that is not a title (an
+accessible label with a `·`, an interpolated `format!`) is skipped. Add a construct or a
+brand name that the heuristic misjudges to the allow-list in that file.
 
 ## Adding a component
 

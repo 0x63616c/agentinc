@@ -413,7 +413,7 @@ impl TicketsPage {
         })
     }
 
-    /// Priority, labels, open blockers, sub-issues and Comments; nothing when
+    /// Priority, labels, open blockers, Sub-Tickets and Comments; nothing when
     /// the Ticket has none of them.
     fn card_footer(&self, ticket: &Ticket) -> Option<Div> {
         let blockers = open_blockers(&self.state.tickets, &self.state.links, ticket.id);
@@ -427,14 +427,6 @@ impl TicketsPage {
         {
             return None;
         }
-        let meta = |name: &'static str, text: String, glyph: u32, color: u32| {
-            row()
-                .gap(px(SPACE_1))
-                .text_size(type_size(CAPTION_SIZE))
-                .text_color(rgb(color))
-                .child(icon(name, ICON_SIZE_XS).text_color(rgb(glyph)))
-                .child(text)
-        };
         // Chips wrap on the left; the counts keep the last line's right end.
         let chips = row()
             .flex_1()
@@ -449,13 +441,7 @@ impl TicketsPage {
                 s.child(hint(format!("+{hidden_labels}")))
             })
             .when(!blockers.is_empty(), |s| {
-                let text = blockers
-                    .iter()
-                    .map(|id| ticket_key(*id))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                // Only the glyph is red; the keys stay quiet so text leads.
-                s.child(meta("status-blocked", text, STATUS_RED, TEXT_SECONDARY))
+                s.child(self.blockers_marker(&blockers))
             });
         Some(
             row()
@@ -471,7 +457,7 @@ impl TicketsPage {
     fn card_counts(&self, ticket: &Ticket) -> Vec<Div> {
         let children = relations(&self.state.links, ticket.id)
             .into_iter()
-            .filter(|(relation, _)| *relation == Relation::SubIssue)
+            .filter(|(relation, _)| *relation == Relation::SubTicket)
             .count();
         let comments = self.comment_count(ticket.id);
         [("list", children), ("feedback", comments)]

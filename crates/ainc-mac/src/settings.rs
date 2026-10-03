@@ -97,7 +97,7 @@ impl SettingsPage {
     }
     fn connections_section(&self, cx: &mut Context<Self>) -> Div {
         settings_section(
-            "Accounts & connections",
+            "Connections",
             settings_row(
                 "Connections",
                 "The ChatGPT account Evee replies through, and its model.",

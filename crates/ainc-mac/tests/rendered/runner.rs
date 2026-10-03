@@ -284,7 +284,7 @@ impl Suite {
         );
         let probes = self.probes(
             width,
-            overlay.is_some_and(|o| o == Overlay::Search || o.is_dialog()),
+            overlay.is_some_and(|o| o == Overlay::GoTo || o.is_dialog()),
         )?;
         check_pixels(image.as_raw(), image.width(), scale, &probes)
             .map_err(|e| anyhow::anyhow!("{name}: {e}"))?;
@@ -324,7 +324,7 @@ impl Suite {
             self.check_button_icon_order("automations.create.empty", true)?;
         }
         if name == "assistant-conversation-list" {
-            self.check_button_icon_order("new-chat", true)?;
+            self.check_button_icon_order("new-conversation", true)?;
         }
         if name == "ticket-create-dialog" {
             self.check_button_icon_order("tickets.labels.open", true)?;
@@ -936,7 +936,7 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.capture(
         "palette-ticket-search",
         Route::Tickets,
-        Some(Overlay::Search),
+        Some(Overlay::GoTo),
         false,
     )?;
     suite.bounds(&format!("palette.result.tickets.goto-ticket.{dentist}"))?;
@@ -1035,7 +1035,7 @@ pub fn run() -> Result<()> {
         None::<MouseButton>,
         Modifiers::default(),
     );
-    // The user menu, its Support submenu, notifications and toasts.
+    // The user menu, its Support submenu, the signed-out Assistant and toasts.
     suite.click_selector("sidebar-profile")?;
     suite.capture(
         "user-menu",
@@ -1102,18 +1102,13 @@ pub fn run() -> Result<()> {
     }
     suite.keys("escape");
     suite.capture("user-menu-closed", Route::Assistant, None, false)?;
+    // The Conversation view before ChatGPT is connected: one empty state, one action.
     suite.window.update(&mut suite.cx, |shell, _, cx| {
-        shell.fixture_notifications(cx);
+        shell.fixture_signed_out(cx);
     })?;
-    suite.click_selector("notifications")?;
-    suite.capture(
-        "notifications",
-        Route::Assistant,
-        Some(Overlay::Notifications),
-        false,
-    )?;
-    suite.bounds("notifications.panel")?;
-    suite.keys("escape");
+    suite.capture("assistant-signed-out", Route::Assistant, None, false)?;
+    suite.bounds("assistant.signed-out")?;
+    suite.click_selector("back-to-conversations")?;
     suite.window.update(&mut suite.cx, |shell, _, cx| {
         shell.fixture_toast(cx);
     })?;
@@ -1318,7 +1313,7 @@ pub fn run() -> Result<()> {
             suite.capture(
                 "search-empty",
                 Route::Automations,
-                Some(Overlay::Search),
+                Some(Overlay::GoTo),
                 false,
             )?;
             suite.bounds("palette.result.recent.page.tickets")?;
@@ -1328,7 +1323,7 @@ pub fn run() -> Result<()> {
             suite.capture(
                 "search-keyboard",
                 Route::Automations,
-                Some(Overlay::Search),
+                Some(Overlay::GoTo),
                 false,
             )?;
         }
@@ -1336,7 +1331,7 @@ pub fn run() -> Result<()> {
         suite.capture(
             &format!("search-{round}"),
             Route::Automations,
-            Some(Overlay::Search),
+            Some(Overlay::GoTo),
             false,
         )?;
         suite.keys("enter");
@@ -1382,7 +1377,7 @@ pub fn run() -> Result<()> {
     suite.keys("escape");
     suite.capture("dialog-dismissed", Route::Tickets, None, false)?;
     suite.keys("cmd-k");
-    suite.capture("search-open", Route::Tickets, Some(Overlay::Search), false)?;
+    suite.capture("search-open", Route::Tickets, Some(Overlay::GoTo), false)?;
     let palette = suite.bounds("search.dialog")?;
     let status = suite.bounds("status-bar")?;
     ensure!(
@@ -1393,7 +1388,7 @@ pub fn run() -> Result<()> {
     suite.capture(
         "search-no-matches",
         Route::Tickets,
-        Some(Overlay::Search),
+        Some(Overlay::GoTo),
         false,
     )?;
     suite.bounds("palette.empty")?;
@@ -1424,13 +1419,13 @@ pub fn run() -> Result<()> {
     suite.window = previous;
     suite.keys("cmd-3");
     suite.capture("agents-list", Route::Agents, None, false)?;
-    suite
-        .window
-        .update(&mut suite.cx, |shell, _, cx| shell.fixture_chat(false, cx))?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_conversation(false, cx)
+    })?;
     suite.capture("assistant-new-conversation", Route::Assistant, None, false)?;
-    suite
-        .window
-        .update(&mut suite.cx, |shell, _, cx| shell.fixture_chat(true, cx))?;
+    suite.window.update(&mut suite.cx, |shell, _, cx| {
+        shell.fixture_conversation(true, cx)
+    })?;
     suite.capture("assistant-conversation", Route::Assistant, None, false)?;
     suite.click_selector("back-to-conversations")?;
     suite.capture("assistant-conversation-list", Route::Assistant, None, false)?;

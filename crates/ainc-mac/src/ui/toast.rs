@@ -17,7 +17,7 @@ pub struct Toasts {
 
 impl Toasts {
     /// Adds a toast and returns its id. Toasts stay until dismissed; a host
-    /// that wants a transient notice schedules the dismissal itself.
+    /// that wants a transient notice follows with [`Toasts::dismiss_later`].
     pub fn push(
         &mut self,
         title: impl Into<SharedString>,
@@ -33,6 +33,24 @@ impl Toasts {
             tone,
         });
         id
+    }
+    /// Dismiss `id` after [`TOAST_MS`]: the one way a transient toast leaves.
+    pub fn dismiss_later<V: 'static>(
+        id: u64,
+        toasts: impl Fn(&mut V) -> &mut Toasts + 'static,
+        cx: &mut Context<V>,
+    ) {
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(TOAST_MS))
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if toasts(this).dismiss(id) {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
     pub fn dismiss(&mut self, id: u64) -> bool {
         let before = self.items.len();

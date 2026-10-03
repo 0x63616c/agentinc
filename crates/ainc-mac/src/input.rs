@@ -393,7 +393,7 @@ impl TextInput {
         input
     }
     pub fn composer(cx: &mut Context<Self>) -> Self {
-        let mut input = Self::field("Ask Evee…", false, cx);
+        let mut input = Self::field("Message Evee", false, cx);
         input.multiline = true;
         input
     }

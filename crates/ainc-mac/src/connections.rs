@@ -18,7 +18,7 @@ use std::sync::{
 
 pub struct ConnectionsPage {
     daemon: Arc<Daemon>,
-    account: Option<String>,
+    signed_in_as: Option<String>,
     models: Vec<assistant::Model>,
     model: Option<String>,
     model_menu_open: bool,
@@ -39,7 +39,7 @@ impl ConnectionsPage {
     pub fn new(daemon: Arc<Daemon>, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
             daemon,
-            account: None,
+            signed_in_as: None,
             models: vec![],
             model: None,
             model_menu_open: false,
@@ -73,12 +73,12 @@ impl ConnectionsPage {
         self.login_cancel = None;
         match result {
             Ok((account, models)) => {
-                self.account = account;
+                self.signed_in_as = account;
                 self.models = models;
                 self.connection_error = None;
             }
             Err(failure) => {
-                self.account = None;
+                self.signed_in_as = None;
                 self.connection_error = Some(failure.message("The ChatGPT Connection"));
             }
         }
@@ -147,7 +147,7 @@ impl ConnectionsPage {
     #[cfg(test)]
     #[allow(dead_code)]
     pub fn fixture_models(&mut self, cx: &mut Context<Self>) {
-        self.account = Some("Fixture account".into());
+        self.signed_in_as = Some("Fixture account".into());
         self.connection_error = None;
         self.models = vec![
             assistant::Model {
@@ -169,7 +169,7 @@ impl ConnectionsPage {
             } else {
                 "Checking connection…".to_owned()
             }
-        } else if let Some(account) = &self.account {
+        } else if let Some(account) = &self.signed_in_as {
             format!("Connected as {account}")
         } else {
             "Not connected. Evee uses your ChatGPT subscription.".to_owned()
@@ -192,8 +192,8 @@ impl ConnectionsPage {
                 .child(settings_row(
                     "ChatGPT",
                     state,
-                    if self.account.is_some() {
-                        Button::new("codex-sign-in", "Sign out")
+                    if self.signed_in_as.is_some() {
+                        Button::new("codex-sign-in", "Sign Out")
                             .secondary()
                             .enabled(enabled)
                             .build(
@@ -209,20 +209,6 @@ impl ConnectionsPage {
                             .build(&self.hover, |this: &mut Self, _, cx| this.connect(cx), cx)
                     },
                 ))
-                .when_some(self.connection_error.clone(), |s, error| {
-                    s.child(settings_divider()).child(settings_row(
-                        "Connection issue",
-                        error,
-                        Button::new("codex-refresh-error", "Retry")
-                            .secondary()
-                            .enabled(enabled)
-                            .build(
-                                &self.hover,
-                                |this: &mut Self, _, cx| this.refresh_connection(cx),
-                                cx,
-                            ),
-                    ))
-                })
                 .when(self.login_cancel.is_some(), |s| {
                     s.child(settings_divider()).child(settings_row(
                         "Sign-in in progress",
@@ -239,7 +225,7 @@ impl ConnectionsPage {
                         ),
                     ))
                 })
-                .when(self.account.is_some(), |s| {
+                .when(self.signed_in_as.is_some(), |s| {
                     s.child(settings_divider()).child(settings_row(
                         "Model",
                         "The Codex model Evee replies with.",
@@ -305,6 +291,9 @@ impl Render for ConnectionsPage {
         .child(
             column()
                 .gap(px(SECTION_GAP))
+                .when_some(self.connection_error.clone(), |s, error| {
+                    s.child(banner(Tone::Danger, error))
+                })
                 .child(self.chatgpt_section(cx)),
         )
         .build()

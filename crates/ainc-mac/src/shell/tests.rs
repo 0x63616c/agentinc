@@ -63,7 +63,7 @@ fn header_controls_do_not_zoom_but_empty_space_does(cx: &mut TestAppContext) {
         assert_eq!(shell.ui_state.current(), Route::Agents);
         assert_eq!(shell.titlebar_zoom_requests, 0);
     });
-    for id in ["sidebar", "notifications", "shell.search"] {
+    for id in ["sidebar", "shell.search"] {
         let position = cx.debug_bounds(id).unwrap().center();
         double_click(cx, position);
         shell.read_with(cx, |shell, _| assert_eq!(shell.titlebar_zoom_requests, 0));
@@ -411,7 +411,7 @@ fn search_filters_selects_and_restores_focus(cx: &mut TestAppContext) {
     cx.simulate_keystrokes("cmd-k");
     cx.simulate_input("settings");
     shell.read_with(cx, |shell, cx| {
-        assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+        assert_eq!(shell.overlays.borrow().active(), Some(Overlay::GoTo));
         let results = shell.palette_results(&shell.input.read(cx).content);
         assert_eq!(results.len(), 1);
         assert_eq!(results.choices[0].0.as_ref(), "page.settings");
@@ -499,13 +499,13 @@ fn search_shortcut_works_with_pane_or_no_focus(cx: &mut TestAppContext) {
     cx.update(|window, cx| window.focus(&pane_focus, cx));
     cx.simulate_keystrokes("cmd-k");
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+        assert_eq!(shell.overlays.borrow().active(), Some(Overlay::GoTo));
     });
     cx.simulate_keystrokes("escape");
     cx.update(|window, cx| window.blur(cx));
     cx.simulate_keystrokes("cmd-k");
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+        assert_eq!(shell.overlays.borrow().active(), Some(Overlay::GoTo));
     });
 }
 

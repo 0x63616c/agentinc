@@ -155,7 +155,7 @@ impl TicketsPage {
                     .child({
                         // With labels applied, a bare + keeps the line short enough
                         // to stay inside its column.
-                        let add = Button::new("tickets.labels.open", "Add label")
+                        let add = Button::new("tickets.labels.open", "Add Label")
                             .ghost()
                             .small()
                             .icon("plus")

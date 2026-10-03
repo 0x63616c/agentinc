@@ -18,7 +18,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 /// A key chord Ghostty received that belongs to the shell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Shortcut {
-    Search,
+    GoTo,
     Settings,
     Back,
     Forward,

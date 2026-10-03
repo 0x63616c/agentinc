@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn prefixes_and_word_starts_outrank_later_matches() {
         let prefix = fuzzy_match("tick", "Tickets").unwrap().score;
-        let later = fuzzy_match("tick", "Open ticket").unwrap().score;
+        let later = fuzzy_match("tick", "Open Ticket").unwrap().score;
         assert!(prefix > later);
         assert!(fuzzy_match("tf", "Toggle Font").is_some());
         assert!(fuzzy_match("tf", "Notification").is_none());

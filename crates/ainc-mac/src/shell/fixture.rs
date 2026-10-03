@@ -75,23 +75,10 @@ impl Shell {
         );
         cx.notify();
     }
-    pub(crate) fn fixture_notifications(&mut self, cx: &mut Context<Self>) {
-        self.notification_items = vec![
-            Notification {
-                icon: "tasks",
-                title: "Ticket moved to Done".into(),
-                body: "Evee finished “Reconcile weekly budget”.".into(),
-                relative_time: "2m".into(),
-                unread: true,
-            },
-            Notification {
-                icon: "refresh",
-                title: "Automation fired".into(),
-                body: "Weekday morning review created Ticket 4821.".into(),
-                relative_time: "1h".into(),
-                unread: false,
-            },
-        ];
+    pub(crate) fn fixture_signed_out(&mut self, cx: &mut Context<Self>) {
+        self.ui_state.navigate(Route::Assistant);
+        self.page_entity::<crate::evee::AssistantPage>()
+            .update(cx, |assistant, cx| assistant.fixture_signed_out(cx));
         cx.notify();
     }
     #[cfg(feature = "rendered-tests")]
@@ -155,10 +142,12 @@ impl Shell {
         }
         cx.notify();
     }
-    pub(crate) fn fixture_chat(&mut self, populated: bool, cx: &mut Context<Self>) {
+    pub(crate) fn fixture_conversation(&mut self, populated: bool, cx: &mut Context<Self>) {
         self.ui_state.navigate(Route::Assistant);
         self.page_entity::<crate::evee::AssistantPage>()
-            .update(cx, |assistant, cx| assistant.fixture_chat(populated, cx));
+            .update(cx, |assistant, cx| {
+                assistant.fixture_conversation(populated, cx)
+            });
         cx.notify();
     }
     pub(crate) fn fixture_selected_model(&self, cx: &App) -> Option<String> {

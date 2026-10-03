@@ -18,11 +18,11 @@ fn columns() -> [TableColumn; 3] {
 impl TicketsPage {
     pub(super) fn list(&self, visible: &[Ticket], cx: &mut Context<Self>) -> Div {
         if visible.is_empty() {
-            return EmptyState::new("search", "No matching Tickets")
+            return EmptyState::new("search", "No matching Tickets.")
                 .description("Try another search, or clear the filters to see every Ticket.")
                 .selector("tickets.list.empty")
                 .action(
-                    Button::new("tickets.list.clear", "Clear filters")
+                    Button::new("tickets.list.clear", "Clear Filters")
                         .secondary()
                         .build(
                             &self.hover,
@@ -141,10 +141,7 @@ impl TicketsPage {
                 )
             })
             .when(!blockers.is_empty(), |s| {
-                s.child(status_pill(
-                    format!("Blocked by {}", ticket_key(blockers[0])),
-                    Tone::Danger,
-                ))
+                s.child(self.blockers_marker(&blockers))
             })
             .children(
                 ticket

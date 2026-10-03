@@ -4,8 +4,8 @@
 use super::*;
 use ainc_client::types::{ActivityKind, Comment};
 
-/// Attempts listed under Work, newest first.
-const RECENT_RUNS: usize = 3;
+/// Work listed under the Work heading, newest first.
+const RECENT_WORK: usize = 3;
 
 /// One timeline row, in time order.
 enum Moment<'a> {
@@ -58,9 +58,7 @@ impl TicketsPage {
                     .id("tickets-page")
                     .track_focus(&self.page_focus)
                     .gap(px(SPACE_4))
-                    .when_some(self.sync.read(cx).message(), |s, error| {
-                        s.child(banner(Tone::Danger, error))
-                    })
+                    .child(self.sync_notices(window, cx))
                     .when_some(
                         self.form_error
                             .clone()
@@ -105,7 +103,7 @@ impl TicketsPage {
                     .mr(px(-CONTROL_INSET_X))
                     .when(running, |s| {
                         s.child(
-                            Button::new("tickets.stop", "Stop work")
+                            Button::new("tickets.stop", "Stop Work")
                                 .secondary()
                                 .icon("stop")
                                 .enabled(enabled)
@@ -118,27 +116,27 @@ impl TicketsPage {
                                 ),
                         )
                     })
-                    .when(!has_runs, |s| {
-                        s.child(
-                            Button::new("tickets.delete", "Delete")
-                                .ghost()
-                                .icon("trash")
-                                .tint(TEXT_SECONDARY)
-                                .enabled(enabled)
-                                .build(
-                                    &self.hover,
-                                    move |this, window, cx| {
-                                        this.overlays.open_dialog(
-                                            Dialog::Delete(id),
-                                            this.cancel_focus.clone(),
-                                            window,
-                                            cx,
-                                        );
-                                        cx.notify();
-                                    },
-                                    cx,
-                                ),
-                        )
+                    .child({
+                        // Deleting stays visible once Work exists, disabled; the Work
+                        // section says why.
+                        Button::new("tickets.delete", "Delete")
+                            .ghost()
+                            .icon("trash")
+                            .tint(TEXT_SECONDARY)
+                            .enabled(enabled && !has_runs)
+                            .build(
+                                &self.hover,
+                                move |this, window, cx| {
+                                    this.overlays.open_dialog(
+                                        Dialog::Delete(id),
+                                        this.cancel_focus.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                    cx.notify();
+                                },
+                                cx,
+                            )
                     })
                     .child(
                         Button::new("tickets.rename", "Rename")
@@ -327,7 +325,7 @@ impl TicketsPage {
                     .child(
                         div().flex_1().min_w_0().child(
                             Field::new(self.comment.clone())
-                                .selector("Add a Comment")
+                                .selector("Comment")
                                 .build(window, cx),
                         ),
                     )
@@ -463,7 +461,7 @@ impl TicketsPage {
                     (ActivityKind::Linked, Some(Relation::Parent)) => {
                         format!("made it a Sub-Ticket of {key}")
                     }
-                    (ActivityKind::Linked, Some(Relation::SubIssue)) => {
+                    (ActivityKind::Linked, Some(Relation::SubTicket)) => {
                         format!("added {key} as a Sub-Ticket")
                     }
                     (ActivityKind::Linked, _) => format!("related it to {key}"),
@@ -677,7 +675,7 @@ impl TicketsPage {
                     .justify_between()
                     .child(eyebrow("Relationships"))
                     .child(
-                        Button::new("tickets.link", "Add relationship")
+                        Button::new("tickets.link", "Add Relationship")
                             .ghost()
                             .small()
                             .icon("plus")
@@ -800,7 +798,7 @@ impl TicketsPage {
             )
     }
 
-    /// The agent runs behind this Ticket and the Conversation it came from.
+    /// The Work behind this Ticket and the Conversation it came from.
     fn work(&self, ticket: &Ticket, cx: &mut Context<Self>) -> Div {
         let mut runs: Vec<_> = self
             .state
@@ -811,13 +809,10 @@ impl TicketsPage {
         runs.sort_by_key(|r| std::cmp::Reverse(r.generation));
         let conversation = ticket.conversation_id.map(|id| {
             let title = self
-                .daemon
-                .product()
-                .conversations
-                .into_iter()
-                .find(|c| c.id == id)
-                .map(|c| c.title)
-                .unwrap_or_else(|| "Conversation".into());
+                .conversation_titles
+                .iter()
+                .find(|(other, _)| *other == id)
+                .map_or_else(|| "Conversation".to_owned(), |(_, title)| title.clone());
             (id, title)
         });
         column()
@@ -829,7 +824,7 @@ impl TicketsPage {
                     .child(eyebrow("Work"))
                     .when(!runs.is_empty(), |s| {
                         s.child(
-                            Button::new("tickets.runs", "Runs")
+                            Button::new("tickets.runs", "All Work")
                                 .ghost()
                                 .small()
                                 .tint(TEXT_SECONDARY)
@@ -852,7 +847,10 @@ impl TicketsPage {
                     "Assign an agent to start work."
                 }))
             })
-            .children(runs.into_iter().take(RECENT_RUNS).map(|run| {
+            .when(!runs.is_empty(), |s| {
+                s.child(hint("A Ticket with Work cannot be deleted."))
+            })
+            .children(runs.into_iter().take(RECENT_WORK).map(|run| {
                 let tone = state_tone(&run.state);
                 let label = state_label(&run.state);
                 row()
@@ -866,7 +864,7 @@ impl TicketsPage {
                         div()
                             .w(px(PROPERTY_LABEL_WIDTH))
                             .flex_shrink_0()
-                            .child(caption(format!("Attempt {}", run.generation))),
+                            .child(caption(format!("Work {}", run.generation))),
                     )
                     .child(status_pill(label.to_owned(), tone))
                     .when_some(run.error.clone(), |s, error| {

@@ -215,14 +215,14 @@ pub enum Relation {
     DuplicatedBy,
     /// The other Ticket is this one's parent.
     Parent,
-    /// The other Ticket is a sub-issue of this one.
-    SubIssue,
+    /// The other Ticket is a Sub-Ticket of this one.
+    SubTicket,
 }
 impl Relation {
     /// The order relationships are listed and offered in.
     pub const ALL: [Self; 7] = [
         Self::Parent,
-        Self::SubIssue,
+        Self::SubTicket,
         Self::BlockedBy,
         Self::Blocks,
         Self::RelatesTo,
@@ -237,7 +237,7 @@ impl Relation {
             Self::Duplicates => "Duplicates",
             Self::DuplicatedBy => "Duplicated by",
             Self::Parent => "Parent",
-            Self::SubIssue => "Sub-Ticket",
+            Self::SubTicket => "Sub-Ticket",
         }
     }
     /// The stored link that says `this` has this relation to `other`.
@@ -249,7 +249,7 @@ impl Relation {
             Self::Duplicates => (this, other, LinkKind::Duplicates),
             Self::DuplicatedBy => (other, this, LinkKind::Duplicates),
             Self::Parent => (other, this, LinkKind::ParentOf),
-            Self::SubIssue => (this, other, LinkKind::ParentOf),
+            Self::SubTicket => (this, other, LinkKind::ParentOf),
         }
     }
     /// How a history entry names this relation (the daemon's side names).
@@ -269,7 +269,7 @@ impl Relation {
             (LinkKind::RelatesTo, _) => Self::RelatesTo,
             (LinkKind::Duplicates, true) => Self::Duplicates,
             (LinkKind::Duplicates, false) => Self::DuplicatedBy,
-            (LinkKind::ParentOf, true) => Self::SubIssue,
+            (LinkKind::ParentOf, true) => Self::SubTicket,
             (LinkKind::ParentOf, false) => Self::Parent,
         }
     }
@@ -488,7 +488,7 @@ mod tests {
             ]
         );
         assert_eq!(relations(&links, 2), [(Relation::BlockedBy, 1)]);
-        assert_eq!(relations(&links, 3), [(Relation::SubIssue, 1)]);
+        assert_eq!(relations(&links, 3), [(Relation::SubTicket, 1)]);
         for relation in Relation::ALL {
             let (from, to, kind) = relation.link(7, 8);
             let stored = [TicketLink {

@@ -10,7 +10,7 @@ The app is a personal, single-machine development environment for agentic coding
 
 Download [the latest AgentInc release for Apple Silicon](https://github.com/0x63616c/agentinc/releases/latest), extract `AgentInc.app` and move it to Applications. It requires **macOS 15 or later**. The signed, notarized bundle includes its local runtime; no separate Docker, database or Temporal installation is needed.
 
-Open the app and use **Settings → Accounts & connections → Sign in with ChatGPT** to connect Evee through the official Codex sign-in. [Release notes and downloads](https://github.com/0x63616c/agentinc/releases/latest).
+Open the app and use **Settings → Connections → Sign in with ChatGPT** to connect Evee through the official Codex sign-in. [Release notes and downloads](https://github.com/0x63616c/agentinc/releases/latest).
 
 ## Develop
 

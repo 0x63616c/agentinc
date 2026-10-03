@@ -31,7 +31,7 @@ resource paths instead of `/v1/state` and `/v1/commands` (S11).
 
 ## Add a page
 
-1. Add the variant to `Route` in `crates/ainc-mac/src/model.rs` and a `PageSpec` (route, title,
+1. Add the variant to `Route` in `crates/ainc-mac/src/routes.rs` and a `PageSpec` (route, title,
    icon, `in_sidebar`) to `PAGES` in the same file. Sidebar order, `⌘1…` numbering and the ⌘K
    palette all read `PAGES`; bump the `PAGES.len()` assertion in its tests.
 2. Build the page as its own view in `crates/ainc-mac/src/<page>.rs` from `ui::` components

@@ -42,7 +42,7 @@ mod macos {
             return;
         };
         let shortcut = match number {
-            -1 => Shortcut::Search,
+            -1 => Shortcut::GoTo,
             -2 => Shortcut::Settings,
             -3 => Shortcut::Back,
             -4 => Shortcut::Forward,

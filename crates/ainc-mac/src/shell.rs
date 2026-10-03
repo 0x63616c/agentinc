@@ -40,7 +40,7 @@ use std::{
 actions!(
     control,
     [
-        Search,
+        GoTo,
         GoBack,
         GoForward,
         ToggleSidebar,
@@ -63,10 +63,8 @@ pub(crate) enum Control {
     Go(Destination),
     Back,
     Forward,
-    Search,
+    GoTo,
     Sidebar,
-    Notifications,
-    MarkAllRead,
     Dismiss,
     Appearance(Appearance),
     UserMenu,
@@ -106,7 +104,6 @@ pub struct Shell {
     palette_transition: Option<Instant>,
     launch_started: Option<Instant>,
     selected: usize,
-    notification_items: Vec<Notification>,
     save_error: bool,
     save_toast: Option<u64>,
     state_writable: bool,
@@ -119,13 +116,6 @@ pub struct Shell {
     toasts: Toasts,
     #[cfg(test)]
     titlebar_zoom_requests: usize,
-}
-struct Notification {
-    icon: &'static str,
-    title: String,
-    body: String,
-    relative_time: String,
-    unread: bool,
 }
 impl HoverHost for Shell {
     fn hover_fade(&mut self) -> &mut HoverFade {
@@ -200,7 +190,7 @@ impl Shell {
                 let shell = shell.clone();
                 move |shortcut, window, cx| {
                     let control = match shortcut {
-                        Shortcut::Search => Control::Search,
+                        Shortcut::GoTo => Control::GoTo,
                         Shortcut::Settings => Control::Go(Destination::Page(Route::Settings)),
                         Shortcut::Back => Control::Back,
                         Shortcut::Forward => Control::Forward,
@@ -356,7 +346,6 @@ impl Shell {
             palette_transition: None,
             launch_started: None,
             selected: 0,
-            notification_items: Vec::new(),
             save_error: !state_writable,
             save_toast: None,
             state_writable,
@@ -477,12 +466,12 @@ impl Shell {
         let initial_focus = self.input.focus_handle(cx);
         self.overlays
             .borrow_mut()
-            .open(Overlay::Search, window, cx, Some(initial_focus));
+            .open(Overlay::GoTo, window, cx, Some(initial_focus));
     }
     fn cycle_focus(&mut self, backwards: bool, window: &mut Window, cx: &mut Context<Self>) {
         set_focus_visible(true);
         let handles = match self.overlays.borrow().active() {
-            Some(Overlay::Search) => {
+            Some(Overlay::GoTo) => {
                 let mut handles =
                     vec![self.input.focus_handle(cx), self.picker_close_focus.clone()];
                 let count = self.palette_results(&self.input.read(cx).content).len();
@@ -515,14 +504,6 @@ impl Shell {
         self.overlays
             .borrow()
             .cycle_focus(&handles, backwards, window, cx);
-    }
-    fn toggle_overlay(&mut self, overlay: Overlay, window: &mut Window, cx: &mut Context<Self>) {
-        let active = self.overlays.borrow().active();
-        if active == Some(overlay) {
-            self.overlays.borrow_mut().dismiss(window, cx);
-        } else {
-            self.overlays.borrow_mut().open(overlay, window, cx, None);
-        }
     }
     /// Navigate to a destination's route and let the page that owns it select it.
     fn go(&mut self, to: Destination, window: &mut Window, cx: &mut Context<Self>) {
@@ -563,7 +544,7 @@ impl Shell {
                 window.focus(&self.focus, cx);
             }
             Control::Go(to) => self.go(to, window, cx),
-            Control::Search => {
+            Control::GoTo => {
                 self.palette_transition = Some(Instant::now());
                 self.focus_picker(window, cx);
             }
@@ -574,12 +555,6 @@ impl Shell {
             Control::Appearance(appearance) => {
                 self.overlays.borrow_mut().dismiss(window, cx);
                 self.apply_appearance(appearance, cx);
-            }
-            Control::Notifications => {
-                if self.overlays.borrow().active() == Some(Overlay::Search) {
-                    self.overlays.borrow_mut().dismiss(window, cx);
-                }
-                self.toggle_overlay(Overlay::Notifications, window, cx)
             }
             Control::UserMenu => {
                 let active = self.overlays.borrow().active();
@@ -629,11 +604,6 @@ impl Shell {
                 self.overlays.borrow_mut().dismiss(window, cx);
                 crate::about::show();
             }
-            Control::MarkAllRead => {
-                for item in &mut self.notification_items {
-                    item.unread = false;
-                }
-            }
             Control::DismissToast(id) => {
                 self.toasts.dismiss(id);
                 if self.save_toast == Some(id) {
@@ -656,7 +626,7 @@ impl Shell {
     }
 
     fn keys(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.overlays.borrow().active() == Some(Overlay::Search) {
+        if self.overlays.borrow().active() == Some(Overlay::GoTo) {
             let count = self.palette_results(&self.input.read(cx).content).len();
             match event.keystroke.key.as_str() {
                 "down" => {
@@ -725,7 +695,7 @@ impl Render for Shell {
         let active_overlay = self.overlays.borrow().active();
         let content = self.page(current).view().into_any_element();
         let dialog_content = match active_overlay {
-            Some(Overlay::Search) => Some(self.command_palette(window, cx)),
+            Some(Overlay::GoTo) => Some(self.command_palette(window, cx)),
             Some(Overlay::Dialog(route)) => self.page(route).overlay(window, cx),
             _ => None,
         };
@@ -800,9 +770,9 @@ impl Render for Shell {
             .on_action(
                 cx.listener(|this, _: &GoForward, w, cx| this.dispatch(Control::Forward, w, cx)),
             )
-            .on_action(cx.listener(|this, _: &Search, w, cx| {
+            .on_action(cx.listener(|this, _: &GoTo, w, cx| {
                 cx.stop_propagation();
-                this.dispatch(Control::Search, w, cx);
+                this.dispatch(Control::GoTo, w, cx);
             }))
             .on_action(
                 cx.listener(|this, _: &ToggleSidebar, w, cx| {
@@ -824,7 +794,7 @@ impl Render for Shell {
                 window,
                 cx,
             ))
-            // Header paints after panels so the current space covers the top border.
+            // Header paints after panels so the current Page tab covers the top border.
             .child(
                 div()
                     .absolute()
@@ -850,9 +820,6 @@ impl Render for Shell {
                         ),
                 )
             })
-            .when(active_overlay == Some(Overlay::Notifications), |s| {
-                s.child(self.notification_panel(cx))
-            })
             .when_some(dialog_content, |s, content| {
                 s.child(
                     div()
@@ -865,7 +832,7 @@ impl Render for Shell {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .when(active_overlay == Some(Overlay::Search), |s| {
+                        .when(active_overlay == Some(Overlay::GoTo), |s| {
                             s.items_start().pt(px(PALETTE_TOP))
                         })
                         .on_mouse_move(|_, _, cx| cx.stop_propagation())
@@ -878,7 +845,7 @@ impl Render for Shell {
                         }))
                         .child(
                             div()
-                                .when(active_overlay == Some(Overlay::Search), |s| {
+                                .when(active_overlay == Some(Overlay::GoTo), |s| {
                                     s.opacity(0.65 + 0.35 * palette_progress)
                                         .mt(px(-6. * (1. - palette_progress)))
                                 })
@@ -908,7 +875,7 @@ impl Render for Shell {
     }
 }
 pub fn bind_keys(cx: &mut App) {
-    cx.on_action(|_: &Search, cx| {
+    cx.on_action(|_: &GoTo, cx| {
         let handle = cx.active_window().or_else(|| {
             let windows = cx.windows();
             (windows.len() == 1).then(|| windows[0])
@@ -917,7 +884,7 @@ pub fn bind_keys(cx: &mut App) {
             cx.defer(move |cx| {
                 let _ = handle.update(cx, |_, window, cx| {
                     if let Some(shell) = window.root::<Shell>().flatten() {
-                        shell.update(cx, |shell, cx| shell.dispatch(Control::Search, window, cx));
+                        shell.update(cx, |shell, cx| shell.dispatch(Control::GoTo, window, cx));
                     }
                 });
             });
@@ -933,7 +900,7 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new(shortcuts::BACK.keystroke, GoBack, Some("Control")),
         KeyBinding::new(shortcuts::FORWARD.keystroke, GoForward, Some("Control")),
-        KeyBinding::new(shortcuts::SEARCH.keystroke, Search, None),
+        KeyBinding::new(shortcuts::GO_TO.keystroke, GoTo, None),
         KeyBinding::new(shortcuts::SETTINGS.keystroke, OpenSettings, Some("Control")),
         KeyBinding::new(
             shortcuts::TOGGLE_SIDEBAR.keystroke,

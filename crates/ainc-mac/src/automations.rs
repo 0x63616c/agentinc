@@ -1,4 +1,4 @@
-//! The Automations page: the saved rules that start agent work, and the form that edits them.
+//! The Automations page: the saved Automations that start agent work, and the form that edits them.
 use crate::{
     action::{Pending, Run},
     daemon::Daemon,
@@ -10,12 +10,12 @@ use crate::{
     ui::*,
 };
 use ainc_client::types::{
-    AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, TicketProposal,
+    Assignee, AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, TicketProposal,
 };
 use gpui::{prelude::*, *};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-/// The one dialog this page can have open: the rule editor.
+/// The one dialog this page can have open: the Automation editor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Dialog {
     Edit,
@@ -37,6 +37,11 @@ pub struct AutomationsPage {
     page_focus: FocusHandle,
     restore_focus: bool,
     agent: Option<String>,
+    /// The registered agents the editor offers, read with the snapshot.
+    agents: Vec<Assignee>,
+    /// Validation of the editor's fields, shown under them.
+    minutes_error: Option<&'static str>,
+    agent_error: Option<&'static str>,
     name: Entity<TextInput>,
     prompt: Entity<TextInput>,
     minutes: Entity<TextInput>,
@@ -49,12 +54,12 @@ impl HoverHost for AutomationsPage {
         &mut self.hover
     }
 }
-fn rule_state(rule: &Automation) -> (&'static str, Tone) {
-    if rule.error.is_some() {
+fn automation_state(automation: &Automation) -> (&'static str, Tone) {
+    if automation.error.is_some() {
         ("Needs attention", Tone::Danger)
-    } else if rule.revision != rule.applied_revision {
+    } else if automation.revision != automation.applied_revision {
         ("Pending", Tone::Warning)
-    } else if rule.paused {
+    } else if automation.paused {
         ("Paused", Tone::Neutral)
     } else {
         ("Active", Tone::Success)
@@ -73,21 +78,21 @@ impl AutomationsPage {
         overlays: Rc<RefCell<OverlayHost<Overlay>>>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let name =
-            cx.new(|cx| TextInput::field("Rule name", false, cx).identified("automations.name"));
+        let name = cx.new(|cx| {
+            TextInput::field("Automation name", false, cx).identified("automations.name")
+        });
         let prompt = cx.new(|cx| {
-            TextInput::field("What should the agent do?", false, cx)
-                .identified("automations.prompt")
+            TextInput::field("Ticket prompt", false, cx).identified("automations.prompt")
         });
         let minutes =
-            cx.new(|cx| TextInput::field("30", false, cx).identified("automations.minutes"));
+            cx.new(|cx| TextInput::field("Minutes", false, cx).identified("automations.minutes"));
         let subscriptions = vec![
             cx.observe(&name, |_, _, cx| cx.notify()),
             cx.observe(&prompt, |_, _, cx| cx.notify()),
             cx.observe(&minutes, |_, _, cx| cx.notify()),
             cx.observe(&sync, |_, _, cx| cx.notify()),
             cx.subscribe(&sync, |this, _, event: &SliceChanged, cx| {
-                if *event == SliceChanged::Automations {
+                if matches!(*event, SliceChanged::Automations | SliceChanged::Tickets) {
                     this.reload();
                     cx.notify();
                 }
@@ -112,6 +117,9 @@ impl AutomationsPage {
             page_focus: cx.focus_handle(),
             restore_focus: false,
             agent: None,
+            agents: vec![],
+            minutes_error: None,
+            agent_error: None,
             name,
             prompt,
             minutes,
@@ -123,6 +131,13 @@ impl AutomationsPage {
     }
     pub(crate) fn reload(&mut self) {
         self.state = self.daemon.automations();
+        self.agents = self
+            .daemon
+            .tickets()
+            .assignees
+            .into_iter()
+            .filter(|a| a.kind == AssigneeKind::Agent)
+            .collect();
     }
     fn command(&mut self, command: AutomationCommand, cx: &mut Context<Self>) {
         let daemon = self.daemon.clone();
@@ -143,20 +158,27 @@ impl AutomationsPage {
             },
         );
     }
-    fn edit(&mut self, rule: Option<Automation>, window: &mut Window, cx: &mut Context<Self>) {
+    fn edit(
+        &mut self,
+        automation: Option<Automation>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.error = None;
-        self.selected = rule.as_ref().map(|r| r.id.clone());
-        self.editing_revision = rule.as_ref().map(|r| r.revision);
-        self.agent = rule.as_ref().map(|r| r.agent_id.clone());
+        self.minutes_error = None;
+        self.agent_error = None;
+        self.selected = automation.as_ref().map(|r| r.id.clone());
+        self.editing_revision = automation.as_ref().map(|r| r.revision);
+        self.agent = automation.as_ref().map(|r| r.agent_id.clone());
         self.name.update(cx, |input, cx| {
-            input.set_text(rule.as_ref().map_or("", |r| r.name.as_str()), cx)
+            input.set_text(automation.as_ref().map_or("", |r| r.name.as_str()), cx)
         });
         self.prompt.update(cx, |input, cx| {
-            input.set_text(rule.as_ref().map_or("", |r| r.prompt.as_str()), cx)
+            input.set_text(automation.as_ref().map_or("", |r| r.prompt.as_str()), cx)
         });
         self.minutes.update(cx, |input, cx| {
             input.set_text(
-                &rule
+                &automation
                     .as_ref()
                     .map_or("30".to_owned(), |r| r.every_minutes.to_string()),
                 cx,
@@ -167,13 +189,19 @@ impl AutomationsPage {
         cx.notify();
     }
     fn save(&mut self, cx: &mut Context<Self>) {
-        let Ok(every_minutes) = self.minutes.read(cx).content.trim().parse::<i64>() else {
-            self.error = Some("Enter an interval in whole minutes.".into());
-            cx.notify();
-            return;
-        };
-        let Some(agent_id) = self.agent.clone() else {
-            self.error = Some("Choose an agent. Register one on the Agents page first.".into());
+        let every_minutes = self.minutes.read(cx).content.trim().parse::<i64>();
+        self.minutes_error = (!every_minutes.as_ref().is_ok_and(|m| *m > 0))
+            .then_some("Enter a whole number of minutes.");
+        self.agent_error = self
+            .agent
+            .is_none()
+            .then_some("Choose an agent. Register one on the Agents page first.");
+        let (Ok(every_minutes), None, None, Some(agent_id)) = (
+            every_minutes,
+            self.minutes_error,
+            self.agent_error,
+            self.agent.clone(),
+        ) else {
             cx.notify();
             return;
         };
@@ -193,13 +221,7 @@ impl AutomationsPage {
     }
     fn dialog(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.overlays.active()?;
-        let agents: Vec<_> = self
-            .daemon
-            .tickets()
-            .assignees
-            .into_iter()
-            .filter(|a| a.kind == AssigneeKind::Agent)
-            .collect();
+        let agents = self.agents.clone();
         let enabled = !self.pending.busy();
         let valid = !self.name.read(cx).content.trim().is_empty()
             && !self.prompt.read(cx).content.trim().is_empty()
@@ -236,6 +258,7 @@ impl AutomationsPage {
                             .label("Repeat every")
                             .selector("Every (minutes)")
                             .suffix("min")
+                            .error(self.minutes_error)
                             .build(window, cx),
                     ),
                 )
@@ -276,26 +299,30 @@ impl AutomationsPage {
                                     cx,
                                 )
                             }),
-                        )),
+                        ))
+                        .when_some(self.agent_error, |s, error| s.child(error_text(error))),
                 )
                 .when_some(self.error.clone(), |s, error| s.child(error_text(error)));
-        let footer = DialogFooter::new(Verb::Save)
-            .label("Save Automation")
-            .ids("automations.cancel", "automations.save")
-            .enabled(valid)
-            .pending(!enabled)
-            .focus(&self.cancel_focus, &self.submit_focus)
-            .build(&self.hover, close, |this, _, cx| this.save(cx), cx);
+        let footer = DialogFooter::new(if self.selected.is_some() {
+            Verb::Save
+        } else {
+            Verb::Create
+        })
+        .ids("automations.cancel", "automations.save")
+        .enabled(valid)
+        .pending(!enabled)
+        .focus(&self.cancel_focus, &self.submit_focus)
+        .build(&self.hover, close, |this, _, cx| this.save(cx), cx);
         Some(dialog_shell(title, body, footer).into_any_element())
     }
 
-    fn detail_header(&self, rule: &Automation, cx: &mut Context<Self>) -> PageHeader {
-        let edit = rule.clone();
-        let pause = rule.clone();
-        let run = rule.clone();
-        let (state, _) = rule_state(rule);
+    fn detail_header(&self, automation: &Automation, cx: &mut Context<Self>) -> PageHeader {
+        let edit = automation.clone();
+        let pause = automation.clone();
+        let run = automation.clone();
+        let (state, _) = automation_state(automation);
         let enabled = !self.pending.busy();
-        PageHeader::new(rule.name.clone())
+        PageHeader::new(automation.name.clone())
             .leading(
                 Button::new("automations.back", "Automations")
                     .ghost()
@@ -312,7 +339,7 @@ impl AutomationsPage {
                     )
                     .ml(px(-CONTROL_INSET_X_SM)),
             )
-            .description(format!("{} · {state}", every(rule.every_minutes)))
+            .description(format!("{} · {state}", every(automation.every_minutes)))
             .actions(
                 row_gap(CONTROL_GAP)
                     .child(
@@ -329,10 +356,10 @@ impl AutomationsPage {
                     .child(
                         Button::new(
                             "automations.pause",
-                            if rule.paused { "Resume" } else { "Pause" },
+                            if automation.paused { "Resume" } else { "Pause" },
                         )
                         .secondary()
-                        .icon(if rule.paused { "play" } else { "pause" })
+                        .icon(if automation.paused { "play" } else { "pause" })
                         .enabled(enabled)
                         .build(
                             &self.hover,
@@ -350,7 +377,7 @@ impl AutomationsPage {
                         ),
                     )
                     .child(
-                        Button::new("automations.run", "Run now")
+                        Button::new("automations.run", "Run Now")
                             .primary()
                             .icon("play")
                             .enabled(enabled)
@@ -371,8 +398,8 @@ impl AutomationsPage {
             )
     }
 
-    fn detail(&self, rule: Automation, cx: &mut Context<Self>) -> Div {
-        let (state, tone) = rule_state(&rule);
+    fn detail(&self, automation: Automation, cx: &mut Context<Self>) -> Div {
+        let (state, tone) = automation_state(&automation);
         column()
             .gap(px(SECTION_GAP))
             .child(
@@ -382,7 +409,7 @@ impl AutomationsPage {
                         column()
                             .gap(px(SPACE_2))
                             .child(eyebrow("Ticket prompt"))
-                            .child(div().text_size(type_size(BODY_SIZE)).child(rule.prompt.clone())),
+                            .child(div().text_size(type_size(BODY_SIZE)).child(automation.prompt.clone())),
                     )
                     .child(divider())
                     .child(
@@ -393,9 +420,9 @@ impl AutomationsPage {
                                 row()
                                     .gap(px(SPACE_3))
                                     .child(status_pill(state, tone))
-                                    .child(caption(every(rule.every_minutes))),
+                                    .child(caption(every(automation.every_minutes))),
                             )
-                            .when_some(rule.error.clone(), |s, error| s.child(error_text(error))),
+                            .when_some(automation.error.clone(), |s, error| s.child(error_text(error))),
                     ),
             )
             .child(
@@ -403,14 +430,14 @@ impl AutomationsPage {
                     .gap(px(SPACE_3))
                     .child(heading("History"))
                     .child(caption(
-                        "Run now deliberately replaces a missed firing; it does not replay all missed work.",
+                        "Run Now creates one Occurrence in place of a missed firing; it does not replay every missed one.",
                     ))
                     .child(
                         card().p(px(SPACE_1)).gap_0().children(
                             self.state
                                 .occurrences
                                 .iter()
-                                .filter(|o| o.automation_id == rule.id)
+                                .filter(|o| o.automation_id == automation.id)
                                 .map(|o| {
                                     let state = state_label(&o.state);
                                     let tone = state_tone(&o.state);
@@ -434,7 +461,7 @@ impl AutomationsPage {
                                                     SharedString::from(format!(
                                                         "automations.ticket.{id}"
                                                     )),
-                                                    format!("Ticket {id}"),
+                                                    crate::tickets::model::ticket_key(id),
                                                 )
                                                 .ghost()
                                                 .small()
@@ -453,7 +480,7 @@ impl AutomationsPage {
                         self.state
                             .history
                             .iter()
-                            .filter(|h| h.automation_id == rule.id)
+                            .filter(|h| h.automation_id == automation.id)
                             .map(|h| {
                                 caption(format!(
                                     "{} · {} {}",
@@ -471,12 +498,12 @@ impl AutomationsPage {
             .gap(px(SPACE_HALF))
             .children(self.state.rules.iter().map(|r| {
                 let id = r.id.clone();
-                let (state, tone) = rule_state(r);
+                let (state, tone) = automation_state(r);
                 ListRow::new(
-                    SharedString::from(format!("automations.rule.{}", r.id)),
+                    SharedString::from(format!("automation.{}", r.id)),
                     r.name.clone(),
                 )
-                .leading(icon("refresh", ICON_SIZE))
+                .leading(icon(Route::Automations.icon(), ICON_SIZE))
                 .subtitle(every(r.every_minutes))
                 .trailing(
                     row()
@@ -532,9 +559,9 @@ impl Render for AutomationsPage {
             sync.fetching(),
         );
         let header = match &selected {
-            Some(rule) => self.detail_header(rule, cx),
+            Some(automation) => self.detail_header(automation, cx),
             None => PageHeader::new(self.title())
-                .description("Recurring rules that create and assign Tickets on a schedule.")
+                .description("Automations that create and assign Tickets on a schedule.")
                 .actions(
                     row_gap(CONTROL_GAP)
                         .child(
@@ -572,14 +599,14 @@ impl Render for AutomationsPage {
                 content.child(LoadingFrame::new(loading_started, window).inline("Reconnecting…"));
         }
         if !loaded && load_error.is_none() {
-            content = content.child(skeleton_rows("automations.loading", 3));
+            content = content.child(skeleton_rows("automations.loading", SKELETON_ROWS));
         }
-        if let Some(rule) = selected {
-            content = content.child(self.detail(rule, cx));
+        if let Some(automation) = selected {
+            content = content.child(self.detail(automation, cx));
         } else {
             if loaded && self.state.rules.is_empty() && load_error.is_none() {
                 content = content.child(
-                    EmptyState::new("repeat", "No Automations yet")
+                    EmptyState::new("repeat", "No Automations yet.")
                         .description(
                             "An Automation creates and assigns a Ticket to an agent on a schedule.",
                         )

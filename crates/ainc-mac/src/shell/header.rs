@@ -1,9 +1,9 @@
-//! The shell header: the current space label and its contour, with the header controls.
+//! The shell header: the current Page tab and its contour, with the header controls.
 use super::*;
 
 // One continuous contour avoids vertical border tails at the inverse shoulders.
-// The current space label is 142px wide; its shoulders meet the panel border.
-pub fn current_space_contour() -> impl IntoElement {
+// The current Page tab is 142px wide; its shoulders meet the panel border.
+pub fn current_page_contour() -> impl IntoElement {
     canvas(
         |_, _, _| (),
         move |bounds, _, window, _| {
@@ -133,11 +133,6 @@ impl Shell {
 
     pub(super) fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let route = self.ui_state.current();
-        let unread = self
-            .notification_items
-            .iter()
-            .filter(|item| item.unread)
-            .count();
         row()
             .h(px(TITLEBAR_HEIGHT))
             .flex_shrink_0()
@@ -196,7 +191,7 @@ impl Shell {
                         .w(px(142.))
                         .h(px(40.))
                         .rounded_t(px(10.))
-                        .child(current_space_contour())
+                        .child(current_page_contour())
                         .child(
                             // The tab's visible face is its top 38px; centre the label in it.
                             row()
@@ -213,32 +208,5 @@ impl Shell {
                 ),
             )
             .child(self.titlebar_space("titlebar-center-space", cx).flex_1())
-            .child(
-                div()
-                    .relative()
-                    .flex_shrink_0()
-                    .ml(px(CONTROL_GAP))
-                    .mb(px(9.))
-                    .child(self.icon_button(
-                        "notifications",
-                        "Notifications",
-                        "bell",
-                        Control::Notifications,
-                        cx,
-                    ))
-                    .when(unread > 0, |s| {
-                        s.child(
-                            div()
-                                .absolute()
-                                .top(px(4.))
-                                .right(px(4.))
-                                .size(px(7.))
-                                .rounded_full()
-                                .border_1()
-                                .border_color(rgb(SHELL))
-                                .bg(rgb(ACCENT)),
-                        )
-                    }),
-            )
     }
 }

@@ -127,7 +127,7 @@ pub fn status(status: Status<'_>) {
 
 #[cfg(target_os = "macos")]
 pub fn progress(received: u64, total: u64) {
-    let message = cstring("Downloading update...");
+    let message = cstring("Downloading update…");
     unsafe { ainc_update_progress(message.as_ptr(), received, total) }
 }
 

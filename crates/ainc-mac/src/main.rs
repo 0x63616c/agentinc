@@ -134,7 +134,7 @@ fn main() {
                         MenuItem::action("About AgentInc", about::About),
                         MenuItem::separator(),
                         MenuItem::action("Check for Updates…", updates::CheckForUpdates),
-                        MenuItem::action("Changelog", updates::ShowChangelog),
+                        MenuItem::action("Release Notes", updates::ShowChangelog),
                         MenuItem::separator(),
                         MenuItem::os_submenu("Services", SystemMenuType::Services),
                         MenuItem::separator(),
@@ -144,7 +144,7 @@ fn main() {
                 Menu {
                     disabled: false,
                     name: "File".into(),
-                    items: vec![MenuItem::action("Search…", Search)],
+                    items: vec![MenuItem::action("Go to…", GoTo)],
                 },
                 Menu {
                     disabled: false,

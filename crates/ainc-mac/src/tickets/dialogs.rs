@@ -42,7 +42,7 @@ impl TicketsPage {
                 format!("Relate {}", ticket_key(id)),
                 self.link_form(id, window, cx).into_any_element(),
                 self.link_target.is_some(),
-                DialogFooter::new(Verb::Add).label("Add relationship"),
+                DialogFooter::new(Verb::Add).label("Add Relationship"),
             ),
             Dialog::Delete(id) => {
                 let ticket = self.ticket(id)?;
@@ -316,7 +316,7 @@ impl TicketsPage {
                 row()
                     .h(px(LINK_LIST_HEIGHT))
                     .justify_center()
-                    .child(hint("No other Tickets match."))
+                    .child(hint("No matching Tickets."))
                     .into_any_element()
             } else {
                 card()

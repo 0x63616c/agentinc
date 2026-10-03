@@ -1,4 +1,4 @@
-//! The sidebar: Route navigation items, the Search shortcut and the profile row.
+//! The sidebar: Route navigation items, the Go to… shortcut and the profile row.
 use super::*;
 
 impl Shell {
@@ -65,8 +65,8 @@ impl Shell {
             .child(
                 self.button(
                     "shell.search",
-                    shortcuts::SEARCH.labelled("Search"),
-                    Control::Search,
+                    shortcuts::GO_TO.labelled("Go to…"),
+                    Control::GoTo,
                     cx,
                 )
                 .debug_selector(|| "shell.search".into())
@@ -89,8 +89,7 @@ impl Shell {
                 .child(icon("search", ICON_SIZE_SM))
                 .child(div().flex_1().min_w_0().truncate().child("Go to…"))
                 .child(
-                    kbd(shortcuts::SEARCH.glyph)
-                        .debug_selector(|| "sidebar-search-shortcut".into()),
+                    kbd(shortcuts::GO_TO.glyph).debug_selector(|| "sidebar-search-shortcut".into()),
                 ),
             )
             .child(nav)
@@ -101,7 +100,7 @@ impl Shell {
                     .relative()
                     .w_full()
                     .child(
-                        self.button("profile", "Account menu", Control::UserMenu, cx)
+                        self.button("profile", "Profile menu", Control::UserMenu, cx)
                             .h(px(44.))
                             .flex_shrink_0()
                             .w_full()
@@ -190,7 +189,7 @@ mod tests {
         let shortcut_center = cx.debug_bounds("sidebar-search-shortcut").unwrap().center();
         cx.simulate_click(shortcut_center, Modifiers::default());
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::GoTo));
         });
         cx.simulate_keystrokes("escape");
         shell.read_with(cx, |shell, _| {
@@ -198,7 +197,7 @@ mod tests {
         });
         cx.simulate_keystrokes("cmd-k");
         shell.read_with(cx, |shell, _| {
-            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
+            assert_eq!(shell.overlays.borrow().active(), Some(Overlay::GoTo));
         });
     }
 

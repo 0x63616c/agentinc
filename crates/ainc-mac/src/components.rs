@@ -62,12 +62,14 @@ impl ComponentsPage {
         let text =
             cx.new(|cx| TextInput::field("Ticket title", false, cx).identified("components.text"));
         let error_text = cx.new(|cx| {
-            let mut input = TextInput::field("Rule name", false, cx).identified("components.error");
+            let mut input =
+                TextInput::field("Automation name", false, cx).identified("components.error");
             input.content = "Every 0 minutes".into();
             input
         });
-        let search =
-            cx.new(|cx| TextInput::field("Search…", false, cx).identified("components.search"));
+        let search = cx.new(|cx| {
+            TextInput::field("Search Tickets", false, cx).identified("components.search")
+        });
         let area = cx.new(|cx| {
             let mut input = TextInput::composer(cx).identified("components.area");
             input.content = "Review the open Tickets, then plan the next agent run.".into();
@@ -149,7 +151,7 @@ impl ComponentsPage {
                     .child(Button::new("components.disabled-secondary", "Secondary").secondary().enabled(false).build(&self.hover, noop, cx))
                     .child(Button::new("components.selected-secondary", "Selected").secondary().selected(true).build(&self.hover, noop, cx))
                     .child(Button::new("components.selected-ghost", "Selected ghost").ghost().selected(true).build(&self.hover, noop, cx))
-                    .child(Button::new("components.trailing", "Go to…").secondary().icon("search").trailing(kbd(shortcuts::SEARCH.glyph)).build(&self.hover, noop, cx)),
+                    .child(Button::new("components.trailing", "Go to…").secondary().icon("search").trailing(kbd(shortcuts::GO_TO.glyph)).build(&self.hover, noop, cx)),
             ))
     }
 
@@ -377,7 +379,7 @@ impl ComponentsPage {
                 "Initials stand in for a photo. Shortcut hints sit inside buttons, rows and footers.",
                 row().gap(px(SPACE_6)).items_center()
                     .child(row().gap(px(SPACE_2)).child(avatar("Calum Webb", None, AVATAR_SIZE)).child(avatar("Evee", None, AVATAR_SIZE_LG)).child(agent_avatar("Scout", AVATAR_SIZE)))
-                    .child(row().gap(px(SPACE_2)).child(kbd(shortcuts::SEARCH.glyph)).child(kbd(shortcuts::SEND.glyph)).child(kbd(shortcuts::DISMISS.glyph)))
+                    .child(row().gap(px(SPACE_2)).child(kbd(shortcuts::GO_TO.glyph)).child(kbd(shortcuts::SEND.glyph)).child(kbd(shortcuts::DISMISS.glyph)))
                     .child(kbd_hint("↑ ↓", "Navigate")),
             ))
             .child(specimen(
@@ -421,8 +423,8 @@ impl ComponentsPage {
                 "Empty and loading",
                 "Empty states offer the one next action. Skeletons hold the layout while data loads.",
                 column().gap(px(SPACE_4))
-                    .child(EmptyState::new("tasks", "No Tickets yet").description("Create a Ticket and assign it to an agent to start work.").action(Button::new("components.empty-action", "New Ticket").primary().icon("plus").build(&self.hover, |_, _, _| {}, cx)).build())
-                    .child(skeleton_rows("components.skeleton", 3))
+                    .child(EmptyState::new("tickets", "No Tickets yet.").description("Create a Ticket and assign it to an agent to start work.").action(Button::new("components.empty-action", "New Ticket").primary().icon("plus").build(&self.hover, |_, _, _| {}, cx)).build())
+                    .child(skeleton_rows("components.skeleton", SKELETON_ROWS))
                     .child(row().gap(px(SPACE_6)).child(LoadingFrame::new(self.started, window).inline("Evee is thinking…")))
                     .child(LoadingFrame::new(self.started, window).page("Loading Tickets…")),
             ))
@@ -436,8 +438,8 @@ impl ComponentsPage {
                 "Dialog",
                 "Centered on a scrim with a title, body and right-aligned actions.",
                 row().justify_center().child(dialog_shell(
-                    copy::confirm_delete("Plan the week", "This Ticket and its Comments").0,
-                    caption(copy::confirm_delete("Plan the week", "This Ticket and its Comments").1),
+                    copy::confirm_delete("Plan the week", "This Ticket, its Comments and its relationships").0,
+                    caption(copy::confirm_delete("Plan the week", "This Ticket, its Comments and its relationships").1),
                     row_gap(CONTROL_GAP).justify_end()
                         .child(Button::new("components.dialog-cancel", "Cancel").secondary().build(&self.hover, noop, cx))
                         .child(Button::new("components.dialog-confirm", "Delete").destructive().build(&self.hover, noop, cx)),
@@ -448,7 +450,7 @@ impl ComponentsPage {
                 "A full-height panel from the right edge for editing without leaving the page.",
                 div().relative().h(px(300.)).w_full().child(
                     div().absolute().top_0().right_0().bottom_0().child(sheet_shell(
-                        "Edit rule",
+                        "Edit Automation",
                         column().gap(px(SPACE_3)).child(caption("Sheets keep the page visible beside them.")),
                         row_gap(CONTROL_GAP).justify_end()
                             .child(Button::new("components.sheet-cancel", "Cancel").secondary().build(&self.hover, noop, cx))
@@ -482,7 +484,8 @@ impl ComponentsPage {
                     .child(row().child(Button::new("components.toast", "Show a toast").secondary().build(
                         &self.hover,
                         |this, _, cx| {
-                            this.toasts.push("Saved", Some("Your changes are on the daemon.".into()), Tone::Info);
+                            let id = this.toasts.push("Saved", Some("Your changes are on the daemon.".into()), Tone::Info);
+                            Toasts::dismiss_later(id, |this: &mut Self| &mut this.toasts, cx);
                             cx.notify();
                         },
                         cx,

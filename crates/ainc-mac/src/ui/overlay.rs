@@ -247,7 +247,7 @@ pub fn sheet_shell(
         .child(footer)
 }
 
-/// A floating surface for menus, user and notification popovers.
+/// A floating surface for menus and the user popover.
 pub fn popover_shell(width: f32) -> Stateful<Div> {
     overlay_surface("popover")
         .w(px(width))

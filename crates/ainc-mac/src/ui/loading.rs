@@ -128,6 +128,9 @@ pub fn skeleton(id: impl Into<ElementId>, width: Option<f32>, height: f32) -> im
         )
 }
 
+/// How many rows every loading list shows, so pages load alike.
+pub const SKELETON_ROWS: usize = 4;
+
 /// A stack of skeleton rows standing in for a list or table.
 pub fn skeleton_rows(id: &'static str, count: usize) -> Div {
     column()
