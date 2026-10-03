@@ -317,7 +317,14 @@ jobs:
             case "$archive" in *-unsigned.tar.gz) continue;; esac
             [ ! -f "$archive" ] || prior+=(--prior "$archive")
           done
-          python3 scripts/release/upgrade-gate.py \
+          # Reuse the native job's toolchain, protoc and build cache for the xtask build.
+          export CARGO_HOME="$RUNNER_WORKSPACE/.cargo"
+          export RUSTUP_HOME="$RUNNER_WORKSPACE/.rustup"
+          export CARGO_TARGET_DIR="$RUNNER_WORKSPACE/.cargo-target"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          export PROTOC="$RUNNER_WORKSPACE/release-tools/protoc/bin/protoc"
+          export CARGO_INCREMENTAL=0
+          cargo run --locked -p ainc-xtask -- release-upgrade-gate \
             --candidate .local/upgrade-signed/upgrade-candidate.tar.gz \
             --newer .local/upgrade-signed/upgrade-newer.tar.gz \
             --key .local/upgrade-input/test-key.pem \

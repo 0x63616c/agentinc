@@ -14,15 +14,18 @@ use std::{
 
 pub mod ci_gate;
 pub mod distribute;
+pub mod file_server;
 pub mod http;
 pub mod measure_build;
 pub mod prepare;
 pub mod proc;
 pub mod runtime_smoke;
+pub mod terminal_smoke;
+pub mod upgrade_gate;
 pub mod version_changed;
 
 /// The subcommands this module serves, for the xtask usage string.
-pub const NAMES: &str = "release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-version-changed";
+pub const NAMES: &str = "release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-terminal-smoke|release-upgrade-gate|release-version-changed";
 
 pub fn handles(operation: &str) -> bool {
     NAMES.split('|').any(|name| name == operation)
@@ -36,6 +39,8 @@ pub fn run(operation: &str, args: Vec<String>, root: &Path) -> Result<()> {
         "release-distribute" => distribute::cli(&args),
         "release-measure-build" => measure_build::cli(&args),
         "release-runtime-smoke" => runtime_smoke::cli(&args),
+        "release-terminal-smoke" => terminal_smoke::cli(&args),
+        "release-upgrade-gate" => upgrade_gate::cli(&args),
         "release-version-changed" => version_changed::cli(&args),
         other => Err(anyhow!("unknown release command {other}")),
     };

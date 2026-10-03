@@ -15,7 +15,7 @@ requires before staging it. The test-only feed override and local HTTP client
 are compiled out of the shipping app and helper. Signature, archive hash,
 Developer ID, and Gatekeeper checks remain mandatory in both builds.
 
-`scripts/release/upgrade-gate.py` installs the signed test candidate in an
+`cargo xtask release-upgrade-gate` installs the signed test candidate in an
 isolated profile and serves the signed newer build from a local feed. It starts
 the actual app twice. The manual pass triggers Check for Updates, displays the
 AppKit offer and clicks its Install Update button. The automatic pass checks
