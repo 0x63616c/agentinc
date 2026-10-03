@@ -314,11 +314,14 @@ impl Shell {
             picker_close_focus: cx.focus_handle(),
             palette_scroll: ScrollHandle::new(),
             _input_subscription: subscription,
-            _activation_subscription: cx.observe_window_activation(window, |this, _, cx| {
+            _activation_subscription: cx.observe_window_activation(window, |this, window, cx| {
                 // Command can be released in another app, with no modifier event
-                // delivered here. On either focus transition discard the hint;
-                // only fresh input may show it again, not a cached modifier flag.
-                this.set_command_held(false, cx);
+                // delivered here. Clear on deactivation only: activation is
+                // queued on macOS and may arrive after fresh modifier input.
+                // Never restore hints from the cached window modifier flags.
+                if !window.is_window_active() {
+                    this.set_command_held(false, cx);
+                }
             }),
             command_held: false,
             palette_transition: None,
@@ -1590,6 +1593,57 @@ mod interaction_tests {
         cx.simulate_modifiers_change(command);
         assert_sidebar_hints(cx, true);
         cx.simulate_modifiers_change(Modifiers::default());
+        assert_sidebar_hints(cx, false);
+    }
+
+    #[gpui::test]
+    fn sidebar_hints_preserve_fresh_command_input_before_queued_activation(
+        cx: &mut TestAppContext,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        let command = Modifiers {
+            platform: true,
+            ..Modifiers::default()
+        };
+        for native_input in [false, true] {
+            cx.update(|window, _| {
+                assert!(!window.is_window_active());
+                window.activate_window();
+            });
+            if native_input {
+                // Ghostty's C callback updates Shell synchronously, without
+                // delivering a GPUI event or draining the foreground executor.
+                shell.update(cx, |shell, cx| shell.set_command_held(true, cx));
+            } else {
+                // simulate_modifiers_change drains the executor; dispatch
+                // directly so the activation observer is still pending.
+                cx.update(|window, cx| {
+                    window.dispatch_event(
+                        gpui::PlatformInput::ModifiersChanged(gpui::ModifiersChangedEvent {
+                            modifiers: command,
+                            capslock: gpui::Capslock { on: false },
+                        }),
+                        cx,
+                    );
+                });
+            }
+            cx.update(|window, _| assert!(!window.is_window_active()));
+            shell.read_with(cx, |shell, _| assert!(shell.command_held));
+            cx.run_until_parked();
+            cx.update(|window, _| assert!(window.is_window_active()));
+            shell.read_with(cx, |shell, _| assert!(shell.command_held));
+            assert_sidebar_hints(cx, true);
+
+            // A subsequently delivered deactivation still clears the state;
+            // the next activation alone must not resurrect it.
+            cx.deactivate_window();
+            assert_sidebar_hints(cx, false);
+        }
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
         assert_sidebar_hints(cx, false);
     }
 
