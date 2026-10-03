@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 use utoipa::ToSchema;
 
-use crate::receipts::{self, OperationId, Scope};
+use crate::{
+    receipts::{self, OperationId, Scope},
+    tickets::{self, Actor, TicketCommand, TicketCommandRequest, TicketStatus},
+};
 
 #[derive(Clone)]
 pub struct Product {
@@ -96,13 +99,19 @@ pub enum Command {
     Retry {
         id: i64,
     },
+    /// Phase-2 name for the Ticket command `create`.
+    #[deprecated(note = "Use the Ticket command `create` at /v1/tickets/commands.")]
     CreateTodo {
         title: String,
     },
+    /// Phase-2 name for the Ticket command `set_status` on a human-owned Ticket.
+    #[deprecated(note = "Use the Ticket command `set_status` at /v1/tickets/commands.")]
     CompleteTodo {
         id: i64,
         completed: bool,
     },
+    /// Phase-2 name for the Ticket command `delete`.
+    #[deprecated(note = "Use the Ticket command `delete` at /v1/tickets/commands.")]
     DeleteTodo {
         id: i64,
     },
@@ -246,11 +255,27 @@ pub async fn execute_in(
     request: CommandRequest,
 ) -> Result<Acknowledgement, ApiError> {
     let operation_id = OperationId::parse(&request.operation_id)?;
+    let mut tx = pool.begin().await?;
+    if let Some(command) = todo_as_ticket(&mut tx, workspace, &request.command).await? {
+        let receipt = tickets::execute_in(
+            &mut tx,
+            &Actor::owner_in(workspace.to_owned()),
+            TicketCommandRequest {
+                operation_id: request.operation_id,
+                command,
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        return Ok(Acknowledgement {
+            operation_id: receipt.operation_id,
+            result_id: receipt.result_id,
+        });
+    }
     // Product IDs are one space across workspaces: reuse elsewhere conflicts.
     let payload = serde_json::json!({"workspace": workspace, "command": request.command});
     let CommandRequest { command, .. } = request;
     let workspace = workspace.to_string();
-    let mut tx = pool.begin().await?;
     let receipt = receipts::execute(&mut tx, Scope::Product, operation_id, &payload, |tx| {
         Box::pin(async move {
             let workspace = workspace.as_str();
@@ -348,34 +373,9 @@ pub async fn execute_in(
                     )?;
                     Some(id)
                 }
-                Command::CreateTodo { title } => Some(
-                    sqlx::query_scalar("INSERT INTO tickets(workspace_id,title) VALUES ($1,$2) RETURNING id")
-                        .bind(workspace).bind(title.trim())
-                        .fetch_one(&mut **tx)
-                        .await?,
-                ),
-                Command::CompleteTodo { id, completed } => {
-                    changed(
-                        sqlx::query("UPDATE tickets SET status=CASE WHEN $2 THEN 'done' ELSE 'to_do' END,revision=revision+1 WHERE id=$1 AND workspace_id=$3 AND assignee_kind='human'")
-                            .bind(id)
-                            .bind(completed)
-                            .bind(workspace)
-                            .execute(&mut **tx)
-                            .await?
-                            .rows_affected(),
-                    )?;
-                    Some(id)
-                }
-                Command::DeleteTodo { id } => {
-                    changed(
-                        sqlx::query("DELETE FROM tickets WHERE id=$1 AND workspace_id=$2")
-                            .bind(id)
-                            .bind(workspace)
-                            .execute(&mut **tx)
-                            .await?
-                            .rows_affected(),
-                    )?;
-                    Some(id)
+                #[allow(deprecated)]
+                Command::CreateTodo { .. } | Command::CompleteTodo { .. } | Command::DeleteTodo { .. } => {
+                    unreachable!("Todo commands take the Ticket path")
                 }
                 Command::SelectModel { model } => {
                     sqlx::query("INSERT INTO assistant_settings(workspace_id,key,value) VALUES ($1,'model',$2) ON CONFLICT(workspace_id,key) DO UPDATE SET value=excluded.value").bind(workspace).bind(model).execute(&mut **tx).await?;
@@ -394,6 +394,56 @@ pub async fn execute_in(
         operation_id: receipt.operation_id.to_string(),
         result_id: receipt.result,
     })
+}
+/// The phase-2 Todo commands are Ticket commands for older clients, and take
+/// the Ticket path: board lock, receipt, history and column placement. `None`
+/// for every other command.
+#[allow(deprecated)]
+async fn todo_as_ticket(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workspace: &str,
+    command: &Command,
+) -> Result<Option<TicketCommand>, ApiError> {
+    Ok(Some(match command {
+        Command::CreateTodo { title } => TicketCommand::Create {
+            title: title.clone(),
+        },
+        Command::CompleteTodo { id, completed } => {
+            // Legacy completion only touches human-owned Tickets, never an agent's work.
+            let revision = todo_revision(tx, workspace, *id, true).await?;
+            TicketCommand::SetStatus {
+                id: *id,
+                revision,
+                status: if *completed {
+                    TicketStatus::Done
+                } else {
+                    TicketStatus::ToDo
+                },
+            }
+        }
+        Command::DeleteTodo { id } => TicketCommand::Delete {
+            id: *id,
+            revision: todo_revision(tx, workspace, *id, false).await?,
+        },
+        _ => return Ok(None),
+    }))
+}
+/// The Ticket's current revision, read under the board lock so the translated
+/// command's revision check cannot race another writer.
+async fn todo_revision(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workspace: &str,
+    id: i64,
+    human_only: bool,
+) -> Result<i64, ApiError> {
+    tickets::lock_board(tx, workspace).await?;
+    sqlx::query_scalar("SELECT revision FROM tickets WHERE id=$1 AND workspace_id=$2 AND (NOT $3 OR assignee_kind='human')")
+        .bind(id)
+        .bind(workspace)
+        .bind(human_only)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or_else(ApiError::conflict)
 }
 fn changed(rows: u64) -> Result<(), ApiError> {
     if rows == 0 {

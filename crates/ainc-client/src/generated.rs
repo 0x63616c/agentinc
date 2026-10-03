@@ -731,6 +731,8 @@ pub mod types {
     ///      }
     ///    },
     ///    {
+    ///      "description": "Phase-2 name for the Ticket command `create`.",
+    ///      "deprecated": true,
     ///      "type": "object",
     ///      "required": [
     ///        "kind",
@@ -749,6 +751,8 @@ pub mod types {
     ///      }
     ///    },
     ///    {
+    ///      "description": "Phase-2 name for the Ticket command `set_status` on a human-owned Ticket.",
+    ///      "deprecated": true,
     ///      "type": "object",
     ///      "required": [
     ///        "completed",
@@ -772,6 +776,8 @@ pub mod types {
     ///      }
     ///    },
     ///    {
+    ///      "description": "Phase-2 name for the Ticket command `delete`.",
+    ///      "deprecated": true,
     ///      "type": "object",
     ///      "required": [
     ///        "id",
@@ -833,10 +839,13 @@ pub mod types {
         },
         #[serde(rename = "retry")]
         Retry { id: i64 },
+        ///Phase-2 name for the Ticket command `create`.
         #[serde(rename = "create_todo")]
         CreateTodo { title: ::std::string::String },
+        ///Phase-2 name for the Ticket command `set_status` on a human-owned Ticket.
         #[serde(rename = "complete_todo")]
         CompleteTodo { completed: bool, id: i64 },
+        ///Phase-2 name for the Ticket command `delete`.
         #[serde(rename = "delete_todo")]
         DeleteTodo { id: i64 },
         #[serde(rename = "select_model")]
