@@ -1,6 +1,6 @@
 //! App-owned update state. Native AppKit windows remain available when the backend is down.
 use crate::action::{Pending, Run};
-use crate::native_update::{self, Status};
+use crate::native_update::{self, NativeAction, Status};
 use crate::ui::*;
 use ainc_release::{
     Manifest, SignedManifest,
@@ -19,47 +19,115 @@ use std::{
 
 actions!(updates, [CheckForUpdates, ShowChangelog]);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Retry {
     Check,
     Download { install: bool },
     Install,
 }
 
-fn apply_choice(
-    preferences: &mut Preferences,
-    action: i32,
-    automatic: bool,
-    version: Option<&str>,
-    now: u64,
-) {
-    preferences.automatic_download = automatic;
-    match action {
-        1 => preferences.skipped_version = version.map(str::to_owned),
-        2 => preferences.remind_after = now + 86400,
-        _ => {}
+/// Something that happened to the update flow.
+#[derive(Debug)]
+enum Event {
+    /// The user acted in a native update window.
+    Native {
+        action: NativeAction,
+        automatic: bool,
+        /// The version on offer, if any.
+        version: Option<String>,
+        now: u64,
+    },
+}
+
+/// What the view must do after [`UpdateState::on`], in order.
+#[derive(Debug, PartialEq, Eq)]
+enum Effect {
+    Check,
+    Download,
+    Install,
+    CancelDownload,
+    Save,
+}
+
+/// The decisions of the update flow, free of windows and I/O.
+struct UpdateState {
+    preferences: Preferences,
+    ready: bool,
+    visible: bool,
+    install_after_download: bool,
+    failure: Option<Retry>,
+}
+impl UpdateState {
+    fn on(&mut self, event: Event) -> Vec<Effect> {
+        let Event::Native {
+            action,
+            automatic,
+            version,
+            now,
+        } = event;
+        match action {
+            NativeAction::Retry => match self.failure.take() {
+                Some(Retry::Check) => vec![Effect::Check],
+                Some(Retry::Download { install }) => {
+                    self.install_after_download = install;
+                    vec![Effect::Download]
+                }
+                Some(Retry::Install) => vec![Effect::Install],
+                None => vec![],
+            },
+            NativeAction::Dismiss => {
+                self.visible = false;
+                vec![]
+            }
+            NativeAction::CancelDownload => {
+                self.visible = false;
+                vec![Effect::CancelDownload]
+            }
+            NativeAction::Skip
+            | NativeAction::Later
+            | NativeAction::Install
+            | NativeAction::AutomaticChanged => {
+                self.preferences.automatic_download = automatic;
+                let mut effects = vec![];
+                match action {
+                    NativeAction::Skip => {
+                        self.preferences.skipped_version = version;
+                        self.visible = false;
+                    }
+                    NativeAction::Later => {
+                        self.preferences.remind_after = now + 86400;
+                        self.visible = false;
+                    }
+                    NativeAction::Install if self.ready => effects.push(Effect::Install),
+                    NativeAction::Install => {
+                        self.install_after_download = true;
+                        effects.push(Effect::Download);
+                    }
+                    _ => {}
+                }
+                effects.push(Effect::Save);
+                effects
+            }
+        }
     }
 }
+
 /// Runs before the installer is spawned; an Err postpones the install.
 type BeforeInstall = Rc<dyn Fn(&mut App) -> anyhow::Result<()>>;
 #[derive(Clone)]
 pub struct Updates(pub Entity<UpdateView>);
 impl Global for Updates {}
 pub struct UpdateView {
-    preferences: Preferences,
+    state: UpdateState,
     directory: PathBuf,
     message: String,
     release: Option<(SignedManifest, Manifest)>,
     busy: Pending,
-    ready: bool,
     available: bool,
     progress: Arc<AtomicU64>,
     cancel: Option<tokio::sync::watch::Sender<bool>>,
     downloading: bool,
-    install_after_download: bool,
-    visible: bool,
     changelog: bool,
-    failure: Option<Retry>,
     before_install: Option<BeforeInstall>,
 }
 impl UpdateView {
@@ -84,7 +152,7 @@ impl UpdateView {
                     .await;
                 if this
                     .update(cx, |this, cx| {
-                        if this.preferences.due(updater::now()) && !this.busy.busy() {
+                        if this.state.preferences.due(updater::now()) && !this.busy.busy() {
                             this.check(false, cx);
                         }
                     })
@@ -134,7 +202,7 @@ impl UpdateView {
                     {
                         this.release = Some(release);
                         this.available = true;
-                        this.ready = true;
+                        this.state.ready = true;
                         this.message = "Update verified and ready to install".into();
                         this.present();
                     }
@@ -142,20 +210,22 @@ impl UpdateView {
             );
         }
         Self {
-            preferences,
+            state: UpdateState {
+                preferences,
+                ready: false,
+                visible: false,
+                install_after_download: false,
+                failure: None,
+            },
             directory,
             message,
             release: None,
             busy: Pending::default(),
-            ready: false,
             available: false,
             progress: Arc::new(AtomicU64::new(0)),
             cancel: None,
             downloading: false,
-            install_after_download: false,
-            visible: false,
             changelog: false,
-            failure: None,
             before_install: None,
         }
     }
@@ -164,14 +234,16 @@ impl UpdateView {
         self.before_install = Some(Rc::new(hook));
     }
     pub fn is_ready(&self) -> bool {
-        self.ready
-            && updater::now() >= self.preferences.remind_after
+        self.state.ready
+            && updater::now() >= self.state.preferences.remind_after
             && self.release.as_ref().is_some_and(|(_, manifest)| {
-                self.preferences.skipped_version.as_deref() != Some(&manifest.version.to_string())
+                self.state.preferences.skipped_version.as_deref()
+                    != Some(&manifest.version.to_string())
             })
     }
     fn save(&mut self) {
         if let Err(error) = self
+            .state
             .preferences
             .save(&self.directory.join("preferences.json"))
         {
@@ -181,7 +253,7 @@ impl UpdateView {
         }
     }
     fn present(&self) {
-        if !self.visible {
+        if !self.state.visible {
             return;
         }
         if self.downloading {
@@ -193,14 +265,14 @@ impl UpdateView {
             }
         } else if self.busy.busy() {
             native_update::status(Status::Checking);
-        } else if self.failure.is_some() {
+        } else if self.state.failure.is_some() {
             native_update::status(Status::Failed(&self.message));
         } else if self.available || (self.changelog && self.release.is_some()) {
             if let Some((_, manifest)) = &self.release {
                 native_update::offer(
                     manifest,
-                    self.preferences.automatic_download,
-                    self.ready,
+                    self.state.preferences.automatic_download,
+                    self.state.ready,
                     self.changelog,
                 );
                 #[cfg(ainc_upgrade_test)]
@@ -217,59 +289,30 @@ impl UpdateView {
         }
     }
     fn poll_native(&mut self, cx: &mut Context<Self>) {
-        if self.downloading && self.visible {
+        if self.downloading && self.state.visible {
             self.present_progress();
         }
         if let Some((action, automatic)) = native_update::take_action() {
-            if action == 6 {
-                match self.failure.take() {
-                    Some(Retry::Check) => self.check(true, cx),
-                    Some(Retry::Download { install }) => {
-                        self.install_after_download = install;
-                        self.download(cx);
-                    }
-                    Some(Retry::Install) => self.install(cx),
-                    None => {}
-                }
-                return;
-            }
-            if action == 7 {
-                self.visible = false;
-                return;
-            }
-            if action == 4 {
-                if let Some(cancel) = &self.cancel {
-                    let _ = cancel.send(true);
-                }
-                self.visible = false;
-                return;
-            }
             let version = self.release.as_ref().map(|(_, m)| m.version.to_string());
-            apply_choice(
-                &mut self.preferences,
+            let effects = self.state.on(Event::Native {
                 action,
                 automatic,
-                version.as_deref(),
-                updater::now(),
-            );
-            match action {
-                1 => {
-                    self.visible = false;
-                }
-                2 => {
-                    self.visible = false;
-                }
-                3 => {
-                    if self.ready {
-                        self.install(cx);
-                    } else {
-                        self.install_after_download = true;
-                        self.download(cx);
+                version,
+                now: updater::now(),
+            });
+            for effect in effects {
+                match effect {
+                    Effect::Check => self.check(true, cx),
+                    Effect::Download => self.download(cx),
+                    Effect::Install => self.install(cx),
+                    Effect::CancelDownload => {
+                        if let Some(cancel) = &self.cancel {
+                            let _ = cancel.send(true);
+                        }
                     }
+                    Effect::Save => self.save(),
                 }
-                _ => {}
             }
-            self.save();
             cx.notify();
         }
     }
@@ -292,10 +335,10 @@ impl UpdateView {
             return;
         }
         if manual {
-            self.preferences.skipped_version = None;
-            self.preferences.remind_after = 0;
+            self.state.preferences.skipped_version = None;
+            self.state.preferences.remind_after = 0;
         }
-        self.failure = None;
+        self.state.failure = None;
         self.message = "Checking for updates…".into();
         self.present();
         cx.run(
@@ -307,21 +350,21 @@ impl UpdateView {
                 ))
             },
             move |this, result, cx| {
-                this.preferences.last_check = updater::now();
+                this.state.preferences.last_check = updater::now();
                 match result {
                     Ok((signed, manifest)) => match manifest
                         .is_upgrade(ainc_release::VERSION, std::env::consts::ARCH)
                     {
                         Ok(true)
                             if manual
-                                || this.preferences.skipped_version.as_deref()
+                                || this.state.preferences.skipped_version.as_deref()
                                     != Some(&manifest.version.to_string()) =>
                         {
                             this.message = format!("AgentInc {} is available", manifest.version);
                             this.release = Some((signed, manifest));
-                            this.ready = false;
+                            this.state.ready = false;
                             this.available = true;
-                            if !manual && this.preferences.automatic_download {
+                            if !manual && this.state.preferences.automatic_download {
                                 this.download(cx);
                             }
                         }
@@ -333,12 +376,12 @@ impl UpdateView {
                         Err(error) => {
                             tracing::warn!(%error, "could not compare the update version");
                             this.message = copy::unavailable("The update check", "Try again");
-                            this.failure = Some(Retry::Check);
+                            this.state.failure = Some(Retry::Check);
                         }
                     },
                     Err(failure) => {
                         this.message = failure.message("The update check");
-                        this.failure = Some(Retry::Check);
+                        this.state.failure = Some(Retry::Check);
                     }
                 }
                 this.save();
@@ -354,7 +397,7 @@ impl UpdateView {
             return;
         }
         self.downloading = true;
-        self.failure = None;
+        self.state.failure = None;
         let (cancel, cancelled) = tokio::sync::watch::channel(false);
         self.cancel = Some(cancel);
         self.message = "Downloading update…".into();
@@ -380,38 +423,38 @@ impl UpdateView {
                 this.downloading = false;
                 let cancelled = this.cancel.take().is_some_and(|cancel| *cancel.borrow());
                 if cancelled {
-                    this.install_after_download = false;
+                    this.state.install_after_download = false;
                     this.message = "Download cancelled".into();
                     native_update::close();
                     return;
                 }
-                this.ready = result.is_ok();
-                this.failure = result.is_err().then_some(Retry::Download {
-                    install: this.install_after_download,
+                this.state.ready = result.is_ok();
+                this.state.failure = result.is_err().then_some(Retry::Download {
+                    install: this.state.install_after_download,
                 });
                 this.message = match result {
                     Ok(()) => "Update verified and ready to install".into(),
                     Err(failure) => failure.message("The update download"),
                 };
-                if this.ready && this.install_after_download {
+                if this.state.ready && this.state.install_after_download {
                     this.install(cx);
                 } else {
                     #[cfg(ainc_upgrade_test)]
-                    if this.ready
+                    if this.state.ready
                         && std::env::var("AINC_UPGRADE_TEST_MODE").as_deref() == Ok("automatic")
                     {
-                        this.visible = true;
+                        this.state.visible = true;
                     }
                     this.present();
                 }
-                this.install_after_download = false;
+                this.state.install_after_download = false;
             },
         );
     }
     fn install(&mut self, cx: &mut Context<Self>) {
-        self.failure = None;
+        self.state.failure = None;
         let result = (|| -> anyhow::Result<()> {
-            anyhow::ensure!(self.ready, "download is not verified");
+            anyhow::ensure!(self.state.ready, "download is not verified");
             if let Some(hook) = self.before_install.clone() {
                 hook(cx)?;
             }
@@ -449,7 +492,7 @@ impl UpdateView {
                     "could not start the installer"
                 );
                 self.message = copy::unavailable("The update install", "Try again");
-                self.failure = Some(Retry::Install);
+                self.state.failure = Some(Retry::Install);
                 self.present();
                 cx.notify();
             }
@@ -457,7 +500,7 @@ impl UpdateView {
     }
     pub fn settings(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let ui = &mut Ui::new(window, cx);
-        let frequency = if self.preferences.interval_hours == 24 {
+        let frequency = if self.state.preferences.interval_hours == 24 {
             0
         } else {
             1
@@ -473,7 +516,7 @@ impl UpdateView {
                         .icon(Icon::Refresh)
                         .enabled(!self.busy.busy())
                         .build(ui, |this: &mut Self, _, cx| {
-                            this.visible = true;
+                            this.state.visible = true;
                             this.changelog = false;
                             this.check(true, cx);
                         }),
@@ -483,9 +526,10 @@ impl UpdateView {
                     "Automatic checks",
                     "Check for new versions in the background.",
                     Toggle::new("updates.auto", "Automatic checks")
-                        .on(self.preferences.automatic_checks)
+                        .on(self.state.preferences.automatic_checks)
                         .build(ui, |this: &mut Self, _, cx| {
-                            this.preferences.automatic_checks = !this.preferences.automatic_checks;
+                            this.state.preferences.automatic_checks =
+                                !this.state.preferences.automatic_checks;
                             this.save();
                             cx.notify();
                         }),
@@ -497,7 +541,8 @@ impl UpdateView {
                     Segmented::new("updates.frequency", ["Daily", "Weekly"])
                         .selected(frequency)
                         .build(ui, |this: &mut Self, index, _, cx| {
-                            this.preferences.interval_hours = if index == 0 { 24 } else { 168 };
+                            this.state.preferences.interval_hours =
+                                if index == 0 { 24 } else { 168 };
                             this.save();
                             cx.notify();
                         }),
@@ -507,10 +552,10 @@ impl UpdateView {
                     "Automatic download",
                     "Download new versions when they become available.",
                     Toggle::new("updates.download", "Automatic download")
-                        .on(self.preferences.automatic_download)
+                        .on(self.state.preferences.automatic_download)
                         .build(ui, |this: &mut Self, _, cx| {
-                            this.preferences.automatic_download =
-                                !this.preferences.automatic_download;
+                            this.state.preferences.automatic_download =
+                                !this.state.preferences.automatic_download;
                             this.save();
                             cx.notify();
                         }),
@@ -531,7 +576,7 @@ impl UpdateView {
 pub fn open(cx: &mut App, check: bool) {
     let view = cx.global::<Updates>().0.clone();
     view.update(cx, |this, cx| {
-        this.visible = true;
+        this.state.visible = true;
         if check || this.release.is_none() {
             this.changelog = false;
             this.check(true, cx);
@@ -545,7 +590,7 @@ pub fn open_changelog(cx: &mut App) {
     let view = cx.global::<Updates>().0.clone();
     view.update(cx, |this, cx| {
         this.changelog = true;
-        this.visible = true;
+        this.state.visible = true;
         if this.release.is_none() {
             this.check(true, cx);
         } else {
@@ -579,10 +624,10 @@ pub fn start_upgrade_test(cx: &mut App) {
         "automatic" => {
             let view = cx.global::<Updates>().0.clone();
             view.update(cx, |this, cx| {
-                this.preferences.automatic_checks = true;
-                this.preferences.automatic_download = true;
-                this.preferences.last_check = 0;
-                this.visible = false;
+                this.state.preferences.automatic_checks = true;
+                this.state.preferences.automatic_download = true;
+                this.state.preferences.last_check = 0;
+                this.state.visible = false;
                 this.check(false, cx);
             });
         }
@@ -592,17 +637,90 @@ pub fn start_upgrade_test(cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Preferences, apply_choice};
+    use super::{Effect, Event, NativeAction, Preferences, Retry, UpdateState};
+
+    fn state() -> UpdateState {
+        UpdateState {
+            preferences: Preferences::default(),
+            ready: false,
+            visible: true,
+            install_after_download: false,
+            failure: None,
+        }
+    }
+    fn native(state: &mut UpdateState, action: NativeAction, automatic: bool) -> Vec<Effect> {
+        state.on(Event::Native {
+            action,
+            automatic,
+            version: Some("0.2.0".into()),
+            now: 100,
+        })
+    }
 
     #[test]
     fn native_choices_preserve_skip_remind_and_automatic_download() {
-        let mut preferences = Preferences::default();
-        apply_choice(&mut preferences, 5, true, Some("0.2.0"), 100);
-        assert!(preferences.automatic_download);
-        apply_choice(&mut preferences, 1, true, Some("0.2.0"), 100);
-        assert_eq!(preferences.skipped_version.as_deref(), Some("0.2.0"));
-        apply_choice(&mut preferences, 2, false, Some("0.2.0"), 100);
-        assert_eq!(preferences.remind_after, 86500);
-        assert!(!preferences.automatic_download);
+        let mut state = state();
+        let effects = native(&mut state, NativeAction::AutomaticChanged, true);
+        assert!(state.preferences.automatic_download);
+        assert_eq!(effects, [Effect::Save]);
+        assert!(state.visible);
+        native(&mut state, NativeAction::Skip, true);
+        assert_eq!(state.preferences.skipped_version.as_deref(), Some("0.2.0"));
+        assert!(!state.visible);
+        native(&mut state, NativeAction::Later, false);
+        assert_eq!(state.preferences.remind_after, 86500);
+        assert!(!state.preferences.automatic_download);
+    }
+
+    #[test]
+    fn install_downloads_first_unless_the_update_is_ready() {
+        let mut state = state();
+        assert_eq!(
+            native(&mut state, NativeAction::Install, false),
+            [Effect::Download, Effect::Save]
+        );
+        assert!(state.install_after_download);
+        state.ready = true;
+        assert_eq!(
+            native(&mut state, NativeAction::Install, false),
+            [Effect::Install, Effect::Save]
+        );
+    }
+
+    #[test]
+    fn retry_replays_the_failed_step_once() {
+        let mut state = state();
+        assert_eq!(native(&mut state, NativeAction::Retry, false), []);
+        state.failure = Some(Retry::Check);
+        assert_eq!(
+            native(&mut state, NativeAction::Retry, false),
+            [Effect::Check]
+        );
+        assert_eq!(state.failure, None);
+        state.failure = Some(Retry::Download { install: true });
+        assert_eq!(
+            native(&mut state, NativeAction::Retry, false),
+            [Effect::Download]
+        );
+        assert!(state.install_after_download);
+        state.failure = Some(Retry::Install);
+        assert_eq!(
+            native(&mut state, NativeAction::Retry, false),
+            [Effect::Install]
+        );
+    }
+
+    #[test]
+    fn cancel_and_dismiss_hide_the_window_without_saving() {
+        let mut state = state();
+        assert_eq!(
+            native(&mut state, NativeAction::CancelDownload, true),
+            [Effect::CancelDownload]
+        );
+        assert!(!state.visible);
+        assert!(!state.preferences.automatic_download);
+        state.visible = true;
+        assert_eq!(native(&mut state, NativeAction::Dismiss, true), []);
+        assert!(!state.visible);
     }
 }

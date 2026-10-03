@@ -9,6 +9,33 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 static ACTION: AtomicI32 = AtomicI32::new(0);
 static AUTOMATIC: AtomicBool = AtomicBool::new(false);
 
+/// What the user did in a native update window. The numbers are the C ABI between
+/// `update_window.m` and Rust; keep them in step with that file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeAction {
+    Skip = 1,
+    Later = 2,
+    Install = 3,
+    CancelDownload = 4,
+    AutomaticChanged = 5,
+    Retry = 6,
+    Dismiss = 7,
+}
+impl NativeAction {
+    pub fn from_code(code: i32) -> Option<Self> {
+        Some(match code {
+            1 => Self::Skip,
+            2 => Self::Later,
+            3 => Self::Install,
+            4 => Self::CancelDownload,
+            5 => Self::AutomaticChanged,
+            6 => Self::Retry,
+            7 => Self::Dismiss,
+            _ => return None,
+        })
+    }
+}
+
 pub enum Status<'a> {
     Checking,
     UpToDate,
@@ -43,9 +70,9 @@ extern "C" fn ainc_update_action(action: i32, automatic: bool) {
     ACTION.store(action, Ordering::Release);
 }
 
-pub fn take_action() -> Option<(i32, bool)> {
-    let action = ACTION.swap(0, Ordering::AcqRel);
-    (action != 0).then(|| (action, AUTOMATIC.load(Ordering::Relaxed)))
+pub fn take_action() -> Option<(NativeAction, bool)> {
+    let code = ACTION.swap(0, Ordering::AcqRel);
+    NativeAction::from_code(code).map(|action| (action, AUTOMATIC.load(Ordering::Relaxed)))
 }
 
 #[cfg(target_os = "macos")]
@@ -170,6 +197,25 @@ pub fn smoke(manifest: &Manifest, directory: &std::path::Path) -> anyhow::Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_action_codes_match_the_window_code() {
+        let codes = [
+            (1, NativeAction::Skip),
+            (2, NativeAction::Later),
+            (3, NativeAction::Install),
+            (4, NativeAction::CancelDownload),
+            (5, NativeAction::AutomaticChanged),
+            (6, NativeAction::Retry),
+            (7, NativeAction::Dismiss),
+        ];
+        for (code, action) in codes {
+            assert_eq!(NativeAction::from_code(code), Some(action));
+            assert_eq!(action as i32, code);
+        }
+        assert_eq!(NativeAction::from_code(0), None);
+        assert_eq!(NativeAction::from_code(8), None);
+    }
 
     #[test]
     fn markdown_is_formatted_and_raw_html_is_escaped() {
