@@ -68,7 +68,6 @@ fixtures = []
 rendered-tests = ["fixtures", "gpui/test-support", "gpui_platform/test-support"]
 
 [dev-dependencies]
-tracing-log = "0.2"
 log = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
 futures.workspace = true

@@ -119,6 +119,10 @@ jobs:
             rm "$tools/protoc.zip"
           fi
           echo "PROTOC=$tools/protoc/bin/protoc" >> "$GITHUB_ENV"
+      - name: Run visible updater acceptance on the dedicated Mac
+        env:
+          AINC_NATIVE_UPDATE_TESTS: "1"
+        run: cargo test --locked -p ainc-mac --test update_window_ownership -- --ignored --test-threads=1
       - name: Build unsigned native handoff
         run: |
           test "$(git rev-parse HEAD)" = '${{ inputs.commit || github.sha }}'

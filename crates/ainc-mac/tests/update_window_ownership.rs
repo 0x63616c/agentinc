@@ -1,13 +1,16 @@
+//! Visible AppKit acceptance, explicitly opted into on the dedicated release Mac.
 #![cfg(target_os = "macos")]
 
 use std::{fs, path::PathBuf, process::Command};
 
 #[test]
+#[ignore = "opens native windows; run on the dedicated release Mac with AINC_NATIVE_UPDATE_TESTS=1"]
 fn sparkle_driver_callbacks_complete_replies_and_preserve_native_ownership() {
     check_driver(false);
 }
 
 #[test]
+#[ignore = "opens native windows; run on the dedicated release Mac with AINC_NATIVE_UPDATE_TESTS=1"]
 fn upgrade_fixture_handoff_survives_relaunch_without_editing_signed_bundles() {
     check_driver(true);
 }
@@ -21,6 +24,7 @@ fn check_driver(upgrade_test: bool) {
 }
 
 #[test]
+#[ignore = "opens native windows; run on the dedicated release Mac with AINC_NATIVE_UPDATE_TESTS=1"]
 fn inert_cache_serves_selected_archive_through_public_download_hook() {
     check_fixture(
         false,
@@ -30,6 +34,7 @@ fn inert_cache_serves_selected_archive_through_public_download_hook() {
 }
 
 fn check_fixture(upgrade_test: bool, fixture: &str, expected: &[u8]) {
+    require_visible_test_opt_in();
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let scratch = crate_dir.join("../../.local/update-window-tests");
     fs::create_dir_all(&scratch).unwrap();
@@ -69,7 +74,9 @@ fn check_fixture(upgrade_test: bool, fixture: &str, expected: &[u8]) {
 }
 
 #[test]
+#[ignore = "opens native windows; run on the dedicated release Mac with AINC_NATIVE_UPDATE_TESTS=1"]
 fn update_windows_survive_check_offer_progress_and_close() {
+    require_visible_test_opt_in();
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let scratch = crate_dir.join("../../.local/update-window-tests");
     fs::create_dir_all(&scratch).unwrap();
@@ -110,4 +117,12 @@ fn update_windows_survive_check_offer_progress_and_close() {
         String::from_utf8_lossy(&result.stderr)
     );
     assert_eq!(result.stdout, b"update window ownership passed\n");
+}
+
+fn require_visible_test_opt_in() {
+    assert_eq!(
+        std::env::var("AINC_NATIVE_UPDATE_TESTS").as_deref(),
+        Ok("1"),
+        "Visible updater tests require AINC_NATIVE_UPDATE_TESTS=1 on the dedicated release Mac"
+    );
 }

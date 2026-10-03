@@ -4,6 +4,13 @@ Distribution stages a signed and notarized release as a draft. It publishes only
 after the macOS `upgrade` job succeeds. A branch dispatch with `test=true`
 exercises the same gate and keeps every artifact in a draft.
 
+Visible AppKit updater fixtures are ignored by default, so `just test` and ordinary
+agent test runs do not open updater windows on the user's desktop. Distribution
+runs them on `homelab-mini` with `AINC_NATIVE_UPDATE_TESTS=1 cargo test --locked
+-p ainc-mac --test update_window_ownership -- --ignored --test-threads=1`.
+The explicit environment opt-in is required even with `--ignored`. Live Sparkle
+failure/retry testing must also use the dedicated Mac, not the user's active desktop.
+
 The native build job makes three handoffs from the exact commit: the production
 candidate, an upgrade-test candidate, and the same upgrade-test code reporting
 the next patch version and a strictly newer `CFBundleVersion`. Sparkle compares build

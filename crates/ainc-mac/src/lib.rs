@@ -228,8 +228,6 @@ mod tests {
     #[test]
     fn tracing_starts_once_and_bridges_gpui_log_records() {
         super::init_tracing();
-        assert!(tracing_log::log::log_enabled!(
-            tracing_log::log::Level::Info
-        ));
+        assert!(log::log_enabled!(log::Level::Info));
     }
 }
