@@ -34,9 +34,9 @@ impl TicketsPage {
         let agents: Vec<String> = daemon
             .tickets()
             .assignees
-            .into_iter()
+            .iter()
             .filter(|a| a.kind == AssigneeKind::Agent)
-            .map(|a| a.id)
+            .map(|a| a.id.clone())
             .collect();
         let (evee, scout) = (agents[0].clone(), agents[1].clone());
         let rows: [Row; 13] = [
