@@ -11,7 +11,7 @@ use std::{
     env, fs,
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     thread,
     time::Duration,
 };
@@ -326,31 +326,152 @@ fn check_ui(root: &Path) -> Result<()> {
     checks::ui_core::run(&app)
 }
 
+/// `--profile NAME` from the argument list, if present: CI passes `ci`, local runs use `dev`.
+fn profile(args: &[String]) -> Result<Option<String>> {
+    match args {
+        [] => Ok(None),
+        [flag, name] if flag == "--profile" => Ok(Some(name.clone())),
+        _ => bail!("expected only `--profile NAME`, got {args:?}"),
+    }
+}
+
 /// The static gate: everything CI checks that needs no database and no test run.
 /// `just check`, the pre-commit hook and CI all come through here.
-fn check(root: &Path) -> Result<()> {
+fn check(root: &Path, profile: Option<&str>) -> Result<()> {
     step(root, &["cargo", "fmt", "--all", "--", "--check"])?;
     check_ui(root)?;
-    step(
-        root,
-        &[
-            "cargo",
-            "clippy",
-            "--locked",
-            "--workspace",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )
+    let mut clippy = vec![
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+    ];
+    if let Some(profile) = profile {
+        clippy.extend(["--profile", profile]);
+    }
+    clippy.extend(["--", "-D", "warnings"]);
+    step(root, &clippy)
+}
+
+/// A throwaway Postgres in Docker, stopped when dropped. `--rm` removes the container.
+struct Postgres {
+    container: String,
+}
+
+impl Postgres {
+    const READY_ATTEMPTS: u32 = 120;
+
+    fn start() -> Result<(Self, String)> {
+        let output = spawn::command("docker")
+            .args([
+                "run",
+                "-d",
+                "--rm",
+                "-e",
+                "POSTGRES_PASSWORD=test",
+                "-p",
+                "127.0.0.1::5432",
+                "postgres:16-alpine",
+            ])
+            .output()
+            .context("could not run docker; set DATABASE_URL to use an existing Postgres")?;
+        if !output.status.success() {
+            bail!(
+                "docker run failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        let postgres = Self {
+            container: String::from_utf8(output.stdout)?.trim().to_owned(),
+        };
+        let mut ready = false;
+        for _ in 0..Self::READY_ATTEMPTS {
+            let status = spawn::command("docker")
+                .args(["exec", &postgres.container, "pg_isready", "-U", "postgres"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+            if status.success() {
+                ready = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(500));
+        }
+        if !ready {
+            bail!("Postgres did not become ready");
+        }
+        let output = spawn::command("docker")
+            .args(["port", &postgres.container, "5432/tcp"])
+            .output()?;
+        let port = String::from_utf8(output.stdout)?
+            .lines()
+            .next()
+            .and_then(|line| line.rsplit(':').next())
+            .context("docker port gave no mapping")?
+            .to_owned();
+        let url = format!("postgres://postgres:test@127.0.0.1:{port}/postgres");
+        Ok((postgres, url))
+    }
+}
+
+impl Drop for Postgres {
+    fn drop(&mut self) {
+        let _ = spawn::command("docker")
+            .args(["stop", &self.container])
+            .stdout(Stdio::null())
+            .status();
+    }
+}
+
+/// Every test CI runs: nextest over the workspace, then the doctests nextest cannot run.
+/// Starts a throwaway Postgres unless `DATABASE_URL` is set. Does not run `check`.
+fn test(root: &Path, profile: Option<&str>) -> Result<()> {
+    let postgres = match env::var_os("DATABASE_URL") {
+        Some(_) => None,
+        None => {
+            let (postgres, url) = Postgres::start()?;
+            println!("DATABASE_URL={url}");
+            // SAFETY: xtask is single-threaded here; the child processes read this.
+            unsafe { env::set_var("DATABASE_URL", url) };
+            Some(postgres)
+        }
+    };
+    let mut nextest = vec!["cargo", "nextest", "run", "--workspace", "--locked"];
+    let mut doctests = vec!["cargo", "test", "--doc", "--workspace", "--locked"];
+    if let Some(profile) = profile {
+        nextest.extend(["--cargo-profile", profile]);
+        doctests.extend(["--profile", profile]);
+    }
+    let result = step(root, &nextest).and_then(|()| step(root, &doctests));
+    drop(postgres);
+    result
+}
+
+/// Remove every profile's incremental cache under `target/`. Our own crates rebuild from
+/// scratch next time; dependencies are unaffected.
+fn clean_incremental(root: &Path) -> Result<()> {
+    let target = env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("target"));
+    let Ok(profiles) = fs::read_dir(&target) else {
+        return Ok(());
+    };
+    for profile in profiles {
+        let incremental = profile?.path().join("incremental");
+        if incremental.is_dir() {
+            println!("removing {}", incremental.display());
+            fs::remove_dir_all(&incremental)?;
+        }
+    }
+    Ok(())
 }
 
 fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args.next().ok_or_else(|| {
         anyhow!(
-            "usage: cargo xtask dev|down|doctor|check|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
+            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
             release::NAMES,
             readme::NAMES
         )
@@ -360,7 +481,9 @@ fn main() -> Result<()> {
     match operation.as_str() {
         op if release::handles(op) => release::run(op, args.collect(), &root),
         op if readme::handles(op) => readme::run(op, args.collect(), &root),
-        "check" => check(&root),
+        "check" => check(&root, profile(&args.collect::<Vec<_>>())?.as_deref()),
+        "test" => test(&root, profile(&args.collect::<Vec<_>>())?.as_deref()),
+        "clean-incremental" => clean_incremental(&root),
         "check-ui" => check_ui(&root),
         "check-commit-msg" => checks::commit_msg::run(&args.collect::<Vec<_>>()),
         "vendor-pilot-gpui" => vendor_pilot_gpui::cli(&args.collect::<Vec<_>>(), &root),

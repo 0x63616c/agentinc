@@ -185,7 +185,7 @@ fn required_rust_aggregate_only_accepts_all_success() {
         .map(|n| n.as_str().unwrap())
         .collect();
     needs.sort();
-    assert_eq!(needs, ["checks", "workspace"]);
+    assert_eq!(needs, ["workspace"]);
     assert_eq!(aggregate["if"], "always()");
     let steps = aggregate["steps"].as_array().unwrap();
     assert_eq!(steps.len(), 1);
@@ -193,31 +193,34 @@ fn required_rust_aggregate_only_accepts_all_success() {
     assert_eq!(
         step["env"],
         json!({
-            "CHECKS": "${{ needs.checks.result }}",
             "WORKSPACE": "${{ needs.workspace.result }}",
         })
     );
     let command = step["run"].as_str().unwrap();
-    for checks in ["success", "failure", "cancelled", "skipped"] {
-        for workspace in ["success", "failure", "cancelled", "skipped"] {
-            let status = Command::new("bash")
-                .args(["-c", command])
-                .env("CHECKS", checks)
-                .env("WORKSPACE", workspace)
-                .status()
-                .unwrap();
-            assert_eq!(
-                status.success(),
-                checks == "success" && workspace == "success",
-                "{checks} {workspace}"
-            );
-        }
+    for workspace in ["success", "failure", "cancelled", "skipped"] {
+        let status = Command::new("bash")
+            .args(["-c", command])
+            .env("WORKSPACE", workspace)
+            .status()
+            .unwrap();
+        assert_eq!(status.success(), workspace == "success", "{workspace}");
     }
 }
 
 #[test]
+fn ci_dependency_cache_is_written_only_from_main() {
+    let ci = workflow("ci");
+    let cache = only(&ci["jobs"]["workspace"], uses("Swatinem/rust-cache@v2"));
+    assert_eq!(cache["with"]["key"], "${{ matrix.check }}");
+    assert_eq!(
+        cache["with"]["save-if"],
+        "${{ github.ref == 'refs/heads/main' }}"
+    );
+}
+
+#[test]
 fn cache_primary_keys_roll_but_restore_prefixes_do_not() {
-    for (name, job_name) in [("ci", "workspace"), ("release", "distribute")] {
+    for (name, job_name) in [("release", "distribute")] {
         let workflow = workflow(name);
         let job = &workflow["jobs"][job_name];
         let restore = only(job, uses("actions/cache/restore@v4"));

@@ -20,7 +20,7 @@ You only need four commands, run from the repository root with [just](https://gi
 | --- | --- |
 | `just dev` | Runs everything under Tilt: Postgres, Temporal, the daemon and the Mac app. Edit the app, the daemon or any crate they depend on and it rebuilds and relaunches. |
 | `just check` | The fast static gate the pre-commit hook runs: formatting, clippy and the `cargo xtask` UI checks. |
-| `just test` | Runs every check CI runs: `just check`, the API-contract check and all tests. |
+| `just test` | Runs every check CI runs: `just check`, then `cargo xtask test` (nextest plus doctests, with a throwaway Postgres unless `DATABASE_URL` is set). |
 | `just release patch` | Bumps the workspace version (`patch`, `minor` or `major`; an explicit version must be one of those next versions), regenerates the API client and commits, refusing on a dirty tree. Pushing that commit to `main` triggers the signed release. |
 
 You need an Apple Silicon Mac with Xcode command-line tools, Rust (pinned in `rust-toolchain.toml`), Docker running, Tilt, the Temporal CLI and PostgreSQL's `psql`. `just dev` leaves its state under `.local/dev/`; `cargo xtask doctor` prints this worktree's endpoints and `cargo xtask down` stops its stack. See the [Mac app guide](crates/ainc-mac/README.md) and [development architecture](docs/architecture.md).
