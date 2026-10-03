@@ -95,7 +95,7 @@ impl Stack {
                 .await
                 .unwrap()
                 .expect("daemon exited before ready");
-            if line.contains("AgentInc daemon ready") {
+            if line.contains("daemon ready") {
                 break;
             }
         }
