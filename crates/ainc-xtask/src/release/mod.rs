@@ -17,6 +17,8 @@ pub mod distribute;
 pub mod file_server;
 pub mod http;
 pub mod measure_build;
+#[cfg(test)]
+mod pipeline_config;
 pub mod prepare;
 pub mod proc;
 pub mod runtime_smoke;

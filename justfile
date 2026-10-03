@@ -26,7 +26,6 @@ test: check
         port=$(docker port "$container" 5432/tcp | head -1 | sed 's/.*://')
         export DATABASE_URL="postgres://postgres:test@127.0.0.1:$port/postgres"
     fi
-    python3 -m unittest discover -s scripts/release -p 'test_*.py'
     # The xtask workspace test checks generation using the same compiled dependency graph.
     cargo test --locked --workspace
 
