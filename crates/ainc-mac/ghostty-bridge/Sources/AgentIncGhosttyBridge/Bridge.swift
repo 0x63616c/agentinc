@@ -19,6 +19,8 @@ func appShortcutCommand(_ event: NSEvent, in pane: NSView, shown: Bool) -> Int32
     switch key {
     case "k": return -1 // AgentInc Search
     case ",": return -2 // AgentInc Settings
+    case "[": return -3 // AgentInc Back
+    case "]": return -4 // AgentInc Forward
     default:
         guard key.count == 1, let digit = key.first?.wholeNumberValue,
               (1...5).contains(digit) else { return nil }

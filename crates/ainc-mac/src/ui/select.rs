@@ -2,13 +2,14 @@
 //! changes the size of the row that owns it.
 use super::{button::*, display::*, layout::*, menu::*, motion::*, overlay::menu_shell, tokens::*};
 use gpui::{prelude::*, *};
+use std::sync::Arc;
 
 pub struct SelectOption {
     pub label: SharedString,
     pub description: Option<SharedString>,
     pub glyph: Option<(&'static str, u32)>,
-    /// A person or agent shown by their avatar: name and whether an agent.
-    pub avatar: Option<(SharedString, bool)>,
+    /// A person or agent shown by their avatar: name, local photo and kind.
+    pub avatar: Option<(SharedString, Option<Arc<Image>>, bool)>,
 }
 
 impl SelectOption {
@@ -21,8 +22,13 @@ impl SelectOption {
         }
     }
     /// Lead with a person's round avatar or an agent's square one.
-    pub fn avatar(mut self, name: impl Into<SharedString>, agent: bool) -> Self {
-        self.avatar = Some((name.into(), agent));
+    pub fn avatar(
+        mut self,
+        name: impl Into<SharedString>,
+        photo: Option<Arc<Image>>,
+        agent: bool,
+    ) -> Self {
+        self.avatar = Some((name.into(), photo, agent));
         self
     }
     /// A colored leading icon shown on the trigger and in the menu.
@@ -123,8 +129,8 @@ impl Select {
         let mut trigger = Button::new(ElementId::Name(id.clone()), label);
         if let Some((name, color)) = glyph {
             trigger = trigger.leading(icon(name, ICON_SIZE_SM).text_color(rgb(color)));
-        } else if let Some((name, agent)) = person {
-            trigger = trigger.leading(option_avatar(&name, agent));
+        } else if let Some((name, photo, agent)) = person {
+            trigger = trigger.leading(option_avatar(&name, photo, agent));
         }
         // A quiet select reads as its value; the row itself is the affordance.
         if !quiet {
@@ -164,8 +170,8 @@ impl Select {
                     .enabled(enabled);
                     if let Some((name, color)) = option.glyph {
                         item = item.glyph(name, color);
-                    } else if let Some((name, agent)) = &option.avatar {
-                        item = item.leading(option_avatar(name, *agent));
+                    } else if let Some((name, photo, agent)) = &option.avatar {
+                        item = item.leading(option_avatar(name, photo.clone(), *agent));
                     }
                     if let Some(description) = option.description {
                         item = item.trailing(caption(description));
@@ -205,10 +211,10 @@ impl Select {
     }
 }
 
-fn option_avatar(name: &str, agent: bool) -> AnyElement {
+fn option_avatar(name: &str, photo: Option<Arc<Image>>, agent: bool) -> AnyElement {
     if agent {
         super::avatar::agent_avatar(name, ICON_SIZE)
     } else {
-        super::avatar::avatar(name, None, ICON_SIZE)
+        super::avatar::avatar(name, photo, ICON_SIZE)
     }
 }

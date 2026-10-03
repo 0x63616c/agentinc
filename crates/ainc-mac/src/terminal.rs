@@ -44,6 +44,8 @@ mod macos {
         let control = match number {
             -1 => Control::Search,
             -2 => Control::Navigate(crate::model::Route::Settings),
+            -3 => Control::Back,
+            -4 => Control::Forward,
             0..=9 => {
                 let Some(route) = crate::model::Route::from_shortcut(number as u8) else {
                     return;

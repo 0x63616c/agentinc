@@ -19,8 +19,9 @@ impl Shell {
                     .icon("help")
                     .trailing(
                         row()
-                            .w(px(ICON_SIZE - CHEVRON_GLYPH_INSET))
-                            .overflow_hidden()
+                            .debug_selector(|| "user-menu.support.chevron".into())
+                            .w(px(ICON_SIZE))
+                            .flex_none()
                             .child(icon("chevronRight", ICON_SIZE)),
                     )
                     .selector("user-menu.support")
@@ -31,18 +32,22 @@ impl Shell {
                 s.child(floating(
                     menu_shell(MENU_WIDTH)
                         .debug_selector(|| "user-menu.support.menu".into())
+                        .gap(px(MENU_INSET))
                         .child(
                             MenuEntry::new("user-menu.help", "Help Center")
+                                .selector("user-menu.help")
                                 .icon("arrowUpRight")
                                 .build(&self.hover, Self::menu_action(Control::HelpCenter), cx),
                         )
                         .child(
                             MenuEntry::new("user-menu.feedback", "Send Feedback")
+                                .selector("user-menu.feedback")
                                 .icon("feedback")
                                 .build(&self.hover, Self::menu_action(Control::SendFeedback), cx),
                         )
                         .child(
                             MenuEntry::new("user-menu.about", "About AgentInc")
+                                .selector("user-menu.about")
                                 .icon("info")
                                 .build(&self.hover, Self::menu_action(Control::About), cx),
                         ),
@@ -104,24 +109,29 @@ impl Shell {
                         ),
                 )
             })
-            .child(menu_divider())
+            .child(menu_divider().debug_selector(|| "user-menu.divider".into()))
             .child(
-                MenuEntry::new("user-menu.updates", "Check for Updates")
-                    .icon("download")
-                    .build(&self.hover, Self::menu_action(Control::CheckForUpdates), cx),
-            )
-            .child(
-                MenuEntry::new("user-menu.settings", "Settings")
-                    .selector("user-menu.settings")
-                    .icon("settings")
-                    .shortcut("⌘,")
-                    .build(
-                        &self.hover,
-                        Self::menu_action(Control::Navigate(Route::Settings)),
-                        cx,
-                    ),
-            )
-            .child(support);
+                column()
+                    .gap(px(MENU_INSET))
+                    .child(
+                        MenuEntry::new("user-menu.updates", "Check for Updates")
+                            .selector("user-menu.updates")
+                            .icon("download")
+                            .build(&self.hover, Self::menu_action(Control::CheckForUpdates), cx),
+                    )
+                    .child(
+                        MenuEntry::new("user-menu.settings", "Settings")
+                            .selector("user-menu.settings")
+                            .icon("settings")
+                            .shortcut("⌘,")
+                            .build(
+                                &self.hover,
+                                Self::menu_action(Control::Navigate(Route::Settings)),
+                                cx,
+                            ),
+                    )
+                    .child(support),
+            );
         floating(menu, Anchor::BottomLeft, point(px(0.), px(-SPACE_2)))
     }
 

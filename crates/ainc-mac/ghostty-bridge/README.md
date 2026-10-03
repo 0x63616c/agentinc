@@ -15,8 +15,8 @@ places the child view in `src/ui/terminal.rs`'s GPUI canvas. The bridge reads
 the user's XDG and macOS Ghostty config files through `config-file` directives,
 so includes, fonts and keybinds are parsed by Ghostty. AgentInc's UI color
 roles are appended last, deliberately overriding terminal colors and themes.
-The bridge intercepts Cmd+K, Cmd+, and Cmd+number only while a terminal pane is
-focused, forwarding them to AgentInc. Its Swift test verifies the focus rule;
+The bridge intercepts Cmd+K, Cmd+comma, Cmd+number and Cmd+[/] only while a terminal
+pane is focused, forwarding them to AgentInc. Its Swift test verifies the focus rule;
 all other Ghostty keybinds pass through.
 Each pane runs `aincd --terminal-attach` through Ghostty's exec backend. The
 daemon owns its login shell, PTY and bounded output buffer in

@@ -154,7 +154,7 @@ pub fn nav_icon(
         .flex_shrink_0()
 }
 
-/// A keyboard shortcut hint: `⌘K`, `↵`, `esc`.
+/// A keyboard shortcut hint: `⌘ + K`, `↵`, `ESC`.
 pub fn kbd(label: impl Into<SharedString>) -> Div {
     row()
         .h(px(20.))
