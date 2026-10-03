@@ -314,10 +314,11 @@ impl Shell {
             picker_close_focus: cx.focus_handle(),
             palette_scroll: ScrollHandle::new(),
             _input_subscription: subscription,
-            _activation_subscription: cx.observe_window_activation(window, |this, window, cx| {
+            _activation_subscription: cx.observe_window_activation(window, |this, _, cx| {
                 // Command can be released in another app, with no modifier event
-                // delivered here. Never retain hints across that focus boundary.
-                this.set_command_held(window.is_window_active() && window.modifiers().platform, cx);
+                // delivered here. On either focus transition discard the hint;
+                // only fresh input may show it again, not a cached modifier flag.
+                this.set_command_held(false, cx);
             }),
             command_held: false,
             palette_transition: None,
@@ -1531,17 +1532,65 @@ mod interaction_tests {
         let (shell, cx) = cx.add_window_view(|window, cx| {
             Shell::fixture(dir.path().join("session.json"), window, cx)
         });
+        // Test windows start inactive; deactivate_window otherwise does nothing.
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
+        cx.update(|window, _| assert!(window.is_window_active()));
         cx.simulate_modifiers_change(Modifiers {
             platform: true,
             ..Modifiers::default()
         });
         assert_sidebar_hints(cx, true);
         cx.deactivate_window();
+        cx.update(|window, _| assert!(!window.is_window_active()));
         shell.read_with(cx, |shell, _| assert!(!shell.command_held));
         assert_sidebar_hints(cx, false);
         cx.update(|window, _| window.activate_window());
         cx.run_until_parked();
         shell.read_with(cx, |shell, _| assert!(!shell.command_held));
+    }
+
+    #[gpui::test]
+    fn sidebar_hints_do_not_restore_a_stale_command_cache_on_reactivation(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let command = Modifiers {
+            platform: true,
+            ..Modifiers::default()
+        };
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            // Register before Shell's observer to model a platform reporting
+            // stale Command state at activation, without a fresh input event.
+            cx.observe_window_activation(window, move |_: &mut Shell, window, _| {
+                if window.is_window_active() {
+                    window.set_modifiers(command);
+                }
+            })
+            .detach();
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
+        cx.simulate_modifiers_change(command);
+        assert_sidebar_hints(cx, true);
+        cx.deactivate_window();
+        assert_sidebar_hints(cx, false);
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
+        cx.update(|window, _| {
+            assert!(window.is_window_active());
+            assert!(
+                window.modifiers().platform,
+                "regression requires a stale cache"
+            );
+        });
+        shell.read_with(cx, |shell, _| assert!(!shell.command_held));
+        assert_sidebar_hints(cx, false);
+
+        // Fresh modifier observations still show hints and clear them normally.
+        cx.simulate_modifiers_change(command);
+        assert_sidebar_hints(cx, true);
+        cx.simulate_modifiers_change(Modifiers::default());
+        assert_sidebar_hints(cx, false);
     }
 
     #[gpui::test]
