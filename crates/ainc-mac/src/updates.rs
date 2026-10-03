@@ -2,7 +2,27 @@
 use crate::native_update::{self, State};
 use crate::ui::*;
 use gpui::{prelude::*, *};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{fs::File, path::Path, time::Duration};
+
+static INSTALLATION_PENDING: AtomicBool = AtomicBool::new(false);
+static COMPANION_LAUNCHES: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+
+pub(crate) fn installation_pending() -> bool {
+    INSTALLATION_PENDING.load(Ordering::Acquire)
+}
+
+/// Storage holds this across companion spawn and its readiness handshake. The
+/// update drain waits for in-flight startup without blocking the AppKit thread.
+pub(crate) async fn companion_launch_guard()
+-> anyhow::Result<tokio::sync::RwLockReadGuard<'static, ()>> {
+    let guard = COMPANION_LAUNCHES.read().await;
+    anyhow::ensure!(
+        !installation_pending(),
+        "Update installation is preparing; companion startup is paused"
+    );
+    Ok(guard)
+}
 
 actions!(updates, [CheckForUpdates, ShowChangelog]);
 
@@ -56,7 +76,10 @@ impl UpdateView {
         while let Some((action, _)) = native_update::take_action() {
             match action {
                 8 => self.prepare_install(cx),
-                9 => self.shutdown_locks.clear(),
+                9 => {
+                    self.shutdown_locks.clear();
+                    INSTALLATION_PENDING.store(false, Ordering::Release);
+                }
                 _ => {}
             }
         }
@@ -82,7 +105,14 @@ impl UpdateView {
                 return;
             }
         };
+        if !self.shutdown_locks.is_empty() {
+            // A canceled AppKit termination can be retried. We already own the
+            // stopped profile; only the fresh UI flush above needs repeating.
+            native_update::prepared(None);
+            return;
+        }
         self.draining = true;
+        INSTALLATION_PENDING.store(true, Ordering::Release);
         let request = cx
             .background_executor()
             .spawn(async move { crate::storage::background(drain_owned_runtime(&discovery)) });
@@ -100,15 +130,19 @@ impl UpdateView {
                             Ok(Ok(())) => native_update::prepared(None),
                             result => {
                                 this.shutdown_locks.clear();
+                                INSTALLATION_PENDING.store(false, Ordering::Release);
                                 native_update::prepared(Some(&format!(
                                     "Could not save work; update postponed: {result:?}"
                                 )));
                             }
                         }
                     }
-                    Err(error) => native_update::prepared(Some(&format!(
-                        "Could not stop the local runtime; update postponed: {error:#}"
-                    ))),
+                    Err(error) => {
+                        INSTALLATION_PENDING.store(false, Ordering::Release);
+                        native_update::prepared(Some(&format!(
+                            "Could not stop the local runtime; update postponed: {error:#}"
+                        )));
+                    }
                 }
                 cx.notify();
             });
@@ -199,6 +233,9 @@ impl UpdateView {
 /// locks proves its bundled Postgres/Temporal children have finished stopping.
 async fn drain_owned_runtime(discovery: &Path) -> anyhow::Result<Vec<File>> {
     use anyhow::Context;
+    let _launches = tokio::time::timeout(Duration::from_secs(120), COMPANION_LAUNCHES.write())
+        .await
+        .context("companion startup has not completed")?;
     let mut locks = Vec::new();
     let daemon_lock = discovery.with_extension("lock");
     match File::options().read(true).write(true).open(&daemon_lock) {
@@ -300,10 +337,13 @@ pub fn start_upgrade_test(cx: &mut App) {
                         "replacement daemon version mismatch"
                     );
                     client.health_ready().send().await?;
+                    let marker = std::path::PathBuf::from(marker);
+                    let temporary = marker.with_extension("tmp");
                     std::fs::write(
-                        marker,
+                        &temporary,
                         format!("{} {}\n", ainc_release::VERSION, std::process::id()),
                     )?;
+                    std::fs::rename(temporary, marker)?;
                     anyhow::Ok(())
                 })
                 .expect("replacement runtime must become ready");
@@ -326,6 +366,21 @@ pub fn start_upgrade_test(cx: &mut App) {
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn drain_waits_for_inflight_startup_and_blocks_replacement_launches() {
+        let directory = tempfile::tempdir().unwrap();
+        let discovery = directory.path().join("api-url");
+        let launch = companion_launch_guard().await.unwrap();
+        INSTALLATION_PENDING.store(true, Ordering::Release);
+        let mut drain = Box::pin(drain_owned_runtime(&discovery));
+        assert!(futures::poll!(&mut drain).is_pending());
+        drop(launch);
+        assert!(drain.await.unwrap().is_empty());
+        assert!(companion_launch_guard().await.is_err());
+        INSTALLATION_PENDING.store(false, Ordering::Release);
+        assert!(companion_launch_guard().await.is_ok());
+    }
 
     async fn drain_server(
         discovery: &Path,

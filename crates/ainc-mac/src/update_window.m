@@ -312,6 +312,7 @@ void ainc_update_smoke_init(void) {
 @property BOOL userVisible;
 @property BOOL installRequested;
 @property BOOL cancelBackgroundOnQuit;
+@property(strong) NSTimer *reminder;
 @property uint64_t received;
 @property uint64_t expected;
 - (void)action:(int)action automatic:(BOOL)automatic;
@@ -445,6 +446,7 @@ static NSString *itemNotes(SUAppcastItem *item) {
 - (void)showUpdaterError:(NSError *)error acknowledgement:(void (^)(void))acknowledgement {
     self.cancellation = nil;
     self.choice = nil;
+    self.retryTermination = nil;
     self.acknowledgement = acknowledgement;
     self.message = error.localizedDescription;
     ainc_update_status(self.message.UTF8String, self.current.UTF8String, 2);
@@ -457,6 +459,8 @@ static NSString *itemNotes(SUAppcastItem *item) {
     self.message = @"Downloading update…";
     if (self.backgroundDownload && !self.userVisible) return;
     ainc_update_progress(self.message.UTF8String, 0, 0);
+    ui().cancelButton.title = @"Cancel";
+    ui().cancelButton.action = @selector(cancel:);
     ui().cancelButton.enabled = YES;
 }
 - (void)showDownloadDidReceiveExpectedContentLength:(uint64_t)length {
@@ -500,12 +504,16 @@ static NSString *itemNotes(SUAppcastItem *item) {
     self.retryTermination = terminated ? nil : retry;
     self.message = @"Installing update…";
     ainc_update_progress(self.message.UTF8String, 0, 0);
-    ui().cancelButton.enabled = NO;
+    ui().cancelButton.title = @"Retry Quit";
+    ui().cancelButton.action = @selector(retry:);
+    ui().cancelButton.enabled = !terminated;
 }
 - (void)showUpdateInstalledAndRelaunched:(BOOL)relaunched acknowledgement:(void (^)(void))acknowledgement {
     acknowledgement();
 }
 - (void)dismissUpdateInstallation {
+    [self.reminder invalidate];
+    self.reminder = nil;
     self.choice = nil;
     self.cancellation = nil;
     self.acknowledgement = nil;
@@ -514,6 +522,12 @@ static NSString *itemNotes(SUAppcastItem *item) {
 }
 - (void)showUpdateInFocus {
     self.userVisible = YES;
+    [self.reminder invalidate];
+    self.reminder = nil;
+    if (self.preparationFailed) {
+        ainc_update_status(self.message.UTF8String, self.current.UTF8String, 2);
+        return;
+    }
     if (ui().offer) [ui().offer makeKeyAndOrderFront:nil];
     else if (ui().progress) [ui().progress makeKeyAndOrderFront:nil];
     else if (self.choice) [self presentOffer];
@@ -526,6 +540,7 @@ static NSString *itemNotes(SUAppcastItem *item) {
 - (void)prepare {
     if (self.preparing) return;
     self.preparing = YES;
+    self.prepared = NO;
     self.preparationFailed = NO;
     self.message = @"Saving work and stopping the local runtime…";
     ainc_update_progress(self.message.UTF8String, 0, 0);
@@ -572,6 +587,11 @@ static NSString *itemNotes(SUAppcastItem *item) {
         // Closing the error never resumes an un-drained installation.
         return;
     }
+    if (action == 6 && self.retryTermination) {
+        self.continuation = self.retryTermination;
+        [self prepare];
+        return;
+    }
     if ((action == 4 || action == 7) && self.cancellation) {
         void (^cancel)(void) = self.cancellation;
         self.cancellation = nil;
@@ -598,6 +618,16 @@ static NSString *itemNotes(SUAppcastItem *item) {
             // Retain the ready reply. Dismiss would arm install-on-quit, which
             // is not what the download-only setting promises.
             self.userVisible = NO;
+            if (action == 2) {
+                [self.reminder invalidate];
+                __weak AincSparkleDriver *driver = self;
+                // Restore the existing one-day ready badge reminder. This is
+                // presentation only; Sparkle still owns checking/downloading.
+                self.reminder = [NSTimer scheduledTimerWithTimeInterval:86400 repeats:NO block:^(NSTimer *timer) {
+                    (void)timer;
+                    driver.reminder = nil;
+                }];
+            }
             return;
         }
         void (^reply)(SPUUserUpdateChoice) = self.choice;
@@ -804,7 +834,7 @@ unsigned int ainc_sparkle_state(void) {
     return (sparkle.updater.automaticallyChecksForUpdates ? 1 : 0)
         | ([sparkle.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"] ? 2 : 0)
         | (sparkle.updater.updateCheckInterval > 86400 ? 4 : 0)
-        | (sparkle.ready ? 8 : 0)
+        | (sparkle.ready && !sparkle.reminder ? 8 : 0)
         | (sparkle.updater.canCheckForUpdates ? 16 : 0)
         | (sparkle.started ? 32 : 0);
 }

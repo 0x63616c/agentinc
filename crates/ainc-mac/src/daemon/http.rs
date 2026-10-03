@@ -27,6 +27,10 @@ pub(crate) fn discovery_path() -> Result<PathBuf> {
 }
 
 async fn connect() -> Result<Client> {
+    anyhow::ensure!(
+        !crate::updates::installation_pending(),
+        "Update installation is preparing; companion requests are paused"
+    );
     let discovery = discovery_path()?;
     let url = if let Ok(url) = std::env::var("AINC_DAEMON_URL") {
         url
@@ -37,6 +41,7 @@ async fn connect() -> Result<Client> {
             None => false,
         };
         if !ready {
+            let _launch = crate::updates::companion_launch_guard().await?;
             spawn_daemon(&discovery)?;
             for _ in 0..1200 {
                 if let Ok(url) = std::fs::read_to_string(&discovery)
