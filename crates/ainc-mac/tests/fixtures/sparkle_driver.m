@@ -38,10 +38,12 @@ static NSApplicationTerminateReply refuseQuit(id self, SEL selector, NSApplicati
 
 @interface TestBundle : NSBundle
 @property(copy) NSString *domain;
+@property(copy) NSString *path;
 @end
 @implementation TestBundle
 - (id)objectForInfoDictionaryKey:(NSString *)key { return [key isEqualToString:@"SUDefaultsDomain"] ? self.domain : nil; }
 - (NSString *)bundleIdentifier { return self.domain; }
+- (NSString *)bundlePath { return self.path ?: @"/test/AgentInc.app"; }
 @end
 
 static NSButton *findButton(NSString *title) {
@@ -214,6 +216,46 @@ int main(void) {
         NSCAssert(![defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"], @"migration never overwrites later settings");
         [defaults removePersistentDomainForName:bundle.domain];
         [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+
+        TestUpdater *fresh = [TestUpdater new];
+        bundle.domain = [@"test.agentinc.sparkle.fresh." stringByAppendingString:NSUUID.UUID.UUIDString];
+        defaults = [[NSUserDefaults alloc] initWithSuiteName:bundle.domain];
+        migratePreferences((SPUUpdater *)fresh, path, bundle);
+        NSCAssert(fresh.automaticallyChecksForUpdates, @"fresh installation retains AgentInc's automatic checks default");
+        [defaults removePersistentDomainForName:bundle.domain];
+        [defaults setBool:NO forKey:@"SUEnableAutomaticChecks"];
+        fresh.automaticallyChecksForUpdates = NO;
+        migratePreferences((SPUUpdater *)fresh, path, bundle);
+        NSCAssert(!fresh.automaticallyChecksForUpdates, @"an explicitly disabled Sparkle preference survives migration");
+        [defaults removePersistentDomainForName:bundle.domain];
+
+        // Exercise the production handoff, simulating LaunchServices' missing
+        // environment without touching the user's real profile or defaults.
+        NSURL *record = [NSURL fileURLWithPath:[path stringByAppendingString:@".relaunch"]];
+        setenv("AGENTINC_SESSION_PATH", "/isolated/profile/sessions.json", 1);
+        setenv("AINC_DISCOVERY_FILE", "/isolated/profile/api-url", 1);
+        setenv("DATABASE_URL", "postgres://fixture/password", 1);
+        setenv("AINC_RUNTIME_CONFIG", "{\"endpoint\":\"fixture\"}", 1);
+        setenv("AINC_UPGRADE_TEST_SPARKLE_FEED_URL", "https://test-only.invalid/feed", 1);
+        NSCAssert(!saveRelaunchProfile(record, @"2"), @"save production relaunch profile");
+        NSDictionary *savedRecord = [NSPropertyListSerialization propertyListWithData:[NSData dataWithContentsOfURL:record] options:0 format:nil error:nil];
+        NSCAssert(!savedRecord[@"environment"][@"AINC_UPGRADE_TEST_SPARKLE_FEED_URL"], @"production record excludes test feed overrides");
+        NSDictionary *permissions = [NSFileManager.defaultManager attributesOfItemAtPath:record.path error:nil];
+        NSCAssert([permissions[NSFilePosixPermissions] unsignedShortValue] == 0600, @"credentials are owner-only");
+        unsetenv("AGENTINC_SESSION_PATH");
+        unsetenv("DATABASE_URL");
+        unsetenv("AINC_RUNTIME_CONFIG");
+        setenv("AINC_DISCOVERY_FILE", "/explicit/new-launch/api-url", 1);
+        NSCAssert(!restoreRelaunchProfile(record, @"1") && !getenv("AGENTINC_SESSION_PATH"), @"old-version launch does not consume a failed update's profile");
+        NSCAssert(!restoreRelaunchProfile(record, @"2"), @"restore replacement profile");
+        NSCAssert(strcmp(getenv("AGENTINC_SESSION_PATH"), "/isolated/profile/sessions.json") == 0, @"session path survives LaunchServices relaunch");
+        NSCAssert(strcmp(getenv("DATABASE_URL"), "postgres://fixture/password") == 0, @"external database configuration survives");
+        NSCAssert(strcmp(getenv("AINC_RUNTIME_CONFIG"), "{\"endpoint\":\"fixture\"}") == 0, @"companion runtime override survives");
+        NSCAssert(strcmp(getenv("AINC_DISCOVERY_FILE"), "/explicit/new-launch/api-url") == 0, @"explicit new launch overrides win");
+        NSCAssert(![NSFileManager.defaultManager fileExistsAtPath:record.path], @"handoff is consumed exactly once");
+        NSURL *first = relaunchProfileURL(bundle);
+        bundle.path = @"/another/AgentInc.app";
+        NSCAssert(![first isEqual:relaunchProfileURL(bundle)], @"separate app copies cannot consume each other's handoff");
         [sparkle.defaults removePersistentDomainForName:driverDomain];
         sparkle = nil;
     }

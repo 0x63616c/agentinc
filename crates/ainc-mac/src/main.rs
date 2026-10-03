@@ -50,6 +50,7 @@ fn main_window_options(
 }
 
 fn main() {
+    native_update::restore_relaunch_environment().expect("restore update relaunch profile");
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     #[cfg(all(feature = "automation", target_os = "macos"))]
