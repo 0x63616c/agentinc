@@ -4,9 +4,11 @@ mod activities;
 mod conversation;
 mod recurring;
 mod session;
+#[cfg(feature = "testing")]
 mod test_server;
 mod visibility;
 mod workflow;
+#[cfg(feature = "testing")]
 pub(crate) use test_server::TestServer;
 pub(crate) use visibility::list_workflows;
 
@@ -20,10 +22,22 @@ use temporalio_client::{
     WorkflowStartOptions,
     errors::{WorkflowGetResultError, WorkflowInteractionError, WorkflowStartError},
 };
-use temporalio_sdk::{
-    Runtime, Worker, WorkerOptions,
-    testing::{LocalServer, LocalWorkflowEnvironmentOptions, WorkflowEnvironment},
-};
+#[cfg(feature = "testing")]
+use temporalio_sdk::testing::{LocalServer, LocalWorkflowEnvironmentOptions, WorkflowEnvironment};
+use temporalio_sdk::{Runtime, Worker, WorkerOptions};
+
+/// The local dev server an engine may own. Without `testing` nothing can construct one, so
+/// the field is always `None` and the shutdown path is unreachable.
+#[cfg(feature = "testing")]
+type LocalEnvironment = WorkflowEnvironment<LocalServer>;
+#[cfg(not(feature = "testing"))]
+enum LocalEnvironment {}
+#[cfg(not(feature = "testing"))]
+impl LocalEnvironment {
+    async fn shutdown(self) -> Result<(), String> {
+        match self {}
+    }
+}
 
 type ShutdownFn = Box<dyn Fn() + Send + Sync>;
 
@@ -45,10 +59,11 @@ pub(crate) struct Engine {
     registry: Registry,
     shutdown_worker: ShutdownFn,
     worker_thread: Option<JoinHandle<()>>,
-    local: Option<WorkflowEnvironment<LocalServer>>,
+    local: Option<LocalEnvironment>,
 }
 
 impl Engine {
+    #[cfg(feature = "testing")]
     pub(crate) async fn local(options: EngineOptions) -> Result<Self, Error> {
         // SDK default: download the pinned Temporal CLI once, cache it in the OS temp dir.
         let env = WorkflowEnvironment::start_local(LocalWorkflowEnvironmentOptions::default())
@@ -115,7 +130,7 @@ impl Engine {
 
     async fn with_client(
         client: Client,
-        local: Option<WorkflowEnvironment<LocalServer>>,
+        local: Option<LocalEnvironment>,
         options: EngineOptions,
         task_queue: String,
         agents: &[Agent],

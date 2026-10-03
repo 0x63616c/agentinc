@@ -42,5 +42,6 @@ rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 utoipa = { version = "5.5", features = ["axum_extras"] }
 
 [dev-dependencies]
+turnkeel = { workspace = true, features = ["testing"] }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }

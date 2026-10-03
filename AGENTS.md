@@ -118,7 +118,8 @@ objects from a registry keyed by agent name.
 
 ## Testing
 
-Tests never call a real model provider. Use `turnkeel::testing`: `ScriptedModel` for
+Tests never call a real model provider. Use `turnkeel::testing` (behind turnkeel's `testing`
+cargo feature, which only dev-dependencies enable): `ScriptedModel` for
 rule-based replies, `Script` for call-by-call control, `testing::run()` to execute an
 agent end to end, `assert_transcript()` for ordered assertions. Tests run against a real local Temporal
 dev server, so they exercise the real workflow and real activities.

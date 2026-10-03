@@ -1,7 +1,6 @@
-use crate::{
-    Agent, Error, Message, Run, RunId, Session, SessionId,
-    engine::{Engine, EngineOptions},
-};
+#[cfg(feature = "testing")]
+use crate::engine::EngineOptions;
+use crate::{Agent, Error, Message, Run, RunId, Session, SessionId, engine::Engine};
 
 /// Stable deployment identity. Reuse the same values and register the same versioned
 /// agent definitions when replacing a process. A group shares work between its workers.
@@ -45,6 +44,7 @@ impl Runtime {
         crate::engine::list_workflows(config, status, page).await
     }
     /// Start an embedded local runtime. Good for development and examples.
+    #[cfg(feature = "testing")]
     pub async fn local() -> Result<Self, Error> {
         Ok(Self {
             engine: Engine::local(EngineOptions::default()).await?,
@@ -96,6 +96,7 @@ impl Runtime {
 
     /// An isolated runtime for tests. Like [`Runtime::local`], plus checks that would be too
     /// expensive in production: every idempotent tool is called twice and must agree.
+    #[cfg(feature = "testing")]
     pub async fn test() -> Result<Self, Error> {
         Ok(Self {
             engine: Engine::local(EngineOptions {
