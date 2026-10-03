@@ -3,6 +3,7 @@
 //! mutation still enters through [`execute_in`].
 mod activity;
 mod board;
+mod fence;
 mod links;
 
 use crate::{
@@ -18,6 +19,7 @@ use axum::{
     routing::{get, post},
 };
 pub(crate) use board::{enter_column, lock as lock_board};
+pub(crate) use fence::LiveAssignment;
 pub use links::{LinkKind, TicketLink};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -348,7 +350,9 @@ async fn authorize(product: &Product, headers: &HeaderMap) -> Result<Actor, ApiE
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or_else(denied)?;
-    let row:Option<(String,String,i64,i64)> = sqlx::query_as("SELECT c.workspace_id,r.agent_id,r.ticket_id,r.generation FROM agent_credentials c JOIN ticket_runs r ON r.run_id=c.run_id JOIN tickets t ON t.id=r.ticket_id WHERE c.token_hash=$1 AND t.workspace_id=c.workspace_id AND t.generation=r.generation AND t.assignee_kind='agent' AND t.assignee_id=r.agent_id AND r.state IN ('queued','running')")
+    // The credential names an assignment; whether it is still live is decided
+    // by the fence inside each read or write transaction.
+    let row:Option<(String,String,i64,i64)> = sqlx::query_as("SELECT c.workspace_id,r.agent_id,r.ticket_id,r.generation FROM agent_credentials c JOIN ticket_runs r ON r.run_id=c.run_id WHERE c.token_hash=$1")
         .bind(token_hash(token)).fetch_optional(&product.pool).await?;
     let (workspace, id, ticket, generation) = row.ok_or_else(denied)?;
     Ok(Actor {
@@ -404,11 +408,10 @@ pub async fn history(
 /// An agent reads only while its assignment's run is live; a stale credential
 /// sees nothing, in the same transaction as the read.
 async fn fence_read(tx: &mut Transaction<'_, Postgres>, actor: &Actor) -> Result<(), ApiError> {
-    let Some((id, generation)) = actor.assignment else {
-        return Ok(());
-    };
-    let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tickets t JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE t.id=$1 AND t.workspace_id=$2 AND t.generation=$3 AND t.assignee_id=$4 AND t.assignee_kind='agent' AND r.state IN ('queued','running'))").bind(id).bind(&actor.workspace).bind(generation).bind(&actor.id).fetch_one(&mut **tx).await?;
-    if active { Ok(()) } else { Err(denied()) }
+    if actor.assignment.is_some() {
+        LiveAssignment::check(tx, actor).await?;
+    }
+    Ok(())
 }
 
 pub(crate) async fn snapshot(pool: &PgPool, actor: &Actor) -> Result<TicketSnapshot, ApiError> {
@@ -446,30 +449,23 @@ async fn lock_ticket(
     id: i64,
     revision: Option<i64>,
 ) -> Result<Ticket, ApiError> {
-    if actor.assignment.is_some_and(|a| a.0 != id) {
-        return Err(denied());
-    }
-    let ticket: Ticket = sqlx::query_as(&format!(
-        "SELECT {TICKET_COLUMNS} FROM tickets WHERE id=$1 AND workspace_id=$2 FOR UPDATE"
-    ))
-    .bind(id)
-    .bind(&actor.workspace)
-    .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(denied)?;
-    if actor.assignment.is_some_and(|(_, generation)| {
-        ticket.generation != generation
-            || ticket.assignee_kind != AssigneeKind::Agent
-            || ticket.assignee_id != actor.id
-    }) {
-        return Err(denied());
-    }
-    if actor.assignment.is_some() {
-        let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs WHERE ticket_id=$1 AND generation=$2 AND agent_id=$3 AND state IN ('queued','running'))").bind(id).bind(ticket.generation).bind(&actor.id).fetch_one(&mut **tx).await?;
-        if !active {
+    let ticket = if actor.assignment.is_some() {
+        // An agent touches only the Ticket it is assigned to, while that assignment is live.
+        let live = LiveAssignment::lock(tx, actor).await?;
+        if live.ticket.id != id {
             return Err(denied());
         }
-    }
+        live.ticket
+    } else {
+        sqlx::query_as(&format!(
+            "SELECT {TICKET_COLUMNS} FROM tickets WHERE id=$1 AND workspace_id=$2 FOR UPDATE"
+        ))
+        .bind(id)
+        .bind(&actor.workspace)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or_else(denied)?
+    };
     if revision.is_some_and(|revision| ticket.revision != revision) {
         return Err(ApiError::conflict());
     }

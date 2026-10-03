@@ -315,7 +315,8 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
         listener.listen("agentinc_results").await?;
         listener.listen("agentinc_dispatch").await?;
         loop {
-            let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs WHERE ticket_id=$1 AND generation=1 AND state IN ('queued','running'))").bind(ticket).fetch_one(pool).await?;
+            // Work is live while the Ticket's current generation, whichever it is, has a run.
+            let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id AND t.generation=r.generation WHERE t.id=$1 AND r.state IN ('queued','running'))").bind(ticket).fetch_one(pool).await?;
             if !active {
                 break;
             }
