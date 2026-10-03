@@ -149,19 +149,16 @@ pub fn history(
         notes: notes.into(),
     }];
     for (index, release) in published.iter().enumerate() {
-        let notes = if has_notes(&release.notes.notes) {
-            release.notes.notes.clone()
-        } else {
-            generate(
+        let notes = match published.get(index + 1) {
+            Some(previous) if !has_notes(&release.notes.notes) => generate(
                 shell,
                 base,
                 repo,
                 &release.notes.version.to_string(),
                 &release.tag,
-                published
-                    .get(index + 1)
-                    .map(|previous| previous.tag.as_str()),
-            )?
+                Some(previous.tag.as_str()),
+            )?,
+            _ => release.notes.notes.clone(),
         };
         releases.push(ReleaseNotes {
             version: release.notes.version.clone(),
@@ -303,18 +300,21 @@ mod tests {
         git.command(&["tag", "v0.4.0"]).unwrap();
         let first = generate(&git, root.path(), "owner/repo", "0.4.0", &commit, None).unwrap();
         assert!(first.contains("Initial feature"));
-        let old = vec![Published {
-            tag: "v0.4.0".into(),
+        git.commit("Second feature");
+        git.command(&["tag", "v0.4.1"]).unwrap();
+        let link = "**Full Changelog**: https://example.com/diff";
+        let published = |tag: &str, version: &str| Published {
+            tag: tag.into(),
             notes: ReleaseNotes {
-                version: "0.4.0".parse().unwrap(),
-                notes: "**Full Changelog**: https://example.com/diff".into(),
+                version: version.parse().unwrap(),
+                notes: link.into(),
             },
-        }];
+        };
+        let old = vec![published("v0.4.1", "0.4.1"), published("v0.4.0", "0.4.0")];
         let history = history(&git, root.path(), "owner/repo", "0.5.0", "New notes", &old).unwrap();
-        assert_eq!(
-            parse_changelog(&history).unwrap()[1].notes,
-            first.strip_prefix("# AgentInc 0.4.0\n\n").unwrap().trim()
-        );
+        let parsed = parse_changelog(&history).unwrap();
+        assert!(parsed[1].notes.contains("Second feature"));
+        assert_eq!(parsed[2].notes, link);
     }
 
     #[test]
