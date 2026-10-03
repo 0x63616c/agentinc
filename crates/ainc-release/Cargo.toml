@@ -19,8 +19,20 @@ ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
 base64 = "0.22"
 sha2 = "0.10"
 
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "charset", "http2", "system-proxy", "json", "stream"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+reqwest = { version = "0.13", default-features = false, features = [
+  "rustls-no-provider",
+  "charset",
+  "http2",
+  "system-proxy",
+  "json",
+  "stream",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+  "ring",
+  "std",
+  "tls12",
+  "logging",
+] }
 futures.workspace = true
 tokio = { workspace = true, features = ["fs"] }
 flate2 = "1"

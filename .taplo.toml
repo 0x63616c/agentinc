@@ -1,0 +1,2 @@
+# Vendored upstream manifests keep their own formatting.
+exclude = ["vendor/**"]

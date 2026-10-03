@@ -38,10 +38,10 @@ jobs:
           # One cache per lane; only main writes it so pull requests cannot poison it.
           key: ${{ matrix.check }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - if: matrix.check == 'test'
-        uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest
+          # Pinned so `cargo xtask check` runs taplo here instead of skipping it.
+          tool: cargo-nextest,taplo@0.10.0
       - if: matrix.check == 'check'
         run: cargo xtask check --profile ci
       - if: matrix.check == 'test'

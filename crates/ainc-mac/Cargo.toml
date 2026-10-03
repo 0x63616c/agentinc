@@ -21,8 +21,13 @@ ainc-identity = { path = "../ainc-identity" }
 ainc-release = { path = "../ainc-release" }
 gpui-pilot = { path = "../gpui-pilot", optional = true, features = ["host"] }
 accesskit = "0.24.0"
-gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit"] }
-gpui_platform = { version = "=0.1.0", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit", "runtime_shaders"] }
+gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = [
+  "font-kit",
+] }
+gpui_platform = { version = "=0.1.0", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = [
+  "font-kit",
+  "runtime_shaders",
+] }
 anyhow = "1"
 chrono = "0.4"
 tracing.workspace = true
@@ -32,8 +37,15 @@ serde_json = "1"
 unicode-segmentation = "1"
 ainc-client = { path = "../ainc-client" }
 # Only the update drain request to the owned daemon; everything else goes through ainc-client.
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+reqwest = { version = "0.13", default-features = false, features = [
+  "rustls-no-provider",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+  "ring",
+  "std",
+  "tls12",
+  "logging",
+] }
 tokio.workspace = true
 uuid.workspace = true
 pulldown-cmark = "0.13"
@@ -48,21 +60,24 @@ cc = "1"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.2"
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication"] }
-objc2-foundation = { version = "0.3.2", features = ["NSDictionary", "NSString"] }
+objc2-foundation = { version = "0.3.2", features = [
+  "NSDictionary",
+  "NSString",
+] }
 libloading = "0.8"
 raw-window-handle = "0.6"
 tracing-oslog = "0.3"
 
 [features]
 automation = [
-    "fixtures",
-    "dep:gpui-pilot",
-    "dep:futures",
-    "dep:tokio-tungstenite",
-    "dep:libc",
-    "gpui/pilot",
-    "gpui/test-support",
-    "gpui_platform/test-support",
+  "fixtures",
+  "dep:gpui-pilot",
+  "dep:futures",
+  "dep:tokio-tungstenite",
+  "dep:libc",
+  "gpui/pilot",
+  "gpui/test-support",
+  "gpui_platform/test-support",
 ]
 fixtures = []
 rendered-tests = ["fixtures", "gpui/test-support", "gpui_platform/test-support"]
@@ -71,7 +86,10 @@ rendered-tests = ["fixtures", "gpui/test-support", "gpui_platform/test-support"]
 log = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
 futures.workspace = true
-gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit", "test-support"] }
+gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = [
+  "font-kit",
+  "test-support",
+] }
 tempfile = "3"
 
 [[test]]
