@@ -26,10 +26,10 @@ Only shell layout, navigation and font remain app-local. Their versioned UI-pref
 The bundle includes and signs `Contents/MacOS/aincd`. The app checks the discovered daemon on a background executor. If it is unavailable, the app starts that companion using `AINC_DATABASE_URL` (a Postgres URL); the child survives app quit. The daemon locks its discovery file, binds an ephemeral loopback port and atomically publishes the URL. It creates an owner-only `owner-token` next to that file. Postgres remains an independently managed dependency; this phase does not bundle a database server.
 
 - `AINC_DISCOVERY_FILE`: URL discovery file; installed default is `…/Agentinc OS/daemon/api-url`.
-- `AINC_DAEMON_URL`: explicitly configured HTTP(S) URL; disables companion launch.
+- `AINC_API_URL`: explicitly configured HTTP(S) URL; disables companion launch.
 - `AINC_TOKEN_FILE`: bearer credential file; defaults beside discovery.
 - `AINC_LEGACY_DIR`, `AGENTINC_CODEX_HOME`, `AGENTINC_CODEX_PATH`: daemon-side import/profile/provider overrides. The app does not access provider credentials.
-- `AGENTINC_SESSION_PATH`: UI-only preferences; set it for every isolated app launch.
+- `AINC_SESSION_PATH`: UI-only preferences; set it for every isolated app launch.
 
 Product endpoints require the owner bearer credential. The generated CLI reads `AINC_TOKEN_FILE` or `.local/dev/owner-token`, with its existing `AINC_API_URL` override. The daemon still binds only loopback; remote exposure requires the private TLS/Tailscale deployment configuration from the architecture plan. Multi-user identity is phase 5.
 

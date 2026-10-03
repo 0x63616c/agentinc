@@ -290,7 +290,7 @@ fn capture(root: &Path, state: &Path, output: &Path) -> Result<()> {
     let pilot_path = root.join("target/debug/gpui-pilot-cli");
     let discovery = root.join(".local/dev/api-url");
     let env = [
-        ("AGENTINC_SESSION_PATH", state.join("session.json")),
+        ("AINC_SESSION_PATH", state.join("session.json")),
         ("AINC_DISCOVERY_FILE", discovery),
         ("AINC_LEGACY_DIR", state.join("legacy")),
         ("AGENTINC_CODEX_HOME", state.join("codex")),
@@ -298,9 +298,9 @@ fn capture(root: &Path, state: &Path, output: &Path) -> Result<()> {
     .map(|(key, path)| (key, path.display().to_string()))
     .into_iter()
     .chain([
-        ("AGENTINC_WINDOW_TITLE", TITLE.to_string()),
-        ("AGENTINC_CAPTURE_WORKSPACE", "Acme Inc".to_string()),
-        ("AGENTINC_CAPTURE_PROFILE", "Alex".to_string()),
+        ("AINC_WINDOW_TITLE", TITLE.to_string()),
+        ("AINC_CAPTURE_WORKSPACE", "Acme Inc".to_string()),
+        ("AINC_CAPTURE_PROFILE", "Alex".to_string()),
     ])
     .collect::<Vec<_>>();
     let log_path = state.join("app.log");

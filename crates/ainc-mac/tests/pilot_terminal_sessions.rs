@@ -35,11 +35,11 @@ fn launch(root: &Path, discovery: &Path, run: &str) -> Result<(App, Client)> {
         command.arg("--gpui-pilot-visible");
     }
     let mut app = App(command
-        .env("AGENTINC_SESSION_PATH", root.join("session.json"))
+        .env("AINC_SESSION_PATH", root.join("session.json"))
         .env("AINC_DISCOVERY_FILE", discovery)
         .env("AINC_LEGACY_DIR", root.join("legacy"))
         .env("AGENTINC_CODEX_HOME", root.join("codex"))
-        .env("AGENTINC_WINDOW_TITLE", WINDOW_TITLE)
+        .env("AINC_WINDOW_TITLE", WINDOW_TITLE)
         .stdout(Stdio::null())
         .stderr(log)
         .spawn()?);

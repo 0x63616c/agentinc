@@ -79,7 +79,7 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
         .arg("--gpui-pilot-session")
         .arg(&session)
         .arg("--gpui-pilot-visible")
-        .env("AGENTINC_SESSION_PATH", state.join("session.json"))
+        .env("AINC_SESSION_PATH", state.join("session.json"))
         .env(
             "AINC_DISCOVERY_FILE",
             std::env::var_os("AINC_DISCOVERY_FILE")
@@ -87,7 +87,7 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
         )
         .env("AINC_LEGACY_DIR", state.join("legacy"))
         .env("AGENTINC_CODEX_HOME", state.join("codex"))
-        .env("AGENTINC_WINDOW_TITLE", TITLE)
+        .env("AINC_WINDOW_TITLE", TITLE)
         .stdout(log.try_clone()?)
         .stderr(log)
         .spawn()?);

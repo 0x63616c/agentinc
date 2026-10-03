@@ -26,7 +26,7 @@ No hosted CI is configured. These are local checks, not a claim of hosted CI or 
 
 ## Actual native interaction acceptance
 
-An isolated `Agentinc QA` bundle used the same application binary with a separate bundle identifier, explicit window title and `AGENTINC_SESSION_PATH`. Inputs were delivered to the actual macOS window through CUA. Native window captures were matched by owner and exact title, then reduced from Retina pixels to logical dimensions. Session JSON was inspected to corroborate the visible result.
+An isolated `Agentinc QA` bundle used the same application binary with a separate bundle identifier, explicit window title and `AINC_SESSION_PATH`. Inputs were delivered to the actual macOS window through CUA. Native window captures were matched by owner and exact title, then reduced from Retina pixels to logical dimensions. Session JSON was inspected to corroborate the visible result.
 
 - Navigated all seven sidebar destinations with Cmd+1…7, and clicked sidebar Tasks. Opened Evee and Settings through search; each has distinct, clearly planned content.
 - Created tabs with Cmd+N/Cmd+T and selected destinations through text/Return and pointer selection. Choosing an already-open Home removed the blank and selected Home. Closed tabs through the close button and Cmd+W, checked the neighboring fallback, and confirmed repeated close leaves the last tab open.

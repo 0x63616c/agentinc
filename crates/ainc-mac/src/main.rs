@@ -73,11 +73,11 @@ fn main() {
             && args[0] == "--gpui-pilot-session"
         {
             for name in [
-                "AGENTINC_SESSION_PATH",
+                "AINC_SESSION_PATH",
                 "AINC_DISCOVERY_FILE",
                 "AINC_LEGACY_DIR",
                 "AGENTINC_CODEX_HOME",
-                "AGENTINC_WINDOW_TITLE",
+                "AINC_WINDOW_TITLE",
             ] {
                 let value = std::env::var_os(name)
                     .filter(|v| !v.is_empty())
@@ -85,7 +85,7 @@ fn main() {
                         eprintln!("Pilot launch requires isolation variable {name}");
                         std::process::exit(2);
                     });
-                if name != "AGENTINC_WINDOW_TITLE" && !std::path::Path::new(&value).is_absolute() {
+                if name != "AINC_WINDOW_TITLE" && !std::path::Path::new(&value).is_absolute() {
                     eprintln!("Pilot isolation paths must be absolute: {name}");
                     std::process::exit(2);
                 }
@@ -147,7 +147,7 @@ fn main() {
             #[cfg(feature = "automation")]
             // Pilot captures the same pages at both supported review widths.
             let pilot_narrow =
-                pilot_directory.is_some() && std::env::var_os("AGENTINC_PILOT_NARROW").is_some();
+                pilot_directory.is_some() && std::env::var_os("AINC_PILOT_NARROW").is_some();
             #[cfg(not(feature = "automation"))]
             let pilot_narrow = false;
             let bounds = Bounds::centered(
@@ -166,7 +166,7 @@ fn main() {
             let result = cx.open_window(
                 main_window_options(
                     bounds,
-                    std::env::var("AGENTINC_WINDOW_TITLE")
+                    std::env::var("AINC_WINDOW_TITLE")
                         .unwrap_or_else(|_| "AgentInc".into())
                         .into(),
                     visible,
@@ -186,7 +186,7 @@ fn main() {
             updates::start_upgrade_test(cx);
             #[cfg(feature = "automation")]
             if let Some(directory) = pilot_directory {
-                let title = std::env::var("AGENTINC_WINDOW_TITLE").expect("validated pilot title");
+                let title = std::env::var("AINC_WINDOW_TITLE").expect("validated pilot title");
                 match gpui_pilot::host::Host::start(&directory, title, window.into(), cx) {
                     Ok(host) => cx.set_global(host),
                     Err(error) => {

@@ -142,7 +142,7 @@ impl Shell {
             .current_id
     }
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let path = std::env::var_os("AGENTINC_SESSION_PATH")
+        let path = std::env::var_os("AINC_SESSION_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|| ainc_release::identity::support_dir().join("session.json"));
         let daemon = Some(std::sync::Arc::new(crate::daemon::Daemon::connect()));

@@ -86,9 +86,9 @@ For an isolated session without changing the regular app's state:
 
 ```sh
 mkdir -p .local
-AGENTINC_SESSION_PATH="$PWD/.local/test-session.json" \
+AINC_SESSION_PATH="$PWD/.local/test-session.json" \
   AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" \
-  AGENTINC_WINDOW_TITLE='AgentInc QA' \
+  AINC_WINDOW_TITLE='AgentInc QA' \
   'crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc'
 ```
 

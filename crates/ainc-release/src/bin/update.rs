@@ -173,7 +173,7 @@ mod acceptance {
         assert!(discovery.starts_with(&root));
         assert!(!root.exists(), "use a fresh test profile");
         for name in [
-            "AGENTINC_SESSION_PATH",
+            "AINC_SESSION_PATH",
             "AINC_LEGACY_DIR",
             "AGENTINC_CODEX_HOME",
         ] {

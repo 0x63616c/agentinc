@@ -69,7 +69,7 @@ impl HoverHost for UpdateView {
 }
 impl UpdateView {
     fn new(cx: &mut Context<Self>) -> Self {
-        let directory = std::env::var_os("AGENTINC_SESSION_PATH")
+        let directory = std::env::var_os("AINC_SESSION_PATH")
             .map(PathBuf::from)
             .and_then(|p| p.parent().map(|p| p.join("updates")))
             .unwrap_or_else(|| ainc_release::identity::support_dir().join("updates"));

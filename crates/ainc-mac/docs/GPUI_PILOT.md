@@ -105,7 +105,7 @@ cargo test --locked --features automation --test pilot_cli_smoke -- --ignored --
 cargo xtask vendor-pilot-gpui .local/cargo-home/git/checkouts/zed-a70e2ad075855582/4c902c9
 ```
 
-The actual-app test launches its own executable, with distinct `AGENTINC_SESSION_PATH`, `AGENTINC_DATABASE_PATH`, `AGENTINC_CODEX_HOME`, and `AGENTINC_WINDOW_TITLE`. Every UI operation and business assertion uses the authenticated driver; there is no fixture-state setter or database read in the flow. The test removes its temporary data and waits for its own child to exit. Additional screenshots check independent header/sidebar/profile/Evee pixel regions.
+The actual-app test launches its own executable, with distinct `AINC_SESSION_PATH`, `AINC_DATABASE_PATH`, `AGENTINC_CODEX_HOME`, and `AINC_WINDOW_TITLE`. Every UI operation and business assertion uses the authenticated driver; there is no fixture-state setter or database read in the flow. The test removes its temporary data and waits for its own child to exit. Additional screenshots check independent header/sidebar/profile/Evee pixel regions.
 
 Saved complete PNGs were inspected at 1360×828 logical resolution:
 
