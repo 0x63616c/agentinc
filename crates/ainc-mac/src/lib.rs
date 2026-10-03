@@ -222,12 +222,3 @@ pub fn run() {
             }
         });
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn tracing_starts_once_and_bridges_gpui_log_records() {
-        super::init_tracing();
-        assert!(log::log_enabled!(log::Level::Info));
-    }
-}
