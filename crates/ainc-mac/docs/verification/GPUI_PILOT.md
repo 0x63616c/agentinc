@@ -28,7 +28,7 @@ cargo build --locked --workspace --features automation
 cargo test --locked --features automation --test pilot_acceptance -- --nocapture
 cargo test --locked --features rendered-tests --test rendered_shell
 cargo tree --locked -p agentinc-os -e normal --depth 1
-python3 tests/pilot_cli_smoke.py
+cargo test --locked --features automation --test pilot_cli_smoke -- --ignored --nocapture
 cargo xtask vendor-pilot-gpui .local/cargo-home/git/checkouts/zed-a70e2ad075855582/4c902c9
 ```
 

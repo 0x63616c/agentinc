@@ -4,7 +4,7 @@
 
 ## Launch and use
 
-Normal `cargo build` and `crates/ainc-mac/scripts/bundle.sh [release]` omit the library and its host feature. Normal app binaries reject automation arguments before opening a window. `automation` must be explicitly compiled **and** `--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY` must be passed. An automation-enabled binary launched without this argument creates no driver endpoint and does not activate the semantic observer. Pilot sessions open an undisplayed, unfocused native Metal window and leave the current app frontmost. Pass `--gpui-pilot-visible` after the session directory only for checks that require an on-screen OS window, such as `tests/pilot_cli_smoke.py`. Ordinary launches remain visible.
+Normal `cargo build` and `crates/ainc-mac/scripts/bundle.sh [release]` omit the library and its host feature. Normal app binaries reject automation arguments before opening a window. `automation` must be explicitly compiled **and** `--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY` must be passed. An automation-enabled binary launched without this argument creates no driver endpoint and does not activate the semantic observer. Pilot sessions open an undisplayed, unfocused native Metal window and leave the current app frontmost. Pass `--gpui-pilot-visible` after the session directory only for checks that require an on-screen OS window, such as `tests/pilot_cli_smoke.rs`. Ordinary launches remain visible.
 
 ```sh
 # Start cargo xtask dev first. This uses its isolated daemon and a fresh UI session.
@@ -60,7 +60,7 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo build --locked -p agentinc-os -p gpui-pilot-cli --features agentinc-os/automation
 cargo test --locked -p agentinc-os --features automation --test pilot_acceptance -- --nocapture
 cargo test --locked -p agentinc-os --features rendered-tests --test rendered_shell
-python3 crates/ainc-mac/tests/pilot_cli_smoke.py
+cargo test --locked -p agentinc-os --features automation --test pilot_cli_smoke -- --ignored --nocapture
 ```
 
 `pilot_acceptance` launches the actual app executable with isolated UI, daemon discovery, import/profile and title variables and a fresh private driver session. Its only UI operations/assertions use the socket driver. It follows Search → Tickets → Add Ticket → Unicode title → Create, checks the resulting Ticket row, four statuses, assignee changes, Comments, agent registration, and Assistant new-conversation/list navigation; it exercises stale refs, overlay rejection, selection/undo, a concurrent wait and a deadline, and checks screenshot pixels in independent shell regions. Artifacts and small-sample latency distributions are written to `target/pilot-acceptance/`. The test process stops only its own child.

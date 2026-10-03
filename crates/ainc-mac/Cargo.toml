@@ -61,3 +61,8 @@ required-features = ["automation"]
 name = "pilot_terminal_sessions"
 path = "tests/pilot_terminal_sessions.rs"
 required-features = ["automation"]
+
+[[test]]
+name = "pilot_cli_smoke"
+path = "tests/pilot_cli_smoke.rs"
+required-features = ["automation"]
