@@ -26,7 +26,6 @@ gpui_platform = { version = "=0.1.0", git = "https://github.com/zed-industries/z
 anyhow = "1"
 chrono = "0.4"
 tracing.workspace = true
-tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -67,6 +66,7 @@ fixtures = []
 rendered-tests = ["fixtures", "gpui/test-support", "gpui_platform/test-support"]
 
 [dev-dependencies]
+log = "0.4"
 # Only tests/tls_provider.rs: the app reaches the daemon through ainc-client, which owns reqwest.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
