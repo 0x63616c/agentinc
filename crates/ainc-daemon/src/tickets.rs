@@ -482,7 +482,8 @@ pub(crate) async fn execute_in(
     let receipt = receipts::execute(tx, scope, operation_id, &payload, |tx| {
         Box::pin(async move {
             let result_id = apply(tx, &actor, command).await?;
-            sqlx::query("SELECT pg_notify('agentinc_dispatch','')")
+            sqlx::query("SELECT pg_notify($1,'')")
+                .bind(crate::pg::coordination::DISPATCH)
                 .execute(&mut **tx)
                 .await?;
             Ok(result_id)

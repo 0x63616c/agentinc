@@ -17,10 +17,13 @@ use std::{fs, path::Path};
 
 /// Operation IDs whose resource is not yet a CONTEXT.md noun.
 const LEGACY_OPERATIONS: &[(&str, &str)] = &[
-    ("product_state", "WP-D6 moves /v1/state to resource paths"),
+    (
+        "product_state",
+        "deprecated for /v1/conversations; removed in a later release",
+    ),
     (
         "product_command",
-        "WP-D6 moves /v1/commands to resource paths",
+        "deprecated for /v1/conversations/commands; removed in a later release",
     ),
     ("terminal_sessions_list", "terminal is not a construct yet"),
     (

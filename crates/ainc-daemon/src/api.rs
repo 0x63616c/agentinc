@@ -247,6 +247,7 @@ pub(crate) use ainc_release::{CLIENT_HEADER, SERVER_HEADER};
 fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .merge(crate::health::routes())
+        .merge(crate::conversations::routes())
         .merge(crate::product::routes())
         .merge(crate::connection::routes())
         .merge(crate::tickets::routes())

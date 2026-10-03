@@ -143,6 +143,7 @@ fn variants(spec: &Value, group: &str) -> Vec<Variant> {
     let request = match group {
         "tickets" => "TicketCommand",
         "automations" => "AutomationCommand",
+        "conversations" => "ConversationCommand",
         "product" => "Command",
         _ => return vec![],
     };
@@ -216,7 +217,7 @@ fn command_tree(spec: &Value) -> Command {
             .or_insert_with(|| Command::new(group).subcommand_required(true));
         *entry = entry.clone().subcommand(command);
     }
-    for group in ["tickets", "automations", "product"] {
+    for group in ["tickets", "automations", "conversations", "product"] {
         if let Some(entry) = groups.get_mut(group) {
             for (kind, fields) in variants(spec, group) {
                 let mut command =
@@ -305,6 +306,7 @@ fn install_cli() -> Result<()> {
 async fn main() -> Result<()> {
     // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
     let _ = rustls::crypto::ring::default_provider().install_default();
+    ainc_client::identify_as("cli");
     let spec = schema();
     let mut tree = command_tree(&spec);
     let matches = tree.clone().get_matches();
@@ -381,6 +383,7 @@ async fn main() -> Result<()> {
     let op = operation(match group {
         "tickets" => "tickets_command",
         "automations" => "automations_command",
+        "conversations" => "conversations_command",
         "product" => "product_command",
         _ => bail!("unsupported command"),
     });

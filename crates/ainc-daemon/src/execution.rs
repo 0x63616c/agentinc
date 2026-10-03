@@ -1,14 +1,16 @@
 //! At-least-once dispatch and fenced, idempotent projection of SDK results.
 use crate::{
     coding::{CodingTool, Permission, WorkspacePolicy},
+    pg::coordination,
     receipts::OperationId,
     tickets::{
         self, Actor, Entry, LiveAssignment, TicketCommand, TicketCommandRequest, TicketStatus,
     },
+    worker::{Leased, Reconcile, Tasks},
 };
 use futures::future::BoxFuture;
-use sqlx::{FromRow, PgPool, postgres::PgListener};
-use std::{collections::HashSet, sync::Arc};
+use sqlx::{FromRow, PgPool};
+use std::{sync::Arc, time::Duration};
 use turnkeel::{Agent, AgentSource, Model, ModelError, RunId, Runtime, RuntimeConfig};
 
 /// Resolve an immutable model ID when reconstructing a persisted agent definition.
@@ -113,12 +115,14 @@ impl Definition {
 }
 
 pub struct Runner {
+    lease: Leased,
+    dispatcher: Dispatcher,
+}
+struct Dispatcher {
     pool: PgPool,
     runtime: Arc<Runtime>,
     models: Arc<dyn ModelCatalog>,
     policy: Arc<WorkspacePolicy>,
-    listener: PgListener,
-    owner: sqlx::PgConnection,
 }
 impl Runner {
     pub async fn start(
@@ -127,13 +131,14 @@ impl Runner {
         models: Arc<dyn ModelCatalog>,
         policy: WorkspacePolicy,
     ) -> anyhow::Result<Self> {
-        let mut owner = pool.acquire().await?.detach();
-        let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock(7358710303)")
-            .fetch_one(&mut owner)
-            .await?;
-        anyhow::ensure!(locked, "another daemon owns Ticket dispatch");
-        let mut listener = PgListener::connect_with(&pool).await?;
-        listener.listen("agentinc_dispatch").await?;
+        let lease = Leased::acquire(
+            &pool,
+            coordination::TICKET_DISPATCH_LOCK,
+            &[coordination::DISPATCH],
+            Duration::from_secs(1),
+            "another daemon owns Ticket dispatch",
+        )
+        .await?;
         let policy = Arc::new(policy);
         let runtime = Arc::new(
             Runtime::configured_with(
@@ -147,65 +152,58 @@ impl Runner {
             .await?,
         );
         Ok(Self {
-            pool,
-            runtime,
-            models,
-            policy,
-            listener,
-            owner,
+            lease,
+            dispatcher: Dispatcher {
+                pool,
+                runtime,
+                models,
+                policy,
+            },
         })
     }
     pub async fn run(self) -> anyhow::Result<()> {
         self.run_until(std::future::pending()).await
     }
     pub async fn run_until(
-        mut self,
+        self,
         shutdown: impl std::future::Future<Output = ()>,
     ) -> anyhow::Result<()> {
-        tokio::pin!(shutdown);
-        let mut active = HashSet::new();
-        let mut results = tokio::task::JoinSet::new();
-        loop {
-            self.dispatch().await?;
-            let definitions: Vec<Definition> =
-                sqlx::query_as(&format!("{DEFINITION_SQL} WHERE r.state='running'"))
-                    .fetch_all(&self.pool)
-                    .await?;
-            for definition in definitions {
-                if active.insert(definition.run_id.clone()) {
-                    let runtime = self.runtime.clone();
-                    let pool = self.pool.clone();
-                    results.spawn(async move {
-                        let run = runtime.run_by_id(RunId::new(&definition.run_id));
-                        let result = match run.result().await {
-                            Ok(text) => Ok(text),
-                            Err(
-                                error
-                                @ (turnkeel::Error::RunFailed(_) | turnkeel::Error::Cancelled),
-                            ) => Err(error.to_string()),
-                            Err(error) => return Err(error.into()),
-                        };
-                        project(&pool, &definition, result).await?;
-                        anyhow::Ok(definition.run_id)
-                    });
-                }
-            }
-            tokio::select! {
-                _ = &mut shutdown => {
-                    results.shutdown().await;
-                    std::sync::Arc::try_unwrap(self.runtime).map_err(|_| anyhow::anyhow!("runtime still owned during drain"))?.shutdown().await?;
-                    return Ok(());
-                }
-
-                notification=self.listener.recv()=> {notification?;}
-                Some(result)=results.join_next(),if !results.is_empty()=> {active.remove(&result??);}
-                _=tokio::time::sleep(std::time::Duration::from_secs(1))=> {
-                    // Also reconciles a lost NOTIFY and notices loss of exclusive ownership.
-                    sqlx::query("SELECT 1").execute(&mut self.owner).await?;
-                }
-            }
-        }
+        self.lease.run_until(self.dispatcher, shutdown).await
     }
+}
+impl Reconcile for Dispatcher {
+    async fn reconcile(&mut self, tasks: &mut Tasks) -> anyhow::Result<()> {
+        self.dispatch().await?;
+        let definitions: Vec<Definition> =
+            sqlx::query_as(&format!("{DEFINITION_SQL} WHERE r.state='running'"))
+                .fetch_all(&self.pool)
+                .await?;
+        for definition in definitions {
+            let runtime = self.runtime.clone();
+            let pool = self.pool.clone();
+            tasks.spawn(definition.run_id.clone(), async move {
+                let run = runtime.run_by_id(RunId::new(&definition.run_id));
+                let result = match run.result().await {
+                    Ok(text) => Ok(text),
+                    Err(error @ (turnkeel::Error::RunFailed(_) | turnkeel::Error::Cancelled)) => {
+                        Err(error.to_string())
+                    }
+                    Err(error) => return Err(error.into()),
+                };
+                project(&pool, &definition, result).await
+            });
+        }
+        Ok(())
+    }
+    async fn drain(self) -> anyhow::Result<()> {
+        Arc::try_unwrap(self.runtime)
+            .map_err(|_| anyhow::anyhow!("runtime still owned during drain"))?
+            .shutdown()
+            .await?;
+        Ok(())
+    }
+}
+impl Dispatcher {
     async fn dispatch(&self) -> anyhow::Result<()> {
         sqlx::query("INSERT INTO worker_health(id,last_seen) VALUES('tickets',extract(epoch FROM clock_timestamp())::bigint) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen")
             .execute(&self.pool).await?;
@@ -376,7 +374,8 @@ async fn project(
             .await?;
         }
     }
-    sqlx::query("SELECT pg_notify('agentinc_results',$1)")
+    sqlx::query("SELECT pg_notify($1,$2)")
+        .bind(coordination::RESULTS)
         .bind(&definition.run_id)
         .execute(&mut *tx)
         .await?;
@@ -470,8 +469,13 @@ mod tests {
         )
         .await
         .unwrap();
-        let mut listener = PgListener::connect_with(&pool).await.unwrap();
-        listener.listen("agentinc_results").await.unwrap();
+        let mut listener = sqlx::postgres::PgListener::connect_with(&pool)
+            .await
+            .unwrap();
+        listener
+            .listen(crate::pg::coordination::RESULTS)
+            .await
+            .unwrap();
         let worker = tokio::spawn(runner.run());
         assert_eq!(listener.recv().await.unwrap().payload(), definition.run_id);
         let state = tickets::snapshot(&pool, &Actor::owner()).await.unwrap();
@@ -550,7 +554,7 @@ mod tests {
             },
         )
         .await;
-        runner.dispatch().await.unwrap(); // No SDK run existed: cancellation is still safe.
+        runner.dispatcher.dispatch().await.unwrap(); // No SDK run existed: cancellation is still safe.
         apply(
             &pool,
             Command::Assign {
@@ -561,7 +565,7 @@ mod tests {
             },
         )
         .await;
-        runner.dispatch().await.unwrap();
+        runner.dispatcher.dispatch().await.unwrap();
         let mut call = script.next_model_call().await;
         let current = tickets::snapshot(&pool, &Actor::owner())
             .await
@@ -576,7 +580,7 @@ mod tests {
             },
         )
         .await;
-        runner.dispatch().await.unwrap();
+        runner.dispatcher.dispatch().await.unwrap();
         call.cancelled().await;
         project(
             &pool,
@@ -615,8 +619,13 @@ mod tests {
         )
         .await
         .unwrap();
-        let mut listener = PgListener::connect_with(&pool).await.unwrap();
-        listener.listen("agentinc_results").await.unwrap();
+        let mut listener = sqlx::postgres::PgListener::connect_with(&pool)
+            .await
+            .unwrap();
+        listener
+            .listen(crate::pg::coordination::RESULTS)
+            .await
+            .unwrap();
         let worker = tokio::spawn(runner.run());
         listener.recv().await.unwrap();
         assert_eq!(
@@ -657,9 +666,10 @@ mod tests {
         )
         .await
         .unwrap();
-        runner.dispatch().await.unwrap();
+        runner.dispatcher.dispatch().await.unwrap();
         assert_eq!(
             runner
+                .dispatcher
                 .runtime
                 .run_by_id(RunId::new(&definition.run_id))
                 .result()
@@ -671,13 +681,13 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        runner.dispatch().await.unwrap();
+        runner.dispatcher.dispatch().await.unwrap();
         let key: String = sqlx::query_scalar("SELECT effect_key FROM tool_effects")
             .fetch_one(&pool)
             .await
             .unwrap();
         let agent = definition
-            .agent(&pool, models.as_ref(), &runner.policy)
+            .agent(&pool, models.as_ref(), &runner.dispatcher.policy)
             .unwrap();
         let tool = agent.tools().get("shell").unwrap();
         tool.call(turnkeel::ToolCtx::new(&key), args.clone())

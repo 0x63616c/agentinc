@@ -2,8 +2,10 @@
 use crate::api::Product;
 use crate::{
     api::{AppState, CommandError, ErrorBody, Owner},
+    pg::coordination,
     receipts::{self, OperationId, Scope},
     tickets::{self, Actor, TicketCommand, TicketCommandRequest, TicketProposal},
+    worker::{Leased, Reconcile, Tasks},
 };
 use axum::{Json, extract::State};
 use futures::future::BoxFuture;
@@ -218,7 +220,8 @@ pub(crate) async fn execute(
                     occurrence
                 }
             };
-            sqlx::query("SELECT pg_notify('agentinc_automations','')")
+            sqlx::query("SELECT pg_notify($1,'')")
+                .bind(coordination::AUTOMATIONS)
                 .execute(&mut **tx)
                 .await?;
             Ok(result_id)
@@ -344,8 +347,8 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
     // Subscribe before checking state: a completion between the two cannot be lost.
     if let Some(ticket) = ticket {
         let mut listener = PgListener::connect_with(pool).await?;
-        listener.listen("agentinc_results").await?;
-        listener.listen("agentinc_dispatch").await?;
+        listener.listen(coordination::RESULTS).await?;
+        listener.listen(coordination::DISPATCH).await?;
         loop {
             // Work is live while the Ticket's current generation, whichever it is, has a run.
             let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ticket_runs r JOIN tickets t ON t.id=r.ticket_id AND t.generation=r.generation WHERE t.id=$1 AND r.state IN ('queued','running'))").bind(ticket).fetch_one(pool).await?;
@@ -359,46 +362,46 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
 }
 
 pub struct Runner {
+    lease: Leased,
+    rules: Rules,
+}
+struct Rules {
     pool: PgPool,
     runtime: Runtime,
-    listener: PgListener,
-    owner: sqlx::PgConnection,
 }
 impl Runner {
     pub async fn start(pool: PgPool, mut config: RuntimeConfig) -> anyhow::Result<Self> {
-        let mut owner = pool.acquire().await?.detach();
-        let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock(7358710404)")
-            .fetch_one(&mut owner)
-            .await?;
-        anyhow::ensure!(locked, "another daemon owns Automations");
-        let mut listener = PgListener::connect_with(&pool).await?;
-        listener.listen("agentinc_automations").await?;
+        let lease = Leased::acquire(
+            &pool,
+            coordination::AUTOMATION_LOCK,
+            &[coordination::AUTOMATIONS],
+            Duration::from_secs(2),
+            "another daemon owns Automations",
+        )
+        .await?;
         config.worker_group.push_str("-automations");
         let runtime = Runtime::recurring(config, Arc::new(Action(pool.clone()))).await?;
         Ok(Self {
-            pool,
-            runtime,
-            listener,
-            owner,
+            lease,
+            rules: Rules { pool, runtime },
         })
     }
     pub async fn run(self) -> anyhow::Result<()> {
         self.run_until(std::future::pending()).await
     }
     pub async fn run_until(
-        mut self,
+        self,
         shutdown: impl std::future::Future<Output = ()>,
     ) -> anyhow::Result<()> {
-        tokio::pin!(shutdown);
-        loop {
-            sqlx::query("SELECT 1").execute(&mut self.owner).await?;
-            self.reconcile().await?;
-            tokio::select! {
-                           _ = &mut shutdown => { self.runtime.shutdown().await?; return Ok(()); }
-            result=self.listener.recv()=> { result?; }, _=tokio::time::sleep(Duration::from_secs(2))=>{} }
-        }
+        self.lease.run_until(self.rules, shutdown).await
     }
-    async fn reconcile(&self) -> anyhow::Result<()> {
+}
+impl Reconcile for Rules {
+    async fn drain(self) -> anyhow::Result<()> {
+        self.runtime.shutdown().await?;
+        Ok(())
+    }
+    async fn reconcile(&mut self, _tasks: &mut Tasks) -> anyhow::Result<()> {
         let rules:Vec<Automation>=sqlx::query_as("SELECT id,name,prompt,agent_id,every_minutes,paused,revision,applied_revision,error,missed,overlap_skipped FROM automations ORDER BY id").fetch_all(&self.pool).await?;
         for rule in rules {
             if let Err(error) = self.reconcile_rule(&rule).await {
@@ -440,6 +443,8 @@ impl Runner {
         }
         Ok(())
     }
+}
+impl Rules {
     async fn reconcile_rule(&self, rule: &Automation) -> anyhow::Result<()> {
         if rule.revision != rule.applied_revision {
             self.runtime
@@ -457,6 +462,10 @@ impl Runner {
             .bind(rule.revision)
             .execute(&self.pool)
             .await?;
+            sqlx::query("SELECT pg_notify($1,'')")
+                .bind(coordination::AUTOMATIONS_APPLIED)
+                .execute(&self.pool)
+                .await?;
         }
         let observed = self.runtime.recurring_state(&rule.id).await?;
         let mut tx = self.pool.begin().await?;
@@ -560,7 +569,9 @@ mod tests {
         .unwrap()
         .result_id
     }
-    async fn occurrence(pool: &PgPool, id: &str) -> OccurrenceView {
+    /// Wait for the Automation to create its first Ticket. `dispatch` listens before the
+    /// firing, so the Ticket's dispatch notice cannot be missed.
+    async fn occurrence(pool: &PgPool, id: &str, dispatch: &mut PgListener) -> OccurrenceView {
         loop {
             let snapshot = snapshot(pool, &Actor::owner()).await.unwrap();
             if let Some(o) = snapshot
@@ -570,8 +581,16 @@ mod tests {
             {
                 return o;
             }
-            tokio::task::yield_now().await;
+            dispatch.recv().await.unwrap();
         }
+    }
+    async fn listen_dispatch(pool: &PgPool) -> PgListener {
+        let mut dispatch = PgListener::connect_with(pool).await.unwrap();
+        dispatch.listen(coordination::DISPATCH).await.unwrap();
+        dispatch
+    }
+    async fn reconcile(runner: &mut Runner) {
+        runner.rules.reconcile(&mut Tasks::default()).await.unwrap();
     }
     #[sqlx::test]
     async fn receipts_scope_revisions_and_bounded_authorization(pool: PgPool) {
@@ -641,24 +660,25 @@ mod tests {
     ) {
         let id = save(&pool).await;
         let server = turnkeel::testing::Server::start().await.unwrap();
-        let runner = Runner::start(pool.clone(), server.config()).await.unwrap();
-        runner.reconcile().await.unwrap();
+        let mut runner = Runner::start(pool.clone(), server.config()).await.unwrap();
+        reconcile(&mut runner).await;
         assert_eq!(
             snapshot(&pool, &Actor::owner()).await.unwrap().rules[0].applied_revision,
             0
         );
-        runner.runtime.shutdown().await.unwrap();
-        drop(runner.owner);
+        runner.rules.runtime.shutdown().await.unwrap();
+        drop(runner.lease);
+        let mut dispatch = listen_dispatch(&pool).await;
         // This is a real retained Schedule, fired with its worker unavailable.
         server.fire_rule(&id).await.unwrap();
-        let runner = Runner::start(pool.clone(), server.config()).await.unwrap();
-        runner.reconcile().await.unwrap();
-        let first = occurrence(&pool, &id).await;
+        let mut runner = Runner::start(pool.clone(), server.config()).await.unwrap();
+        reconcile(&mut runner).await;
+        let first = occurrence(&pool, &id, &mut dispatch).await;
         assert_eq!(first.state, "worker_unavailable");
         let ticket = first.ticket_id.unwrap();
         server.fire_rule(&id).await.unwrap();
         loop {
-            runner.reconcile().await.unwrap();
+            reconcile(&mut runner).await;
             let history = snapshot(&pool, &Actor::owner()).await.unwrap();
             if history.rules[0].overlap_skipped > 0 {
                 assert!(
@@ -669,7 +689,6 @@ mod tests {
                 );
                 break;
             }
-            tokio::task::yield_now().await;
         }
         // Retry the same invocation while its work is still open.
         let duplicate = tokio::spawn({
@@ -736,7 +755,8 @@ mod tests {
             .execute(&mut *tx)
             .await
             .unwrap();
-        sqlx::query("SELECT pg_notify('agentinc_results','')")
+        sqlx::query("SELECT pg_notify($1,'')")
+            .bind(coordination::RESULTS)
             .execute(&mut *tx)
             .await
             .unwrap();
@@ -756,7 +776,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 1);
-        runner.runtime.shutdown().await.unwrap();
+        runner.rules.runtime.shutdown().await.unwrap();
         server.shutdown().await.unwrap();
     }
     #[sqlx::test]
@@ -777,8 +797,8 @@ mod tests {
         }
         let id = save(&pool).await;
         let server = turnkeel::testing::Server::start().await.unwrap();
-        let runner = Runner::start(pool.clone(), server.config()).await.unwrap();
-        runner.reconcile().await.unwrap();
+        let mut runner = Runner::start(pool.clone(), server.config()).await.unwrap();
+        reconcile(&mut runner).await;
         let model = ScriptedModel::new()
             .on_user(
                 "One scheduled Ticket",
@@ -795,11 +815,11 @@ mod tests {
         .await
         .unwrap();
         let mut results = PgListener::connect_with(&pool).await.unwrap();
-        results.listen("agentinc_results").await.unwrap();
+        results.listen(coordination::RESULTS).await.unwrap();
         let worker = tokio::spawn(tickets.run());
         server.fire_rule(&id).await.unwrap();
         results.recv().await.unwrap();
-        let first = occurrence(&pool, &id).await;
+        let first = occurrence(&pool, &id, &mut results).await;
         assert_eq!(first.state, "completed");
         apply_occurrence(
             &pool,
@@ -825,7 +845,7 @@ mod tests {
         assert_eq!(count, 1);
         worker.abort();
         let _ = worker.await;
-        runner.runtime.shutdown().await.unwrap();
+        runner.rules.runtime.shutdown().await.unwrap();
         server.shutdown().await.unwrap();
     }
 }

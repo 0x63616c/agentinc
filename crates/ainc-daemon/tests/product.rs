@@ -5,6 +5,16 @@ use ainc_daemon::{
 };
 use sqlx::PgPool;
 
+async fn execute(
+    pool: &PgPool,
+    request: CommandRequest,
+) -> Result<product::CommandReceipt, ainc_daemon::api::CommandError> {
+    product::execute_in(pool, "local", request).await
+}
+async fn snapshot(pool: &PgPool) -> Result<product::Snapshot, sqlx::Error> {
+    product::snapshot_in(pool, "local").await
+}
+
 fn request(command: Command) -> CommandRequest {
     CommandRequest {
         operation_id: uuid::Uuid::new_v4().to_string(),
@@ -12,7 +22,7 @@ fn request(command: Command) -> CommandRequest {
     }
 }
 async fn apply(pool: &PgPool, command: Command) -> i64 {
-    product::execute(pool, request(command))
+    execute(pool, request(command))
         .await
         .unwrap()
         .result_id
@@ -24,25 +34,22 @@ async fn commands_are_durable_repeat_safe_and_validate_conflicts(pool: PgPool) {
     let command = request(Command::CreateTodo {
         title: "Café 👋".into(),
     });
-    let ack = product::execute(&pool, command.clone()).await.unwrap();
+    let ack = execute(&pool, command.clone()).await.unwrap();
     assert_eq!(
-        product::execute(&pool, command.clone())
-            .await
-            .unwrap()
-            .result_id,
+        execute(&pool, command.clone()).await.unwrap().result_id,
         ack.result_id
     );
     let mut conflicting = command;
     conflicting.command = Command::CreateTodo {
         title: "different".into(),
     };
-    assert!(product::execute(&pool, conflicting).await.is_err());
+    assert!(execute(&pool, conflicting).await.is_err());
     assert!(
-        product::execute(&pool, request(Command::CreateTodo { title: "  ".into() }))
+        execute(&pool, request(Command::CreateTodo { title: "  ".into() }))
             .await
             .is_err()
     );
-    let state = product::snapshot(&pool).await.unwrap();
+    let state = snapshot(&pool).await.unwrap();
     assert_eq!(state.todos.len(), 1);
     assert_eq!(state.todos[0].title, "Café 👋");
     apply(
@@ -53,7 +60,7 @@ async fn commands_are_durable_repeat_safe_and_validate_conflicts(pool: PgPool) {
         },
     )
     .await;
-    assert!(product::snapshot(&pool).await.unwrap().todos[0].completed);
+    assert!(snapshot(&pool).await.unwrap().todos[0].completed);
 }
 
 #[sqlx::test]
@@ -81,7 +88,7 @@ async fn closing_client_does_not_drop_acknowledged_turn_or_completed_reply(pool:
     assert_eq!(response.status(), 200);
     drop(response);
     drop(app); // All HTTP/window ownership is gone; the daemon keeps the record.
-    let state = product::snapshot(&pool).await.unwrap();
+    let state = snapshot(&pool).await.unwrap();
     assert_eq!(state.turns[0].state, "queued");
     let id = state.turns[0].id;
     sqlx::query("UPDATE turns SET state='running' WHERE id=$1")
@@ -89,20 +96,19 @@ async fn closing_client_does_not_drop_acknowledged_turn_or_completed_reply(pool:
         .execute(&pool)
         .await
         .unwrap();
-    ainc_daemon::conversations::save_result(&pool, id, Ok("Saved without a window".into()))
+    sqlx::query("UPDATE turns SET state='completed',response='Saved without a window' WHERE id=$1")
+        .bind(id)
+        .execute(&pool)
         .await
         .unwrap();
-    let state = product::snapshot(&pool).await.unwrap();
+    let state = snapshot(&pool).await.unwrap();
     assert_eq!(
         state.turns[0].response.as_deref(),
         Some("Saved without a window")
     );
     assert_eq!(state.turns[0].state, "completed");
-    assert_eq!(
-        product::execute(&pool, command).await.unwrap().result_id,
-        Some(id)
-    );
-    assert_eq!(product::snapshot(&pool).await.unwrap().turns.len(), 1);
+    assert_eq!(execute(&pool, command).await.unwrap().result_id, Some(id));
+    assert_eq!(snapshot(&pool).await.unwrap().turns.len(), 1);
 }
 
 #[sqlx::test]
@@ -118,7 +124,7 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
     )
     .await;
     assert!(
-        product::execute(
+        execute(
             &pool,
             request(Command::Send {
                 conversation_id: first,
@@ -129,7 +135,7 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
         .is_err()
     );
     assert!(
-        product::execute(&pool, request(Command::DeleteConversation { id: first }))
+        execute(&pool, request(Command::DeleteConversation { id: first }))
             .await
             .is_err()
     );
@@ -143,7 +149,7 @@ async fn one_pending_turn_per_conversation_and_no_delete_while_running(pool: PgP
     .await;
     apply(&pool, Command::SelectConversation { id: second }).await;
     assert_eq!(
-        product::snapshot(&pool)
+        snapshot(&pool)
             .await
             .unwrap()
             .settings
@@ -196,7 +202,7 @@ async fn import_preserves_order_preferences_and_sources_without_replaying(pool: 
         std::fs::read(directory.path().join("session.json")).unwrap(),
         session
     );
-    let state = product::snapshot(&pool).await.unwrap();
+    let state = snapshot(&pool).await.unwrap();
     assert_eq!(state.todos[0].id, 9);
     assert!(state.todos[0].completed);
     assert_eq!(state.conversations[0].updated_at, 1700000000);
@@ -209,10 +215,7 @@ async fn import_preserves_order_preferences_and_sources_without_replaying(pool: 
     assert!(new > 8);
     apply(&pool, Command::DeleteConversation { id: 8 }).await;
     assert!(!legacy::import(&pool, directory.path()).await.unwrap());
-    assert_eq!(
-        product::snapshot(&pool).await.unwrap().conversations.len(),
-        1
-    );
+    assert_eq!(snapshot(&pool).await.unwrap().conversations.len(), 1);
 }
 
 #[sqlx::test]
@@ -222,13 +225,7 @@ async fn failed_import_rolls_back_and_future_schema_is_untouched(pool: PgPool) {
     let db = rusqlite::Connection::open(directory.path().join("assistant.sqlite3")).unwrap();
     db.execute("UPDATE todos SET title=''", []).unwrap();
     assert!(legacy::import(&pool, directory.path()).await.is_err());
-    assert!(
-        product::snapshot(&pool)
-            .await
-            .unwrap()
-            .conversations
-            .is_empty()
-    );
+    assert!(snapshot(&pool).await.unwrap().conversations.is_empty());
     db.execute("UPDATE todos SET title='fixed fixture'", [])
         .unwrap();
     db.execute_batch("PRAGMA user_version=3;").unwrap();
@@ -370,7 +367,7 @@ mod todo_adapter {
         );
         // A stale or missing Todo is a conflict, as it was before.
         assert!(
-            product::execute(
+            execute(
                 &pool,
                 request(Command::CompleteTodo {
                     id: todo + 100,
@@ -409,7 +406,7 @@ mod todo_adapter {
         )
         .await;
         apply(&pool, Command::DeleteTodo { id: gone }).await;
-        assert_eq!(product::snapshot(&pool).await.unwrap().todos.len(), 1);
+        assert_eq!(snapshot(&pool).await.unwrap().todos.len(), 1);
         let last = history(&app, kept).await.pop().unwrap();
         assert_eq!(
             last,

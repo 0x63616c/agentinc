@@ -157,7 +157,10 @@ async fn daemon_finishes_reply_after_http_client_exits(pool: PgPool) {
         .result_id
         .unwrap();
     let mut results = PgListener::connect_with(&pool).await.unwrap();
-    results.listen("agentinc_results").await.unwrap();
+    results
+        .listen(ainc_daemon::pg::coordination::RESULTS)
+        .await
+        .unwrap();
     let accepted = command(
         &client,
         &url,
@@ -216,7 +219,10 @@ async fn killed_daemon_recovers_accepted_conversation_in_a_new_process(pool: PgP
         .result_id
         .unwrap();
     let mut results = PgListener::connect_with(&pool).await.unwrap();
-    results.listen("agentinc_results").await.unwrap();
+    results
+        .listen(ainc_daemon::pg::coordination::RESULTS)
+        .await
+        .unwrap();
     let accepted = command(
         &client,
         &url,
@@ -313,7 +319,10 @@ async fn killed_ticket_worker_reconciles_dispatch_and_projects_one_result(pool: 
     .result_id
     .unwrap();
     let mut results = PgListener::connect_with(&pool).await.unwrap();
-    results.listen("agentinc_results").await.unwrap();
+    results
+        .listen(ainc_daemon::pg::coordination::RESULTS)
+        .await
+        .unwrap();
     apply(
         &client,
         &url,
@@ -394,6 +403,11 @@ async fn automation_schedule_survives_daemon_death_and_deduplicates_ticket(pool:
         .fetch_one(&pool)
         .await
         .unwrap();
+    let mut applied = PgListener::connect_with(&pool).await.unwrap();
+    applied
+        .listen(ainc_daemon::pg::coordination::AUTOMATIONS_APPLIED)
+        .await
+        .unwrap();
     let receipt: AutomationReceipt = client
         .post(format!("{url}/v1/automations/commands"))
         .json(&AutomationRequest {
@@ -418,16 +432,16 @@ async fn automation_schedule_survives_daemon_death_and_deduplicates_ticket(pool:
         .await
         .unwrap();
     loop {
-        let applied: bool =
+        let is_applied: bool =
             sqlx::query_scalar("SELECT revision=applied_revision FROM automations WHERE id=$1")
                 .bind(&receipt.result_id)
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        if applied {
+        if is_applied {
             break;
         }
-        tokio::task::yield_now().await;
+        applied.recv().await.unwrap();
     }
     daemon.kill().await.unwrap();
     daemon.wait().await.unwrap();
@@ -448,7 +462,10 @@ async fn automation_schedule_survives_daemon_death_and_deduplicates_ticket(pool:
         .unwrap();
     let _ = release.send(());
     let mut results = PgListener::connect_with(&pool).await.unwrap();
-    results.listen("agentinc_results").await.unwrap();
+    results
+        .listen(ainc_daemon::pg::coordination::RESULTS)
+        .await
+        .unwrap();
     let mut final_worker = stack.daemon(&pool).await;
     loop {
         let finished: bool =

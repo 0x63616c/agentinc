@@ -19,6 +19,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionCancel => Self::cli_connection_cancel(),
             CliCommand::ConnectionLogin => Self::cli_connection_login(),
             CliCommand::ConnectionLogout => Self::cli_connection_logout(),
+            CliCommand::ConversationsState => Self::cli_conversations_state(),
+            CliCommand::ConversationsCommand => Self::cli_conversations_command(),
             CliCommand::ProductState => Self::cli_product_state(),
             CliCommand::TerminalSessionsList => Self::cli_terminal_sessions_list(),
             CliCommand::TerminalSessionsCreate => Self::cli_terminal_sessions_create(),
@@ -86,6 +88,9 @@ impl<T: CliConfig> Cli<T> {
                     .action(::clap::ArgAction::SetTrue)
                     .help("XXX"),
             )
+            .about(
+                "Deprecated: send Conversation commands to `/v1/conversations/commands` and Ticket\ncommands to `/v1/tickets/commands`. Removed in a later release.",
+            )
     }
     pub fn cli_connection_status() -> ::clap::Command {
         ::clap::Command::new("")
@@ -99,8 +104,36 @@ impl<T: CliConfig> Cli<T> {
     pub fn cli_connection_logout() -> ::clap::Command {
         ::clap::Command::new("")
     }
-    pub fn cli_product_state() -> ::clap::Command {
+    pub fn cli_conversations_state() -> ::clap::Command {
         ::clap::Command::new("")
+    }
+    pub fn cli_conversations_command() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("operation-id")
+                    .long("operation-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
+    pub fn cli_product_state() -> ::clap::Command {
+        ::clap::Command::new("").about(
+            "Deprecated: read `/v1/conversations` and `/v1/tickets`. Removed in a later release.",
+        )
     }
     pub fn cli_terminal_sessions_list() -> ::clap::Command {
         ::clap::Command::new("")
@@ -242,6 +275,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::ConnectionCancel => self.execute_connection_cancel(matches).await,
             CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
             CliCommand::ConnectionLogout => self.execute_connection_logout(matches).await,
+            CliCommand::ConversationsState => self.execute_conversations_state(matches).await,
+            CliCommand::ConversationsCommand => self.execute_conversations_command(matches).await,
             CliCommand::ProductState => self.execute_product_state(matches).await,
             CliCommand::TerminalSessionsList => self.execute_terminal_sessions_list(matches).await,
             CliCommand::TerminalSessionsCreate => {
@@ -429,6 +464,54 @@ impl<T: CliConfig> Cli<T> {
         let mut request = self.client.connection_logout();
         self.config
             .execute_connection_logout(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_conversations_state(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.conversations_state();
+        self.config
+            .execute_conversations_state(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_conversations_command(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.conversations_command();
+        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
+            request = request.body_map(|body| body.operation_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::ConversationCommandRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config
+            .execute_conversations_command(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -759,6 +842,20 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_conversations_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ConversationsState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_conversations_command(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::ConversationsCommand,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_product_state(
         &self,
         matches: &::clap::ArgMatches,
@@ -848,6 +945,8 @@ pub enum CliCommand {
     ConnectionCancel,
     ConnectionLogin,
     ConnectionLogout,
+    ConversationsState,
+    ConversationsCommand,
     ProductState,
     TerminalSessionsList,
     TerminalSessionsCreate,
@@ -872,6 +971,8 @@ impl CliCommand {
             CliCommand::ConnectionCancel,
             CliCommand::ConnectionLogin,
             CliCommand::ConnectionLogout,
+            CliCommand::ConversationsState,
+            CliCommand::ConversationsCommand,
             CliCommand::ProductState,
             CliCommand::TerminalSessionsList,
             CliCommand::TerminalSessionsCreate,
@@ -897,6 +998,8 @@ impl CliCommand {
             CliCommand::ConnectionCancel => "connection_cancel",
             CliCommand::ConnectionLogin => "connection_login",
             CliCommand::ConnectionLogout => "connection_logout",
+            CliCommand::ConversationsState => "conversations_state",
+            CliCommand::ConversationsCommand => "conversations_command",
             CliCommand::ProductState => "product_state",
             CliCommand::TerminalSessionsList => "terminal_sessions_list",
             CliCommand::TerminalSessionsCreate => "terminal_sessions_create",

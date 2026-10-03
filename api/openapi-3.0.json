@@ -583,9 +583,6 @@
           "title": {
             "type": "string"
           },
-          "updated": {
-            "type": "string"
-          },
           "updated_at": {
             "format": "int64",
             "type": "integer"
@@ -595,8 +592,202 @@
           "id",
           "title",
           "snippet",
-          "updated",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "ConversationCommand": {
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "create"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "rename"
+                ],
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "delete"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "select"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "conversation_id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "send"
+                ],
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "prompt",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "retry"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "select_model"
+                ],
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "model",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ConversationCommandRequest": {
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/ConversationCommand"
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "command"
+        ],
+        "type": "object"
+      },
+      "ConversationReceipt": {
+        "properties": {
+          "operation_id": {
+            "type": "string"
+          },
+          "result_id": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operation_id"
+        ],
+        "type": "object"
+      },
+      "ConversationSnapshot": {
+        "properties": {
+          "conversations": {
+            "items": {
+              "$ref": "#/components/schemas/Conversation"
+            },
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversations",
+          "turns",
+          "settings"
         ],
         "type": "object"
       },
@@ -1967,6 +2158,7 @@
     },
     "/v1/commands": {
       "post": {
+        "deprecated": true,
         "operationId": "product_command",
         "requestBody": {
           "content": {
@@ -2028,7 +2220,8 @@
           "500": {
             "$ref": "#/components/responses/Internal"
           }
-        }
+        },
+        "summary": "Deprecated: send Conversation commands to `/v1/conversations/commands` and Ticket\ncommands to `/v1/tickets/commands`. Removed in a later release."
       }
     },
     "/v1/connection": {
@@ -2185,8 +2378,101 @@
         }
       }
     },
+    "/v1/conversations": {
+      "get": {
+        "operationId": "conversations_state",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSnapshot"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        }
+      }
+    },
+    "/v1/conversations/commands": {
+      "post": {
+        "operationId": "conversations_command",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationReceipt"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        }
+      }
+    },
     "/v1/state": {
       "get": {
+        "deprecated": true,
         "operationId": "product_state",
         "responses": {
           "200": {
@@ -2208,7 +2494,8 @@
           "500": {
             "$ref": "#/components/responses/Internal"
           }
-        }
+        },
+        "summary": "Deprecated: read `/v1/conversations` and `/v1/tickets`. Removed in a later release."
       }
     },
     "/v1/terminal/sessions": {

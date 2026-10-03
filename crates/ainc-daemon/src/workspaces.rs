@@ -201,8 +201,9 @@ mod tests {
         assert_eq!(initial.workspaces[0].name, "World Wide Webb");
 
         let conversation_operation = uuid::Uuid::new_v4().to_string();
-        let conversation = product::execute(
+        let conversation = product::execute_in(
             &pool,
+            "local",
             product::CommandRequest {
                 operation_id: conversation_operation.clone(),
                 command: product::Command::CreateConversation,
@@ -212,8 +213,9 @@ mod tests {
         .unwrap()
         .result_id
         .unwrap();
-        product::execute(
+        product::execute_in(
             &pool,
+            "local",
             product::CommandRequest {
                 operation_id: uuid::Uuid::new_v4().to_string(),
                 command: product::Command::SelectModel {

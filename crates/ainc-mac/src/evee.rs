@@ -432,7 +432,6 @@ impl AssistantPage {
             id: 1,
             title: "Planning the day".into(),
             snippet: "Let's prioritize the work.".into(),
-            updated: "2026-09-24 09:00".into(),
             updated_at: 1_790_249_400,
         }];
         self.turns = if populated {
@@ -917,7 +916,6 @@ mod tests {
             id: 1,
             title: "Pending reply".into(),
             snippet: String::new(),
-            updated: String::new(),
             updated_at: 0,
         });
         snapshot.turns.push(Turn {

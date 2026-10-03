@@ -1005,7 +1005,6 @@ pub mod types {
     ///    "id",
     ///    "snippet",
     ///    "title",
-    ///    "updated",
     ///    "updated_at"
     ///  ],
     ///  "properties": {
@@ -1017,9 +1016,6 @@ pub mod types {
     ///      "type": "string"
     ///    },
     ///    "title": {
-    ///      "type": "string"
-    ///    },
-    ///    "updated": {
     ///      "type": "string"
     ///    },
     ///    "updated_at": {
@@ -1035,11 +1031,291 @@ pub mod types {
         pub id: i64,
         pub snippet: ::std::string::String,
         pub title: ::std::string::String,
-        pub updated: ::std::string::String,
         pub updated_at: i64,
     }
     impl Conversation {
         pub fn builder() -> builder::Conversation {
+            Default::default()
+        }
+    }
+    ///`ConversationCommand`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "create"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind",
+    ///        "title"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "rename"
+    ///          ]
+    ///        },
+    ///        "title": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "delete"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "select"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "conversation_id",
+    ///        "kind",
+    ///        "prompt"
+    ///      ],
+    ///      "properties": {
+    ///        "conversation_id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "send"
+    ///          ]
+    ///        },
+    ///        "prompt": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "retry"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "model"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "select_model"
+    ///          ]
+    ///        },
+    ///        "model": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    #[serde(tag = "kind")]
+    pub enum ConversationCommand {
+        #[serde(rename = "create")]
+        Create,
+        #[serde(rename = "rename")]
+        Rename {
+            id: i64,
+            title: ::std::string::String,
+        },
+        #[serde(rename = "delete")]
+        Delete { id: i64 },
+        #[serde(rename = "select")]
+        Select { id: i64 },
+        #[serde(rename = "send")]
+        Send {
+            conversation_id: i64,
+            prompt: ::std::string::String,
+        },
+        #[serde(rename = "retry")]
+        Retry { id: i64 },
+        #[serde(rename = "select_model")]
+        SelectModel { model: ::std::string::String },
+    }
+    ///`ConversationCommandRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "command",
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "command": {
+    ///      "$ref": "#/components/schemas/ConversationCommand"
+    ///    },
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ConversationCommandRequest {
+        pub command: ConversationCommand,
+        pub operation_id: ::std::string::String,
+    }
+    impl ConversationCommandRequest {
+        pub fn builder() -> builder::ConversationCommandRequest {
+            Default::default()
+        }
+    }
+    ///`ConversationReceipt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    },
+    ///    "result_id": {
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ConversationReceipt {
+        pub operation_id: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub result_id: ::std::option::Option<i64>,
+    }
+    impl ConversationReceipt {
+        pub fn builder() -> builder::ConversationReceipt {
+            Default::default()
+        }
+    }
+    ///`ConversationSnapshot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "conversations",
+    ///    "settings",
+    ///    "turns"
+    ///  ],
+    ///  "properties": {
+    ///    "conversations": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Conversation"
+    ///      }
+    ///    },
+    ///    "settings": {
+    ///      "$ref": "#/components/schemas/Settings"
+    ///    },
+    ///    "turns": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Turn"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct ConversationSnapshot {
+        pub conversations: ::std::vec::Vec<Conversation>,
+        pub settings: Settings,
+        pub turns: ::std::vec::Vec<Turn>,
+    }
+    impl ConversationSnapshot {
+        pub fn builder() -> builder::ConversationSnapshot {
             Default::default()
         }
     }
@@ -4145,7 +4421,6 @@ pub mod types {
             id: ::std::result::Result<i64, ::std::string::String>,
             snippet: ::std::result::Result<::std::string::String, ::std::string::String>,
             title: ::std::result::Result<::std::string::String, ::std::string::String>,
-            updated: ::std::result::Result<::std::string::String, ::std::string::String>,
             updated_at: ::std::result::Result<i64, ::std::string::String>,
         }
         impl ::std::default::Default for Conversation {
@@ -4154,7 +4429,6 @@ pub mod types {
                     id: Err("no value supplied for id".to_string()),
                     snippet: Err("no value supplied for snippet".to_string()),
                     title: Err("no value supplied for title".to_string()),
-                    updated: Err("no value supplied for updated".to_string()),
                     updated_at: Err("no value supplied for updated_at".to_string()),
                 }
             }
@@ -4190,16 +4464,6 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for title: {e}"));
                 self
             }
-            pub fn updated<T>(mut self, value: T) -> Self
-            where
-                T: ::std::convert::TryInto<::std::string::String>,
-                T::Error: ::std::fmt::Display,
-            {
-                self.updated = value
-                    .try_into()
-                    .map_err(|e| format!("error converting supplied value for updated: {e}"));
-                self
-            }
             pub fn updated_at<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<i64>,
@@ -4220,7 +4484,6 @@ pub mod types {
                     id: value.id?,
                     snippet: value.snippet?,
                     title: value.title?,
-                    updated: value.updated?,
                     updated_at: value.updated_at?,
                 })
             }
@@ -4231,8 +4494,184 @@ pub mod types {
                     id: Ok(value.id),
                     snippet: Ok(value.snippet),
                     title: Ok(value.title),
-                    updated: Ok(value.updated),
                     updated_at: Ok(value.updated_at),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ConversationCommandRequest {
+            command: ::std::result::Result<super::ConversationCommand, ::std::string::String>,
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for ConversationCommandRequest {
+            fn default() -> Self {
+                Self {
+                    command: Err("no value supplied for command".to_string()),
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                }
+            }
+        }
+        impl ConversationCommandRequest {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::ConversationCommand>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ConversationCommandRequest> for super::ConversationCommandRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ConversationCommandRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    command: value.command?,
+                    operation_id: value.operation_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ConversationCommandRequest> for ConversationCommandRequest {
+            fn from(value: super::ConversationCommandRequest) -> Self {
+                Self {
+                    command: Ok(value.command),
+                    operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ConversationReceipt {
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+            result_id: ::std::result::Result<::std::option::Option<i64>, ::std::string::String>,
+        }
+        impl ::std::default::Default for ConversationReceipt {
+            fn default() -> Self {
+                Self {
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                    result_id: Ok(Default::default()),
+                }
+            }
+        }
+        impl ConversationReceipt {
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::option::Option<i64>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ConversationReceipt> for super::ConversationReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ConversationReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    operation_id: value.operation_id?,
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ConversationReceipt> for ConversationReceipt {
+            fn from(value: super::ConversationReceipt) -> Self {
+                Self {
+                    operation_id: Ok(value.operation_id),
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct ConversationSnapshot {
+            conversations:
+                ::std::result::Result<::std::vec::Vec<super::Conversation>, ::std::string::String>,
+            settings: ::std::result::Result<super::Settings, ::std::string::String>,
+            turns: ::std::result::Result<::std::vec::Vec<super::Turn>, ::std::string::String>,
+        }
+        impl ::std::default::Default for ConversationSnapshot {
+            fn default() -> Self {
+                Self {
+                    conversations: Err("no value supplied for conversations".to_string()),
+                    settings: Err("no value supplied for settings".to_string()),
+                    turns: Err("no value supplied for turns".to_string()),
+                }
+            }
+        }
+        impl ConversationSnapshot {
+            pub fn conversations<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Conversation>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.conversations = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for conversations: {e}"));
+                self
+            }
+            pub fn settings<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::Settings>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.settings = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for settings: {e}"));
+                self
+            }
+            pub fn turns<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Turn>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.turns = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for turns: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<ConversationSnapshot> for super::ConversationSnapshot {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: ConversationSnapshot,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    conversations: value.conversations?,
+                    settings: value.settings?,
+                    turns: value.turns?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::ConversationSnapshot> for ConversationSnapshot {
+            fn from(value: super::ConversationSnapshot) -> Self {
+                Self {
+                    conversations: Ok(value.conversations),
+                    settings: Ok(value.settings),
+                    turns: Ok(value.turns),
                 }
             }
         }
@@ -6390,7 +6829,10 @@ impl Client {
     pub fn automations_command(&self) -> builder::AutomationsCommand<'_> {
         builder::AutomationsCommand::new(self)
     }
-    /*Sends a `POST` request to `/v1/commands`
+    /*Deprecated: send Conversation commands to `/v1/conversations/commands` and Ticket
+    commands to `/v1/tickets/commands`. Removed in a later release
+
+    Sends a `POST` request to `/v1/commands`
 
     ```ignore
     let response = client.product_command()
@@ -6441,7 +6883,30 @@ impl Client {
     pub fn connection_logout(&self) -> builder::ConnectionLogout<'_> {
         builder::ConnectionLogout::new(self)
     }
-    /*Sends a `GET` request to `/v1/state`
+    /*Sends a `GET` request to `/v1/conversations`
+
+    ```ignore
+    let response = client.conversations_state()
+        .send()
+        .await;
+    ```*/
+    pub fn conversations_state(&self) -> builder::ConversationsState<'_> {
+        builder::ConversationsState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/conversations/commands`
+
+    ```ignore
+    let response = client.conversations_command()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn conversations_command(&self) -> builder::ConversationsCommand<'_> {
+        builder::ConversationsCommand::new(self)
+    }
+    /*Deprecated: read `/v1/conversations` and `/v1/tickets`. Removed in a later release
+
+    Sends a `GET` request to `/v1/state`
 
     ```ignore
     let response = client.product_state()
@@ -7198,6 +7663,172 @@ pub mod builder {
                     ResponseValue::from_response(response).await?,
                 )),
                 503u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::conversations_state`]
+
+    [`Client::conversations_state`]: super::Client::conversations_state*/
+    #[derive(Debug, Clone)]
+    pub struct ConversationsState<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> ConversationsState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `GET` request to `/v1/conversations`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::ConversationSnapshot>, Error<types::ErrorBody>> {
+            let Self { client } = self;
+            let url = format!("{}/v1/conversations", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "conversations_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::conversations_command`]
+
+    [`Client::conversations_command`]: super::Client::conversations_command*/
+    #[derive(Debug, Clone)]
+    pub struct ConversationsCommand<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::ConversationCommandRequest, String>,
+    }
+    impl<'a> ConversationsCommand<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::ConversationCommandRequest>,
+            <V as std::convert::TryInto<types::ConversationCommandRequest>>::Error:
+                std::fmt::Display,
+        {
+            self.body = value.try_into().map(From::from).map_err(|s| {
+                format!(
+                    "conversion to `ConversationCommandRequest` for body failed: {}",
+                    s
+                )
+            });
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(
+                    types::builder::ConversationCommandRequest,
+                ) -> types::builder::ConversationCommandRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/conversations/commands`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::ConversationReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| {
+                    types::ConversationCommandRequest::try_from(v).map_err(|e| e.to_string())
+                })
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/conversations/commands", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "conversations_command",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 _ => Err(Error::UnexpectedResponse(response)),
