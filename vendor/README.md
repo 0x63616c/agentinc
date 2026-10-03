@@ -5,7 +5,7 @@
 It remains Apache-2.0 licensed (`gpui/LICENSE-APACHE`). Examples and dependency
 crate test runners are omitted; application tests exercise the seam.
 
-`scripts/vendor-pilot-gpui.py` reproduces this directory from that exact upstream
+`cargo xtask vendor-pilot-gpui` reproduces this directory from that exact upstream
 checkout and expands workspace dependency declarations into a standalone
 manifest. Sibling Zed dependencies still resolve to that same revision.
 No Cargo registry/git cache source is modified.

@@ -16,4 +16,4 @@ The Terminal page embeds [GhosttyKit](https://github.com/Lakr233/libghostty-spm)
 
 ## Vendored GPUI pilot seam
 
-`vendor/gpui` is the Apache-2.0 core GPUI crate from Zed revision `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`, with the opt-in adapter changes recorded in `vendor/gpui-pilot.patch`. Its license is retained at `vendor/gpui/LICENSE-APACHE`; `scripts/vendor-pilot-gpui.py` reproduces the source and standalone manifest. Other GPUI platform packages remain pinned upstream git dependencies.
+`vendor/gpui` is the Apache-2.0 core GPUI crate from Zed revision `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`, with the opt-in adapter changes recorded in `vendor/gpui-pilot.patch`. Its license is retained at `vendor/gpui/LICENSE-APACHE`; `cargo xtask vendor-pilot-gpui` reproduces the source and standalone manifest. Other GPUI platform packages remain pinned upstream git dependencies.

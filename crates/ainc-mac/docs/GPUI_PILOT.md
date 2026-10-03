@@ -46,7 +46,7 @@ The optional `pilot` feature adds local accessibility activation independent of 
 Reproduce from an unmodified checkout of the pinned Zed revision:
 
 ```sh
-python3 crates/ainc-mac/scripts/vendor-pilot-gpui.py /path/to/pinned/zed
+cargo xtask vendor-pilot-gpui /path/to/pinned/zed
 ```
 
 ## Validation

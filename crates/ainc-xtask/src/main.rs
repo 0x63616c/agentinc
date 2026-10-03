@@ -1,6 +1,7 @@
 mod checks;
 mod readme;
 mod release;
+mod vendor_pilot_gpui;
 
 use anyhow::{Context, Result, anyhow, bail};
 use progenitor::{GenerationSettings, Generator, InterfaceStyle};
@@ -461,7 +462,7 @@ fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args.next().ok_or_else(|| {
         anyhow!(
-            "usage: cargo xtask dev|down|doctor|check|generate|{}|{}",
+            "usage: cargo xtask dev|down|doctor|check|generate|vendor-pilot-gpui|{}|{}",
             release::NAMES,
             readme::NAMES
         )
@@ -473,6 +474,7 @@ fn main() -> Result<()> {
         op if readme::handles(op) => readme::run(op, args.collect(), &root),
         "check" => check(&root),
         "check-ui" => check_ui(&root),
+        "vendor-pilot-gpui" => vendor_pilot_gpui::cli(&args.collect::<Vec<_>>(), &root),
         "generate" => generate(&root, args.next().as_deref() == Some("--check")),
         "dev" => {
             let mut instance = write_instance(&instance)?;
