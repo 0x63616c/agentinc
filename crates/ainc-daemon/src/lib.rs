@@ -12,6 +12,7 @@ pub mod product;
 pub mod receipts;
 pub mod temporal;
 pub mod terminal_sessions;
+pub mod testing;
 pub mod tickets;
 pub mod workspaces;
 use axum::{

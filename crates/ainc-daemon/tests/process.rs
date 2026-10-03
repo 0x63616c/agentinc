@@ -5,7 +5,6 @@ use axum::{Json, Router, extract::State, routing::post};
 use serde_json::{Value, json};
 use sqlx::{ConnectOptions, PgPool, postgres::PgListener};
 use std::{
-    os::unix::fs::PermissionsExt,
     process::Stdio,
     sync::{
         Arc, Mutex,
@@ -35,22 +34,8 @@ impl Stack {
         tokio::sync::oneshot::Sender<()>,
     ) {
         let dir = tempfile::tempdir().unwrap();
-        let script = dir.path().join("codex-fixture");
-        std::fs::write(&script,r#"#!/usr/bin/env python3
-import json,sys
-for line in sys.stdin:
-    request=json.loads(line)
-    method=request.get('method')
-    if method=='initialized': continue
-    result={}
-    if method=='account/read': result={'account':{'type':'chatgpt','email':'fixture@example.test','planType':'fixture'}}
-    if method=='model/list': result={'data':[{'model':'fixture','displayName':'Fixture','isDefault':True}],'nextCursor':None}
-    print(json.dumps({'id':request['id'],'result':result}),flush=True)
-"#).unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
         let home = dir.path().join("codex-home");
-        std::fs::create_dir(&home).unwrap();
-        std::fs::write(home.join("auth.json"),json!({"tokens":{"access_token":"fixture-access-token","account_id":"fixture-account"}}).to_string()).unwrap();
+        ainc_daemon::testing::fake_codex::sign_in(&home).unwrap();
         let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
         let (release_tx, release_rx) = tokio::sync::oneshot::channel();
         let fixture = Arc::new(Fixture {
@@ -95,7 +80,7 @@ for line in sys.stdin:
                 serde_json::to_string(&self.server.config()).unwrap(),
             )
             .env("AGENTINC_CODEX_HOME", self.dir.path().join("codex-home"))
-            .env("AGENTINC_CODEX_PATH", self.dir.path().join("codex-fixture"))
+            .env("AGENTINC_CODEX_PATH", env!("CARGO_BIN_EXE_codex-fixture"))
             .env("AINC_TEST_RESPONSES_URL", &self.url)
             .env("RUST_LOG", "info")
             .stdout(Stdio::piped())
