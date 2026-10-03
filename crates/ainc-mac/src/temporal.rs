@@ -6,10 +6,11 @@ use crate::{
     page::Page,
     routes::{Destination, Route},
     ui::*,
+    ui_state::Appearance,
 };
 use ainc_client::types::{WorkKind, WorkStatus, WorkView};
 use gpui::{prelude::*, *};
-use std::sync::Arc;
+use std::{cell::Cell, rc::Rc, sync::Arc};
 
 /// The app's reading of a work status.
 fn work_state(status: WorkStatus) -> WorkState {
@@ -57,6 +58,7 @@ fn columns() -> [TableColumn; 4] {
 }
 
 pub struct TemporalPage {
+    appearance: Rc<Cell<Appearance>>,
     daemon: Arc<Daemon>,
     rows: Vec<WorkView>,
     filter: Option<WorkStatus>,
@@ -67,8 +69,13 @@ pub struct TemporalPage {
 }
 
 impl TemporalPage {
-    pub fn new(daemon: Arc<Daemon>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        daemon: Arc<Daemon>,
+        appearance: Rc<Cell<Appearance>>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let page = Self {
+            appearance,
             daemon,
             rows: Vec::new(),
             filter: None,
@@ -209,7 +216,7 @@ impl TemporalPage {
                         .child(caption(time::absolute(execution.started_at / 1000)))
                         .into_any_element(),
                     div()
-                        .font_family(FONT_MONO)
+                        .font_family(self.appearance.get().font.monospace_family())
                         .text_size(type_size(LABEL_SIZE))
                         .text_color(rgb(TEXT))
                         .child(time::duration(

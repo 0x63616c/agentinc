@@ -288,7 +288,9 @@ impl Shell {
                 queue,
             ),
             PageHandle::new(
-                cx.new(|cx| crate::temporal::TemporalPage::new(daemon.clone(), cx)),
+                cx.new(|cx| {
+                    crate::temporal::TemporalPage::new(daemon.clone(), appearance.clone(), cx)
+                }),
                 cx,
                 queue,
             ),

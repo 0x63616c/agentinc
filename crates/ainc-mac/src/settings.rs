@@ -42,7 +42,7 @@ impl SettingsPage {
             column()
                 .child(settings_row(
                     "Font",
-                    "The typeface used throughout AgentInc.",
+                    "System pairs with SF Mono; Helvetica Neue pairs with Menlo for identifiers.",
                     Segmented::new("font", ["System · SF Pro", "Helvetica Neue"])
                         .selected(font)
                         .build(ui, |this: &mut Self, index, _, cx| {

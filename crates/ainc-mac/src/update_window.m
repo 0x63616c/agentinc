@@ -16,10 +16,10 @@
 #import "SUStandardVersionComparator.h"
 #import "SUErrors.h"
 
-extern void ainc_update_action(int action, bool automatic);
+#import "update_actions.h"
 extern char *ainc_update_format_notes(const char *markdown, const char *current, bool history);
 extern void ainc_update_free_notes(char *text);
-static void updateAction(int action, bool automatic);
+static void updateAction(AincUpdateAction action, bool automatic);
 
 @interface AincUpdateUI : NSObject <NSWindowDelegate>
 @property(strong) NSWindow *offer;
@@ -36,14 +36,14 @@ static void updateAction(int action, bool automatic);
 @end
 
 @implementation AincUpdateUI
-- (void)skip:(id)sender { [self.offer close]; self.offer = nil; updateAction(1, self.automatic.state == NSControlStateValueOn); }
-- (void)later:(id)sender { [self.offer close]; self.offer = nil; updateAction(2, self.automatic.state == NSControlStateValueOn); }
-- (void)install:(id)sender { [self.offer close]; self.offer = nil; updateAction(3, self.automatic.state == NSControlStateValueOn); }
-- (void)cancel:(id)sender { [self.progress close]; self.progress = nil; updateAction(4, false); }
-- (void)automaticChanged:(id)sender { updateAction(5, self.automatic.state == NSControlStateValueOn); }
-- (void)dismiss:(id)sender { [self.offer close]; self.offer = nil; self.alert = nil; updateAction(7, false); }
-- (void)retry:(id)sender { [self.offer close]; self.offer = nil; self.alert = nil; updateAction(6, false); }
-- (BOOL)windowShouldClose:(NSWindow *)sender { updateAction(7, false); return YES; }
+- (void)skip:(id)sender { [self.offer close]; self.offer = nil; updateAction(AincUpdateActionSkip, self.automatic.state == NSControlStateValueOn); }
+- (void)later:(id)sender { [self.offer close]; self.offer = nil; updateAction(AincUpdateActionLater, self.automatic.state == NSControlStateValueOn); }
+- (void)install:(id)sender { [self.offer close]; self.offer = nil; updateAction(AincUpdateActionInstall, self.automatic.state == NSControlStateValueOn); }
+- (void)cancel:(id)sender { [self.progress close]; self.progress = nil; updateAction(AincUpdateActionCancelDownload, false); }
+- (void)automaticChanged:(id)sender { updateAction(AincUpdateActionAutomaticChanged, self.automatic.state == NSControlStateValueOn); }
+- (void)dismiss:(id)sender { [self.offer close]; self.offer = nil; self.alert = nil; updateAction(AincUpdateActionDismiss, false); }
+- (void)retry:(id)sender { [self.offer close]; self.offer = nil; self.alert = nil; updateAction(AincUpdateActionRetry, false); }
+- (BOOL)windowShouldClose:(NSWindow *)sender { updateAction(AincUpdateActionDismiss, false); return YES; }
 @end
 
 static AincUpdateUI *ui(void) {
@@ -515,7 +515,7 @@ static BOOL sendBytes(int socket, const void *bytes, size_t remaining) {
 @property BOOL retryAfterCycle;
 @property uint64_t received;
 @property uint64_t expected;
-- (void)action:(int)action automatic:(BOOL)automatic;
+- (void)action:(AincUpdateAction)action automatic:(BOOL)automatic;
 - (void)presentOffer;
 - (void)prepare;
 - (void)preparedWithError:(NSString *)error;
@@ -761,7 +761,7 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
         return;
     }
 #ifdef AINC_UPGRADE_TEST
-    ainc_update_action(10, false); // Rust waits for the current daemon's readiness.
+    ainc_update_action(AincUpdateActionDownloaded, false); // Rust waits for the current daemon's readiness.
     if (strcmp(getenv("AINC_UPGRADE_TEST_MODE") ?: "", "automatic") == 0) [self presentOffer];
 #endif
     if (self.userVisible) [self presentOffer];
@@ -962,7 +962,7 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     self.installArmed = YES;
     self.choice = reply;
     self.message = @"Update verified and ready to install";
-    if (self.installRequested) { [self action:3 automatic:[self.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"]]; return; }
+    if (self.installRequested) { [self action:AincUpdateActionInstall automatic:[self.defaults boolForKey:@"AINCAutomaticallyDownloadUpdates"]]; return; }
     [self presentOffer];
 }
 - (void)showInstallingUpdateWithApplicationTerminated:(BOOL)terminated retryTerminatingApplication:(void (^)(void))retry {
@@ -1014,8 +1014,8 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     self.message = @"Saving work and stopping the local runtime…";
     ainc_update_progress(self.message.UTF8String, 0, 0);
     ui().cancelButton.enabled = NO;
-    // Rust handles action 8 on its next foreground turn, then drains off-thread.
-    ainc_update_action(8, false);
+    // Rust handles PrepareInstall on its next foreground turn, then drains off-thread.
+    ainc_update_action(AincUpdateActionPrepareInstall, false);
 }
 - (void)preparedWithError:(NSString *)error {
     self.preparing = NO;
@@ -1034,26 +1034,26 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     self.continuation = nil;
     if (continuation) continuation();
 }
-- (void)action:(int)action automatic:(BOOL)automatic {
-    if (action == 5) { [self.defaults setBool:automatic forKey:@"AINCAutomaticallyDownloadUpdates"]; return; }
-    if (self.historyRequested && action == 7) { self.historyRequested = NO; return; }
+- (void)action:(AincUpdateAction)action automatic:(BOOL)automatic {
+    if (action == AincUpdateActionAutomaticChanged) { [self.defaults setBool:automatic forKey:@"AINCAutomaticallyDownloadUpdates"]; return; }
+    if (self.historyRequested && action == AincUpdateActionDismiss) { self.historyRequested = NO; return; }
     if (self.changelog) {
         self.changelog = NO;
         if (self.choice) [self presentOffer];
         return;
     }
     if (self.preparationFailed) {
-        if (action == 6) [self prepare];
+        if (action == AincUpdateActionRetry) [self prepare];
         // Closing the error never resumes an un-drained installation.
         return;
     }
-    if (self.cacheFailed && action == 6) { [self downloadArchive]; return; }
-    if (action == 6 && self.retryTermination) {
+    if (self.cacheFailed && action == AincUpdateActionRetry) { [self downloadArchive]; return; }
+    if (action == AincUpdateActionRetry && self.retryTermination) {
         self.continuation = self.retryTermination;
         [self prepare];
         return;
     }
-    if ((action == 4 || action == 7) && self.cancellation) {
+    if ((action == AincUpdateActionCancelDownload || action == AincUpdateActionDismiss) && self.cancellation) {
         void (^cancel)(void) = self.cancellation;
         self.cancellation = nil;
         if (!self.download) self.cancellationRequested = YES;
@@ -1068,19 +1068,19 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
         // A history error is shown after its cycle ended. Any other
         // acknowledgement ends a live cycle, and checking before it finishes
         // only makes Sparkle focus the failed session; retry once it ends.
-        self.retryAfterCycle = action == 6 && !history;
+        self.retryAfterCycle = action == AincUpdateActionRetry && !history;
         acknowledge();
-        if (action == 6 && history) dispatch_async(dispatch_get_main_queue(), ^{ [self requestHistory]; });
+        if (action == AincUpdateActionRetry && history) dispatch_async(dispatch_get_main_queue(), ^{ [self requestHistory]; });
         return;
     }
-    if (self.choice && (action == 1 || action == 2 || action == 3 || action == 7)) {
-        if (action != 7) [self.defaults setBool:automatic forKey:@"AINCAutomaticallyDownloadUpdates"];
-        if (action == 2) [self.defaults setObject:[NSDate dateWithTimeIntervalSinceNow:86400] forKey:@"AINCUpdateRemindAfter"];
+    if (self.choice && (action == AincUpdateActionSkip || action == AincUpdateActionLater || action == AincUpdateActionInstall || action == AincUpdateActionDismiss)) {
+        if (action != AincUpdateActionDismiss) [self.defaults setBool:automatic forKey:@"AINCAutomaticallyDownloadUpdates"];
+        if (action == AincUpdateActionLater) [self.defaults setObject:[NSDate dateWithTimeIntervalSinceNow:86400] forKey:@"AINCUpdateRemindAfter"];
         void (^reply)(SPUUserUpdateChoice) = self.choice;
         self.choice = nil;
         self.cacheFailed = NO;
-        SPUUserUpdateChoice choice = action == 1 ? SPUUserUpdateChoiceSkip
-            : action == 3 ? SPUUserUpdateChoiceInstall : SPUUserUpdateChoiceDismiss;
+        SPUUserUpdateChoice choice = action == AincUpdateActionSkip ? SPUUserUpdateChoiceSkip
+            : action == AincUpdateActionInstall ? SPUUserUpdateChoiceInstall : SPUUserUpdateChoiceDismiss;
         if (choice == SPUUserUpdateChoiceInstall && self.item.informationOnlyUpdate) {
             NSURL *url = self.item.infoURL;
             if ([@[@"https", @"http"] containsObject:url.scheme.lowercaseString]) [NSWorkspace.sharedWorkspace openURL:url];
@@ -1140,7 +1140,7 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
         if (profile) [NSFileManager.defaultManager removeItemAtURL:profile error:nil];
         self.prepared = NO;
         self.installArmed = NO;
-        if (!removeFence(self.fenceURL)) ainc_update_action(9, false);
+        if (!removeFence(self.fenceURL)) ainc_update_action(AincUpdateActionReleaseInstall, false);
     }
     self.ownsInstallCycle = NO;
     self.prepared = NO;
@@ -1207,7 +1207,7 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
 }
 @end
 
-static void updateAction(int action, bool automatic) {
+static void updateAction(AincUpdateAction action, bool automatic) {
     if (sparkle) [sparkle action:action automatic:automatic];
     else ainc_update_action(action, automatic);
 }
@@ -1316,5 +1316,5 @@ void ainc_sparkle_prepared(const char *error) {
     if (!failure && sparkle.started) failure = saveRelaunchProfile(relaunchProfileURL(NSBundle.mainBundle), sparkle.item.versionString);
     if (!failure) failure = armFence(sparkle.fenceURL, sparkle.item.versionString, pinnedFeed(sparkle.item));
     [sparkle preparedWithError:failure];
-    if (failure && ![readFence(sparkle.fenceURL)[@"phase"] isEqualToString:@"armed"]) ainc_update_action(9, false);
+    if (failure && ![readFence(sparkle.fenceURL)[@"phase"] isEqualToString:@"armed"]) ainc_update_action(AincUpdateActionReleaseInstall, false);
 }

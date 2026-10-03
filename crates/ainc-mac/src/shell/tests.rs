@@ -132,6 +132,68 @@ fn restored_active_tab_is_visible_on_the_first_frame(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn automation_agent_select_keeps_stable_ids_and_dismisses_before_dialog(cx: &mut TestAppContext) {
+    use crate::{automations::AutomationsPage, page::Page};
+    let dir = tempfile::tempdir().unwrap();
+    cx.update(bind_keys);
+    let (shell, cx) =
+        cx.add_window_view(|window, cx| Shell::fixture(dir.path().join("tabs.json"), window, cx));
+    shell.update(cx, |shell, cx| {
+        shell
+            .daemon
+            .send(ainc_client::types::TicketCommand::RegisterAgent {
+                name: "Test agent".into(),
+                instructions: "Test".into(),
+                model: "test".into(),
+            })
+            .unwrap();
+        shell
+            .page_entity::<AutomationsPage>()
+            .update(cx, |page, _| page.reload());
+        shell.fixture_navigate(Route::Automations, cx);
+    });
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    let create = cx
+        .debug_bounds("automations.create.empty")
+        .unwrap()
+        .center();
+    cx.simulate_click(create, Modifiers::default());
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    let trigger = cx.debug_bounds("automations.agent").unwrap().center();
+    cx.simulate_click(trigger, Modifiers::default());
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    assert!(cx.debug_bounds("automations.agent.agent-1").is_some());
+    cx.simulate_keystrokes("escape");
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    assert!(cx.debug_bounds("automations.agent.agent-1").is_none());
+    assert!(cx.debug_bounds("automations.agent").is_some());
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(
+            shell.overlays.borrow().active(),
+            Some(Overlay::Dialog(Route::Automations))
+        )
+    });
+    cx.simulate_click(trigger, Modifiers::default());
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    let choice = cx
+        .debug_bounds("automations.agent.agent-1")
+        .unwrap()
+        .center();
+    cx.simulate_click(choice, Modifiers::default());
+    shell.read_with(cx, |shell, cx| {
+        let page = shell.page_entity::<AutomationsPage>();
+        assert_eq!(
+            page.read(cx)
+                .drafts(cx)
+                .unwrap()
+                .get::<String>("agent")
+                .as_deref(),
+            Some("agent-1")
+        );
+    });
+}
+
+#[gpui::test]
 fn compact_sidebar_preserves_icon_positions_and_profile_access(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let (shell, cx) =

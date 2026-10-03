@@ -7,6 +7,8 @@ use super::{
 use gpui::{prelude::*, *};
 
 pub struct SelectOption {
+    /// Stable identity for record-backed options; positional menus may omit it.
+    pub id: Option<SharedString>,
     pub label: SharedString,
     pub description: Option<SharedString>,
     pub glyph: Option<(Icon, u32)>,
@@ -17,11 +19,16 @@ pub struct SelectOption {
 impl SelectOption {
     pub fn new(label: impl Into<SharedString>) -> Self {
         Self {
+            id: None,
             label: label.into(),
             description: None,
             glyph: None,
             avatar: None,
         }
+    }
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.id = Some(id.into());
+        self
     }
     /// Lead with an assignee's avatar: a person's round one or an agent's square one.
     pub fn avatar(mut self, face: AssigneeFace) -> Self {
@@ -157,7 +164,9 @@ impl Select {
                 for (index, option) in options.into_iter().enumerate() {
                     let on_select = on_select.clone();
                     let mut item = MenuEntry::new(
-                        ElementId::NamedInteger(item_name.clone(), index as u64),
+                        option.id.map(ElementId::Name).unwrap_or_else(|| {
+                            ElementId::NamedInteger(item_name.clone(), index as u64)
+                        }),
                         option.label,
                     )
                     .checked(value == Some(index))

@@ -60,6 +60,14 @@ Open **Assistant** in the sidebar to start, reopen, rename or delete Conversatio
 
 ## Using the shell
 
+The app retains one multi-thread Tokio runtime for concurrent HTTP requests and
+update-drain coordination; GPUI background tasks call into it. Codex login runs
+in the daemon, not on the app's UI thread. Tokio macros and test socket helpers
+are dev-only. The direct Objective-C dependencies enable only the About panel's
+`NSApplication`, `NSDictionary` and `NSString` surfaces; GPUI selects its own
+platform features. The app and the pinned GPUI resolve one AccessKit version
+(0.24.1 in the lockfile).
+
 Sidebar destinations and Search navigate the active tab. Each tab retains its own Back/Forward history. Open tabs with ⌘T or +, switch with ⇧⌘[ / ⇧⌘], and close with ⇧⌘W or the X revealed on hover. The tab strip scrolls horizontally when full; opening or selecting a tab brings it into view. Closing the final tab leaves a fresh Assistant tab.
 
 <!-- shortcuts -->

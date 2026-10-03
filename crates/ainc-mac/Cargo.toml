@@ -46,7 +46,9 @@ rustls = { version = "0.23", default-features = false, features = [
   "tls12",
   "logging",
 ] }
-tokio.workspace = true
+# Concurrent HTTP calls and updater coordination share one runtime. Test-only
+# networking helpers and proc macros belong to dev-dependencies below.
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 uuid.workspace = true
 pulldown-cmark = "0.13"
 # Only tests/pilot_terminal_sessions.rs (requires `automation`) uses these.
@@ -59,8 +61,12 @@ cc = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.2"
-objc2-app-kit = { version = "0.3.2", features = ["NSApplication"] }
-objc2-foundation = { version = "0.3.2", features = [
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "NSApplication",
+] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
   "NSDictionary",
   "NSString",
 ] }
@@ -83,6 +89,7 @@ fixtures = []
 rendered-tests = ["fixtures", "gpui/test-support", "gpui_platform/test-support"]
 
 [dev-dependencies]
+tokio = { version = "1", features = ["macros", "net", "io-util"] }
 log = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
 futures.workspace = true

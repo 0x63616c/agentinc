@@ -247,8 +247,6 @@ pub const CHAT_MESSAGE_WIDTH: f32 = 620.;
 pub const WORK_STATUS_WIDTH: f32 = 150.;
 pub const WORK_STARTED_WIDTH: f32 = 170.;
 pub const WORK_DURATION_WIDTH: f32 = 90.;
-/// Monospace text (durations, ids).
-pub const FONT_MONO: &str = "SF Mono";
 /// The current-space tab in the header: its face, the slot it sits in and the
 /// contour painted around it. The face is `TAB_FACE_HEIGHT` tall inside a
 /// contour `TAB_HEIGHT` tall whose last pixels overlap the panel border.

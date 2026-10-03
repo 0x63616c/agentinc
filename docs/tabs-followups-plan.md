@@ -85,15 +85,21 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
 
 ## Mac follow-up lane — after API integration
 
-- [ ] **M-1:** Automations Assign to uses Select with stable option IDs
+- [x] **M-1:** Automations Assign to uses Select with stable option IDs
   `automations.agent.{id}`; pilot test keeps working.
-- [ ] **M-2:** Monospace font follows an appearance choice or is derived from
+- [x] **M-2:** Monospace font follows an appearance choice or is derived from
   the selected font, rather than fixed FONT_MONO; all usages follow it.
-- [ ] **M-3:** Native update actions use shared Objective-C NS_ENUM instead of
+- [x] **M-3:** Native update actions use shared Objective-C NS_ENUM instead of
   bare 1..7; Rust NativeAction value contract remains tested. Reconcile if the
   independent updater migration supersedes this code.
-- [ ] **M-4:** Audit/trim tokio runtime features (including blocking Codex login),
+- [x] **M-4:** Audit/trim tokio runtime features (including blocking Codex login),
   objc2 feature use and GPUI/accesskit version matching; justify retained deps.
+  M-1…M-4: 109 Mac tests pass, including agent selection/dismissal and update
+  action ABI values. System uses SF Mono and Helvetica Neue uses Menlo. Native
+  actions are named in `update_actions.h`. Trimming Objective-C defaults removed
+  four unused 0.3.2 framework packages from the lockfile; Tokio retains concurrent
+  HTTP/runtime coordination, with test helpers dev-only. AccessKit resolves once
+  at 0.24.1 for both app and GPUI. `cargo check --offline -p ainc-mac` passed.
 - [ ] **M-5, last:** Route::Ticket(id)/Conversation(id), detail-aware Back/Forward
   and tab restoration, preserving legacy UI-state files.
 

@@ -382,6 +382,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         "automations.prompt",
         Some("Provide scheduled fixture evidence"),
     )?;
+    act(&mut client, "automations.agent", None)?;
     act(&mut client, &format!("automations.agent.{agent_id}"), None)?;
     screenshot(&mut client, "automation-create", &output)?;
     act(&mut client, "automations.save", None)?;

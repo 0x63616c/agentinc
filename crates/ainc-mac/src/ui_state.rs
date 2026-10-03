@@ -31,6 +31,13 @@ impl FontChoice {
             Self::HelveticaNeue => "Helvetica Neue",
         }
     }
+    /// Monospaced companion to the selected interface family.
+    pub fn monospace_family(self) -> &'static str {
+        match self {
+            Self::System => "SF Mono",
+            Self::HelveticaNeue => "Menlo",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]

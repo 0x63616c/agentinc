@@ -11,6 +11,7 @@ static ACTIONS: Mutex<VecDeque<(NativeAction, bool)>> = Mutex::new(VecDeque::new
 
 /// Native callback codes shared with the custom Sparkle user driver.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
 pub enum NativeAction {
     Skip = 1,
     Later = 2,
@@ -321,6 +322,29 @@ pub fn smoke(manifest: &Manifest, directory: &std::path::Path) -> anyhow::Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_action_abi_values_decode_and_unknown_values_are_rejected() {
+        use NativeAction::*;
+        for (action, code) in [
+            (Skip, 1),
+            (Later, 2),
+            (Install, 3),
+            (CancelDownload, 4),
+            (AutomaticChanged, 5),
+            (Retry, 6),
+            (Dismiss, 7),
+            (PrepareInstall, 8),
+            (ReleaseInstall, 9),
+            (Downloaded, 10),
+        ] {
+            assert_eq!(action as i32, code);
+            assert_eq!(NativeAction::from_code(code), Some(action));
+        }
+        for code in [i32::MIN, -1, 0, 11, i32::MAX] {
+            assert_eq!(NativeAction::from_code(code), None);
+        }
+    }
 
     #[test]
     fn markdown_is_formatted_and_raw_html_is_escaped() {

@@ -236,65 +236,80 @@ impl AutomationsPage {
         } else {
             "New Automation"
         };
-        let body =
-            column_gap(FORM_STACK_GAP)
-                .child(text_field("Name", self.name.clone(), ui))
-                .child(
-                    Field::new(self.prompt.clone())
-                        .label("Ticket prompt")
-                        .multiline()
-                        .hint("Each firing creates a Ticket with this prompt and assigns it.")
+        let body = column_gap(FORM_STACK_GAP)
+            .child(text_field("Name", self.name.clone(), ui))
+            .child(
+                Field::new(self.prompt.clone())
+                    .label("Ticket prompt")
+                    .multiline()
+                    .hint("Each firing creates a Ticket with this prompt and assigns it.")
+                    .build(ui),
+            )
+            .child(
+                div().w(px(SHORT_FIELD_WIDTH)).child(
+                    Field::new(self.minutes.clone())
+                        .label("Repeat every")
+                        .selector("Every (minutes)")
+                        .suffix("min")
+                        .error(self.minutes_error)
                         .build(ui),
-                )
-                .child(
-                    div().w(px(SHORT_FIELD_WIDTH)).child(
-                        Field::new(self.minutes.clone())
-                            .label("Repeat every")
-                            .selector("Every (minutes)")
-                            .suffix("min")
-                            .error(self.minutes_error)
-                            .build(ui),
-                    ),
-                )
-                .child(
-                    column()
-                        .gap(px(SPACE_2))
-                        .child(
-                            div()
-                                .text_size(type_size(LABEL_SIZE))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(TEXT_SECONDARY))
-                                .child("Assign to"),
-                        )
-                        .when(agents.is_empty(), |s| {
-                            s.child(
-                                Select::new("automations.agent", vec![])
-                                    .placeholder("No agents yet")
-                                    .enabled(false)
-                                    .width(SELECT_WIDTH)
-                                    .build(ui, |_, _, _| {}, |_, _, _, _| {}),
-                            )
-                            .child(caption("Register an agent on the Agents page first."))
-                        })
-                        .child(row().gap(px(CHIP_GAP)).flex_wrap().children(
-                            agents.into_iter().map(|a| {
-                                let id = a.id.clone();
-                                let selected = self.agent.as_ref() == Some(&a.id);
-                                Chip::new(
-                                    SharedString::from(format!("automations.agent.{}", a.id)),
-                                    a.name,
-                                )
-                                .selected(selected)
-                                .enabled(enabled)
-                                .build(ui, move |this, _, cx| {
-                                    this.agent = Some(id.clone());
-                                    cx.notify();
+                ),
+            )
+            .child(
+                column()
+                    .gap(px(SPACE_2))
+                    .child(
+                        div()
+                            .text_size(type_size(LABEL_SIZE))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(TEXT_SECONDARY))
+                            .child("Assign to"),
+                    )
+                    .child(
+                        Select::new(
+                            "automations.agent",
+                            agents
+                                .iter()
+                                .map(|agent| {
+                                    SelectOption::new(agent.name.clone())
+                                        .id(format!("automations.agent.{}", agent.id))
                                 })
-                            }),
-                        ))
-                        .when_some(self.agent_error, |s, error| s.child(error_text(error))),
-                )
-                .when_some(self.error.clone(), |s, error| s.child(error_text(error)));
+                                .collect(),
+                        )
+                        .value(
+                            agents
+                                .iter()
+                                .position(|agent| self.agent.as_ref() == Some(&agent.id)),
+                        )
+                        .placeholder(if agents.is_empty() {
+                            "No agents yet"
+                        } else {
+                            "Choose an agent…"
+                        })
+                        .open(self.overlays.popover_open("automations.agent"))
+                        .enabled(enabled && !agents.is_empty())
+                        .below()
+                        .width(SELECT_WIDTH)
+                        .build(
+                            ui,
+                            |this, _, cx| {
+                                this.overlays.toggle_popover("automations.agent");
+                                cx.notify();
+                            },
+                            move |this, index, _, cx| {
+                                this.agent = agents.get(index).map(|agent| agent.id.clone());
+                                this.agent_error = None;
+                                this.overlays.close_popover();
+                                cx.notify();
+                            },
+                        ),
+                    )
+                    .when(self.agents.is_empty(), |s| {
+                        s.child(caption("Register an agent on the Agents page first."))
+                    })
+                    .when_some(self.agent_error, |s, error| s.child(error_text(error))),
+            )
+            .when_some(self.error.clone(), |s, error| s.child(error_text(error)));
         let footer = DialogFooter::new(if self.selected.is_some() {
             Verb::Save
         } else {
