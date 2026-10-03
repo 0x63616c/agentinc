@@ -1,4 +1,5 @@
 //! App-owned update state. Native AppKit windows remain available when the backend is down.
+use crate::action::{Pending, Run};
 use crate::native_update::{self, Status};
 use crate::ui::*;
 use ainc_release::{
@@ -49,7 +50,7 @@ pub struct UpdateView {
     directory: PathBuf,
     message: String,
     release: Option<(SignedManifest, Manifest)>,
-    busy: bool,
+    busy: Pending,
     ready: bool,
     available: bool,
     progress: Arc<AtomicU64>,
@@ -86,7 +87,7 @@ impl UpdateView {
                     .await;
                 if this
                     .update(cx, |this, cx| {
-                        if this.preferences.due(updater::now()) && !this.busy {
+                        if this.preferences.due(updater::now()) && !this.busy.busy() {
                             this.check(false, cx);
                         }
                     })
@@ -110,44 +111,45 @@ impl UpdateView {
         .detach();
         if directory.join("feed.json").is_file() && !ainc_release::update_public_key().is_empty() {
             let saved = directory.clone();
-            let request = cx.background_executor().spawn(async move {
-                let signed: SignedManifest =
-                    serde_json::from_slice(&std::fs::read(saved.join("feed.json"))?)?;
-                let manifest =
-                    updater::verify_download(&signed, ainc_release::update_public_key(), &saved)?;
-                anyhow::ensure!(
-                    manifest.is_upgrade(ainc_release::VERSION, std::env::consts::ARCH)?,
-                    "saved update is no longer newer"
-                );
-                anyhow::Ok((signed, manifest))
-            });
-            cx.spawn(async move |this, cx| {
-                if let Ok(release) = request.await {
-                    let _ = this.update(cx, |this, cx| {
-                        if !this.busy
-                            && this
-                                .release
-                                .as_ref()
-                                .is_none_or(|(_, manifest)| manifest.version <= release.1.version)
-                        {
-                            this.release = Some(release);
-                            this.available = true;
-                            this.ready = true;
-                            this.message = "Update verified and ready to install".into();
-                            this.present();
-                            cx.notify();
-                        }
-                    });
-                }
-            })
-            .detach();
+            cx.run(
+                &Pending::default(),
+                move || {
+                    let signed: SignedManifest =
+                        serde_json::from_slice(&std::fs::read(saved.join("feed.json"))?)?;
+                    let manifest = updater::verify_download(
+                        &signed,
+                        ainc_release::update_public_key(),
+                        &saved,
+                    )?;
+                    anyhow::ensure!(
+                        manifest.is_upgrade(ainc_release::VERSION, std::env::consts::ARCH)?,
+                        "saved update is no longer newer"
+                    );
+                    anyhow::Ok((signed, manifest))
+                },
+                |this, release, _| {
+                    let Ok(release) = release else { return };
+                    if !this.busy.busy()
+                        && this
+                            .release
+                            .as_ref()
+                            .is_none_or(|(_, manifest)| manifest.version <= release.1.version)
+                    {
+                        this.release = Some(release);
+                        this.available = true;
+                        this.ready = true;
+                        this.message = "Update verified and ready to install".into();
+                        this.present();
+                    }
+                },
+            );
         }
         Self {
             preferences,
             directory,
             message,
             release: None,
-            busy: false,
+            busy: Pending::default(),
             ready: false,
             available: false,
             progress: Arc::new(AtomicU64::new(0)),
@@ -186,7 +188,7 @@ impl UpdateView {
                     manifest.archive_bytes,
                 );
             }
-        } else if self.busy {
+        } else if self.busy.busy() {
             native_update::status(Status::Checking);
         } else if self.failure.is_some() {
             native_update::status(Status::Failed(&self.message));
@@ -283,27 +285,25 @@ impl UpdateView {
             cx.notify();
             return;
         }
-        if self.busy {
+        if self.busy.busy() {
             return;
         }
         if manual {
             self.preferences.skipped_version = None;
             self.preferences.remind_after = 0;
         }
-        self.busy = true;
         self.failure = None;
         self.message = "Checking for updates…".into();
         self.present();
-        let request = cx.background_executor().spawn(async {
-            crate::daemon::block_on(updater::check(
-                &ainc_release::update_feed_url(),
-                ainc_release::update_public_key(),
-            ))
-        });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.busy = false;
+        cx.run(
+            &self.busy.clone(),
+            || {
+                crate::daemon::block_on(updater::check(
+                    &ainc_release::update_feed_url(),
+                    ainc_release::update_public_key(),
+                ))
+            },
+            move |this, result, cx| {
                 this.preferences.last_check = updater::now();
                 match result {
                     Ok((signed, manifest)) => match manifest
@@ -332,27 +332,23 @@ impl UpdateView {
                             this.failure = Some(Retry::Check);
                         }
                     },
-                    Err(error) => {
-                        this.message = format!("Could not check for updates: {error:#}");
+                    Err(failure) => {
+                        this.message = failure.message("The update check");
                         this.failure = Some(Retry::Check);
                     }
                 }
                 this.save();
                 this.present();
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
+            },
+        );
     }
     fn download(&mut self, cx: &mut Context<Self>) {
         let Some((signed, manifest)) = self.release.clone() else {
             return;
         };
-        if self.busy {
+        if self.busy.busy() {
             return;
         }
-        self.busy = true;
         self.downloading = true;
         self.failure = None;
         let (cancel, cancelled) = tokio::sync::watch::channel(false);
@@ -362,29 +358,27 @@ impl UpdateView {
         let directory = self.directory.clone();
         let progress = self.progress.clone();
         self.present();
-        let request = cx.background_executor().spawn(async move {
-            std::fs::create_dir_all(&directory)?;
-            std::fs::write(directory.join("feed.json"), serde_json::to_vec(&signed)?)?;
-            crate::daemon::block_on(updater::download_cancellable(
-                &manifest,
-                &directory.join("app.tar.gz"),
-                progress,
-                cancelled,
-            ))?;
-            updater::verify_download(&signed, ainc_release::update_public_key(), &directory)
-                .map(|_| ())
-        });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.busy = false;
+        cx.run(
+            &self.busy.clone(),
+            move || {
+                std::fs::create_dir_all(&directory)?;
+                std::fs::write(directory.join("feed.json"), serde_json::to_vec(&signed)?)?;
+                crate::daemon::block_on(updater::download_cancellable(
+                    &manifest,
+                    &directory.join("app.tar.gz"),
+                    progress,
+                    cancelled,
+                ))?;
+                updater::verify_download(&signed, ainc_release::update_public_key(), &directory)
+                    .map(|_| ())
+            },
+            |this, result, cx| {
                 this.downloading = false;
                 let cancelled = this.cancel.take().is_some_and(|cancel| *cancel.borrow());
                 if cancelled {
                     this.install_after_download = false;
-                    this.message = "Download canceled".into();
+                    this.message = "Download cancelled".into();
                     native_update::close();
-                    cx.notify();
                     return;
                 }
                 this.ready = result.is_ok();
@@ -393,7 +387,7 @@ impl UpdateView {
                 });
                 this.message = match result {
                     Ok(()) => "Update verified and ready to install".into(),
-                    Err(e) => format!("Download failed: {e:#}"),
+                    Err(failure) => failure.message("The update download"),
                 };
                 if this.ready && this.install_after_download {
                     this.install(cx);
@@ -407,11 +401,8 @@ impl UpdateView {
                     this.present();
                 }
                 this.install_after_download = false;
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
+            },
+        );
     }
     fn install(&mut self, cx: &mut Context<Self>) {
         self.failure = None;
@@ -471,7 +462,7 @@ impl UpdateView {
                     Button::new("updates.check", "Check Now")
                         .secondary()
                         .icon("refresh")
-                        .enabled(!self.busy)
+                        .enabled(!self.busy.busy())
                         .build(
                             &self.hover,
                             |this: &mut Self, _, cx| {

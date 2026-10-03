@@ -1,5 +1,9 @@
-use crate::{daemon::Daemon, ui::*};
-use ainc_client::types::{ExecutionPage, ExecutionView};
+use crate::{
+    action::{Pending, Run},
+    daemon::Daemon,
+    ui::*,
+};
+use ainc_client::types::ExecutionView;
 use anyhow::Context as _;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
@@ -90,7 +94,7 @@ pub struct TemporalPage {
     filter: &'static str,
     next_page: Option<String>,
     ui_available: bool,
-    loading: bool,
+    loading: Pending,
     loaded: bool,
     error: Option<String>,
     hover: HoverFade,
@@ -110,7 +114,7 @@ impl TemporalPage {
             filter: "All",
             next_page: None,
             ui_available: false,
-            loading: false,
+            loading: Pending::default(),
             loaded: false,
             error: None,
             hover: HoverFade::default(),
@@ -137,18 +141,21 @@ impl TemporalPage {
     }
 
     pub(crate) fn ensure_loaded(&mut self, cx: &mut Context<Self>) {
-        if !self.loaded && !self.loading {
+        if !self.loaded && !self.loading.busy() {
             self.load(false, cx);
         }
     }
 
     #[cfg(all(test, feature = "rendered-tests"))]
     #[allow(dead_code)]
-    pub(crate) fn fixture(&mut self, page: ExecutionPage, cx: &mut Context<Self>) {
+    pub(crate) fn fixture(
+        &mut self,
+        page: ainc_client::types::ExecutionPage,
+        cx: &mut Context<Self>,
+    ) {
         self.rows = page.executions;
         self.next_page = page.next_page;
         self.ui_available = page.ui_available;
-        self.loading = false;
         self.loaded = true;
         self.error = None;
         cx.notify();
@@ -158,7 +165,6 @@ impl TemporalPage {
     #[allow(dead_code)]
     pub(crate) fn fixture_error(&mut self, cx: &mut Context<Self>) {
         self.rows.clear();
-        self.loading = false;
         self.loaded = true;
         self.error = Some("Temporal is unavailable. Try again.".into());
         cx.notify();
@@ -169,14 +175,14 @@ impl TemporalPage {
     pub(crate) fn fixture_loading(&mut self, cx: &mut Context<Self>) {
         self.rows.clear();
         self.next_page = None;
-        self.loading = true;
+        self.loading.hold();
         self.loaded = false;
         self.error = None;
         cx.notify();
     }
 
     fn load(&mut self, more: bool, cx: &mut Context<Self>) {
-        if self.loading {
+        if self.loading.busy() {
             return;
         }
         let status = self.filter.to_owned();
@@ -190,17 +196,14 @@ impl TemporalPage {
             self.loaded = false;
         }
         self.error = None;
-        self.loading = true;
-        cx.notify();
         let daemon = self.daemon.clone();
-        let work = cx.background_executor().spawn(async move {
-            let daemon = daemon.context("Daemon unavailable")?;
-            anyhow::Ok(daemon.fetch(crate::daemon::Executions { status, page })?)
-        });
-        cx.spawn(async move |this, cx| {
-            let result: anyhow::Result<ExecutionPage> = work.await;
-            let _ = this.update(cx, |this, cx| {
-                this.loading = false;
+        cx.run(
+            &self.loading.clone(),
+            move || {
+                let daemon = daemon.context("Daemon unavailable")?;
+                anyhow::Ok(daemon.fetch(crate::daemon::Executions { status, page })?)
+            },
+            |this, result, _| {
                 this.loaded = true;
                 match result {
                     Ok(page) => {
@@ -208,14 +211,10 @@ impl TemporalPage {
                         this.next_page = page.next_page;
                         this.ui_available = page.ui_available;
                     }
-                    Err(error) => {
-                        this.error = Some(format!("Workflow history unavailable: {error}"))
-                    }
+                    Err(failure) => this.error = Some(failure.message("Workflow history")),
                 }
-                cx.notify();
-            });
-        })
-        .detach();
+            },
+        );
     }
 
     fn table(&self, now: i64, cx: &mut Context<Self>) -> Div {
@@ -312,7 +311,7 @@ impl Render for TemporalPage {
                 Button::new("temporal.refresh", "Refresh")
                     .secondary()
                     .icon("refresh")
-                    .enabled(!self.loading)
+                    .enabled(!self.loading.busy())
                     .build(&self.hover, |this, _, cx| this.load(false, cx), cx),
             );
         let mut content = column()
@@ -322,7 +321,7 @@ impl Render for TemporalPage {
                 "temporal.filter",
                 FILTERS.iter().map(|(_, label)| *label),
                 filter,
-                !self.loading,
+                !self.loading.busy(),
                 &self.hover,
                 |this, index, _, cx| {
                     this.filter = FILTERS[index].0;
@@ -347,7 +346,7 @@ impl Render for TemporalPage {
                     .debug_selector(|| "temporal.error".into()),
             );
         }
-        if !self.loaded && self.loading {
+        if !self.loaded {
             content = content.child(
                 div()
                     .id("temporal.loading")
@@ -381,7 +380,7 @@ impl Render for TemporalPage {
                 row().child(
                     Button::new("temporal.more", "Load more")
                         .secondary()
-                        .enabled(!self.loading)
+                        .enabled(!self.loading.busy())
                         .build(&self.hover, |this, _, cx| this.load(true, cx), cx),
                 ),
             );
