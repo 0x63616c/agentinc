@@ -135,7 +135,7 @@ impl TicketsPage {
                         .icon("close")
                         .icon_only()
                         .tint(TEXT_TERTIARY)
-                        .enabled(!self.pending)
+                        .enabled(!self.pending.busy())
                         .build(
                             &self.hover,
                             move |this: &mut Self, _, cx| this.toggle_label(removed.clone(), cx),
@@ -161,7 +161,7 @@ impl TicketsPage {
                             .icon("plus")
                             .tint(TEXT_SECONDARY)
                             .selected(open)
-                            .enabled(!self.pending && applied.len() < 10);
+                            .enabled(!self.pending.busy() && applied.len() < 10);
                         let compact = !applied.is_empty();
                         if compact { add.icon_only() } else { add }.build(
                             &self.hover,

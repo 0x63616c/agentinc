@@ -1,19 +1,23 @@
-use crate::{daemon::Daemon, input::TextInput, ui::*};
+use crate::{
+    action::{Pending, Run},
+    daemon::Daemon,
+    input::TextInput,
+    sync::{SliceChanged, Sync},
+    ui::*,
+};
 use ainc_client::types::{
     AssigneeKind, Automation, AutomationCommand, AutomationSnapshot, TicketProposal,
 };
 use gpui::{prelude::*, *};
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 pub struct OpenTicket(pub i64);
 pub struct AutomationsPage {
     daemon: Option<Arc<Daemon>>,
+    sync: Entity<Sync>,
     state: AutomationSnapshot,
     error: Option<String>,
-    pending: bool,
-    refreshing: bool,
-    loaded: bool,
-    loading_started: Instant,
+    pending: Pending,
     editing: bool,
     selected: Option<String>,
     editing_revision: Option<i64>,
@@ -53,7 +57,7 @@ fn every(minutes: i64) -> String {
 impl AutomationsPage {
     pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
         anyhow::ensure!(
-            !self.pending,
+            !self.pending.busy(),
             "Wait for the current change to finish before installing"
         );
         Ok(
@@ -89,7 +93,7 @@ impl AutomationsPage {
         }
     }
 
-    pub fn new(daemon: Option<Arc<Daemon>>, error: Option<String>, cx: &mut Context<Self>) -> Self {
+    pub fn new(daemon: Option<Arc<Daemon>>, sync: Entity<Sync>, cx: &mut Context<Self>) -> Self {
         let name =
             cx.new(|cx| TextInput::field("Rule name", false, cx).identified("automations.name"));
         let prompt = cx.new(|cx| {
@@ -102,19 +106,24 @@ impl AutomationsPage {
             cx.observe(&name, |_, _, cx| cx.notify()),
             cx.observe(&prompt, |_, _, cx| cx.notify()),
             cx.observe(&minutes, |_, _, cx| cx.notify()),
+            cx.observe(&sync, |_, _, cx| cx.notify()),
+            cx.subscribe(&sync, |this, _, event: &SliceChanged, cx| {
+                if *event == SliceChanged::Automations {
+                    this.reload();
+                    cx.notify();
+                }
+            }),
         ];
         let mut this = Self {
             daemon,
+            sync,
             state: AutomationSnapshot {
                 rules: vec![],
                 occurrences: vec![],
                 history: vec![],
             },
-            error,
-            pending: false,
-            refreshing: false,
-            loaded: cfg!(test),
-            loading_started: Instant::now(),
+            error: None,
+            pending: Pending::default(),
             editing: false,
             selected: None,
             editing_revision: None,
@@ -129,21 +138,6 @@ impl AutomationsPage {
             _subscriptions: subscriptions,
         };
         this.reload();
-        #[cfg(not(test))]
-        {
-            this.refresh(cx);
-            cx.spawn(async move |this, cx| {
-                loop {
-                    cx.background_executor()
-                        .timer(std::time::Duration::from_secs(2))
-                        .await;
-                    if this.update(cx, |this, cx| this.refresh(cx)).is_err() {
-                        break;
-                    }
-                }
-            })
-            .detach();
-        }
         this
     }
     pub(crate) fn reload(&mut self) {
@@ -151,68 +145,26 @@ impl AutomationsPage {
             self.state = daemon.automations();
         }
     }
-    fn refresh(&mut self, cx: &mut Context<Self>) {
-        if self.pending || self.refreshing {
-            return;
-        }
-        let Some(daemon) = self.daemon.clone() else {
-            return;
-        };
-        if self.error.is_some() {
-            self.loading_started = Instant::now();
-        }
-        self.refreshing = true;
-        let work = cx
-            .background_executor()
-            .spawn(async move { daemon.refresh() });
-        cx.spawn(async move |this, cx| {
-            let result = work.await;
-            let _ = this.update(cx, |this, cx| {
-                this.refreshing = false;
-                match result {
-                    Ok(()) => {
-                        this.reload();
-                        this.loaded = true;
-                        this.error = None;
-                    }
-                    Err(e) => this.error = Some(format!("Automations unavailable: {e}")),
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
     fn command(&mut self, command: AutomationCommand, cx: &mut Context<Self>) {
-        if self.pending {
-            return;
-        }
         let Some(daemon) = self.daemon.clone() else {
             return;
         };
-        self.pending = true;
-        let work = cx
-            .background_executor()
-            .spawn(async move { daemon.send(command) });
-        cx.spawn(async move |this, cx| {
-            let result = work.await;
-            let _ = this.update(cx, |this, cx| {
-                this.pending = false;
-                match result {
-                    Ok(id) => {
-                        this.reload();
-                        this.error = None;
-                        this.editing = false;
-                        this.restore_focus = true;
-                        if this.state.rules.iter().any(|r| r.id == id) {
-                            this.selected = Some(id);
-                        }
+        cx.run(
+            &self.pending.clone(),
+            move || Ok(daemon.send(command)?),
+            |this, result, _| match result {
+                Ok(id) => {
+                    this.reload();
+                    this.error = None;
+                    this.editing = false;
+                    this.restore_focus = true;
+                    if this.state.rules.iter().any(|r| r.id == id) {
+                        this.selected = Some(id);
                     }
-                    Err(e) => this.error = Some(e.to_string()),
                 }
-                cx.notify();
-            });
-        })
-        .detach();
+                Err(failure) => this.error = Some(failure.message("The Automation change")),
+            },
+        );
     }
     fn edit(&mut self, rule: Option<Automation>, cx: &mut Context<Self>) {
         self.selected = rule.as_ref().map(|r| r.id.clone());
@@ -270,7 +222,7 @@ impl AutomationsPage {
             .into_iter()
             .filter(|a| a.kind == AssigneeKind::Agent)
             .collect();
-        let enabled = !self.pending;
+        let enabled = !self.pending.busy();
         let valid = !self.name.read(cx).content.trim().is_empty()
             && !self.prompt.read(cx).content.trim().is_empty()
             && self
@@ -369,7 +321,7 @@ impl AutomationsPage {
         let pause = rule.clone();
         let run = rule.clone();
         let (state, _) = rule_state(rule);
-        let enabled = !self.pending;
+        let enabled = !self.pending.busy();
         PageHeader::new(rule.name.clone())
             .leading(
                 Button::new("automations.back", "Automations")
@@ -597,9 +549,17 @@ impl Render for AutomationsPage {
             Button::new(id, "New Automation")
                 .primary()
                 .icon("plus")
-                .enabled(!this.pending)
+                .enabled(!this.pending.busy())
                 .build(&this.hover, |this, _, cx| this.edit(None, cx), cx)
         };
+        let sync = self.sync.read(cx);
+        let (loaded, load_error, reconnecting, loading_started, fetching) = (
+            sync.loaded,
+            sync.message(),
+            sync.reconnecting(),
+            sync.loading_started,
+            sync.fetching(),
+        );
         let header = match (&selected, self.editing) {
             (Some(rule), false) => self.detail_header(rule, cx),
             (_, true) => PageHeader::new("Automations")
@@ -613,8 +573,12 @@ impl Render for AutomationsPage {
                                 .icon("refresh")
                                 .icon_only()
                                 .secondary()
-                                .enabled(!self.refreshing)
-                                .build(&self.hover, |this, _, cx| this.refresh(cx), cx),
+                                .enabled(!fetching)
+                                .build(
+                                    &self.hover,
+                                    |this, _, cx| this.sync.update(cx, |sync, cx| sync.wake(cx)),
+                                    cx,
+                                ),
                         )
                         .child(
                             create(self, "automations.create", cx)
@@ -623,18 +587,18 @@ impl Render for AutomationsPage {
                 ),
         };
         let mut content = column().gap(px(SECTION_GAP)).w_full();
-        if let Some(error) = &self.error {
+        if let Some(error) = load_error.as_ref().or(self.error.as_ref()) {
             content = content.child(
                 banner(Tone::Danger, error.clone())
                     .id("automations.error")
                     .accessibility_id("automations.error"),
             );
         }
-        if self.refreshing && self.error.is_some() {
-            content = content
-                .child(LoadingFrame::new(self.loading_started, window).inline("Reconnecting…"));
+        if reconnecting {
+            content =
+                content.child(LoadingFrame::new(loading_started, window).inline("Reconnecting…"));
         }
-        if !self.loaded && self.error.is_none() {
+        if !loaded && load_error.is_none() {
             content = content.child(skeleton_rows("automations.loading", 3));
         }
         if self.editing {
@@ -642,7 +606,7 @@ impl Render for AutomationsPage {
         } else if let Some(rule) = selected {
             content = content.child(self.detail(rule, cx));
         } else {
-            if self.loaded && self.state.rules.is_empty() && self.error.is_none() {
+            if loaded && self.state.rules.is_empty() && load_error.is_none() {
                 content = content.child(
                     EmptyState::new("repeat", "No Automations yet")
                         .description(
@@ -653,7 +617,7 @@ impl Render for AutomationsPage {
                             Button::new("automations.create.empty", "New Automation")
                                 .secondary()
                                 .icon("plus")
-                                .enabled(!self.pending)
+                                .enabled(!self.pending.busy())
                                 .build(&self.hover, |this, _, cx| this.edit(None, cx), cx),
                         )
                         .build(),

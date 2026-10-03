@@ -237,7 +237,7 @@ impl TicketsPage {
         });
         daemon.refresh().expect("fixture refresh");
         self.reload();
-        self.loaded = true;
+        self.sync.update(cx, |sync, cx| sync.mark_loaded(cx));
         cx.notify();
         budget
     }

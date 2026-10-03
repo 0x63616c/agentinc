@@ -4,6 +4,8 @@
 #![allow(dead_code, unused_imports)]
 #[path = "../src/about.rs"]
 mod about;
+#[path = "../src/action.rs"]
+mod action;
 #[path = "../src/assistant.rs"]
 mod assistant;
 #[path = "../src/automations.rs"]
@@ -24,6 +26,8 @@ mod native_update;
 mod profile;
 #[path = "../src/shell.rs"]
 mod shell;
+#[path = "../src/sync.rs"]
+mod sync;
 #[path = "../src/temporal.rs"]
 mod temporal;
 #[path = "../src/terminal.rs"]

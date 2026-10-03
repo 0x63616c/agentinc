@@ -1,4 +1,5 @@
 mod about;
+mod action;
 mod assistant;
 mod automations;
 mod components;
@@ -9,6 +10,7 @@ mod model;
 mod native_update;
 mod profile;
 mod shell;
+mod sync;
 mod temporal;
 #[cfg(target_os = "macos")]
 mod terminal;

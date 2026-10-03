@@ -13,6 +13,7 @@ mod pane;
 #[path = "shell/sidebar.rs"]
 mod sidebar;
 
+use crate::action::Run;
 use crate::daemon::Daemon;
 use crate::{
     input::TextInput,
@@ -68,6 +69,7 @@ pub(crate) enum Control {
 }
 pub struct Shell {
     daemon: Option<std::sync::Arc<Daemon>>,
+    _sync_subscription: Subscription,
     session: Session,
     overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     assistant: Entity<crate::evee::AssistantPage>,
@@ -144,25 +146,22 @@ impl Shell {
             .map(PathBuf::from)
             .unwrap_or_else(|| ainc_release::identity::support_dir().join("session.json"));
         let daemon = Some(std::sync::Arc::new(crate::daemon::Daemon::connect()));
-        let daemon_error = None;
-        let request = cx
-            .background_executor()
-            .spawn(async { crate::profile::Profile::local() });
-        cx.spawn(async move |this, cx| {
-            let profile = request.await;
-            let _ = this.update(cx, |this, cx| {
+        let clock = crate::sync::Timers(cx.background_executor().clone());
+        cx.run(
+            &crate::action::Pending::default(),
+            || Ok(crate::profile::Profile::local()),
+            |this, profile, cx| {
+                let Ok(profile) = profile else { return };
                 let (name, photo) = (profile.name.clone(), profile.photo.clone());
                 this.tickets
                     .update(cx, |tickets, cx| tickets.set_owner(&name, photo, cx));
                 this.profile = profile;
-                cx.notify();
-            });
-        })
-        .detach();
+            },
+        );
         Self::with_state(
             path,
             daemon,
-            daemon_error,
+            clock,
             crate::profile::Profile {
                 name: "Profile".into(),
                 photo: None,
@@ -175,19 +174,21 @@ impl Shell {
     fn with_state(
         path: PathBuf,
         daemon: Option<std::sync::Arc<crate::daemon::Daemon>>,
-        daemon_error: Option<String>,
+        clock: impl crate::sync::Clock,
         profile: crate::profile::Profile,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let overlays = Rc::new(RefCell::new(OverlayHost::default()));
+        let sync = cx.new(|cx| crate::sync::Sync::new(daemon.clone(), clock, cx));
+        let sync_subscription = window.observe_window_visibility({
+            let sync = sync.clone();
+            move |visibility, _, cx| {
+                sync.update(cx, |sync, cx| sync.set_paused(!visibility.is_visible(), cx))
+            }
+        });
         let assistant = cx.new(|cx| {
-            crate::evee::AssistantPage::new(
-                daemon.clone(),
-                daemon_error.clone(),
-                overlays.clone(),
-                cx,
-            )
+            crate::evee::AssistantPage::new(daemon.clone(), sync.clone(), overlays.clone(), cx)
         });
         let assistant_subscriptions = vec![
             cx.observe(&assistant, |_, _, cx| cx.notify()),
@@ -208,18 +209,13 @@ impl Shell {
             ),
         ];
         let tickets = cx.new(|cx| {
-            crate::tickets::TicketsPage::new(
-                daemon.clone(),
-                daemon_error.clone(),
-                overlays.clone(),
-                cx,
-            )
+            crate::tickets::TicketsPage::new(daemon.clone(), sync.clone(), overlays.clone(), cx)
         });
         tickets.update(cx, |tickets, cx| {
             tickets.set_owner(&profile.name, profile.photo.clone(), cx)
         });
         let automations =
-            cx.new(|cx| crate::automations::AutomationsPage::new(daemon.clone(), daemon_error, cx));
+            cx.new(|cx| crate::automations::AutomationsPage::new(daemon.clone(), sync.clone(), cx));
         let temporal = cx.new(|cx| crate::temporal::TemporalPage::new(daemon.clone(), cx));
         let temporal_subscription = cx.observe(&temporal, |_, _, cx| cx.notify());
         let components = cx.new(crate::components::ComponentsPage::new);
@@ -278,6 +274,7 @@ impl Shell {
             .map(|updates| cx.observe(&updates.0, |_, _, cx| cx.notify()));
         let mut shell = Self {
             daemon,
+            _sync_subscription: sync_subscription,
             session,
             overlays,
             assistant,
@@ -344,7 +341,7 @@ impl Shell {
         let mut shell = Self::with_state(
             path,
             Some(std::sync::Arc::new(daemon)),
-            None,
+            crate::sync::Timers(cx.background_executor().clone()),
             crate::profile::Profile {
                 name: "QA Profile".into(),
                 photo: None,

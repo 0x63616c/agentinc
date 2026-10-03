@@ -274,7 +274,7 @@ impl TicketsPage {
                             .icon("plus")
                             .icon_only()
                             .tint(TEXT_TERTIARY)
-                            .enabled(self.daemon.is_some() && !self.pending)
+                            .enabled(self.daemon.is_some() && !self.pending.busy())
                             .build(
                                 &self.hover,
                                 move |this: &mut Self, window, cx| {
@@ -510,7 +510,7 @@ impl TicketsPage {
         let Some(ticket) = self.ticket(id) else {
             return;
         };
-        if self.pending {
+        if self.pending.busy() {
             return;
         }
         let (revision, from) = (ticket.revision, ticket.status);

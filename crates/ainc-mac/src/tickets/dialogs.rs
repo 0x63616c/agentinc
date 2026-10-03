@@ -86,7 +86,11 @@ impl TicketsPage {
             _ => return None,
         };
         let deleting = matches!(active, Overlay::DeleteTicket(_));
-        let submit_label = if self.pending { "Saving…" } else { submit };
+        let submit_label = if self.pending.busy() {
+            "Saving…"
+        } else {
+            submit
+        };
         let footer = dialog_footer(
             Button::new("tickets.cancel", "Cancel")
                 .secondary()
@@ -106,7 +110,7 @@ impl TicketsPage {
                 } else {
                     ButtonKind::Primary
                 })
-                .enabled(enabled && !self.pending)
+                .enabled(enabled && !self.pending.busy())
                 .track_focus(&self.submit_focus)
                 .build(
                     &self.hover,

@@ -58,7 +58,7 @@ impl TicketsPage {
                     .id("tickets-page")
                     .track_focus(&self.page_focus)
                     .gap(px(SPACE_4))
-                    .when_some(self.error.clone(), |s, error| {
+                    .when_some(self.sync.read(cx).message(), |s, error| {
                         s.child(banner(Tone::Danger, error))
                     })
                     .when_some(
@@ -79,7 +79,7 @@ impl TicketsPage {
         let revision = ticket.revision;
         let running = self.running(ticket);
         let has_runs = self.state.runs.iter().any(|r| r.ticket_id == id);
-        let enabled = !self.pending;
+        let enabled = !self.pending.busy();
         // The properties column holds status and times; the line under the
         // title says only which Ticket this is and who holds it.
         let meta = format!(
@@ -202,7 +202,7 @@ impl TicketsPage {
                             Button::new("tickets.description.save", "Save")
                                 .primary()
                                 .small()
-                                .enabled(!self.pending)
+                                .enabled(!self.pending.busy())
                                 .build(
                                     &self.hover,
                                     move |this: &mut Self, _, cx| {
@@ -253,7 +253,7 @@ impl TicketsPage {
                                 .ghost()
                                 .small()
                                 .tint(TEXT_SECONDARY)
-                                .enabled(!self.pending)
+                                .enabled(!self.pending.busy())
                                 .build(
                                     &self.hover,
                                     move |this: &mut Self, window, cx| {
@@ -335,7 +335,8 @@ impl TicketsPage {
                         Button::new("tickets.post", "Post")
                             .primary()
                             .enabled(
-                                !self.pending && !self.comment.read(cx).content.trim().is_empty(),
+                                !self.pending.busy()
+                                    && !self.comment.read(cx).content.trim().is_empty(),
                             )
                             .build(&self.hover, |this, _, cx| this.add_comment(cx), cx),
                     ),
@@ -528,7 +529,7 @@ impl TicketsPage {
     fn properties(&self, ticket: &Ticket, window: &Window, cx: &mut Context<Self>) -> Div {
         let id = ticket.id;
         let revision = ticket.revision;
-        let enabled = !self.pending;
+        let enabled = !self.pending.busy();
         // Quiet selects bleed left by their inset, so their glyph starts on the
         // value column's edge, and end on the content edge with their fill.
         let width =
@@ -682,7 +683,7 @@ impl TicketsPage {
                             .icon("plus")
                             .icon_only()
                             .tint(TEXT_SECONDARY)
-                            .enabled(!self.pending && self.state.tickets.len() > 1)
+                            .enabled(!self.pending.busy() && self.state.tickets.len() > 1)
                             .build(
                                 &self.hover,
                                 move |this: &mut Self, window, cx| {
@@ -784,7 +785,7 @@ impl TicketsPage {
                 .icon("close")
                 .icon_only()
                 .tint(TEXT_TERTIARY)
-                .enabled(!self.pending)
+                .enabled(!self.pending.busy())
                 .build(
                     &self.hover,
                     move |this: &mut Self, _, cx| {

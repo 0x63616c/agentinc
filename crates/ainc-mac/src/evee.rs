@@ -1,8 +1,10 @@
 use crate::{
+    action::{Failure, Pending, Run},
     assistant,
     daemon::Daemon,
     input::{Submit, TextInput},
     model::Overlay,
+    sync::{SliceChanged, Sync},
     ui::*,
 };
 use ainc_client::types::{Command, Conversation, Turn};
@@ -40,6 +42,7 @@ fn conversation_date(updated: &str, updated_at: i64, now: i64) -> String {
 
 pub struct AssistantPage {
     daemon: Option<Arc<Daemon>>,
+    sync: Entity<Sync>,
     overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     turns: Vec<Turn>,
     input: Entity<TextInput>,
@@ -54,12 +57,12 @@ pub struct AssistantPage {
     models: Vec<assistant::Model>,
     model: Option<String>,
     model_menu_open: bool,
-    credentials_busy: bool,
+    credentials: Pending,
     login_cancel: Option<Arc<AtomicBool>>,
     connection_error: Option<String>,
     active: Option<i64>,
     error: Option<String>,
-    pending: bool,
+    pending: Pending,
     scroll: ScrollHandle,
     appearance: Option<Instant>,
     loading_started: Instant,
@@ -87,7 +90,7 @@ impl EventEmitter<Navigation> for AssistantPage {}
 impl AssistantPage {
     pub(crate) fn update_drafts(&self, cx: &App) -> anyhow::Result<serde_json::Value> {
         anyhow::ensure!(
-            !self.pending,
+            !self.pending.busy(),
             "Wait for the current change to finish before installing"
         );
         Ok(
@@ -113,7 +116,7 @@ impl AssistantPage {
 
     pub fn new(
         daemon: Option<Arc<Daemon>>,
-        daemon_error: Option<String>,
+        sync: Entity<Sync>,
         overlays: Rc<RefCell<OverlayHost<Overlay>>>,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -131,57 +134,30 @@ impl AssistantPage {
                     (title.chars().count() > 120).then(|| "Use 120 characters or fewer.".into());
                 cx.notify();
             }),
+            cx.observe(&sync, |_, _, cx| cx.notify()),
+            cx.subscribe(&sync, |this, _, event: &SliceChanged, cx| {
+                if *event == SliceChanged::Product {
+                    this.conversation_changed(cx);
+                }
+            }),
         ];
-        let conversations = daemon
-            .as_ref()
-            .map(|db| db.product().conversations)
-            .unwrap_or_default();
-        let conversation = conversations.first().map(|c| c.id);
-        let turns = vec![];
-        let error = daemon_error;
-        let model = None;
-        #[cfg(not(test))]
-        if let Some(db) = daemon.clone() {
-            let request = cx.background_executor().spawn(async move { db.refresh() });
-            cx.spawn(async move |this, cx| {
-                let result = request.await;
-                let _ = this.update(cx, |this, cx| {
-                    match result {
-                        Ok(()) => {
-                            this.reload_snapshot();
-                            if let Some(id) = this.active {
-                                this.watch_turn(id, cx);
-                            }
-                        }
-                        Err(error) => this.error = Some(format!("Data unavailable: {error}")),
-                    }
-                    cx.notify();
-                });
-            })
-            .detach();
-        }
-        #[cfg(not(test))]
-        {
-            let request = cx.background_executor().spawn({
+        let credentials = Pending::default();
+        cx.run(
+            &credentials,
+            {
                 let daemon = daemon.clone();
-                async move { assistant::status(daemon.as_deref()) }
-            });
-            cx.spawn(async move |this, cx| {
-                let result = request.await;
-                let _ = this.update(cx, |this, cx| {
-                    this.apply_status(result);
-                    cx.notify();
-                });
-            })
-            .detach();
-        }
-        Self {
+                move || assistant::status(daemon.as_deref())
+            },
+            |this, result, _| this.apply_status(result),
+        );
+        let mut this = Self {
             daemon,
+            sync,
             overlays,
-            turns,
+            turns: vec![],
             input,
-            conversations,
-            conversation,
+            conversations: vec![],
+            conversation: None,
             show_chat: false,
             rename_input,
             form_error: None,
@@ -189,24 +165,40 @@ impl AssistantPage {
             submit_focus: cx.focus_handle(),
             account: None,
             models: vec![],
-            model,
+            model: None,
             model_menu_open: false,
-            credentials_busy: !cfg!(test),
+            credentials,
             login_cancel: None,
             connection_error: None,
             active: None,
-            error,
-            pending: false,
+            error: None,
+            pending: Pending::default(),
             scroll: ScrollHandle::new(),
             appearance: None,
             loading_started: Instant::now(),
             reduced_motion: reduced_motion(),
             hover: HoverFade::default(),
             _subscriptions: subscriptions,
-        }
+        };
+        this.reload_snapshot();
+        this
     }
-    fn apply_status(&mut self, result: anyhow::Result<(Option<String>, Vec<assistant::Model>)>) {
-        self.credentials_busy = false;
+    /// The Product slice changed: a turn may have started or finished.
+    fn conversation_changed(&mut self, cx: &mut Context<Self>) {
+        let was_active = self.active;
+        self.reload_snapshot();
+        if was_active.is_some() {
+            self.scroll.scroll_to_bottom();
+            if self.active.is_none() {
+                self.appearance = Some(Instant::now());
+            }
+        } else if self.active.is_some() {
+            // Sync saw the same turn and is already on the active cadence.
+            self.loading_started = Instant::now();
+        }
+        cx.notify();
+    }
+    fn apply_status(&mut self, result: Result<(Option<String>, Vec<assistant::Model>), Failure>) {
         self.login_cancel = None;
         match result {
             Ok((account, models)) => {
@@ -214,81 +206,57 @@ impl AssistantPage {
                 self.models = models;
                 self.connection_error = None;
             }
-            Err(e) => {
+            Err(failure) => {
                 self.account = None;
-                self.connection_error = Some(e.to_string());
+                self.connection_error = Some(failure.message("The ChatGPT Connection"));
             }
         }
     }
-    fn refresh_connection(&mut self, cx: &mut Context<Self>) {
-        if self.credentials_busy || self.active.is_some() {
+    /// Run one Connection action and re-read the sign-in state after it.
+    fn connection(
+        &mut self,
+        action: impl FnOnce(Option<&Daemon>) -> anyhow::Result<()> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        if self.active.is_some() {
             return;
         }
-        self.credentials_busy = true;
         let daemon = self.daemon.clone();
-        let request = cx
-            .background_executor()
-            .spawn(async move { assistant::status(daemon.as_deref()) });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.apply_status(result);
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
+        cx.run(
+            &self.credentials.clone(),
+            move || {
+                let daemon = daemon.as_deref();
+                action(daemon).and_then(|()| assistant::status(daemon))
+            },
+            |this, result, _| this.apply_status(result),
+        );
+    }
+    fn refresh_connection(&mut self, cx: &mut Context<Self>) {
+        self.connection(|_| Ok(()), cx);
     }
     fn connect(&mut self, cx: &mut Context<Self>) {
-        if self.credentials_busy || self.active.is_some() {
+        if self.credentials.busy() || self.active.is_some() {
             return;
         }
-        self.credentials_busy = true;
         self.connection_error = None;
         let cancel = Arc::new(AtomicBool::new(false));
         self.login_cancel = Some(cancel.clone());
-        let daemon = self.daemon.clone();
-        let request = cx.background_executor().spawn(async move {
-            let daemon = daemon.as_deref();
-            assistant::login(daemon, cancel, |url| {
-                let _ = std::process::Command::new("/usr/bin/open").arg(url).spawn();
-            })
-            .and_then(|_| assistant::status(daemon))
-        });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.apply_status(result);
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
+        self.connection(
+            move |daemon| {
+                assistant::login(daemon, cancel, |url| {
+                    let _ = std::process::Command::new("/usr/bin/open").arg(url).spawn();
+                })
+            },
+            cx,
+        );
     }
     fn disconnect(&mut self, cx: &mut Context<Self>) {
-        if self.credentials_busy || self.active.is_some() {
-            return;
-        }
-        self.credentials_busy = true;
-        let daemon = self.daemon.clone();
-        let request = cx.background_executor().spawn(async move {
-            let daemon = daemon.as_deref();
-            assistant::logout(daemon).and_then(|_| assistant::status(daemon))
-        });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.apply_status(result);
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
+        self.connection(assistant::logout, cx);
     }
     pub fn settings_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         self.hover.animate(window);
-        let enabled = !self.credentials_busy && self.active.is_none();
-        let state = if self.credentials_busy {
+        let enabled = !self.credentials.busy() && self.active.is_none();
+        let state = if self.credentials.busy() {
             if self.login_cancel.is_some() {
                 "Complete sign-in in your browser.".to_owned()
             } else {
@@ -409,36 +377,26 @@ impl AssistantPage {
         apply: impl FnOnce(&mut Self, R, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) {
-        if self.pending {
-            return;
-        }
         let Some(daemon) = self.daemon.clone() else {
             return;
         };
-        self.pending = true;
-        self.error = None;
-        let request = cx
-            .background_executor()
-            .spawn(async move { operation(daemon) });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            let _ = this.update(cx, |this, cx| {
-                this.pending = false;
+        let started = cx.run(
+            &self.pending.clone(),
+            move || operation(daemon),
+            |this, result, cx| {
                 this.reload_snapshot();
                 match result {
-                    Ok(value) => {
-                        apply(this, value, cx);
-                    }
-                    Err(error) => {
-                        this.error = Some(error.to_string());
+                    Ok(value) => apply(this, value, cx),
+                    Err(failure) => {
+                        this.error = Some(failure.message("The Conversation"));
                         this.form_error = this.error.clone();
                     }
                 }
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
+            },
+        );
+        if started {
+            self.error = None;
+        }
     }
     pub(crate) fn reload_snapshot(&mut self) {
         let Some(db) = &self.daemon else { return };
@@ -479,7 +437,7 @@ impl AssistantPage {
         );
     }
     pub(crate) fn open_conversation(&mut self, id: i64, cx: &mut Context<Self>) {
-        if self.pending {
+        if self.pending.busy() {
             return;
         }
         self.mutate(
@@ -554,7 +512,7 @@ impl AssistantPage {
         }
     }
     fn new_conversation_button(&self, id: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
-        let enabled = self.active.is_none() && !self.pending && self.daemon.is_some();
+        let enabled = self.active.is_none() && !self.pending.busy() && self.daemon.is_some();
         Button::new(id, "New Conversation")
             .primary()
             .icon("plus")
@@ -562,7 +520,7 @@ impl AssistantPage {
             .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx)
     }
     pub fn conversations_view(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let enabled = self.active.is_none() && !self.pending && self.daemon.is_some();
+        let enabled = self.active.is_none() && !self.pending.busy() && self.daemon.is_some();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |time| time.as_secs() as i64);
@@ -791,7 +749,7 @@ impl AssistantPage {
     #[allow(dead_code)]
     pub fn fixture_models(&mut self, cx: &mut Context<Self>) {
         self.account = Some("Fixture account".into());
-        self.credentials_busy = false;
+        self.connection_error = None;
         self.models = vec![
             assistant::Model {
                 id: "model-one".into(),
@@ -851,7 +809,7 @@ impl AssistantPage {
         };
         let enabled = self.daemon.is_some()
             && self.active.is_none()
-            && !self.pending
+            && !self.pending.busy()
             && (!rename
                 || (self.form_error.is_none()
                     && !self.rename_input.read(cx).content.trim().is_empty()));
@@ -897,7 +855,7 @@ impl AssistantPage {
         Some(dialog_shell(title, body, footer).into_any_element())
     }
     fn send(&mut self, cx: &mut Context<Self>) {
-        if self.active.is_some() || self.pending || self.credentials_busy {
+        if self.active.is_some() || self.pending.busy() || self.credentials.busy() {
             return;
         }
         if self.account.is_none() {
@@ -937,7 +895,7 @@ impl AssistantPage {
         );
     }
     fn retry(&mut self, id: i64, cx: &mut Context<Self>) {
-        if self.active.is_some() || self.pending {
+        if self.active.is_some() || self.pending.busy() {
             return;
         }
         self.mutate(
@@ -946,54 +904,12 @@ impl AssistantPage {
             cx,
         );
     }
+    /// Follow a turn until the daemon reports it finished. `Sync` polls faster
+    /// while a turn is active; waking it starts that cadence now.
     fn watch_turn(&mut self, id: i64, cx: &mut Context<Self>) {
-        let Some(daemon) = self.daemon.clone() else {
-            return;
-        };
         self.active = Some(id);
         self.loading_started = Instant::now();
-        cx.spawn(async move |this, cx| {
-            loop {
-                let db = daemon.clone();
-                let result = cx
-                    .background_executor()
-                    .spawn(async move {
-                        db.refresh()?;
-                        Ok::<_, anyhow::Error>(
-                            db.product()
-                                .turns
-                                .iter()
-                                .find(|t| t.id == id)
-                                .is_none_or(|t| t.state != "queued" && t.state != "running"),
-                        )
-                    })
-                    .await;
-                let done = this
-                    .update(cx, |this, cx| {
-                        this.reload_snapshot();
-                        if let Err(error) = &result {
-                            this.error = Some(format!(
-                                "Reply continues on daemon. Refresh to reconnect: {error}"
-                            ));
-                        }
-                        this.scroll.scroll_to_bottom();
-                        cx.notify();
-                        result.as_ref().copied().unwrap_or(true)
-                    })
-                    .unwrap_or(true);
-                if done {
-                    break;
-                }
-                cx.background_executor()
-                    .timer(std::time::Duration::from_millis(250))
-                    .await;
-            }
-            let _ = this.update(cx, |this, cx| {
-                this.appearance = Some(Instant::now());
-                cx.notify();
-            });
-        })
-        .detach();
+        self.sync.update(cx, |sync, cx| sync.wake(cx));
         cx.notify();
     }
     fn save_again(&mut self, cx: &mut Context<Self>) {
@@ -1096,7 +1012,10 @@ impl AssistantPage {
                                                     .secondary()
                                                     .small()
                                                     .icon("refresh")
-                                                    .enabled(self.active.is_none() && !self.pending)
+                                                    .enabled(
+                                                        self.active.is_none()
+                                                            && !self.pending.busy(),
+                                                    )
                                                     .build(
                                                         &self.hover,
                                                         move |this, _, cx| this.retry(id, cx),
@@ -1130,9 +1049,9 @@ impl Render for AssistantPage {
         };
         let latest = self.turns.last().map(|t| t.id);
         let send_enabled = self.account.is_some()
-            && !self.credentials_busy
+            && !self.credentials.busy()
             && self.active.is_none()
-            && !self.pending
+            && !self.pending.busy()
             && self.daemon.is_some()
             && !self.input.read(cx).content.trim().is_empty();
         if !self.show_chat {
@@ -1191,7 +1110,7 @@ impl Render for AssistantPage {
                                         .icon("plus")
                                         .icon_only()
                                         .ghost()
-                                        .enabled(self.active.is_none() && !self.pending)
+                                        .enabled(self.active.is_none() && !self.pending.busy())
                                         .build(&self.hover, |this, _, cx| this.new_conversation(cx), cx)
                                         .mr(px(-SPACE_2)),
                                 ),
@@ -1222,7 +1141,7 @@ impl Render for AssistantPage {
                             "Conversation data is unavailable. Refresh to reconnect.",
                         ))
                     })
-                    .when_some(self.error.clone(), |s, error| {
+                    .when_some(self.error.clone().or(self.sync.read(cx).message()), |s, error| {
                         s.child(
                             row()
                                 .gap(px(SPACE_3))
@@ -1231,12 +1150,12 @@ impl Render for AssistantPage {
                                     Button::new("refresh-data", "Refresh")
                                         .secondary()
                                         .small()
-                                        .enabled(!self.pending)
+                                        .enabled(!self.pending.busy())
                                         .build(&self.hover, |this, _, cx| this.save_again(cx), cx),
                                 ),
                         )
                     })
-                    .when(self.pending, |s| s.child(caption("Waiting for acknowledgement…")))
+                    .when(self.pending.busy(), |s| s.child(caption("Waiting for acknowledgement…")))
                     .when(self.account.is_some(), |s| {
                         s.child(
                         column()
@@ -1314,12 +1233,11 @@ fn new_conversation(daemon: &Daemon) -> anyhow::Result<i64> {
 #[cfg(test)]
 mod tests {
     use super::{AssistantPage, Conversation, Daemon, Turn, conversation_date};
+    use crate::sync::{ManualClock, Sync};
     use gpui::{AppContext, TestAppContext};
     use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-    #[gpui::test]
-    fn pending_reply_yields_without_a_tokio_runtime(cx: &mut TestAppContext) {
-        assert!(tokio::runtime::Handle::try_current().is_err());
+    fn page(cx: &mut TestAppContext) -> (Arc<Daemon>, ManualClock, gpui::Entity<AssistantPage>) {
         let daemon = Arc::new(Daemon::in_memory());
         let mut snapshot = daemon.product();
         snapshot.conversations.push(Conversation {
@@ -1338,20 +1256,39 @@ mod tests {
             state: "running".into(),
         });
         daemon.memory().edit(|state| state.product = snapshot);
-        daemon.refresh().unwrap();
-        let page =
-            cx.new(|cx| AssistantPage::new(Some(daemon), None, Rc::new(RefCell::default()), cx));
-        page.update(cx, |page, cx| page.watch_turn(1, cx));
+        let clock = ManualClock::default();
+        let sync = cx.new(|cx| Sync::new(Some(daemon.clone()), clock.clone(), cx));
+        let page = cx.new(|cx| {
+            AssistantPage::new(Some(daemon.clone()), sync, Rc::new(RefCell::default()), cx)
+        });
+        cx.run_until_parked();
+        (daemon, clock, page)
+    }
 
-        // Drain runnable work without advancing time: the watcher must refresh
-        // the running turn and yield safely at its polling delay.
-        while cx.executor().tick() {}
+    #[gpui::test]
+    fn a_running_turn_is_followed_until_the_daemon_finishes_it(cx: &mut TestAppContext) {
+        let (daemon, clock, page) = page(cx);
         page.read_with(cx, |page, _| {
-            assert_eq!(page.active, Some(1));
-            assert_eq!(page.turns.len(), 1);
+            assert_eq!(
+                page.active,
+                Some(1),
+                "the first fetch set finds the running turn"
+            );
             assert_eq!(page.turns[0].state, "running");
             assert!(page.appearance.is_none());
             assert!(page.error.is_none());
+        });
+        daemon.memory().edit(|state| {
+            let turn = &mut state.product.turns[0];
+            turn.state = "done".into();
+            turn.response = Some("Hi!".into());
+        });
+        clock.tick();
+        cx.run_until_parked();
+        page.read_with(cx, |page, _| {
+            assert_eq!(page.active, None);
+            assert_eq!(page.turns[0].response.as_deref(), Some("Hi!"));
+            assert!(page.appearance.is_some(), "the reply animates in once");
         });
     }
 
