@@ -16,7 +16,7 @@ path = "src/main.rs"
 [dependencies]
 reqwest = { version = "0.13", features = ["json"] }
 ainc-client = { path = "../ainc-client" }
-ainc-release = { path = "../ainc-release" }
+ainc-identity = { path = "../ainc-identity" }
 clap_complete = "4"
 tempfile = "3"
 uuid.workspace = true

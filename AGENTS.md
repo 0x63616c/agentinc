@@ -138,7 +138,7 @@ if it has to, the public API has leaked.
 
 Personal packaging, update signing and bundled runtime ownership: [docs/distribution.md](docs/distribution.md).
 The production/development channel and isolation rule is also documented there;
-`ainc-release::identity` is its single code source.
+`ainc-identity` is its single code source.
 
 Stable runtime deployment and process-recovery checks: [docs/runtime.md](docs/runtime.md).
 

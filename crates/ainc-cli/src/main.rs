@@ -91,7 +91,7 @@ fn select_discovery(override_path: Option<PathBuf>, installed: PathBuf, dev: Pat
 fn discovery_path() -> PathBuf {
     select_discovery(
         env::var_os("AINC_DISCOVERY_FILE").map(PathBuf::from),
-        ainc_release::identity::support_dir().join("daemon/api-url"),
+        ainc_identity::identity::discovery_file(),
         dev_discovery(),
     )
 }

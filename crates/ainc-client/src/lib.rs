@@ -4,8 +4,8 @@ include!("generated.rs");
 /// The generated operations call this before every request.
 pub async fn client_header(request: &mut reqwest::Request) -> Result<(), std::convert::Infallible> {
     request.headers_mut().insert(
-        "agent-inc-client",
-        reqwest::header::HeaderValue::from_str(&ainc_release::client_header())
+        ainc_identity::CLIENT_HEADER,
+        reqwest::header::HeaderValue::from_str(&ainc_identity::client_header())
             .expect("compiled product version is a valid header"),
     );
     Ok(())
@@ -19,20 +19,20 @@ pub fn update_required() -> bool {
 /// Central response gate used by every generated operation.
 pub async fn server_compatibility(
     result: &Result<reqwest::Response, reqwest::Error>,
-) -> Result<(), ainc_release::CompatibilityError> {
+) -> Result<(), ainc_identity::CompatibilityError> {
     let Ok(response) = result else {
         return Ok(());
     };
     let checked = (|| {
         if response.status() == reqwest::StatusCode::UPGRADE_REQUIRED {
-            return Err(ainc_release::CompatibilityError::UpgradeRequired);
+            return Err(ainc_identity::CompatibilityError::UpgradeRequired);
         }
-        if let Some(header) = response.headers().get("agent-inc-server") {
+        if let Some(header) = response.headers().get(ainc_identity::SERVER_HEADER) {
             let header = header
                 .to_str()
-                .map_err(|_| ainc_release::CompatibilityError::ServerTooOld)?;
-            ainc_release::check_client(header, ainc_release::MIN_CLIENT, ainc_release::API)
-                .map_err(|_| ainc_release::CompatibilityError::ServerTooOld)?;
+                .map_err(|_| ainc_identity::CompatibilityError::ServerTooOld)?;
+            ainc_identity::check_client(header, ainc_identity::MIN_CLIENT, ainc_identity::API)
+                .map_err(|_| ainc_identity::CompatibilityError::ServerTooOld)?;
         }
         Ok(())
     })();

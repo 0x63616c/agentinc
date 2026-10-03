@@ -19,7 +19,9 @@ name = "codex-fixture"
 path = "src/bin/codex_fixture.rs"
 
 [dependencies]
-ainc-release = { path = "../ainc-release" }
+# The daemon needs only the product identity. Kept under the old crate name until the
+# sources switch to `ainc_identity::` (a mechanical rename deferred to avoid merge churn).
+ainc-release = { package = "ainc-identity", path = "../ainc-identity" }
 libc = "0.2"
 sha2 = "0.10"
 turnkeel.workspace = true

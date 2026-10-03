@@ -1,7 +1,8 @@
 # Personal distribution
 
 Product version lives in the root `Cargo.toml` under `[workspace.package]`; the SDK version is independent.
-`ainc-release::identity` is the build-channel source of truth shared by the app and daemon.
+`ainc-identity` (version, channel, headers, compatibility) is shared by every binary; its
+`identity` module is the build-channel source of truth for the app and daemon.
 Only `cargo xtask release` stamps `AINC_CHANNEL=production` (plus build ID and commit);
 ordinary Cargo, Tilt and local bundle builds are development. The release app remains
 `co.worldwidewebb.agentinc` in `~/Library/Application Support/Agentinc OS` to preserve
@@ -20,7 +21,7 @@ also the GPUI window app ID, separating LaunchServices identity and preferences.
 Development does not check or install production updates. Explicit `AINC_*` profile
 overrides remain for isolated tests and external development stacks; they can connect
 to a chosen endpoint intentionally.
-`ainc-release` owns request compatibility, the signed manifest, update preferences and
+`ainc-identity` owns request compatibility; `ainc-release` owns the signed manifest, update preferences and
 archive validation. ADRs 0008 and 0009 remain authoritative. This phase excludes OIDC,
 membership and additional-user setup.
 
