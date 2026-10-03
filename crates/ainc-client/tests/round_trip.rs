@@ -13,6 +13,7 @@ async fn generated_ticket_operation_round_trips() {
     let ticket = TicketContract {
         title: "round trip".into(),
     };
+    ainc_client::install_tls_provider();
     let result = Client::new(&url)
         .ticket_contract()
         .body(ticket)
@@ -41,6 +42,7 @@ async fn generated_product_commands_and_nullable_state_round_trip(pool: sqlx::Pg
         .await
         .unwrap();
     });
+    ainc_client::install_tls_provider();
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("authorization", "Bearer fixture".parse().unwrap());
     let client = Client::new_with_client(
@@ -148,6 +150,7 @@ async fn generated_automation_rule_pause_and_run_now_round_trip(pool: sqlx::PgPo
         .await
         .unwrap();
     });
+    ainc_client::install_tls_provider();
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("authorization", "Bearer fixture".parse().unwrap());
     let client = Client::new_with_client(

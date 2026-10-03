@@ -195,6 +195,7 @@ dependencies = [
  "axum",
  "progenitor-client",
  "reqwest",
+ "rustls",
  "schemars 0.8.22",
  "serde",
  "sqlx",

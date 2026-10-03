@@ -13,6 +13,7 @@ workspace = true
 ainc-identity = { path = "../ainc-identity" }
 progenitor-client = "0.14"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "charset", "http2", "system-proxy", "json"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 schemars = "0.8"
 serde.workspace = true
 

@@ -100,8 +100,15 @@ pub fn classify(error: Error<types::ErrorBody>) -> ClientError {
     }
 }
 
+/// Installs the ring TLS provider that every reqwest client in this crate needs. Idempotent;
+/// called by `ready` and `connect`, and by anything that builds a `reqwest::Client` itself.
+pub fn install_tls_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 /// Whether a daemon answers at `url`. Bounded to one second.
 pub async fn ready(url: &str) -> bool {
+    install_tls_provider();
     let Ok(probe) = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(1))
         .build()
@@ -117,6 +124,7 @@ pub async fn ready(url: &str) -> bool {
 
 /// An authenticated client for the daemon at `url`.
 pub fn connect(url: &str, token: &str) -> Result<Client, ClientError> {
+    install_tls_provider();
     let mut headers = reqwest::header::HeaderMap::new();
     let bearer = format!("Bearer {}", token.trim())
         .parse()
