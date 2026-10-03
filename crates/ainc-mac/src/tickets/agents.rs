@@ -69,7 +69,7 @@ impl TicketsPage {
                                 })
                                 .count();
                             let running = self.state.runs.iter().any(|r| {
-                                matches!(r.state.as_str(), "queued" | "running")
+                                is_active(&r.state)
                                     && self.state.tickets.iter().any(|t| {
                                         t.id == r.ticket_id && t.assignee_id == agent.id
                                     })

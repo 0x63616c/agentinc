@@ -583,7 +583,7 @@ impl TicketsPage {
         self.state.runs.iter().any(|run| {
             run.ticket_id == ticket.id
                 && run.generation == ticket.generation
-                && matches!(run.state.as_str(), "queued" | "running")
+                && is_active(&run.state)
         })
     }
     fn comment_count(&self, id: i64) -> usize {

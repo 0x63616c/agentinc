@@ -8,22 +8,15 @@ use anyhow::Context as _;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 
-const FILTERS: &[(&str, &str)] = &[
-    ("All", "All"),
-    ("Running", "Running"),
-    ("Completed", "Completed"),
-    ("Failed", "Failed"),
-    ("Canceled", "Cancelled"),
-    ("Terminated", "Terminated"),
-    ("TimedOut", "Timed out"),
-    ("ContinuedAsNew", "Continued as new"),
-];
-
-fn status_label(status: &str) -> &str {
-    FILTERS
-        .iter()
-        .find(|(value, _)| *value == status)
-        .map_or(status, |(_, label)| label)
+/// `(Temporal status, label)`: every state Temporal reports, after "All".
+fn filters() -> Vec<(&'static str, &'static str)> {
+    std::iter::once(("All", "All"))
+        .chain(
+            WorkState::ALL
+                .iter()
+                .filter_map(|state| state.temporal().map(|value| (value, state.label()))),
+        )
+        .collect()
 }
 
 fn workflow_label(workflow_type: &str) -> &str {
@@ -32,16 +25,6 @@ fn workflow_label(workflow_type: &str) -> &str {
         "agentinc.session" => "Conversation",
         "turnkeel.occurrence" => "Automation occurrence",
         other => other,
-    }
-}
-
-fn status_tone(status: &str) -> Tone {
-    match status {
-        "Running" => Tone::Info,
-        "Completed" => Tone::Success,
-        "Failed" | "Terminated" | "TimedOut" => Tone::Danger,
-        "ContinuedAsNew" => Tone::Accent,
-        _ => Tone::Warning,
     }
 }
 
@@ -217,10 +200,7 @@ impl TemporalPage {
                         )
                         .into_any_element(),
                     row()
-                        .child(status_pill(
-                            status_label(&status).to_owned(),
-                            status_tone(&status),
-                        ))
+                        .child(status_pill(state_label(&status), state_tone(&status)))
                         .into_any_element(),
                     column()
                         .gap(px(SPACE_HALF))
@@ -269,7 +249,8 @@ impl Render for TemporalPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.hover.animate(window);
         let now = time::now();
-        let filter = FILTERS
+        let filters = filters();
+        let filter = filters
             .iter()
             .position(|(value, _)| *value == self.filter)
             .unwrap_or(0);
@@ -287,12 +268,12 @@ impl Render for TemporalPage {
             .gap(px(SPACE_5))
             .child(row().child(segmented(
                 "temporal.filter",
-                FILTERS.iter().map(|(_, label)| *label),
+                filters.iter().map(|(_, label)| *label),
                 filter,
                 !self.loading.busy(),
                 &self.hover,
                 |this, index, _, cx| {
-                    this.filter = FILTERS[index].0;
+                    this.filter = self::filters()[index].0;
                     this.load(false, cx);
                 },
                 cx,

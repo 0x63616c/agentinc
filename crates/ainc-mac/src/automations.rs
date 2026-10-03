@@ -439,14 +439,8 @@ impl AutomationsPage {
                                 .iter()
                                 .filter(|o| o.automation_id == rule.id)
                                 .map(|o| {
-                                    let state = o.state.replace('_', " ");
-                                    let tone = match o.state.as_str() {
-                                        "completed" | "done" => Tone::Success,
-                                        "running" | "dispatched" => Tone::Info,
-                                        "skipped" | "missed" => Tone::Warning,
-                                        "failed" => Tone::Danger,
-                                        _ => Tone::Neutral,
-                                    };
+                                    let state = state_label(&o.state);
+                                    let tone = state_tone(&o.state);
                                     row()
                                         .w_full()
                                         .min_h(px(LIST_ROW_HEIGHT))

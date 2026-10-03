@@ -400,7 +400,7 @@ impl AssistantPage {
         self.active = self
             .turns
             .iter()
-            .find(|t| t.state == "queued" || t.state == "running")
+            .find(|t| is_active(&t.state))
             .map(|t| t.id);
         self.model = snapshot.settings.model.filter(|s| !s.is_empty());
     }
@@ -1209,7 +1209,7 @@ fn new_conversation(daemon: &Daemon) -> anyhow::Result<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AssistantPage, Conversation, Daemon, Turn};
+    use super::{AssistantPage, Conversation, Daemon, Turn, WorkState};
     use crate::sync::{ManualClock, Sync};
     use gpui::{AppContext, TestAppContext};
     use std::{cell::RefCell, rc::Rc, sync::Arc};
@@ -1230,7 +1230,7 @@ mod tests {
             prompt: "Hello".into(),
             response: None,
             error: None,
-            state: "running".into(),
+            state: WorkState::Running.as_str().into(),
         });
         daemon.memory().edit(|state| state.product = snapshot);
         let clock = ManualClock::default();
@@ -1251,7 +1251,7 @@ mod tests {
                 Some(1),
                 "the first fetch set finds the running turn"
             );
-            assert_eq!(page.turns[0].state, "running");
+            assert_eq!(page.turns[0].state, WorkState::Running.as_str());
             assert!(page.appearance.is_none());
             assert!(page.error.is_none());
         });

@@ -196,7 +196,7 @@ impl TicketsPage {
                 run_id: "8a37e3d2-6a42-4918-a5d2-98fc38ea2274".into(),
                 ticket_id: budget,
                 generation: 1,
-                state: "running".into(),
+                state: WorkState::Running.as_str().into(),
                 error: None,
             });
             let mut next = history.len() as i64;
@@ -215,7 +215,7 @@ impl TicketsPage {
                 });
             };
             push(ActivityKind::Assigned, "owner", Some("owner"), Some(&evee), 26 * HOUR);
-            push(ActivityKind::Work, "owner", None, Some("queued"), 26 * HOUR);
+            push(ActivityKind::Work, "owner", None, Some(WorkState::Queued.as_str()), 26 * HOUR);
             push(ActivityKind::Status, &evee, Some("to_do"), Some("in_progress"), 26 * HOUR - 20);
             let comment_id = snapshot.comments.len() as i64;
             snapshot.comments.extend([

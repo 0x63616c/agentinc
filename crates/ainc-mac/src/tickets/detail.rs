@@ -477,12 +477,12 @@ impl TicketsPage {
             }
             ActivityKind::Work => (
                 "play",
-                match to {
-                    "queued" => "started work".into(),
-                    "completed" => "finished the work".into(),
-                    "failed" => "stopped: the work failed".into(),
-                    "cancelled" => "cancelled the work".into(),
-                    state => format!("work is {state}"),
+                match WorkState::parse(to) {
+                    Some(WorkState::Queued) => "started work".into(),
+                    Some(WorkState::Done) => "finished the work".into(),
+                    Some(WorkState::Failed) => "stopped: the work failed".into(),
+                    Some(WorkState::Cancelled) => "cancelled the work".into(),
+                    _ => format!("work is {}", state_label(to).to_lowercase()),
                 },
             ),
         }
@@ -859,21 +859,8 @@ impl TicketsPage {
                 }))
             })
             .children(runs.into_iter().take(RECENT_RUNS).map(|run| {
-                let tone = match run.state.as_str() {
-                    "running" => Tone::Info,
-                    "completed" => Tone::Success,
-                    "failed" => Tone::Danger,
-                    "cancelled" => Tone::Neutral,
-                    _ => Tone::Warning,
-                };
-                let label = match run.state.as_str() {
-                    "queued" => "Queued",
-                    "running" => "Running",
-                    "completed" => "Completed",
-                    "failed" => "Failed",
-                    "cancelled" => "Cancelled",
-                    other => other,
-                };
+                let tone = state_tone(&run.state);
+                let label = state_label(&run.state);
                 row()
                     .debug_selector({
                         let id = run.run_id.clone();

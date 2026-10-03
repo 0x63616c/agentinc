@@ -24,6 +24,7 @@ pub mod time;
 mod toast;
 mod toggle;
 mod tokens;
+mod work_state;
 
 pub use avatar::*;
 pub use badge::*;
@@ -48,3 +49,4 @@ pub use terminal::*;
 pub use toast::*;
 pub use toggle::*;
 pub use tokens::*;
+pub use work_state::*;
