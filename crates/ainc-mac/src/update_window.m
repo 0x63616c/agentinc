@@ -509,6 +509,7 @@ static BOOL sendBytes(int socket, const void *bytes, size_t remaining) {
 @property BOOL cancellationRequested;
 @property BOOL extractionStarted;
 @property BOOL recoveringArmedFence;
+@property BOOL cycleResolved;
 @property uint64_t received;
 @property uint64_t expected;
 - (void)action:(int)action automatic:(BOOL)automatic;
@@ -865,6 +866,7 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
 - (void)showUpdateFoundWithAppcastItem:(SUAppcastItem *)item state:(SPUUserUpdateState *)state reply:(void (^)(SPUUserUpdateChoice))reply {
     self.cancellation = nil;
     self.item = item;
+    self.cycleResolved = YES;
     self.cacheFailed = NO;
     self.choice = reply;
     self.ready = state.stage != SPUUserUpdateStageNotDownloaded || [self hasCachedArchive];
@@ -1138,10 +1140,12 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
     self.backgroundDownload = NO;
     self.installRequested = NO;
     self.userVisible = NO;
-    BOOL resolved = check != SPUUpdateCheckUpdateInformation
-        && (!error || ([error.domain isEqualToString:@"SUSparkleErrorDomain"] && error.code == SUNoUpdateError));
-    if (resolved && error) self.item = nil;
-    [self pruneArchives:resolved];
+    [self pruneArchives:check != SPUUpdateCheckUpdateInformation && self.cycleResolved];
+    self.cycleResolved = NO;
+}
+- (void)updaterDidNotFindUpdate:(SPUUpdater *)updater error:(NSError *)error {
+    self.item = nil;
+    self.cycleResolved = YES;
 }
 - (NSString *)feedURLStringForUpdater:(SPUUpdater *)updater {
     NSDictionary *fence = readFence(self.fenceURL);

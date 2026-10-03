@@ -243,10 +243,16 @@ int main(void) {
         NSCAssert(!writePrivateData([@"cached X" dataUsingEncoding:NSUTF8StringEncoding], [old cachedArchive])
             && !writePrivateData([@"superseded" dataUsingEncoding:NSUTF8StringEncoding], [recoveryCache URLByAppendingPathComponent:@"old-AgentInc.tar.gz"])
             && !writePrivateData([@"partial" dataUsingEncoding:NSUTF8StringEncoding], [[old cachedArchive] URLByAppendingPathExtension:NSUUID.UUID.UUIDString]), @"seed cache");
+        void (^found)(AincSparkleDriver *, TestItem *) = ^(AincSparkleDriver *driver, TestItem *target) {
+            [driver showUpdateFoundWithAppcastItem:(SUAppcastItem *)target state:(SPUUserUpdateState *)state reply:reply];
+            [ui() dismiss:nil];
+        };
+        found(old, releaseItem(releaseX, @"2"));
         old.download = [AincArchiveDownload new];
         [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdatesInBackground error:nil];
         NSCAssert(cached().count == 3, @"an active download keeps every cache entry");
         old.download = nil;
+        found(old, releaseItem(releaseX, @"2"));
         [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdatesInBackground error:nil];
         NSCAssert([cached() isEqualToArray:@[archiveX]], @"a resolved cycle removes superseded archives and interrupted copies, retaining the current item");
         NSCAssert(!writePrivateData([@"partial" dataUsingEncoding:NSUTF8StringEncoding], [[old cachedArchive] URLByAppendingPathExtension:NSUUID.UUID.UUIDString]), @"seed abandoned copy");
@@ -257,6 +263,12 @@ int main(void) {
         NSCAssert([cached() isEqualToArray:@[archiveX]], @"an offline check keeps downloaded X");
         [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdateInformation error:nil];
         NSCAssert([cached() isEqualToArray:@[archiveX]], @"a history-only probe keeps downloaded X");
+        __block NSUInteger checkCancellations = 0;
+        [old showUserInitiatedUpdateCheckWithCancellation:^{ checkCancellations++; }];
+        [ui().offer performClose:nil];
+        NSCAssert(checkCancellations == 1 && old.cancellationRequested, @"closing the check window cancels Sparkle's check");
+        [old updater:old.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:nil];
+        NSCAssert([cached() isEqualToArray:@[archiveX]] && !old.item, @"a cancelled check with no outcome keeps downloaded X");
         old.item = (SUAppcastItem *)releaseItem(releaseX, @"2");
         NSCAssert(![old feedURLStringForUpdater:old.updater], @"unfenced checks use the bundle's latest feed");
         NSUInteger beforeRecovery = replies;
@@ -301,12 +313,19 @@ int main(void) {
         NSCAssert(![replacement feedURLStringForUpdater:replacement.updater], @"replacement checks the latest feed again, offering Y");
         [replacement pruneArchives:NO];
         NSCAssert([cached() isEqualToArray:@[archiveX]], @"replacement startup alone does not resolve the current update");
-        replacement.item = (SUAppcastItem *)releaseItem([recovery URLByAppendingPathComponent:@"releases/v3" isDirectory:YES], @"3");
+        TestItem *newer = releaseItem([recovery URLByAppendingPathComponent:@"releases/v3" isDirectory:YES], @"3");
+        replacement.item = (SUAppcastItem *)newer;
         NSString *archiveY = [replacement cachedArchive].lastPathComponent;
         NSCAssert(!writePrivateData([@"cached Y" dataUsingEncoding:NSUTF8StringEncoding], [replacement cachedArchive]), @"download Y");
+        replacement.item = nil;
+        found(replacement, newer);
         [replacement updater:replacement.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdatesInBackground error:nil];
         NSCAssert([cached() isEqualToArray:@[archiveY]], @"a successful newer-item cycle prunes superseded X");
-        [replacement updater:replacement.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:[NSError errorWithDomain:@"SUSparkleErrorDomain" code:SUNoUpdateError userInfo:nil]];
+        NSError *latest = [NSError errorWithDomain:@"SUSparkleErrorDomain" code:SUNoUpdateError userInfo:nil];
+        [replacement updater:replacement.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:latest];
+        NSCAssert([cached() isEqualToArray:@[archiveY]], @"a no-update error without Sparkle's outcome callback is not a resolution");
+        [replacement updaterDidNotFindUpdate:replacement.updater error:latest];
+        [replacement updater:replacement.updater didFinishUpdateCycleForUpdateCheck:SPUUpdateCheckUpdates error:latest];
         NSCAssert(cached().count == 0 && !replacement.item, @"a resolved no-update outcome prunes every archive");
         [files removeItemAtURL:recovery error:nil];
         sparkle = primary;
