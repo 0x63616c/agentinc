@@ -1,3 +1,4 @@
+//! Collapsible shell panes: which side one is on, its width limits and the drag divider.
 use super::*;
 use crate::model::PANE_WIDTHS;
 

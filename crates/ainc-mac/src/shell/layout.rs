@@ -1,3 +1,4 @@
+//! Shell body layout: the sidebar and main columns, with the panes and their resize handles.
 use super::*;
 
 impl Shell {

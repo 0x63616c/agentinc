@@ -1,3 +1,4 @@
+//! The Assistant page: the Conversation with Evee, its turns, and the message composer.
 use crate::{
     action::{Failure, Pending, Run},
     assistant,

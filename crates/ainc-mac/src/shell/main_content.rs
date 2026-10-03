@@ -1,3 +1,4 @@
+//! The main content card, the Terminal and static pages, and the Settings shortcuts list.
 use super::*;
 use crate::ui::*;
 

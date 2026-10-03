@@ -1,3 +1,4 @@
+//! The AgentInc app entry point: menus, the main window and the opt-in pilot host.
 mod about;
 mod action;
 mod assistant;

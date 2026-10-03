@@ -1,3 +1,4 @@
+//! The Automations page: the saved rules that start agent work, and the form that edits them.
 use crate::{
     action::{Pending, Run},
     daemon::Daemon,

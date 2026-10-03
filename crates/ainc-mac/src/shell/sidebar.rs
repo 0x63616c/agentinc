@@ -1,3 +1,4 @@
+//! The sidebar: Route navigation items, the Search shortcut and the profile row.
 use super::*;
 
 impl Shell {

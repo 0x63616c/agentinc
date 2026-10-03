@@ -34,7 +34,7 @@ mod temporal;
 mod terminal;
 #[path = "../src/tickets.rs"]
 mod tickets;
-#[path = "../src/ui/mod.rs"]
+#[path = "../src/ui.rs"]
 mod ui;
 #[path = "../src/updates.rs"]
 mod updates;

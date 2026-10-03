@@ -1,3 +1,4 @@
+//! The shell header: the current space label and its contour, with the header controls.
 use super::*;
 
 // One continuous contour avoids vertical border tails at the inverse shoulders.

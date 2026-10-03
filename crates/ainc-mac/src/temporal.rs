@@ -1,3 +1,4 @@
+//! The Temporal page: the Work executions table with status filters and timing columns.
 use crate::{
     action::{Pending, Run},
     daemon::Daemon,

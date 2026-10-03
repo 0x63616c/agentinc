@@ -1,3 +1,4 @@
+//! The About panel: the native macOS About box showing the product name and version.
 use gpui::*;
 
 actions!(app, [About]);

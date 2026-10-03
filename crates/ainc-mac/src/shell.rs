@@ -1,3 +1,4 @@
+//! The window shell: sidebar, header, panes and the main content card around the current Page.
 #[path = "shell/header.rs"]
 mod header;
 #[path = "shell/layout.rs"]
