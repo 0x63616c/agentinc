@@ -51,6 +51,8 @@ fn main_window_options(
 
 fn main() {
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
+    // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     #[cfg(all(feature = "automation", target_os = "macos"))]
     if args.len() == 3 && args[0] == "--update-ui-smoke" {

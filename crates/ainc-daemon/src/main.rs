@@ -21,6 +21,8 @@ fn runtime_config(bytes: &[u8]) -> Result<(turnkeel::RuntimeConfig, Option<Strin
 
 fn main() -> Result<()> {
     ainc_release::process::reset_inherited_signals()?;
+    // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?

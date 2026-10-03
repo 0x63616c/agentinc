@@ -21,6 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-segmentation = "1"
 ainc-client = { path = "../ainc-client" }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 tokio.workspace = true
 uuid.workspace = true
 pulldown-cmark = "0.13"
@@ -52,6 +53,8 @@ automation = [
 rendered-tests = ["gpui/test-support", "gpui_platform/test-support"]
 
 [dev-dependencies]
+# Only tests/tls_provider.rs: the app reaches the daemon through ainc-client, which owns reqwest.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 gpui = { version = "=0.2.2", git = "https://github.com/zed-industries/zed", rev = "4c902c9db22a82f5f3a14c02442e7f60ec40d9c8", default-features = false, features = ["font-kit", "test-support"] }
 tempfile = "3"

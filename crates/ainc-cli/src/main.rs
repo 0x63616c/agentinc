@@ -304,6 +304,8 @@ fn install_cli() -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let spec = schema();
     let mut tree = command_tree(&spec);
     let matches = tree.clone().get_matches();

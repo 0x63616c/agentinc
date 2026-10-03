@@ -97,7 +97,6 @@ sqlx-macros = { opt-level = 3 }
 thiserror-impl = { opt-level = 3 }
 temporalio-macros = { opt-level = 3 }
 # Expensive to optimize, never hot.
-aws-lc-sys = { opt-level = 0 }
 libsqlite3-sys = { opt-level = 0 }
 wit-bindgen = { opt-level = 0 }
 wit-bindgen-core = { opt-level = 0 }
