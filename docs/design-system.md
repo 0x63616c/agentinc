@@ -74,11 +74,41 @@ providers) and are exercised only on the Components page today.
 ## Shell
 
 The shell (`src/shell.rs` and `src/shell/`) composes the sidebar (workspace card,
-⌘K search, navigation, user row), the title bar with the current-space
-tab contour, the content card with its status bar, the command palette, the user
+⌘K search, navigation, user row), the title bar with the current tab contour,
+the content card with its status bar, the command palette, the user
 menu popover, the notification panel and toasts. Pages receive the content card and
 render inside `Page::document` (header plus scrolling content) or `Page::canvas`
-(chat, terminal).
+(the Conversation view, the Terminal).
+
+## Copy
+
+Every string a person reads in the app follows these rules. Constructs are the nouns in
+[CONTEXT.md](../CONTEXT.md).
+
+1. Title Case for buttons, menu items and dialog, page and section titles.
+2. Sentence case for field labels, descriptions, hints, placeholders, empty-state bodies,
+   toasts and errors.
+3. Capitalize a construct (Ticket, Comment, Conversation, Automation, Agent, Occurrence,
+   Connection) when it means the construct.
+4. Full sentences end with a period; titles, labels and buttons do not.
+5. Typographic `…` (U+2026) and `’`, always. An action gets `…` only when it opens further
+   input.
+6. Verbs: New creates a top-level record, Add attaches to a record, Delete removes
+   permanently, Remove detaches, Save commits an edit, Cancel dismisses a dialog, Close
+   dismisses a panel.
+7. Destructive confirmation: title `Delete “{name}”?`, body `{What} will be permanently
+   deleted.`, button `Delete`.
+8. Shortcuts are glyph-only with no separators (`⌘K` `⌘[` `⌘,` `⎋`) and come from the one
+   shortcuts table.
+9. Errors read `{Thing} is unavailable. {Recovery}.` Raw detail sits behind a disclosure,
+   never interpolated. Validation errors go to `Field::error`, load errors to `banner`.
+10. Empty states read `No {things} yet.` plus one action, always through `EmptyState`.
+11. British spelling: Cancelled.
+12. People are round avatars; agents are rounded squares. Everywhere.
+
+Planned: `cargo xtask check-copy` will enforce these over the string literals passed to
+`Button::new`, `MenuEntry::new`, `PageHeader::new`, `EmptyState` and `dialog_shell`
+(`...`, straight apostrophes, "Canceled", avoid-words, case).
 
 ## Adding a component
 

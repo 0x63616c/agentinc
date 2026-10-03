@@ -1,7 +1,7 @@
-# Phase 2: daemon ownership
+# Daemon ownership
 
 This is the phase-2 migration record. Current SDK execution, runtime configuration,
-Tickets and crash recovery are documented in [phase-3-execution.md](phase-3-execution.md).
+Tickets and crash recovery are documented in [execution.md](execution.md).
 
 `aincd` owns product writes and Codex processes. The Mac app renders owned snapshots from the generated `ainc-client`; it has no SQLite dependency and never waits for SQL or a provider process on the foreground. The existing text-only Codex protocol, ephemeral threads, bounded replies, sign-in flow and retry context are preserved in `crates/ainc-daemon/src/codex.rs`.
 
@@ -17,9 +17,9 @@ This phase preserves the current text runner. On daemon restart queued work resu
 
 Before publishing readiness, the daemon runs the SQLx migrations and imports `assistant.sqlite3` and `session.json` from `AINC_LEGACY_DIR`. The installed default is `~/Library/Application Support/Agentinc OS/`. `cargo xtask dev` always overrides that with this worktree's `.local/dev/legacy`, and gives Codex `.local/dev/codex`. Development never imports the regular profile automatically.
 
-SQLite is opened read-only and read inside a consistent transaction, including committed WAL content. The destination transaction imports schema 0/1 single-chat history or schema 2 Conversations, turn IDs/order, Tasks, assistant settings and the original session JSON. Interrupted turns become failed/retryable; import never dispatches a model call. A committed source receipt prevents reimport, including resurrection of later-deleted records. Future SQLite schemas, invalid session JSON and a populated destination without an import receipt are refused. Failure rolls back destination rows; source data is not migrated in place or deleted. Tests use disposable synthetic copies of the original schemas, never the regular Application Support directory.
+SQLite is opened read-only and read inside a consistent transaction, including committed WAL content. The destination transaction imports schema 0/1 single-chat history or schema 2 Conversations, turn IDs/order, the legacy `todos` table (imported as Tickets), assistant settings and the original session JSON. Interrupted turns become failed/retryable; import never dispatches a model call. A committed source receipt prevents reimport, including resurrection of later-deleted records. Future SQLite schemas, invalid session JSON and a populated destination without an import receipt are refused. Failure rolls back destination rows; source data is not migrated in place or deleted. Tests use disposable synthetic copies of the original schemas, never the regular Application Support directory.
 
-Only shell layout, navigation and font remain app-local. Their versioned UI-preference DTO preserves the saved Tasks/Evee aliases and older tab histories. An unreadable or future-version file is displayed as unavailable and is not overwritten. Product preferences (selected model and Conversation) are daemon-owned.
+Only shell layout, navigation and font remain app-local. Their versioned UI-preference DTO preserves the saved `tasks`/`evee` route aliases (today's Tickets and Assistant) and older tab histories. An unreadable or future-version file is displayed as unavailable and is not overwritten. Product preferences (selected model and Conversation) are daemon-owned.
 
 ## Local companion and remote configuration
 

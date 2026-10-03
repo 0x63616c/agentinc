@@ -1,4 +1,4 @@
-# Phase 3: durable runtime foundation
+# Durable runtime foundation
 
 `Runtime::configured(RuntimeConfig { endpoint, scope, worker_group }, &agents)` installs
 agent definitions before polling and reuses the same deployment identity across processes.
@@ -29,7 +29,7 @@ The real-server checks live in `crates/turnkeel/tests/recovery.rs`:
 
 Run `cargo test --locked -p turnkeel -p turnkeel-macros` and
 `cargo clippy --locked -p turnkeel -p turnkeel-macros --all-targets -- -D warnings`.
-Tests use only scripted models, no subscription credentials. The activity-crash and live-event follow-up is documented in [phase-3-provider.md](phase-3-provider.md).
+Tests use only scripted models, no subscription credentials. The activity-crash and live-event follow-up is documented in [provider.md](provider.md).
 This foundation does not claim durable product outbox dispatch, Ticket fencing,
 provider compatibility, bounded session history, or native UI acceptance; those remain
 phase 3 delivery gates.

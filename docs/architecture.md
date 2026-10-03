@@ -6,7 +6,7 @@ This is the current plan. The contracts are accepted; the components described b
 
 ## Product and workspace
 
-The macOS app is **AgentInc**, bundle ID `co.worldwidewebb.agentinc`. Its GPUI app, assets and acceptance material are imported under `crates/`. The daemon now imports its legacy SQLite product data into Postgres; UI-only preferences remain at the existing support path. See [phase 2 ownership](phase-2-ownership.md) for the implemented boundary and execution limits. All crates stay directly under `crates/`; the SDK is the daemon's agent runtime and the app is its real consumer. The SDK crate is `turnkeel`; product packages use the `ainc-` prefix.
+The macOS app is **AgentInc**, bundle ID `co.worldwidewebb.agentinc`. Its GPUI app, assets and acceptance material are imported under `crates/`. The daemon now imports its legacy SQLite product data into Postgres; UI-only preferences remain at the existing support path. See [phase 2 ownership](ownership.md) for the implemented boundary and execution limits. All crates stay directly under `crates/`; the SDK is the daemon's agent runtime and the app is its real consumer. The SDK crate is `turnkeel`; product packages use the `ainc-` prefix.
 
 The app remains a native GPUI client with our own components. A generated CLI and authorized agent tools use the same daemon commands. Anything a person can do in the UI must be possible through those tools. A `Route` catalogue names destinations; `Page` views render them. Keep the existing single-tab, dark Control shell and add Tickets and Automations there.
 
@@ -14,7 +14,7 @@ The app remains a native GPUI client with our own components. A generated CLI an
 
 ```mermaid
 flowchart LR
-  Mac[AgentInc Mac app] -->|HTTP and SSE| API[Headless Rust daemon]
+  Mac[AgentInc Mac app] -->|HTTP, polled| API[Headless Rust daemon]
   CLI[Generated CLI] -->|HTTP| API
   Tools[Authorized agent tools] -->|Same commands| API
   API --> PG[(Postgres product records)]
@@ -47,7 +47,7 @@ An Automation has a trigger, agent and prompt. Start with a scheduled rule such 
 
 ## HTTP, versions and clients
 
-Use Tokio, Axum and Tower for the daemon. Define a documented OpenAPI contract with typed errors, stable operation IDs, revision conflicts, cursor pagination and reconnectable events. Generate the Rust HTTP client and CLI operations from one checked-in contract. Utoipa's OpenAPI 3.1 output and Progenitor's 3.0.x input require a validated 3.0.3 compatibility export; if that becomes substantial tooling, use one 3.0.3 source contract instead. A compiled Ticket client/CLI round trip is the first gate. Keep only CLI startup, auth, output and event following hand-written.
+Use Tokio, Axum and Tower for the daemon. The checked-in OpenAPI contract has stable operation IDs, revision conflicts and one `ErrorBody` (`code`, `message`) whose codes are strings today (an enum is planned in the cohesion plan). Lists are whole snapshots with no pagination, and clients poll them over plain HTTP; cursor pagination and reconnectable event streams are planned, not built. Generate the Rust HTTP client and CLI operations from one checked-in contract. Utoipa's OpenAPI 3.1 output and Progenitor's 3.0.x input require a validated 3.0.3 compatibility export; if that becomes substantial tooling, use one 3.0.3 source contract instead. A compiled Ticket client/CLI round trip is the first gate. Keep only CLI startup, auth, output and event following hand-written.
 
 Every request carries `Agent-Inc-Client`, for example `mac/1.4.2 (build 812; api 1)`; every response carries the server version. The server sets a minimum client version and returns one typed **upgrade required** error below it. The generated client also detects **server too old** for its API. The app handles either incompatibility in one generic **Update to continue** screen, without per-feature checks. A `/version` endpoint and separate liveness/readiness checks support diagnostics. A remote daemon upgrades independently from the app, so releases need an explicit compatibility window and expand/contract migrations.
 
@@ -65,7 +65,7 @@ One product version drives the app bundle and compatible daemon/client release m
 
 ## Development environment
 
-`cargo xtask dev` starts the worktree's Tilt + Compose stack and native daemon. `cargo xtask doctor` shows its identity and API discovery; `cargo xtask down` stops that stack without deleting volumes. `cargo xtask generate` exports the Utoipa contract as validated OpenAPI 3.0.3 and regenerates the Progenitor client and CLI operations. The first Ticket endpoint only echoes the DTO to prove the contract; the Ticket domain is a later phase.
+`cargo xtask dev` starts the worktree's Tilt + Compose stack and native daemon. `cargo xtask doctor` shows its identity and API discovery; `cargo xtask down` stops that stack without deleting volumes. `cargo xtask generate` exports the Utoipa contract as validated OpenAPI 3.0.3 and regenerates the Progenitor client and CLI operations. The Ticket domain lives at `/v1/tickets` and `/v1/tickets/commands` (see [tickets](tickets.md)); the phase-1 echo stub `/v1/tickets/contract` still exists and is slated for deletion.
 
 `dev/check-isolation.sh WORKTREE_A WORKTREE_B` exercises two disposable worktrees, then restarts one while checking the other's database and health.
 
@@ -76,7 +76,7 @@ One product version drives the app bundle and compatible daemon/client release m
 | **0 — contracts** | Preserve the vision and ADRs; record these decisions and the app import plan. | Documentation agrees on provider, Tickets, names, ownership and version behavior. |
 | **1 — isolated development** | Tilt + Compose, migrations and namespace bootstrap, thin health/version API, generated client/CLI spike. | Two worktrees remain isolated; a generated Ticket operation round-trips. |
 | **2 — app import** | Import GPUI app; move storage and conversation ownership to daemon; import SQLite data; preserve native flows and preferences. | Real legacy data survives; closing the window leaves acknowledged work running. |
-| **3 — durable work** | Stable SDK runtime, subscription provider, outbox, Conversations, four-status Tickets, Comments and coding tools. | New-process recovery, deduplication, permissions, cancellation and reassignment pass with no paid-model dependency in ordinary tests. |
+| **3 — durable work** | Stable SDK runtime, subscription provider, outbox, Conversations, Tickets (four statuses at first, six on the 1.0 board), Comments and coding tools. | New-process recovery, deduplication, permissions, cancellation and reassignment pass with no paid-model dependency in ordinary tests. |
 | **4 — Automations** | Scheduled Occurrences create and assign Tickets; pause, Run now and history. | A real Schedule survives restart without duplicate Tickets or effects. |
 | **5 — distribution** | Signed releases, Sparkle update engine, compatibility checks and remote daemon validation; then additional users. | Native updates, delta fallback, rollback refusal, backup restore and two-user isolation are exercised. |
 | **Later** | Event/webhook triggers, Home, Calendar, Library and isolated worker Environments. | Each addition has a real user flow and permission model. |

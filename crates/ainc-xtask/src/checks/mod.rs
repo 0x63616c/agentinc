@@ -1,4 +1,4 @@
-//! The native UI checks that used to be Python scripts under `crates/ainc-mac/scripts`.
+//! Repository checks, including native UI rules and Git commit messages.
 use anyhow::Result;
 use std::{
     fs,
@@ -6,6 +6,7 @@ use std::{
 };
 
 pub mod colors;
+pub mod commit_msg;
 pub mod ui_core;
 pub mod ui_spacing;
 

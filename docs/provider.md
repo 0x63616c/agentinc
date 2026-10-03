@@ -1,4 +1,4 @@
-# Phase 3: subscription model steps
+# Subscription model provider
 
 `ainc_daemon::inference::CodexModel` implements Turnkeel's `Model` interface. It
 sends our model-step request directly to the Codex backend Responses endpoint;
@@ -52,4 +52,4 @@ uses the same receipt/key, produces exactly one effect and passes history replay
 Non-idempotent tools retain their existing one-attempt policy.
 
 Daemon integration and its process recovery evidence are documented in
-[phase-3-execution.md](phase-3-execution.md).
+[execution.md](execution.md).

@@ -14,12 +14,13 @@ Open the app and use **Settings → Accounts & connections → Sign in with Chat
 
 ## Develop
 
-You only need three commands, run from the repository root with [just](https://github.com/casey/just) (`just` on its own lists them):
+You only need four commands, run from the repository root with [just](https://github.com/casey/just) (`just` on its own lists them):
 
 | Command | What it does |
 | --- | --- |
 | `just dev` | Runs everything under Tilt: Postgres, Temporal, the daemon and the Mac app. Edit the app, the daemon or any crate they depend on and it rebuilds and relaunches. |
-| `just test` | Runs every check CI runs: formatting, UI lint scripts, the API-contract check, clippy and all tests. |
+| `just check` | The fast static gate the pre-commit hook runs: formatting, clippy and the `cargo xtask` UI checks. |
+| `just test` | Runs every check CI runs: `just check`, the API-contract check and all tests. |
 | `just release patch` | Bumps the workspace version (`patch`, `minor` or `major`; an explicit version must be one of those next versions), regenerates the API client and commits, refusing on a dirty tree. Pushing that commit to `main` triggers the signed release. |
 
 You need an Apple Silicon Mac with Xcode command-line tools, Rust (pinned in `rust-toolchain.toml`), Docker running, Tilt, the Temporal CLI and PostgreSQL's `psql`. `just dev` leaves its state under `.local/dev/`; `cargo xtask doctor` prints this worktree's endpoints and `cargo xtask down` stops its stack. See the [Mac app guide](crates/ainc-mac/README.md) and [development architecture](docs/architecture.md).
@@ -40,7 +41,7 @@ Every crate lives directly under `crates/`. The Mac app's directory is `crates/a
 | [`crates/turnkeel`](crates/turnkeel), [`crates/turnkeel-macros`](crates/turnkeel-macros) | The Turnkeel Rust agent SDK and its `#[tool]` macro; overview below. |
 | [`vendor/gpui`](vendor) | Zed's GPUI core crate, pinned to one revision with the pilot patch applied. Kept outside the workspace; `cargo xtask vendor-pilot-gpui` regenerates it. |
 
-The [architecture](docs/architecture.md), [decisions](docs/adr) and [runtime design](docs/phase-3-runtime.md) describe how the pieces fit together. [The screenshot recipe](docs/assets/readme/README.md) explains how to regenerate the native window capture.
+The [architecture](docs/architecture.md), [decisions](docs/adr) and [runtime design](docs/runtime.md) describe how the pieces fit together. [The screenshot recipe](docs/assets/readme/README.md) explains how to regenerate the native window capture.
 
 ## Turnkeel SDK
 

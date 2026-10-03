@@ -1,4 +1,4 @@
-# Phase 3: Ticket command boundary
+# Tickets
 
 `GET /v1/tickets` and `POST /v1/tickets/commands` are generated-client/CLI operations.
 The domain implementation is `crates/ainc-daemon/src/tickets.rs`; the checked-in
@@ -35,7 +35,7 @@ existing legacy import and native-client compatibility tests remain green. A gen
 client submits a Comment and reads the migrated Ticket over HTTP.
 
 The outbox consumer, coding policy and durable Conversation integration are documented
-in [phase-3-execution.md](phase-3-execution.md).
+in [execution.md](execution.md).
 
 ## The 1.0 board
 

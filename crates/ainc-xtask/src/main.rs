@@ -462,7 +462,7 @@ fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args.next().ok_or_else(|| {
         anyhow!(
-            "usage: cargo xtask dev|down|doctor|check|generate|vendor-pilot-gpui|{}|{}",
+            "usage: cargo xtask dev|down|doctor|check|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
             release::NAMES,
             readme::NAMES
         )
@@ -474,6 +474,7 @@ fn main() -> Result<()> {
         op if readme::handles(op) => readme::run(op, args.collect(), &root),
         "check" => check(&root),
         "check-ui" => check_ui(&root),
+        "check-commit-msg" => checks::commit_msg::run(&args.collect::<Vec<_>>()),
         "vendor-pilot-gpui" => vendor_pilot_gpui::cli(&args.collect::<Vec<_>>(), &root),
         "generate" => generate(&root, args.next().as_deref() == Some("--check")),
         "dev" => {

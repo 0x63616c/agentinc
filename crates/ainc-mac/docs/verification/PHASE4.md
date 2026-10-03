@@ -31,7 +31,7 @@ automation is used. The first three use the isolated loopback model fixture; the
 last uses `ainc-daemon/examples/offline_workers.rs`, with an explicit fixture token.
 
 Backend policy, recovery/effect tests and the outage setup are documented in
-[phase-4 Automations](../../../../docs/phase-4-automations.md). Linux CI and the final
+[phase-4 Automations](../../../../docs/automations.md). Linux CI and the final
 pushed revision remain verified on the PR, not inferred from these captures.
 
 ```sh

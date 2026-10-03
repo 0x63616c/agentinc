@@ -56,7 +56,6 @@ impl Shell {
             .debug_selector(|| "sidebar-content".into())
             .px(px(SIDEBAR_INSET))
             .pt(px(SPACE_4))
-            .pb(px(SPACE_2))
             .child(
                 self.button("shell.search", "Search · ⌘ K", Control::Search, cx)
                     .debug_selector(|| "shell.search".into())
@@ -192,6 +191,29 @@ mod tests {
         shell.read_with(cx, |shell, _| {
             assert_eq!(shell.overlays.borrow().active(), Some(Overlay::Search));
         });
+    }
+
+    #[gpui::test]
+    fn profile_bottom_aligns_with_content_panel(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let (shell, cx) = cx.add_window_view(|window, cx| {
+            Shell::fixture(dir.path().join("session.json"), window, cx)
+        });
+        for menu_open in [false, true] {
+            if menu_open {
+                let profile = cx.debug_bounds("sidebar-profile").unwrap().center();
+                cx.simulate_click(profile, Modifiers::default());
+            }
+            for width in [PANE_WIDTHS[0].0, PANE_WIDTHS[0].2, PANE_WIDTHS[0].1] {
+                draw_sidebar(&shell, width, cx);
+                let profile = cx.debug_bounds("sidebar-profile").unwrap();
+                let content = cx.debug_bounds("main-pane").unwrap();
+                assert!(
+                    f32::from(profile.bottom() - content.bottom()).abs() < 0.5,
+                    "profile and content bottoms must align at width {width}, menu open: {menu_open}"
+                );
+            }
+        }
     }
 
     #[gpui::test]

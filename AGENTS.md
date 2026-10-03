@@ -1,6 +1,9 @@
-# Turnkeel
+# AgentInc
 
-A Rust SDK for building AI agents. You define an agent (model, instructions, tools),
+This repo holds Turnkeel (the SDK, `crates/turnkeel`) and AgentInc (the app and daemon,
+`crates/ainc-*`). The SDK comes first because every agent in the app runs on it.
+
+Turnkeel is a Rust SDK for building AI agents. You define an agent (model, instructions, tools),
 start a run, and get a result. Every run is durable: it survives crashes and restarts
 and retries failed steps.
 
@@ -45,6 +48,9 @@ Flat: every crate lives directly under `crates/`. No nesting; related crates sha
 prefix instead (`crates/ainc-tickets`, never `crates/ainc-mac/tickets`).
 For the accepted product plan, see [docs/architecture.md](docs/architecture.md) and
 [docs/adr/](docs/adr/). Crate names below describe the current source.
+Adding an endpoint, page, component, tool, migration or CLI command, or cutting a release:
+follow the recipe in [docs/how-to.md](docs/how-to.md).
+Refactors in flight and the standards they enforce: [docs/cohesion-plan.md](docs/cohesion-plan.md).
 
 - `crates/turnkeel` — the SDK. Public modules at `src/*.rs`. The private engine at
   `src/engine/`. Test helpers at `src/testing/`.
@@ -73,20 +79,22 @@ needs to become its own crate.
   sense with a single agent and no UI? If yes, it belongs in the SDK.
 - **AgentInc** is a personal life-OS app; its native client is at `crates/ainc-mac`.
   The daemon owns product state; migration, isolated profile overrides and local
-  companion setup are documented in `docs/phase-2-ownership.md`; current runtime and tool policy
-  are in `docs/phase-3-execution.md`; scheduled Ticket grants, overlap/catch-up policy and
-  phase-4 evidence are in `docs/phase-4-automations.md`; the Ticket board
-  (statuses, order, relationships, history) is in `docs/phase-3-tickets.md`, and
+  companion setup are documented in `docs/ownership.md`; current runtime and tool policy
+  are in `docs/execution.md`; scheduled Ticket grants, overlap/catch-up policy and
+  phase-4 evidence are in `docs/automations.md`; the Ticket board
+  (statuses, order, relationships, history) is in `docs/tickets.md`, and
   every Ticket writer takes the workspace board lock before any row lock. Rule: anything a human can do in
   its UI, an agent can do through the same tools.
 
 There is no framework layer yet. Extract one from the OS later, once the generic parts
 are obvious. Do not start it early.
 
-OS constructs (settled, seven): Agents (data, created at runtime), Conversations (map to
-SDK sessions), Tickets (shared human/agent, assignable to an agent, comments are the work
-log), Knowledge (later), Inbox (human view over an event stream), Automations (trigger +
-agent + prompt), Connections (external accounts contributing tools).
+OS constructs (settled, seven), named as in [CONTEXT.md](CONTEXT.md): Agents (created at
+runtime, with a model and instructions), Conversations (map to SDK sessions), Tickets (shared
+human/agent, assignable to an Agent; Comments are the work log; a run on a Ticket is Work),
+Automations (trigger + Agent + prompt; each firing is an Occurrence), Connections (external
+accounts contributing tools), and two planned and not yet in CONTEXT.md: Knowledge and Inbox
+(human view over an event stream). Vocabulary and avoid-words live in CONTEXT.md.
 
 OS MVP: tickets, a minimal agents registry, and one automation: "ticket assigned to an
 agent → run it".
@@ -128,18 +136,20 @@ wants. To wait for a session to finish a turn, read `session.events()` until
 Add a test for every behaviour change in the loop. The test should not mention Temporal;
 if it has to, the public API has leaked.
 
-Personal packaging, update signing and bundled runtime ownership: [docs/phase-5-distribution.md](docs/phase-5-distribution.md).
+Personal packaging, update signing and bundled runtime ownership: [docs/distribution.md](docs/distribution.md).
 The production/development channel and isolation rule is also documented there;
 `ainc-release::identity` is its single code source.
 
-Stable runtime deployment and process-recovery checks: [docs/phase-3-runtime.md](docs/phase-3-runtime.md).
+Stable runtime deployment and process-recovery checks: [docs/runtime.md](docs/runtime.md).
 
 Verify with `just test`, which runs every CI check and should be clean.
 
 ## Committing and releases
 
 Commit proactively. Every coherent step that builds and passes tests gets its own
-commit, without waiting to be asked. Small commits with a clear message beat one large
+commit, without waiting to be asked. Use Conventional Commit subjects (`feat: ...`,
+`fix(scope): ...`, `chore: ...`); `.githooks/commit-msg` enforces them through
+`cargo xtask check-commit-msg`. Small commits with a clear message beat one large
 one at the end. Push validated commits to the intended remote branch proactively.
 Do not create a pull request unless the user explicitly asks for one; a request to
 push is not a request for a PR. Do not invoke a PR-creating workflow by default.

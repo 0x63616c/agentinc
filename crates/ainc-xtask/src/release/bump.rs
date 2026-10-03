@@ -87,7 +87,14 @@ pub fn bump(root: &Path, args: &[String]) -> Result<()> {
     run("cargo", &["update", "--workspace"])?;
     run("cargo", &["xtask", "generate"])?;
     run("git", &["add", "-A"])?;
-    run("git", &["commit", "-m", &format!("Release {}", show(new))])?;
+    run(
+        "git",
+        &[
+            "commit",
+            "-m",
+            &format!("chore(release): release {}", show(new)),
+        ],
+    )?;
     println!("Committed Release {}. Push to main to ship it.", show(new));
     Ok(())
 }
