@@ -145,13 +145,13 @@ impl TicketsPage {
                         .rounded_full(),
                     )
             }))
-            // The trigger's wrapper grows into the rest of its line, so the menu
-            // can end on the value column's right edge, but starts at its own
-            // width, so it wraps to a new line instead of overflowing.
+            // Anchor to the button, not the unused width of the label row.
+            // The shared floating menu flips/clamps at the window edge.
             .child(
-                row()
+                column()
                     .relative()
-                    .flex_grow(1.)
+                    .flex_shrink_0()
+                    .when(applied.is_empty(), |s| s.ml(px(-CONTROL_INSET_X_SM)))
                     .child({
                         // With labels applied, a bare + keeps the line short enough
                         // to stay inside its column.
@@ -163,30 +163,23 @@ impl TicketsPage {
                             .selected(open)
                             .enabled(!self.pending && applied.len() < 10);
                         let compact = !applied.is_empty();
-                        if compact { add.icon_only() } else { add }
-                            .build(
-                                &self.hover,
-                                move |this: &mut Self, window, cx| {
-                                    this.toggle_menu(menu_kind, cx);
-                                    if this.menu == Some(menu_kind) {
-                                        window.focus(&this.label_input.focus_handle(cx), cx);
-                                    }
-                                },
-                                cx,
-                            )
-                            .when(!compact, |s| s.ml(px(-CONTROL_INSET_X_SM)))
+                        if compact { add.icon_only() } else { add }.build(
+                            &self.hover,
+                            move |this: &mut Self, window, cx| {
+                                this.toggle_menu(menu_kind, cx);
+                                if this.menu == Some(menu_kind) {
+                                    window.focus(&this.label_input.focus_handle(cx), cx);
+                                }
+                            },
+                            cx,
+                        )
                     })
                     .when(open, |s| {
-                        s.child(
-                            deferred(
-                                div()
-                                    .absolute()
-                                    .top(px(CONTROL_HEIGHT_SM + SPACE_1))
-                                    .right_0()
-                                    .child(menu),
-                            )
-                            .with_priority(1),
-                        )
+                        s.child(floating(
+                            menu,
+                            Anchor::TopLeft,
+                            point(px(0.), px(CONTROL_HEIGHT_SM + SPACE_1)),
+                        ))
                     }),
             )
     }

@@ -131,6 +131,53 @@ impl Suite {
         Ok(())
     }
 
+    fn check_assignee_photo(&mut self, selector: &str, present: bool) -> Result<()> {
+        let bounds = rect(self.bounds(selector)?);
+        let scale = self.cx.update_window(self.window.into(), |_, window, _| {
+            window.scale_factor() as u32
+        })?;
+        let image = self.cx.capture_screenshot(self.window.into())?;
+        let color = ui::LABEL_COLORS[0];
+        let expected = [(color >> 16) as u8, (color >> 8) as u8, color as u8];
+        let mut matching = 0;
+        for y in bounds[1] * scale..bounds[3] * scale {
+            for x in bounds[0] * scale..bounds[2] * scale {
+                if image.get_pixel(x, y).0[..3] == expected {
+                    matching += 1;
+                }
+            }
+        }
+        ensure!(
+            (matching >= 30) == present,
+            "{selector}: local profile photo presence should be {present}"
+        );
+        Ok(())
+    }
+
+    fn check_label_menu_anchor(&mut self) -> Result<()> {
+        let trigger = self.bounds("tickets.labels.open")?;
+        let menu = self.bounds("tickets.labels.menu")?;
+        near(
+            "label menu left edge follows its button",
+            f32::from(menu.origin.x),
+            f32::from(trigger.origin.x),
+        )?;
+        if menu.origin.y >= trigger.origin.y + trigger.size.height {
+            near(
+                "label menu gap below its button",
+                f32::from(menu.origin.y - trigger.origin.y - trigger.size.height),
+                ui::SPACE_1,
+            )
+        } else {
+            // The shared anchored menu flips above when the window is too short.
+            near(
+                "flipped label menu stays attached to its button",
+                f32::from(trigger.origin.y - menu.origin.y - menu.size.height),
+                0.,
+            )
+        }
+    }
+
     // Check actual pixels in independent shell regions, rather than trusting scene/AX nodes.
     // Regions come from the current layout; thresholds are below normal text contrast.
     fn probes(&mut self, width: u32, dimmed: bool) -> Result<Vec<Probe>> {
@@ -576,6 +623,25 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
         .read_with(&suite.cx, |shell, _| shell.fixture_tickets_page())?;
     suite.keys("cmd-1");
     let budget = page.update(&mut suite.cx, |page, cx| page.fixture_board(cx));
+    // A synthetic local photo keeps this independent of the macOS account.
+    let color = ui::LABEL_COLORS[0];
+    let photo = image::RgbaImage::from_pixel(
+        16,
+        16,
+        image::Rgba([(color >> 16) as u8, (color >> 8) as u8, color as u8, 255]),
+    );
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    photo.write_to(&mut bytes, image::ImageFormat::Png)?;
+    page.update(&mut suite.cx, |page, cx| {
+        page.set_owner(
+            "Calum",
+            Some(Arc::new(gpui::Image::from_bytes(
+                gpui::ImageFormat::Png,
+                bytes.into_inner(),
+            ))),
+            cx,
+        );
+    });
     let id_of = |suite: &mut Suite, title: &str| {
         page.read_with(&suite.cx, |page, _| page.fixture_ticket_id(title))
             .ok_or_else(|| anyhow::anyhow!("missing fixture Ticket {title}"))
@@ -695,6 +761,11 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
     suite.bounds("tickets.timeline")?;
     suite.bounds("tickets.description.text")?;
     page.update(&mut suite.cx, |page, cx| {
+        page.fixture_menu(Some(Menu::Assignee), cx)
+    });
+    suite.capture("ticket-assignee-photo-menu", Route::Tickets, None, false)?;
+    suite.check_assignee_photo("tickets.detail.assignee.option.0", true)?;
+    page.update(&mut suite.cx, |page, cx| {
         page.fixture_menu(Some(Menu::Status), cx)
     });
     suite.capture("ticket-status-menu", Route::Tickets, None, false)?;
@@ -730,6 +801,10 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
         "the chosen Ticket becomes a blocker, got {related:?}"
     );
     suite.click_selector("tickets.back")?;
+    page.update(&mut suite.cx, |page, cx| page.select(dentist, cx));
+    suite.capture("ticket-owner-photo", Route::Tickets, None, false)?;
+    suite.check_assignee_photo("tickets.detail.assignee", true)?;
+    suite.click_selector("tickets.back")?;
     page.update(&mut suite.cx, |page, cx| page.fixture_view(false, cx));
     suite.settle()?;
     // Quick create from a lane starts in that lane's status.
@@ -740,6 +815,43 @@ fn tickets_suite(suite: &mut Suite, window: WindowHandle<Shell>) -> Result<()> {
         Some(Overlay::AddTicket),
         false,
     )?;
+    suite.check_assignee_photo("tickets.draft.assignee", true)?;
+    suite.click_selector("tickets.draft.assignee")?;
+    suite.settle()?;
+    suite.check_assignee_photo("tickets.draft.assignee.option.0", true)?;
+    page.update(&mut suite.cx, |page, cx| page.fixture_menu(None, cx));
+    suite.click_selector("tickets.labels.open")?;
+    suite.capture(
+        "ticket-create-label-menu",
+        Route::Tickets,
+        Some(Overlay::AddTicket),
+        false,
+    )?;
+    suite.check_label_menu_anchor()?;
+    suite.cx.simulate_input(window.into(), "test");
+    suite.settle()?;
+    suite.check_label_menu_anchor()?;
+    suite.click_selector("tickets.labels.create")?;
+    suite.settle()?;
+    // Adding a tag changes the trigger to a compact +; its menu follows it.
+    suite.check_label_menu_anchor()?;
+    suite.bounds("tickets.labels.remove.test")?;
+    page.update(&mut suite.cx, |page, cx| page.fixture_menu(None, cx));
+    suite.click_selector("tickets.draft.assignee")?;
+    page.update(&mut suite.cx, |page, cx| {
+        page.set_owner("Calum", None, cx);
+    });
+    suite.capture(
+        "ticket-create-assignee-fallback",
+        Route::Tickets,
+        Some(Overlay::AddTicket),
+        false,
+    )?;
+    suite.bounds("tickets.draft.assignee.option.0")?;
+    suite.check_assignee_photo("tickets.draft.assignee", false)?;
+    suite.check_assignee_photo("tickets.draft.assignee.option.0", false)?;
+    page.update(&mut suite.cx, |page, cx| page.fixture_menu(None, cx));
+    suite.click_selector("Title.input")?;
     page.update(&mut suite.cx, |page, cx| {
         page.fixture_menu(Some(Menu::DraftStatus), cx)
     });

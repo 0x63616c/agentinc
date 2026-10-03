@@ -628,8 +628,14 @@ impl TicketsPage {
         if self.is_agent(id) {
             return agent_avatar(&self.assignee_name(id), size);
         }
-        let photo = (id == "owner").then(|| self.owner.1.clone()).flatten();
-        avatar(&self.assignee_name(id), photo, size)
+        avatar(&self.assignee_name(id), self.assignee_photo(id), size)
+    }
+    fn assignee_photo(&self, id: &str) -> Option<Arc<Image>> {
+        (id == "owner").then(|| self.owner.1.clone()).flatten()
+    }
+    fn assignee_option(&self, id: &str) -> SelectOption {
+        let name = self.assignee_name(id);
+        SelectOption::new(name.clone()).avatar(name, self.assignee_photo(id), self.is_agent(id))
     }
     fn is_agent(&self, id: &str) -> bool {
         self.assignee(id)

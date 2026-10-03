@@ -217,10 +217,7 @@ impl TicketsPage {
             "tickets.draft.assignee",
             assignees
                 .iter()
-                .map(|a| {
-                    let name = self.assignee_name(&a.id);
-                    SelectOption::new(name.clone()).avatar(name, a.kind == AssigneeKind::Agent)
-                })
+                .map(|a| self.assignee_option(&a.id))
                 .collect(),
         )
         .value(assignees.iter().position(|a| a.id == chosen))
