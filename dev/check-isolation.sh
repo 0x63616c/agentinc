@@ -15,7 +15,7 @@ for tree in "$a" "$b"; do
 done
 
 field() {
-  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$1/.local/dev/instance.json" "$2"
+  sed -n "s/^ *\"$2\": *\"\\{0,1\\}\\([^\",]*\\).*/\\1/p" "$1/.local/dev/instance.json"
 }
 
 id_a=$(field "$a" id)

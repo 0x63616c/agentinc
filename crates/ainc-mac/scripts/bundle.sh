@@ -21,7 +21,7 @@ cp "target/$profile/ainc" "$bundle/Contents/MacOS/ainc"
 crates/ainc-mac/scripts/stage-ghostty.sh "$profile" "$bundle"
 codesign --force --sign - "$bundle/Contents/MacOS/aincd"
 cp crates/ainc-mac/assets/AppIconDev.icns "$bundle/Contents/Resources/AppIcon.icns"
-version=$(cargo metadata --no-deps --format-version=1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ainc-release"))')
+version=$(cargo xtask release-package-version ainc-release)
 build=$(git rev-list --count HEAD)
 cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
