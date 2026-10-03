@@ -358,6 +358,7 @@ fn check(root: &Path, profile: Option<&str>) -> Result<()> {
     check_layout(root)?;
     checks::sdk_vocabulary::run(root)?;
     checks::openapi::run(root)?;
+    checks::sqlx::run(root)?;
     let mut clippy = vec![
         "cargo",
         "clippy",
@@ -370,7 +371,9 @@ fn check(root: &Path, profile: Option<&str>) -> Result<()> {
     }
     clippy.extend(["--", "-D", "warnings"]);
     step(root, &clippy)?;
-    optional_tools(root)
+    optional_tools(root)?;
+    // Needs a database server; `cargo xtask test` always has one and requires the check.
+    checks::sqlx::prepare_check(root, false)
 }
 
 /// Linters that run only when installed: a missing one prints a note instead of failing, so
@@ -482,6 +485,8 @@ fn test(root: &Path, profile: Option<&str>) -> Result<()> {
             Some(postgres)
         }
     };
+    // Fails fast, before the long test run, if .sqlx/ is stale; CI installs sqlx-cli for it.
+    checks::sqlx::prepare_check(root, env::var_os("CI").is_some())?;
     let mut nextest = vec!["cargo", "nextest", "run", "--workspace", "--locked"];
     let mut doctests = vec!["cargo", "test", "--doc", "--workspace", "--locked"];
     if let Some(profile) = profile {
@@ -516,7 +521,7 @@ fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args.next().ok_or_else(|| {
         anyhow!(
-            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-ui|check-names|check-layout|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
+            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-ui|check-names|check-layout|prepare-sqlx|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
             release::NAMES,
             readme::NAMES
         )
@@ -533,6 +538,7 @@ fn main() -> Result<()> {
         "check-copy" => checks::copy::run(&root.join("crates/ainc-mac")),
         "check-names" => check_names(&root),
         "check-layout" => check_layout(&root),
+        "prepare-sqlx" => checks::sqlx::prepare(&root),
         "check-commit-msg" => checks::commit_msg::run(&args.collect::<Vec<_>>()),
         "vendor-pilot-gpui" => vendor_pilot_gpui::cli(&args.collect::<Vec<_>>(), &root),
         "generate" => generate(&root, args.collect()),

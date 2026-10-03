@@ -83,8 +83,15 @@ Planned: `#[tool]` names move to `turnkeel.*` (S8); one shared daemon test fixtu
    records use text UUIDs. Add a Postgres test that exercises the new shape through the command
    handler, not raw SQL.
 
-Planned: `query_as!` with offline data and `cargo sqlx prepare --check` (S12); `state` columns
-migrate to `status` on contact (S15).
+4. Daemon SQL is `sqlx::query!`/`query_as!`/`query_scalar!`, checked against the migrations at
+   compile time from `.sqlx/` (builds set `SQLX_OFFLINE`; no database needed). After changing a
+   query or a migration, run `cargo xtask prepare-sqlx` (needs `DATABASE_URL` and
+   `cargo install sqlx-cli --version 0.8.6 --locked --no-default-features --features rustls,postgres`)
+   and commit `.sqlx/`. `cargo xtask check` and `test` fail on a stale `.sqlx/`, and `check`
+   rejects runtime `sqlx::query(` in production code. Postgres enums stored as `text` bind as
+   `.as_str()` or `value as _` and read with a `"col: Type"` override.
+5. A `state` column becomes `status` only in a migration that already touches its table: add
+   `status`, copy, switch readers and writers, drop `state` in a later release.
 
 ## Add a CLI command
 

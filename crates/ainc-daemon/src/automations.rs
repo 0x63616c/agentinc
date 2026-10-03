@@ -551,12 +551,9 @@ impl Rules {
             )
             .execute(&self.pool)
             .await?;
-            sqlx::query!(
-                "SELECT pg_notify($1,'')",
-                coordination::AUTOMATIONS_APPLIED
-            )
-            .execute(&self.pool)
-            .await?;
+            sqlx::query!("SELECT pg_notify($1,'')", coordination::AUTOMATIONS_APPLIED)
+                .execute(&self.pool)
+                .await?;
         }
         let observed = self.runtime.recurring_state(&rule.id).await?;
         let mut tx = self.pool.begin().await?;

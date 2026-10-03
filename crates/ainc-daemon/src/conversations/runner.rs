@@ -182,9 +182,12 @@ async fn prepare(pool: &PgPool, id: i64) -> Result<(StoredSession, String, i64)>
     let parent = sqlx::query_scalar!("SELECT conversation_id FROM turns WHERE id=$1", id)
         .fetch_one(&mut *tx)
         .await?;
-    sqlx::query!("SELECT id FROM conversations WHERE id=$1 FOR UPDATE", parent)
-        .fetch_optional(&mut *tx)
-        .await?;
+    sqlx::query!(
+        "SELECT id FROM conversations WHERE id=$1 FOR UPDATE",
+        parent
+    )
+    .fetch_optional(&mut *tx)
+    .await?;
     // The Conversation is locked above; a turn never changes its Conversation.
     let conversation = parent;
     let turn = sqlx::query!(

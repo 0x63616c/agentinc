@@ -464,10 +464,7 @@ mod tests {
             },
         )
         .await;
-        select_definition!("")
-            .fetch_one(pool)
-            .await
-            .unwrap()
+        select_definition!("").fetch_one(pool).await.unwrap()
     }
 
     #[sqlx::test]

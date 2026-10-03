@@ -42,6 +42,15 @@ jobs:
         with:
           # Pinned so `cargo xtask check` runs taplo here instead of skipping it.
           tool: cargo-nextest,taplo@0.10.0
+      # `cargo xtask check` and `test` prove .sqlx/ current with `cargo sqlx prepare --check`.
+      - name: Cache sqlx-cli
+        id: sqlx-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-sqlx
+          key: sqlx-cli-0.8.6-${{ runner.os }}
+      - if: steps.sqlx-cli.outputs.cache-hit != 'true'
+        run: cargo install sqlx-cli --version 0.8.6 --locked --no-default-features --features rustls,postgres
       - if: matrix.check == 'check'
         run: cargo xtask check --profile ci
       - if: matrix.check == 'test'
