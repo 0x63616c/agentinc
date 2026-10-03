@@ -66,14 +66,18 @@ pub fn toggled(on: bool) -> accesskit::Toggled {
     }
 }
 
-/// Common focus, activation and disabled contract; callers own layout and looks.
-pub fn button_base(spec: ButtonSpec) -> Stateful<Div> {
+fn author_id(id: &ElementId) -> Option<SharedString> {
     // Only authored names/business keys become public IDs, never allocation IDs.
-    let author_id = match &spec.id {
+    match id {
         ElementId::Name(name) => Some(name.clone()),
         ElementId::NamedInteger(name, key) => Some(format!("{name}.{key}").into()),
         _ => None,
-    };
+    }
+}
+
+/// Common focus, activation and disabled contract; callers own layout and looks.
+pub fn button_base(spec: ButtonSpec) -> Stateful<Div> {
+    let author_id = author_id(&spec.id);
     // The same authored id names the control for accessibility and for tests.
     let selector = author_id.clone();
     row()
@@ -237,6 +241,8 @@ impl Button {
     pub fn destructive(self) -> Self {
         self.kind(ButtonKind::Destructive)
     }
+    /// Add/create actions put their + after the label; other icons lead it.
+    /// Icon-only controls remain centered squares.
     pub fn icon(mut self, name: &'static str) -> Self {
         self.icon = Some(name);
         self
@@ -329,6 +335,19 @@ impl Button {
             None => blend(look.text, look.text_hover, progress),
         };
         let filled = matches!(kind, ButtonKind::Primary | ButtonKind::Destructive);
+        let selector = author_id(&id);
+        let button_icon = icon_name.map(|name| {
+            icon(name, size.icon())
+                .text_color(text_color)
+                .when_some(selector.clone(), |s, selector| {
+                    s.debug_selector(move || format!("{selector}.icon"))
+                })
+        });
+        let (leading_icon, trailing_icon) = if icon_name == Some("plus") && !icon_only {
+            (None, button_icon)
+        } else {
+            (button_icon, None)
+        };
         action_button(
             ButtonSpec {
                 id,
@@ -364,17 +383,19 @@ impl Button {
                     .on_hover(on_hover)
                     .when_some(focus, |s, focus| s.track_focus(&focus))
                     .when_some(leading, |s, leading| s.child(leading))
-                    .when_some(icon_name, |s, name| {
-                        s.child(icon(name, size.icon()).text_color(text_color))
-                    })
+                    .when_some(leading_icon, |s, icon| s.child(icon))
                     .when(!icon_only, |s| {
                         s.child(
                             div()
+                                .when_some(selector, |s, selector| {
+                                    s.debug_selector(move || format!("{selector}.label"))
+                                })
                                 .when(align_start, |s| s.flex_1().min_w_0().truncate())
                                 .when(!align_start, |s| s.whitespace_nowrap())
                                 .child(label),
                         )
                     })
+                    .when_some(trailing_icon, |s, icon| s.child(icon))
                     .when_some(trailing, |s, trailing| s.child(trailing))
             },
             action,
