@@ -357,6 +357,9 @@ fn generate(root: &Path, check: bool) -> Result<()> {
         license.remove("identifier"); // OpenAPI 3.1 field; name remains for 3.0.3.
     }
     spec["openapi"] = "3.0.3".into();
+    // Workspace feature unification can enable serde_json's preserve_order.
+    // Generated output must stay canonical regardless of that dependency feature.
+    spec.sort_all_objects();
     let spec_text = format!("{}\n", serde_json::to_string_pretty(&spec)?);
     let parsed: openapiv3::OpenAPI = serde_json::from_value(spec)?;
     let mut settings = GenerationSettings::default();
