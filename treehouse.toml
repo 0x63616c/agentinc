@@ -1,4 +1,4 @@
-max_trees = 4
+max_trees = 8
 root = ""
 
 # Worktree root directory (relative to repo root or absolute path).
