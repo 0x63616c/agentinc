@@ -53,6 +53,7 @@ jobs:
           COMMIT: ${{ inputs.commit || github.sha }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          TEST_RELEASE: ${{ inputs.test == true }}
           CARGO_INCREMENTAL: "0"
         run: |
           test "$(git rev-parse HEAD)" = "$COMMIT"
@@ -60,11 +61,17 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             # Every push retries main's version until it is published, so a failed run is not lost.
-            pending=$(cargo run --locked --quiet --profile ci -p ainc-xtask -- release-pending "$version")
-            echo "ready=$pending" >> "$GITHUB_OUTPUT"
+            ready=$(cargo run --locked --quiet --profile ci -p ainc-xtask -- release-pending "$version")
           else
-            echo 'ready=true' >> "$GITHUB_OUTPUT"
+            ready=true
           fi
+          # GitHub refuses (HTTP 403) to let this token create a release for a commit whose
+          # workflow files differ from main's, which failed 0.8.0 only after the hour-long build.
+          if [ "$ready" = true ] && [ "$TEST_RELEASE" != true ] && ! git diff --quiet "$COMMIT" origin/main -- .github/workflows; then
+            echo "::error::Workflow files at $COMMIT differ from main; release main's head instead."
+            exit 1
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
   native:
     needs: prepare
     if: needs.prepare.outputs.ready == 'true' && (github.event_name == 'push' || inputs.build != false)
