@@ -63,13 +63,15 @@ pub struct Pty {
 impl Pty {
     pub fn open(rows: u16, cols: u16) -> anyhow::Result<Self> {
         let (mut master, mut slave) = (-1, -1);
-        let mut size = libc::winsize {
+        let size = libc::winsize {
             ws_row: rows,
             ws_col: cols,
             ws_xpixel: 0,
             ws_ypixel: 0,
         };
         // macOS takes the size by mutable pointer, Linux by const pointer.
+        #[cfg(target_os = "macos")]
+        let mut size = size;
         #[cfg(target_os = "macos")]
         let size_ptr = &mut size as *mut libc::winsize;
         #[cfg(not(target_os = "macos"))]
@@ -156,7 +158,7 @@ impl Stop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Read;
+    use std::io::{BufRead, BufReader, Read};
     use std::process::Stdio;
 
     /// A helper the child started shares its group, so killing the group ends it too: the pipe
@@ -165,13 +167,18 @@ mod tests {
     fn killing_a_group_takes_its_helpers_with_it() {
         let mut command = StdCommand::new("sh");
         command
-            .args(["-c", "sleep 600 & wait"])
+            .args(["-c", "cat <&0 & printf 'ready\\n'; wait"])
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped());
         lead_group(&mut command);
         let mut child = command.spawn().unwrap();
-        let mut output = child.stdout.take().unwrap();
+        let mut output = BufReader::new(child.stdout.take().unwrap());
         let group = Group::of(Some(child.id())).unwrap();
-        group.kill();
+        let guard = group.kill_on_drop();
+        let mut ready = String::new();
+        output.read_line(&mut ready).unwrap();
+        assert_eq!(ready, "ready\n");
+        drop(guard);
         let mut rest = Vec::new();
         output.read_to_end(&mut rest).unwrap();
         child.wait().unwrap();
@@ -186,8 +193,13 @@ mod tests {
         runtime.block_on(async {
             let pty = Pty::open(24, 80).unwrap();
             let mut command = tokio::process::Command::new("sh");
-            command.args(["-c", "sleep 600"]);
+            command.args(["-c", "printf 'ready\\n'; exec cat"]);
             let (mut child, group, master) = pty.spawn(&mut command).unwrap();
+            let mut ready = String::new();
+            BufReader::new(master.try_clone().unwrap())
+                .read_line(&mut ready)
+                .unwrap();
+            assert_eq!(ready.trim(), "ready");
             assert_eq!(Group::of(child.id()), Some(group));
             group.hangup();
             let status = child.wait().await.unwrap();

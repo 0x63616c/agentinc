@@ -188,13 +188,13 @@ impl Smoke {
             "daemon is not ready"
         );
         self.request(
-            "/v1/commands",
+            "/v1/conversations/commands",
             Some(&json!({
                 "operation_id": uuid::Uuid::new_v4().to_string(),
                 "command": {"kind": "create_conversation"},
             })),
         )?;
-        let mut first = self.request("/v1/state", None)?;
+        let mut first = self.request("/v1/conversations", None)?;
         println!(
             "Fresh bundled runtime ready{}",
             if self.blocked_signals {
@@ -256,7 +256,7 @@ impl Smoke {
                     "--nocapture",
                 ],
             )?;
-            first = self.request("/v1/state", None)?;
+            first = self.request("/v1/conversations", None)?;
         }
         self.drained(child.take().unwrap())?;
         ensure!(
@@ -265,7 +265,7 @@ impl Smoke {
         );
         *child = Some(self.start()?);
         ensure!(
-            self.request("/v1/state", None)? == first,
+            self.request("/v1/conversations", None)? == first,
             "state changed across restart"
         );
         println!("Restart retained state; runtime recovered on fresh ports");
@@ -276,7 +276,7 @@ impl Smoke {
         killed.child.wait_timeout(Duration::from_secs(30))?;
         *child = Some(self.start()?);
         ensure!(
-            self.request("/v1/state", None)? == first,
+            self.request("/v1/conversations", None)? == first,
             "state changed after hard kill"
         );
         self.drained(child.take().unwrap())?;

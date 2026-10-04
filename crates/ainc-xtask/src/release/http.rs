@@ -138,7 +138,7 @@ mod tests {
         let (base, seen) = once(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
         let headers = [("Authorization", "Bearer t".to_string())];
         let body = request(
-            &format!("{base}/v1/state"),
+            &format!("{base}/v1/conversations"),
             "POST",
             &headers,
             Some(b"{}"),
@@ -147,7 +147,7 @@ mod tests {
         .unwrap();
         assert_eq!(body, b"{}");
         let seen = seen.join().unwrap();
-        assert!(seen.starts_with("POST /v1/state HTTP/1.1"));
+        assert!(seen.starts_with("POST /v1/conversations HTTP/1.1"));
         assert!(seen.contains("Authorization: Bearer t"));
     }
 

@@ -26,8 +26,8 @@ work package has landed. Vocabulary is [CONTEXT.md](../CONTEXT.md).
    schema from the OpenAPI `TicketCommand` schema; a new resource needs its own `CommandFamily` impl there (the
    `CommandTool` and `ReadTool` come with it), and a CLI group (see "Add a CLI command").
 
-`/v1/state` and `/v1/commands` are deprecated for `/v1/conversations` and `/v1/tickets`; the Mac app still
-uses them and they go in a later release.
+The retired `/v1/state` and `/v1/commands` adapters are gone. Use the resource-specific
+`/v1/conversations` and `/v1/tickets` APIs and their command endpoints.
 
 ## Add a page
 
