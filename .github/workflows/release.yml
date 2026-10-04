@@ -296,7 +296,8 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64, agentinc-release]
     timeout-minutes: 60
     permissions:
-      contents: read
+      # GitHub requires write access to read unpublished release draft assets.
+      contents: write
     env:
       DEVELOPER_DIR: /Applications/Xcode-27.0.app/Contents/Developer
     steps:
