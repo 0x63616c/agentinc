@@ -141,6 +141,8 @@ dependencies = [
  "axum",
  "clap",
  "clap_complete",
+ "futures",
+ "libc",
  "reqwest",
  "rustls",
  "schemars 0.8.22",
@@ -149,6 +151,7 @@ dependencies = [
  "sqlx",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
  "uuid",
 ]
 

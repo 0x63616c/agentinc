@@ -37,7 +37,10 @@ clap = { version = "4", features = ["derive", "string"] }
 serde_json.workspace = true
 schemars = "0.8"
 serde.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["io-std", "io-util", "signal"] }
+tokio-tungstenite = "0.29"
+futures.workspace = true
+libc = "0.2"
 
 [dev-dependencies]
 ainc-daemon = { path = "../ainc-daemon" }

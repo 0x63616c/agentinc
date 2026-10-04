@@ -1,6 +1,7 @@
 #![allow(clippy::disallowed_macros)] // user-facing output
 #[allow(unused_variables, dead_code, clippy::clone_on_copy)] // Progenitor output.
 mod generated;
+mod terminal;
 
 use ainc_client::{Client, Error, ResponseValue};
 use anyhow::{Context, Result, bail, ensure};
@@ -96,7 +97,7 @@ fn discovery_path() -> PathBuf {
         dev_discovery(),
     )
 }
-fn configuration() -> Result<(String, PathBuf)> {
+pub(crate) fn configuration() -> Result<(String, PathBuf)> {
     let discovery = discovery_path();
     resolve_configuration(
         env::var("AINC_API_URL").ok(),
@@ -216,6 +217,21 @@ fn command_tree(spec: &Value) -> Command {
             .or_insert_with(|| Command::new(group).subcommand_required(true));
         *entry = entry.clone().subcommand(command);
     }
+    if let Some(terminals) = groups.get_mut("terminals") {
+        *terminals = terminals.clone().subcommand(
+            Command::new("attach")
+                .about(
+                    "Attach this terminal to a daemon-owned Terminal, reconnecting until it ends",
+                )
+                .arg(Arg::new("id").required(true).value_name("UUID"))
+                .arg(
+                    Arg::new("existing")
+                        .long("existing")
+                        .action(ArgAction::SetTrue)
+                        .help("The Terminal already exists; do not create it first"),
+                ),
+        );
+    }
     for group in ["tickets", "automations", "conversations"] {
         if let Some(entry) = groups.get_mut(group) {
             for (kind, fields) in variants(spec, group) {
@@ -321,6 +337,13 @@ async fn main() -> Result<()> {
     }
     if group == "install-cli" {
         return install_cli();
+    }
+    if group == "terminals"
+        && let Some(("attach", attach)) = args.subcommand()
+    {
+        // No readiness probe: the viewer waits for a daemon that is still starting.
+        let id = attach.get_one::<String>("id").expect("required").parse()?;
+        return terminal::attach(id, attach.get_flag("existing")).await;
     }
     let (url, token_path) = configuration()?;
     let token = fs::read_to_string(&token_path).with_context(|| {

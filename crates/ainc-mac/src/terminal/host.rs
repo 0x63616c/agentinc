@@ -100,7 +100,7 @@ mod macos {
             };
             let home = std::env::var_os("HOME").context("HOME is missing")?;
             let home = CString::new(home.to_string_lossy().as_bytes()).context("invalid HOME")?;
-            let helper = std::env::current_exe()?.with_file_name("aincd");
+            let helper = std::env::current_exe()?.with_file_name("ainc");
             let helper = CString::new(helper.to_string_lossy().as_bytes())?;
             let layout_name = if workspace_id == "local" {
                 "terminal-layout.json".to_owned()

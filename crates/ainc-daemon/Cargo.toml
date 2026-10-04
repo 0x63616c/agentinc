@@ -57,14 +57,7 @@ sqlx = { version = "0.8", features = [
   "json",
   "macros",
 ] }
-tokio = { workspace = true, features = [
-  "net",
-  "process",
-  "io-util",
-  "io-std",
-  "signal",
-] }
-tokio-tungstenite = "0.29"
+tokio = { workspace = true, features = ["net", "process", "io-util", "signal"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid.workspace = true
@@ -80,3 +73,4 @@ tower-http = { version = "0.6", features = ["set-header", "trace"] }
 turnkeel = { workspace = true, features = ["testing"] }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
+tokio-tungstenite = "0.29"

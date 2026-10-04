@@ -29,7 +29,7 @@ else
   crates/ainc-mac/scripts/stage-ghostty.sh "$profile" "$bundle"
   printf '%s\n' "$inputs" > "$stamp"
 fi
-codesign --force --sign - "$bundle/Contents/MacOS/aincd"
+codesign --force --sign - "$bundle/Contents/MacOS/aincd" "$bundle/Contents/MacOS/ainc"
 cp crates/ainc-mac/assets/AppIconDev.icns "$bundle/Contents/Resources/AppIcon.icns"
 # The product version is the one `[workspace.package]` line in the root Cargo.toml.
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
