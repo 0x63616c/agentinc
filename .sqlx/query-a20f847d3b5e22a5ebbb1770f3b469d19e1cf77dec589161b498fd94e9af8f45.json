@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT ticket_id,state FROM occurrences WHERE id=$1",
+  "query": "SELECT ticket_id,status FROM occurrences WHERE id=$1",
   "describe": {
     "columns": [
       {
@@ -10,7 +10,7 @@
       },
       {
         "ordinal": 1,
-        "name": "state",
+        "name": "status",
         "type_info": "Text"
       }
     ],
@@ -24,5 +24,5 @@
       false
     ]
   },
-  "hash": "0d43b986dc3e92084fb3eefa735310bbc53771e470a1521f6029b13182a1b294"
+  "hash": "a20f847d3b5e22a5ebbb1770f3b469d19e1cf77dec589161b498fd94e9af8f45"
 }

@@ -121,7 +121,7 @@ pub(crate) async fn snapshot(
     // An Occurrence shows the run of its Ticket's current generation, whichever that is.
     let occurrences = sqlx::query_as!(
         OccurrenceView,
-        r#"SELECT o.id,o.automation_id,o.ticket_id,CASE WHEN r.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM worker_health WHERE id='tickets' AND last_seen > extract(epoch FROM clock_timestamp())::bigint-5) THEN 'worker_unavailable' ELSE COALESCE(r.state,o.state) END AS "state!",o.detail,o.scheduled_at FROM occurrences o JOIN automations a ON a.id=o.automation_id LEFT JOIN tickets t ON t.id=o.ticket_id LEFT JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE a.workspace_id=$1 ORDER BY o.scheduled_at DESC,o.id"#,
+        r#"SELECT o.id,o.automation_id,o.ticket_id,CASE WHEN r.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM worker_health WHERE id='tickets' AND last_seen > extract(epoch FROM clock_timestamp())::bigint-5) THEN 'worker_unavailable' ELSE COALESCE(r.state,o.status) END AS "state!",o.detail,o.scheduled_at FROM occurrences o JOIN automations a ON a.id=o.automation_id LEFT JOIN tickets t ON t.id=o.ticket_id LEFT JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE a.workspace_id=$1 ORDER BY o.scheduled_at DESC,o.id"#,
         actor.workspace
     )
     .fetch_all(&mut *tx)
@@ -357,13 +357,13 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
     .execute(&mut *tx)
     .await?;
     let current = sqlx::query!(
-        "SELECT ticket_id,state FROM occurrences WHERE id=$1",
+        "SELECT ticket_id,status FROM occurrences WHERE id=$1",
         occurrence.id
     )
     .fetch_one(&mut *tx)
     .await?;
     let mut ticket = current.ticket_id;
-    if ticket.is_none() && current.state == "waiting_for_worker" {
+    if ticket.is_none() && current.status == "waiting_for_worker" {
         let overlap = sqlx::query_scalar!(
             r#"SELECT EXISTS(SELECT 1 FROM occurrences o JOIN ticket_runs r ON r.ticket_id=o.ticket_id WHERE o.automation_id=$1 AND r.state IN ('queued','running')) AS "overlap!""#,
             id
@@ -381,7 +381,7 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
         );
         if let Err(refusal) = admission {
             sqlx::query!(
-                "UPDATE occurrences SET state=$2 WHERE id=$1",
+                "UPDATE occurrences SET status=$2 WHERE id=$1",
                 occurrence.id,
                 refusal.as_str()
             )
@@ -407,7 +407,7 @@ async fn apply_occurrence(pool: &PgPool, occurrence: Occurrence) -> anyhow::Resu
             .map_err(|e| anyhow::anyhow!("Ticket proposal refused: {e}"))?
             .result_id;
             sqlx::query!(
-                "UPDATE occurrences SET ticket_id=$2,state='queued' WHERE id=$1",
+                "UPDATE occurrences SET ticket_id=$2,status='queued' WHERE id=$1",
                 occurrence.id,
                 ticket
             )

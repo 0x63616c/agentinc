@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT o.id,o.automation_id,o.ticket_id,CASE WHEN r.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM worker_health WHERE id='tickets' AND last_seen > extract(epoch FROM clock_timestamp())::bigint-5) THEN 'worker_unavailable' ELSE COALESCE(r.state,o.state) END AS \"state!\",o.detail,o.scheduled_at FROM occurrences o JOIN automations a ON a.id=o.automation_id LEFT JOIN tickets t ON t.id=o.ticket_id LEFT JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE a.workspace_id=$1 ORDER BY o.scheduled_at DESC,o.id",
+  "query": "SELECT o.id,o.automation_id,o.ticket_id,CASE WHEN r.state IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM worker_health WHERE id='tickets' AND last_seen > extract(epoch FROM clock_timestamp())::bigint-5) THEN 'worker_unavailable' ELSE COALESCE(r.state,o.status) END AS \"state!\",o.detail,o.scheduled_at FROM occurrences o JOIN automations a ON a.id=o.automation_id LEFT JOIN tickets t ON t.id=o.ticket_id LEFT JOIN ticket_runs r ON r.ticket_id=t.id AND r.generation=t.generation WHERE a.workspace_id=$1 ORDER BY o.scheduled_at DESC,o.id",
   "describe": {
     "columns": [
       {
@@ -48,5 +48,5 @@
       false
     ]
   },
-  "hash": "40a778fc6e54b1dea9fdad57995ccfb98d77ad90ad26987371826f6f9dd67fb8"
+  "hash": "d3fbc2b89ee458a1c17516241ebbc873ff954a5880d9fee9532cff8ab80b0ce0"
 }

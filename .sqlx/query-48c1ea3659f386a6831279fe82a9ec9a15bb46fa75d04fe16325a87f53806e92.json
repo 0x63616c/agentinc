@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE occurrences SET ticket_id=$2,state='queued' WHERE id=$1",
+  "query": "UPDATE occurrences SET ticket_id=$2,status='queued' WHERE id=$1",
   "describe": {
     "columns": [],
     "parameters": {
@@ -11,5 +11,5 @@
     },
     "nullable": []
   },
-  "hash": "c7bdb2470b27eb1f018bf25b5fc048b5d7dfe767b0b2ab2f683d68874a23d821"
+  "hash": "48c1ea3659f386a6831279fe82a9ec9a15bb46fa75d04fe16325a87f53806e92"
 }

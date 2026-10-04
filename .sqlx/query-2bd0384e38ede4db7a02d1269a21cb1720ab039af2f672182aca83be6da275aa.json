@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE occurrences SET state=$2 WHERE id=$1",
+  "query": "UPDATE occurrences SET status=$2 WHERE id=$1",
   "describe": {
     "columns": [],
     "parameters": {
@@ -11,5 +11,5 @@
     },
     "nullable": []
   },
-  "hash": "1f69f5e9701139b98bd34533a44dc8384d00aeda98a6223ff8c75ab8efb1988e"
+  "hash": "2bd0384e38ede4db7a02d1269a21cb1720ab039af2f672182aca83be6da275aa"
 }

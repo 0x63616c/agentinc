@@ -90,8 +90,12 @@ Planned: `#[tool]` names move to `turnkeel.*` (S8); one shared daemon test fixtu
    and commit `.sqlx/`. `cargo xtask check` and `test` fail on a stale `.sqlx/`, and `check`
    rejects runtime `sqlx::query(` in production code. Postgres enums stored as `text` bind as
    `.as_str()` or `value as _` and read with a `"col: Type"` override.
-5. A `state` column becomes `status` only in a migration that already touches its table: add
-   `status`, copy, switch readers and writers, drop `state` in a later release.
+5. A `state` column becomes `status` only in a migration that already touches its table. Expand:
+   add `status`, backfill it, and add a trigger that keeps the two equal whichever an older
+   daemon or a current one writes (`20261004010000_occurrence_status.sql` is the pattern); switch
+   readers and writers. Contract, in a later release inside the compatibility window: drop the
+   trigger, its function and `state`. `occurrences.state` is at the expand step (its API field
+   `OccurrenceView.state` renames with the contract).
 
 ## Add a CLI command
 
