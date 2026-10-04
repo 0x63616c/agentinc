@@ -168,6 +168,9 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   command exposed duplicate native IDs; palette rows now include their group in
   their identity, and real native acceptance covers reopening without a crash.
   Updated stale pilot selectors and development updater expectations for Sparkle.
+  Final shortcut audit also exercised Cmd+T, Shift+Cmd+W/[ / ]/U on the actual
+  Ghostty NSView and asserted the C callbacks `-5`…`-9`, beyond decoder-only tests;
+  both native Swift tests passed again.
 - [x] Build bundled app and confirm an actual isolated window before releasing.
   Visible updater/live Sparkle fixtures belong on the dedicated release Mac,
   never Calum's active desktop. Test the package, not just Cargo binaries.
@@ -186,6 +189,8 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   `main` by fast-forward, preserving the independent updater commits. CI run
   `37166504918`; explicit Distribution `test=true,build=true` run `37166520760`.
   Both are being watched. Final full-test/rendered target measurement: 11 GB.
+  Authorized `just release minor` prepared `729a9ac` (0.8.0), including generated
+  API version metadata. It is held locally until the Distribution dry-run finishes.
 - [ ] Write docs/releases/0.8.0.md (source main already at 0.7.0), run authorized
   `just release minor` on clean main, and push version commit.
 - [ ] Watch Distribution prepare/native/distribute/upgrade/publish to success;

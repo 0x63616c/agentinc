@@ -9,6 +9,12 @@ private final class FocusableView: NSView {
 
 private final class CommandObservations {
     var values: [Bool] = []
+    var shortcuts: [Int32] = []
+}
+
+private func recordShortcut(_ context: UnsafeMutableRawPointer?, _ command: Int32) {
+    guard let context else { return }
+    Unmanaged<CommandObservations>.fromOpaque(context).takeUnretainedValue().shortcuts.append(command)
 }
 
 private func recordCommand(_ context: UnsafeMutableRawPointer?, _ held: Bool) {
@@ -30,15 +36,16 @@ final class ShortcutTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
                               styleMask: [.titled], backing: .buffered, defer: false)
         let parent = try XCTUnwrap(window.contentView)
+        let observations = CommandObservations()
         let pointer = NSHomeDirectory().withCString { home in
             "background = #171717".withCString { colors in
                 agentincGhosttyCreate(Unmanaged.passUnretained(parent).toOpaque(), home,
-                                       nil, nil, colors, 0x333333, nil, nil)
+                                       nil, nil, colors, 0x333333, recordShortcut,
+                                       Unmanaged.passUnretained(observations).toOpaque())
             }
         }
         let host = try XCTUnwrap(pointer)
         defer { agentincGhosttyDestroy(host) }
-        let observations = CommandObservations()
         agentincGhosttySetCommandCallback(host, recordCommand,
             Unmanaged.passUnretained(observations).toOpaque())
         agentincGhosttySetFrame(host, 0, 0, 400, 300, true, true)
@@ -63,6 +70,14 @@ final class ShortcutTests: XCTestCase {
         XCTAssertEqual(observations.values.last, true)
         XCTAssertFalse(pane.performKeyEquivalent(with: key("x", modifiers: [], code: 7)))
         XCTAssertEqual(observations.values.last, false)
+
+        // Exercise the actual Ghostty NSView and C callback, not only the decoder.
+        XCTAssertTrue(pane.performKeyEquivalent(with: key("t", modifiers: .command, code: 17)))
+        for (character, code) in [("w", UInt16(13)), ("{", 33), ("}", 30), ("u", 32)] {
+            XCTAssertTrue(pane.performKeyEquivalent(with:
+                key(character, modifiers: [.command, .shift], code: code)))
+        }
+        XCTAssertEqual(observations.shortcuts, [5, -5, -6, -7, -8, -9])
 
         agentincGhosttySetFrame(host, 0, 0, 400, 300, false, false)
         let count = observations.values.count
