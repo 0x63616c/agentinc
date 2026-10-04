@@ -21,7 +21,7 @@ impl Shell {
     }
     pub fn fixture_state(&self) -> (Route, Option<Overlay>, bool) {
         (
-            self.ui_state.current(),
+            self.ui_state.current().page(),
             self.overlays.borrow().active(),
             false,
         )

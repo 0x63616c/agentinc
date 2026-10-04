@@ -490,6 +490,7 @@ static BOOL sendBytes(int socket, const void *bytes, size_t remaining) {
 @property(copy) void (^continuation)(void);
 @property(copy) void (^retryTermination)(void);
 @property BOOL ready;
+@property BOOL available;
 @property BOOL installArmed;
 @property BOOL preparing;
 @property BOOL prepared;
@@ -874,6 +875,7 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
 - (void)showUpdateFoundWithAppcastItem:(SUAppcastItem *)item state:(SPUUserUpdateState *)state reply:(void (^)(SPUUserUpdateChoice))reply {
     self.cancellation = nil;
     self.item = item;
+    self.available = YES;
     self.cycleResolved = YES;
     self.cacheFailed = NO;
     self.choice = reply;
@@ -1087,6 +1089,7 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
             choice = SPUUserUpdateChoiceDismiss;
         }
         if (choice == SPUUserUpdateChoiceSkip) {
+            self.available = NO;
             [self.download cancel];
             self.download = nil;
             self.cancellation = nil;
@@ -1162,6 +1165,7 @@ const char *ainc_restore_relaunch_profile(const char *executableVersion) {
 }
 - (void)updaterDidNotFindUpdate:(SPUUpdater *)updater error:(NSError *)error {
     self.item = nil;
+    self.available = NO;
     self.cycleResolved = YES;
 }
 - (NSString *)feedURLStringForUpdater:(SPUUpdater *)updater {
@@ -1304,7 +1308,8 @@ unsigned int ainc_sparkle_state(void) {
         | (sparkle.updater.updateCheckInterval > 86400 ? 4 : 0)
         | (sparkle.ready && [[sparkle.defaults objectForKey:@"AINCUpdateRemindAfter"] timeIntervalSinceNow] <= 0 ? 8 : 0)
         | (sparkle.updater.canCheckForUpdates || sparkle.choice || sparkle.cacheFailed || sparkle.preparationFailed || sparkle.download ? 16 : 0)
-        | (sparkle.started ? 32 : 0);
+        | (sparkle.started ? 32 : 0)
+        | (sparkle.available ? 64 : 0);
 }
 void ainc_sparkle_setting(int setting, bool enabled) {
     if (setting == 0) sparkle.updater.automaticallyChecksForUpdates = enabled;

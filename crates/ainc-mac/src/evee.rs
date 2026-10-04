@@ -168,9 +168,11 @@ impl AssistantPage {
     pub(crate) fn reload_snapshot(&mut self) {
         let snapshot = self.daemon.product();
         self.conversations = snapshot.conversations;
-        if self
-            .conversation
-            .is_none_or(|id| !self.conversations.iter().any(|c| c.id == id))
+        if self.conversation.is_none()
+            || (!self.conversation_open
+                && self
+                    .conversation
+                    .is_some_and(|id| !self.conversations.iter().any(|c| c.id == id)))
         {
             self.conversation = snapshot
                 .settings
@@ -214,6 +216,7 @@ impl AssistantPage {
             move |this, _, cx| {
                 this.overlays.close();
                 this.show_conversation(id, cx);
+                cx.emit(Destination::Conversation(id));
             },
             cx,
         );
@@ -225,7 +228,10 @@ impl AssistantPage {
                 db.send(Command::Select { id })?;
                 Ok(id)
             },
-            |this, id, cx| this.show_conversation(id, cx),
+            |this, id, cx| {
+                this.show_conversation(id, cx);
+                cx.emit(Destination::Conversation(id));
+            },
             cx,
         );
     }
@@ -249,10 +255,11 @@ impl AssistantPage {
         if let Some(Dialog::Delete(id)) = self.overlays.active() {
             self.mutate(
                 move |db| Ok(db.send(Command::Delete { id })?),
-                |this, _, _| {
+                |this, _, cx| {
                     this.overlays.close();
                     this.form_error = None;
                     this.conversation_open = false;
+                    cx.emit(Destination::Page(Route::Assistant));
                 },
                 cx,
             );
@@ -421,6 +428,7 @@ impl AssistantPage {
     }
     pub fn show_list(&mut self, cx: &mut Context<Self>) {
         self.conversation_open = false;
+        cx.emit(Destination::Page(Route::Assistant));
         cx.notify();
     }
     #[cfg(any(test, feature = "fixtures"))]
@@ -711,8 +719,20 @@ impl Page for AssistantPage {
         drafts.restore_text("rename_input", &self.rename_input, cx);
     }
     fn open(&mut self, to: &Destination, _: &mut Window, cx: &mut Context<Self>) {
-        if let Destination::Conversation(id) = to {
-            self.open_conversation(*id, cx);
+        match to {
+            Destination::Conversation(id) => {
+                if self.conversation != Some(*id) || !self.conversation_open {
+                    // History and tab restoration are local navigation, not a
+                    // replay of the daemon's Select command.
+                    self.show_conversation(*id, cx);
+                }
+            }
+            Destination::Page(Route::Assistant) => {
+                self.conversation_open = false;
+                self.focus_composer = false;
+                cx.notify();
+            }
+            _ => {}
         }
     }
     fn shown(&mut self, shown: bool, cx: &mut Context<Self>) {
@@ -724,7 +744,10 @@ impl Page for AssistantPage {
 
 impl Render for AssistantPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if std::mem::take(&mut self.focus_composer) {
+        if self.conversation_open
+            && self.signed_in_as.is_some()
+            && std::mem::take(&mut self.focus_composer)
+        {
             let focus = self.input.focus_handle(cx);
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
@@ -931,6 +954,37 @@ mod tests {
             cx.new(|cx| AssistantPage::new(daemon.clone(), sync, Rc::new(RefCell::default()), cx));
         cx.run_until_parked();
         (daemon, clock, page)
+    }
+
+    #[gpui::test]
+    fn restored_detail_waits_for_its_snapshot_without_selecting_another_record(
+        cx: &mut TestAppContext,
+    ) {
+        let (daemon, clock, page) = page(cx);
+        page.update(cx, |page, cx| page.show_conversation(8, cx));
+        page.read_with(cx, |page, _| {
+            assert_eq!(page.conversation, Some(8));
+            assert!(page.turns.is_empty());
+        });
+        daemon.memory().edit(|state| {
+            state.product.conversations.push(Conversation {
+                id: 8,
+                title: "Restored".into(),
+                snippet: String::new(),
+                updated_at: 1,
+            })
+        });
+        clock.tick();
+        cx.run_until_parked();
+        page.read_with(cx, |page, _| {
+            assert_eq!(page.conversation, Some(8));
+            assert!(page.conversation_open);
+            assert!(
+                page.conversations
+                    .iter()
+                    .any(|conversation| conversation.id == 8)
+            );
+        });
     }
 
     #[gpui::test]

@@ -1571,7 +1571,8 @@ fn capture_tab_matrix(suite: &mut Suite, temporary: &std::path::Path) -> Result<
                 state.navigate(Route::Assistant);
                 state.save(&path)?;
                 suite.cx.update(|cx| {
-                    let updates = cx.new(|_| ainc_mac::updates::UpdateView::fixture_ready(true));
+                    let updates =
+                        cx.new(|_| ainc_mac::updates::UpdateView::fixture_available(expanded));
                     cx.set_global(ainc_mac::updates::Updates(updates));
                 });
                 suite.window = suite
@@ -1652,6 +1653,26 @@ fn capture_tab_matrix(suite: &mut Suite, temporary: &std::path::Path) -> Result<
                     hovered.save(suite.output.join(format!("{name}-{position}.png")))?;
                     suite.count += 1;
                 }
+                suite.window.update(&mut suite.cx, |shell, _, cx| {
+                    shell.fixture_ticket_detail(cx)
+                })?;
+                suite.cx.run_until_parked();
+                suite
+                    .cx
+                    .update_window(suite.window.into(), |_, window, cx| {
+                        window.draw(cx).clear(cx)
+                    })?;
+                let tab = suite.bounds("tabs.17")?;
+                let close = suite.bounds("tabs.17.close")?;
+                ensure!(
+                    close.right() <= tab.right(),
+                    "{name}: long title must leave room for close"
+                );
+                suite
+                    .cx
+                    .capture_screenshot(suite.window.into())?
+                    .save(suite.output.join(format!("{name}-long-title.png")))?;
+                suite.count += 1;
                 suite.bounds("update-ready")?;
                 suite.click_selector("sidebar-profile")?;
                 suite

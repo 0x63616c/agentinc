@@ -380,6 +380,7 @@ impl Shell {
             grip_animation: None,
         };
         shell.set_profile(profile, cx);
+        shell.open_current_route(window, cx);
         shell.restore_update_drafts(cx);
         shell
     }
@@ -387,7 +388,7 @@ impl Shell {
     fn page(&self, route: Route) -> &PageHandle {
         self.pages
             .iter()
-            .find(|page| page.route() == route)
+            .find(|page| page.route() == route.page())
             .expect("every catalogued route has a page")
     }
     /// A page by type, for the few places that drive one directly.
@@ -535,10 +536,20 @@ impl Shell {
     fn go(&mut self, to: Destination, window: &mut Window, cx: &mut Context<Self>) {
         self.overlays.borrow_mut().dismiss(window, cx);
         self.ui_state.navigate(to.route());
+        self.tab_reveal = true;
         window.focus(&self.focus, cx);
+        let to = if to == Destination::NewTicket {
+            to
+        } else {
+            to.route().destination()
+        };
         for page in &self.pages {
             page.open(&to, window, cx);
         }
+    }
+    fn open_current_route(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let to = self.ui_state.current().destination();
+        self.page(to.route()).open(&to, window, cx);
     }
     pub(crate) fn dispatch(
         &mut self,
@@ -555,6 +566,16 @@ impl Shell {
         {
             return;
         }
+        let previous = self.ui_state.current();
+        let restores_route = matches!(
+            &control,
+            Control::NewTab
+                | Control::CloseTab(_)
+                | Control::SelectTab(_)
+                | Control::StepTab(_)
+                | Control::Back
+                | Control::Forward
+        );
         match control {
             Control::NewTab => {
                 self.ui_state.new_tab();
@@ -657,6 +678,10 @@ impl Shell {
                 self.overlays.borrow_mut().dismiss(window, cx);
             }
         }
+        if restores_route && previous != self.ui_state.current() {
+            self.open_current_route(window, cx);
+            self.tab_reveal = true;
+        }
         self.save(cx);
         window.refresh();
     }
@@ -745,7 +770,7 @@ impl Render for Shell {
             let focus = self.focus.clone();
             window.defer(cx, move |window, cx| window.focus(&focus, cx));
         }
-        let current = self.ui_state.current();
+        let current = self.ui_state.current().page();
         if self.shown != Some(current) {
             if let Some(previous) = self.shown {
                 self.page(previous).shown(false, cx);

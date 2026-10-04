@@ -342,6 +342,29 @@ fn restore_router(value: &serde_json::Value) -> Option<Router> {
 mod tests {
     use super::*;
     #[test]
+    fn detail_routes_restore_each_tabs_back_and_forward_history() {
+        let mut state = UiState::default();
+        state.navigate(Route::Tickets);
+        state.navigate(Route::Ticket(42));
+        state.navigate(Route::Ticket(43));
+        state.go(false);
+        state.new_tab();
+        state.navigate(Route::Conversation(7));
+        let mut restored = UiState::from_json(&serde_json::to_string(&state).unwrap());
+        assert_eq!(restored.current(), Route::Conversation(7));
+        restored.select_tab(0);
+        assert_eq!(restored.current(), Route::Ticket(42));
+        restored.go(true);
+        assert_eq!(restored.current(), Route::Ticket(43));
+        restored.go(false);
+        restored.go(false);
+        assert_eq!(restored.current(), Route::Tickets);
+        assert_eq!(
+            UiState::from_json(r#"{"router":{"current":"tickets","back":["evee"]}}"#).current(),
+            Route::Tickets
+        );
+    }
+    #[test]
     fn tabs_keep_independent_history_and_round_trip() {
         let mut state = UiState::default();
         state.navigate(Route::Tickets);
@@ -390,6 +413,28 @@ mod tests {
         assert!(!state.can_go(false));
         state.step_tab(false);
         assert_eq!(state.active_tab(), 0);
+    }
+
+    #[test]
+    fn closing_first_middle_last_and_inactive_tabs_keeps_the_expected_page() {
+        for (active, closed, expected) in [
+            (0, 0, Route::Agents),
+            (1, 1, Route::Settings),
+            (2, 2, Route::Agents),
+            (0, 2, Route::Tickets),
+            (2, 0, Route::Settings),
+        ] {
+            let mut state = UiState::default();
+            state.navigate(Route::Tickets);
+            state.new_tab();
+            state.navigate(Route::Agents);
+            state.new_tab();
+            state.navigate(Route::Settings);
+            state.select_tab(active);
+            state.close_tab(closed);
+            assert_eq!(state.current(), expected);
+            assert_eq!(state.tabs().len(), 2);
+        }
     }
 
     #[test]

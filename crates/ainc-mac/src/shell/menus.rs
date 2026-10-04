@@ -12,7 +12,7 @@ impl Shell {
         let update_ready = ui
             .cx
             .try_global::<crate::updates::Updates>()
-            .is_some_and(|updates| updates.0.read(ui.cx).is_ready());
+            .is_some_and(|updates| updates.0.read(ui.cx).is_available());
         // Place both menus in one anchored row. Independently anchored submenus
         // can flip back across their parent near the bottom/right window edge.
         let scale = self.appearance.get().font_size.scale().max(1.);

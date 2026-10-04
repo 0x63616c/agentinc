@@ -36,7 +36,7 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
 - [x] Tabs and their histories persist and restore safely from single-tab and
   older multi-tab files. Unknown/removed routes, invalid selection, empty files,
   closing first/last/active/inactive tabs and rapid repeated actions are covered.
-- [ ] Many tabs stay inside a bounded horizontal viewport. Active tabs reveal
+- [x] Many tabs stay inside a bounded horizontal viewport. Active tabs reveal
   on selection, opening, closing and resize. Scrolling works with trackpad and
   mouse wheel; right/left boundaries and rounded shoulders do not bleed, clip
   incorrectly, overlap page corners or push controls outside the window.
@@ -100,24 +100,34 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   four unused 0.3.2 framework packages from the lockfile; Tokio retains concurrent
   HTTP/runtime coordination, with test helpers dev-only. AccessKit resolves once
   at 0.24.1 for both app and GPUI. `cargo check --offline -p ainc-mac` passed.
-- [ ] **M-5, last:** Route::Ticket(id)/Conversation(id), detail-aware Back/Forward
+- [x] **M-5, last:** Route::Ticket(id)/Conversation(id), detail-aware Back/Forward
   and tab restoration, preserving legacy UI-state files.
+  113 Mac tests pass. Real click-to-detail, Back/Forward, switching tabs and
+  reopening preserve record ids; Conversation restoration waits for the matching
+  snapshot. Fixed focusing an absent signed-out composer. Rendered matrix extended
+  to long record titles: 211 Metal frames pass. Precise scroll assertions exposed
+  duplicate wheel handling; the strip now uses GPUI's single native scroll path,
+  with tests for both wheel/trackpad input and both hard boundaries.
 
 ## Build/SDK lane — all handoff items
 
-- [ ] **B-3:** engine/mod.rs and testing/mod.rs become sibling foo.rs; remove
+- [x] **B-3:** engine/mod.rs and testing/mod.rs become sibling foo.rs; remove
   their layout follow-up exceptions.
-- [ ] **B-4:** Merge Temporal-heavy Turnkeel integrations into one binary;
+- [x] **B-4:** Merge Temporal-heavy Turnkeel integrations into one binary;
   update recovery/effect worker self-reexec exact paths; recovery tests pass.
 - [ ] **B-5:** Remove release workflow's unnecessary libssl-dev,
   protobuf-compiler and macOS protoc download; prove via test=true Distribution.
 - [x] **B-6:** Install taplo-cli, format TOML and enforce installed taplo in CI.
   Worker `b89b721` integrated as `1573d17`; CI pins taplo 0.10.0.
-- [ ] **B-1:** Measure cold daemon build, workspace nextest --no-run and target
+- [x] **B-1:** Measure cold daemon build, workspace nextest --no-run and target
   size before/after hakari in a fresh lease. Adopt only with measured savings;
   report numbers even if rejected. If adopted: flat generated workspace-hack,
   pinned hakari, generated-file header and AGENTS note, check generation diff
   and manage-deps dry-run with fix command; just fix regenerates.
+  Rejected: daemon cold build 228→260 s wall / 922→1357 s CPU / 1.9→3.0 GB;
+  workspace no-run 408→310 s wall / 1952→1501 s CPU / 5.3→5.1 GB. Workspace
+  savings did not justify daemon regression or production test-support features.
+  Worker measured under high host load; see `docs/cohesion-plan.md` for caveats.
 - [ ] **B-2:** Measure target after full tests plus rendered run. Reduce below
   15 GB using measured contributors/profile/incremental improvements or provide
   a concrete explanation.
@@ -157,7 +167,19 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
 - Coordinator: `feat/tabs-cohesion-followups`, lease 12,
   ID `0e55267c7a52d7694616e7ddea5b152c`; owns Mac changes and integration.
 - Daemon Sonnet worker: lease 14, ID `f10cb12bcfb8769a74374f91a591b538`, D-1…D-7.
-- Build Sonnet worker: lease 13, ID `792fc3a472f5f3c43adf8e8820984fa5`, B-1…B-6.
+  First pass completed through `a91f5ef` (342 tests passed, 8 skipped); D4…D7
+  integration pending. Audit sent the worker back for exact singular `terminal`
+  CLI spelling, shared Ticket keys in CLI/tools, lifecycle `status` compatibility
+  on tables touched by the event-time migration, and mandatory SQL prepare in
+  local tests. It continues on the same lease/Postgres 54334.
+- Build Sonnet worker completed; lease 13 returned after integration. SHAs:
+  `d5ce2fd`→`3dc5835`, `f3e9193`→`b3befe2`, `b89b721`→`1573d17`,
+  `2e53ddc`→`f582c85`, `78fdcb9`→`aa25412`. Worker full test: 336 passed,
+  8 skipped, including all 37 SDK integration tests and recovery re-execs.
+  Fresh full-test target was 5.5 GB (3.6 GB with incremental disabled, rejected
+  for dev-loop cost). Integrated rendered/full-test size and Distribution dry-run
+  remain coordinator gates. Use lease-local targets: shared xtask artifacts can
+  otherwise race across leases.
 - Disk audit: 43 GiB free, main target 27 GB. Normal coordinator/daemon builds
   share the existing main target; build measurements use owned fresh targets.
 - Tab persistence, bounded header, shortcuts/terminal forwarding, compact sidebar

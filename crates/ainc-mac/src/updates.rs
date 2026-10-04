@@ -39,10 +39,11 @@ pub struct UpdateView {
 }
 impl UpdateView {
     #[cfg(any(test, feature = "fixtures"))]
-    pub fn fixture_ready(ready: bool) -> Self {
+    pub fn fixture_available(ready: bool) -> Self {
         Self {
             state: State {
                 ready,
+                available: true,
                 ..State::default()
             },
             draining: false,
@@ -83,8 +84,8 @@ impl UpdateView {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("update host is unavailable"))?(cx)
     }
-    pub fn is_ready(&self) -> bool {
-        self.state.ready
+    pub fn is_available(&self) -> bool {
+        self.state.ready || self.state.available
     }
     fn poll_native(&mut self, cx: &mut Context<Self>) {
         while let Some((action, _)) = native_update::take_action() {

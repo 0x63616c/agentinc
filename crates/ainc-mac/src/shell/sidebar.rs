@@ -6,7 +6,7 @@ impl Shell {
         self.ui_state.sidebar.open && self.sidebar_visible >= crate::ui_state::SIDEBAR_MIN
     }
     fn sidebar_item(&self, route: Route, index: usize, ui: &mut Ui<Self>) -> Stateful<Div> {
-        let selected = self.ui_state.current() == route;
+        let selected = self.ui_state.current().page() == route;
         let tint = if selected { TEXT } else { TEXT_SECONDARY };
         let hover_group = format!("sidebar-item-{index}");
         self.button(
@@ -56,8 +56,8 @@ impl Shell {
         let update_ready = ui
             .cx
             .try_global::<crate::updates::Updates>()
-            .is_some_and(|updates| updates.0.read(ui.cx).is_ready());
-        let update_button = Button::new("update-ready", "Update Available")
+            .is_some_and(|updates| updates.0.read(ui.cx).is_available());
+        let update_button = Button::new("update-ready", "Update")
             .primary()
             .icon(Icon::Download)
             .full_width();
@@ -131,6 +131,7 @@ impl Shell {
                             this.dispatch(Control::InstallUpdate, window, cx)
                         })
                         .accessibility_id("updates.ready")
+                        .aria_label("Update available")
                         .mb(px(SPACE_2))
                         .flex_shrink_0(),
                 )

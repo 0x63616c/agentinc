@@ -8,12 +8,14 @@ use serde::{Deserialize, Serialize};
 pub enum Route {
     #[serde(alias = "tasks")]
     Tickets,
+    Ticket(i64),
     Agents,
     Automations,
     Terminal,
     Temporal,
     #[serde(rename = "evee", alias = "assistant")]
     Assistant,
+    Conversation(i64),
     Settings,
     Connections,
     /// The living component gallery, reachable from the command palette.
@@ -86,6 +88,21 @@ pub const PAGES: &[PageSpec] = &[
 ];
 
 impl Route {
+    /// The page that renders this route, including record details.
+    pub fn page(self) -> Self {
+        match self {
+            Self::Ticket(_) => Self::Tickets,
+            Self::Conversation(_) => Self::Assistant,
+            page => page,
+        }
+    }
+    pub fn destination(self) -> Destination {
+        match self {
+            Self::Ticket(id) => Destination::Ticket(id),
+            Self::Conversation(id) => Destination::Conversation(id),
+            page => Destination::Page(page),
+        }
+    }
     pub fn from_shortcut(number: u8) -> Option<Self> {
         if !(1..=9).contains(&number) {
             return None;
@@ -101,7 +118,7 @@ impl Route {
     pub fn spec(self) -> &'static PageSpec {
         PAGES
             .iter()
-            .find(|page| page.route == self)
+            .find(|page| page.route == self.page())
             .expect("all routes have page metadata")
     }
     pub fn label(self) -> &'static str {
@@ -133,8 +150,9 @@ impl Destination {
     pub fn route(&self) -> Route {
         match self {
             Self::Page(route) => *route,
-            Self::Ticket(_) | Self::NewTicket => Route::Tickets,
-            Self::Conversation(_) => Route::Assistant,
+            Self::Ticket(id) => Route::Ticket(*id),
+            Self::NewTicket => Route::Tickets,
+            Self::Conversation(id) => Route::Conversation(*id),
         }
     }
 }
@@ -211,8 +229,8 @@ mod tests {
         assert_eq!(router.current(), Route::Tickets);
         router.navigate(Route::Automations);
         assert!(!router.can_go(true));
-        assert_eq!(Destination::Ticket(4).route(), Route::Tickets);
-        assert_eq!(Destination::Conversation(1).route(), Route::Assistant);
+        assert_eq!(Destination::Ticket(4).route(), Route::Ticket(4));
+        assert_eq!(Destination::Conversation(1).route(), Route::Conversation(1));
     }
     #[test]
     fn sidebar_shortcuts_follow_visual_order() {

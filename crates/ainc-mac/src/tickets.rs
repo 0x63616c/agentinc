@@ -285,6 +285,10 @@ impl TicketsPage {
         );
     }
     pub fn select(&mut self, id: i64, cx: &mut Context<Self>) {
+        self.show_ticket(id, cx);
+        cx.emit(Destination::Ticket(id));
+    }
+    fn show_ticket(&mut self, id: i64, cx: &mut Context<Self>) {
         if self.selected != Some(id) {
             self.activity.clear();
             self.activity_for = None;
@@ -299,6 +303,7 @@ impl TicketsPage {
         self.selected = None;
         self.overlays.close_popover();
         self.editing_description = false;
+        cx.emit(Destination::Page(Route::Tickets));
         cx.notify();
     }
     pub(crate) fn ticket(&self, id: i64) -> Option<&Ticket> {
@@ -842,7 +847,12 @@ impl Page for TicketsPage {
     }
     fn open(&mut self, to: &Destination, window: &mut Window, cx: &mut Context<Self>) {
         match to {
-            Destination::Ticket(id) => self.select(*id, cx),
+            Destination::Ticket(id) => self.show_ticket(*id, cx),
+            Destination::Page(Route::Tickets) => {
+                self.selected = None;
+                self.editing_description = false;
+                cx.notify();
+            }
             Destination::NewTicket => self.open_create(None, window, cx),
             _ => {}
         }

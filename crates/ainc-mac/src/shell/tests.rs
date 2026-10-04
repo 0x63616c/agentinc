@@ -101,7 +101,34 @@ fn overflowing_tabs_scroll_reveal_and_stay_between_controls(cx: &mut TestAppCont
         delta: gpui::ScrollDelta::Lines(point(0., 3.)),
         ..Default::default()
     });
-    shell.read_with(cx, |shell, _| assert!(shell.tab_scroll.offset().x > offset));
+    let scrolled = shell.read_with(cx, |shell, _| shell.tab_scroll.offset().x);
+    assert!(scrolled > offset);
+    cx.simulate_event(gpui::ScrollWheelEvent {
+        position: viewport.center(),
+        delta: gpui::ScrollDelta::Pixels(point(px(75.), px(0.))),
+        ..Default::default()
+    });
+    shell.read_with(cx, |shell, _| {
+        assert_eq!(shell.tab_scroll.offset().x, scrolled + px(75.))
+    });
+    for delta in [100_000., -100_000.] {
+        cx.simulate_event(gpui::ScrollWheelEvent {
+            position: viewport.center(),
+            delta: gpui::ScrollDelta::Pixels(point(px(delta), px(0.))),
+            ..Default::default()
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        shell.read_with(cx, |shell, _| {
+            assert_eq!(
+                shell.tab_scroll.offset().x,
+                if delta > 0. {
+                    px(0.)
+                } else {
+                    -shell.tab_scroll.max_offset().x
+                }
+            )
+        });
+    }
     cx.simulate_keystrokes("cmd-shift-]");
     cx.update(|window, cx| window.draw(cx).clear(cx));
     shell.read_with(cx, |shell, _| assert_eq!(shell.ui_state.active_tab(), 0));
@@ -129,6 +156,148 @@ fn restored_active_tab_is_visible_on_the_first_frame(cx: &mut TestAppContext) {
     let viewport = cx.debug_bounds("tabs.viewport").unwrap();
     let tab = cx.debug_bounds("tabs.24").unwrap();
     assert!(tab.left() >= viewport.left() && tab.right() <= viewport.right());
+}
+
+#[gpui::test]
+fn detail_history_tabs_and_reopening_restore_the_record(cx: &mut TestAppContext) {
+    use super::Control;
+    use crate::{
+        daemon::Daemon, evee::AssistantPage, page::Page, routes::Destination, tickets::TicketsPage,
+    };
+    use ainc_client::types::{Conversation, TicketCommand};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("details.json");
+    let daemon = std::sync::Arc::new(Daemon::in_memory());
+    for title in ["First ticket", "Second ticket"] {
+        daemon
+            .send(TicketCommand::Create {
+                title: title.into(),
+            })
+            .unwrap();
+    }
+    daemon.memory().edit(|state| {
+        state.product.conversations = [7, 8]
+            .map(|id| Conversation {
+                id,
+                title: format!("Conversation {id}"),
+                snippet: String::new(),
+                updated_at: 0,
+            })
+            .to_vec()
+    });
+    daemon.refresh().unwrap();
+    cx.update(bind_keys);
+    let (shell, vc) = cx.add_window_view(|window, cx| {
+        Shell::with_state(
+            path.clone(),
+            daemon.clone(),
+            crate::sync::Timers(cx.background_executor().clone()),
+            crate::profile::Profile {
+                name: "Test".into(),
+                photo: None,
+            },
+            window,
+            cx,
+        )
+    });
+    let navigate = |vc: &mut VisualTestContext, to| {
+        vc.update(|window, cx| {
+            shell.update(cx, |shell, cx| shell.dispatch(Control::Go(to), window, cx))
+        });
+        vc.update(|window, cx| window.draw(cx).clear(cx));
+    };
+    shell.update(vc, |shell, _| {
+        shell.launch_started = Some(std::time::Instant::now() - std::time::Duration::from_secs(1))
+    });
+    navigate(vc, Destination::Page(Route::Tickets));
+    let ticket = vc.debug_bounds("ticket.1").unwrap().center();
+    vc.simulate_click(ticket, Modifiers::default());
+    vc.update(|window, cx| window.draw(cx).clear(cx));
+    shell.read_with(vc, |shell, _| {
+        assert_eq!(shell.ui_state.current(), Route::Ticket(1))
+    });
+    navigate(vc, Destination::Ticket(2));
+    vc.simulate_keystrokes("cmd-[");
+    shell.read_with(vc, |shell, cx| {
+        assert_eq!(shell.ui_state.current(), Route::Ticket(1));
+        assert_eq!(
+            shell
+                .page_entity::<TicketsPage>()
+                .read(cx)
+                .drafts(cx)
+                .unwrap()
+                .get::<i64>("selected"),
+            Some(1)
+        );
+    });
+    vc.simulate_keystrokes("cmd-t");
+    navigate(vc, Destination::Conversation(7));
+    navigate(vc, Destination::Conversation(8));
+    vc.simulate_keystrokes("cmd-[ cmd-shift-[");
+    shell.read_with(vc, |shell, cx| {
+        assert_eq!(shell.ui_state.current(), Route::Ticket(1));
+        assert_eq!(
+            shell
+                .page_entity::<TicketsPage>()
+                .read(cx)
+                .drafts(cx)
+                .unwrap()
+                .get::<i64>("selected"),
+            Some(1)
+        );
+    });
+    vc.simulate_keystrokes("cmd-] cmd-shift-]");
+    shell.read_with(vc, |shell, cx| {
+        assert_eq!(shell.ui_state.current(), Route::Conversation(7));
+        assert_eq!(
+            shell
+                .page_entity::<AssistantPage>()
+                .read(cx)
+                .drafts(cx)
+                .unwrap()
+                .get::<i64>("conversation"),
+            Some(7)
+        );
+    });
+    let (reopened, vc) = cx.add_window_view(|window, cx| {
+        Shell::with_state(
+            path,
+            daemon,
+            crate::sync::Timers(cx.background_executor().clone()),
+            crate::profile::Profile {
+                name: "Test".into(),
+                photo: None,
+            },
+            window,
+            cx,
+        )
+    });
+    reopened.read_with(vc, |shell, cx| {
+        assert_eq!(shell.ui_state.current(), Route::Conversation(7));
+        assert_eq!(
+            shell
+                .page_entity::<AssistantPage>()
+                .read(cx)
+                .drafts(cx)
+                .unwrap()
+                .get::<i64>("conversation"),
+            Some(7)
+        );
+        assert_eq!(shell.ui_state.tabs()[0].current(), Route::Ticket(2));
+    });
+    vc.simulate_keystrokes("cmd-]");
+    reopened.read_with(vc, |shell, cx| {
+        assert_eq!(shell.ui_state.current(), Route::Conversation(8));
+        assert_eq!(
+            shell
+                .page_entity::<AssistantPage>()
+                .read(cx)
+                .drafts(cx)
+                .unwrap()
+                .get::<i64>("conversation"),
+            Some(8)
+        );
+    });
 }
 
 #[gpui::test]

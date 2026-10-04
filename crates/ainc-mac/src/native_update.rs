@@ -55,6 +55,7 @@ pub struct State {
     pub automatic_download: bool,
     pub weekly: bool,
     pub ready: bool,
+    pub available: bool,
     pub can_check: bool,
     pub enabled: bool,
     pub message: String,
@@ -133,6 +134,7 @@ pub fn state() -> State {
             automatic_download: bits & 2 != 0,
             weekly: bits & 4 != 0,
             ready: bits & 8 != 0,
+            available: bits & 64 != 0,
             can_check: bits & 16 != 0,
             enabled: bits & 32 != 0,
             message: unsafe { CStr::from_ptr(ainc_sparkle_message()) }

@@ -58,6 +58,27 @@ impl Shell {
 
     fn tab(&self, index: usize, route: Route, ui: &mut Ui<Self>) -> Div {
         let selected = self.ui_state.active_tab() == index;
+        let label: SharedString = match route {
+            Route::Ticket(id) => self
+                .daemon
+                .tickets()
+                .tickets
+                .iter()
+                .find(|ticket| ticket.id == id)
+                .map(|ticket| ticket.title.clone())
+                .unwrap_or_else(|| format!("Ticket {id}"))
+                .into(),
+            Route::Conversation(id) => self
+                .daemon
+                .product()
+                .conversations
+                .iter()
+                .find(|conversation| conversation.id == id)
+                .map(|conversation| conversation.title.clone())
+                .unwrap_or_else(|| format!("Conversation {id}"))
+                .into(),
+            page => page.label().into(),
+        };
         let group: SharedString = format!("tab-{index}").into();
         row()
             .relative()
@@ -65,7 +86,8 @@ impl Shell {
             .w(px(TAB_SLOT_WIDTH))
             .h(px(TAB_SLOT_HEIGHT))
             .child(
-                self.button(("tab", index), route.label(), Control::SelectTab(index), ui)
+                self.button(("tab", index), label.clone(), Control::SelectTab(index), ui)
+                    .aria_label(label.clone())
                     .accessibility_id(format!("tabs.{index}"))
                     .debug_selector(move || format!("tabs.{index}"))
                     .role(accesskit::Role::Tab)
@@ -91,7 +113,7 @@ impl Shell {
                             .text_color(rgb(if selected { TEXT } else { TEXT_SECONDARY }))
                             .font_weight(FontWeight::MEDIUM)
                             .child(icon(route.icon(), TAB_ICON_SIZE))
-                            .child(div().flex_1().min_w_0().truncate().child(route.label()))
+                            .child(div().flex_1().min_w_0().truncate().child(label))
                             .child(
                                 self.button(
                                     ("tab-close", index),
@@ -267,21 +289,6 @@ impl Shell {
                     .overflow_x_scroll()
                     .overflow_y_hidden()
                     .track_scroll(&self.tab_scroll)
-                    .on_scroll_wheel(ui.cx.listener(|this, event: &ScrollWheelEvent, _, cx| {
-                        let delta = event.delta.pixel_delta(px(CONTROL_HEIGHT));
-                        // A vertical mouse wheel scrolls the tab strip too. Diagonal
-                        // trackpad gestures use the dominant axis, once per event.
-                        let delta = if delta.x.abs() > delta.y.abs() {
-                            delta.x
-                        } else {
-                            delta.y
-                        };
-                        let x = (this.tab_scroll.offset().x + delta)
-                            .clamp(-this.tab_scroll.max_offset().x, px(0.));
-                        this.tab_scroll.set_offset(point(x, px(0.)));
-                        cx.stop_propagation();
-                        cx.notify();
-                    }))
                     .children(
                         self.ui_state
                             .tabs()
