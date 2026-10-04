@@ -97,13 +97,13 @@ jobs:
           tools="$RUNNER_WORKSPACE/release-tools"
           mkdir -p "$tools"
           if [ ! -x "$tools/temporal" ]; then
-            curl --fail --location --output "$tools/temporal.tar.gz" https://github.com/temporalio/cli/releases/download/v1.9.1/temporal_cli_1.9.1_darwin_arm64.tar.gz
+            curl --fail --location --retry 3 --retry-all-errors --output "$tools/temporal.tar.gz" https://github.com/temporalio/cli/releases/download/v1.9.1/temporal_cli_1.9.1_darwin_arm64.tar.gz
             test "$(shasum -a 256 "$tools/temporal.tar.gz" | cut -d ' ' -f 1)" = 41e0425378fcb4fb5766340b97435e20fe47bbff2d7bf644ec2d51f7662b7c56
             tar -xzf "$tools/temporal.tar.gz" -C "$tools" temporal
             rm "$tools/temporal.tar.gz"
           fi
           if [ ! -x "$tools/codex" ]; then
-            curl --fail --location --output "$tools/codex.tar.gz" https://github.com/openai/codex/releases/download/rust-v0.155.1/codex-aarch64-apple-darwin.tar.gz
+            curl --fail --location --retry 3 --retry-all-errors --output "$tools/codex.tar.gz" https://github.com/openai/codex/releases/download/rust-v0.155.1/codex-aarch64-apple-darwin.tar.gz
             test "$(shasum -a 256 "$tools/codex.tar.gz" | cut -d ' ' -f 1)" = 5e5a51470dce2423f9d96bd191d0bbc4cc0e2848a6833df5178eaf47a07a3768
             tar -xzf "$tools/codex.tar.gz" -C "$tools"
             mv "$tools/codex-aarch64-apple-darwin" "$tools/codex"
@@ -224,8 +224,8 @@ jobs:
       - name: Install rcodesign
         if: steps.handoff.outputs.ready == 'true'
         run: |
-          curl --fail --location --output rcodesign.tar.gz https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz
-          curl --fail --location --output rcodesign.tar.gz.sha256 https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz.sha256
+          curl --fail --location --retry 3 --retry-all-errors --output rcodesign.tar.gz https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz
+          curl --fail --location --retry 3 --retry-all-errors --output rcodesign.tar.gz.sha256 https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz.sha256
           test "$(sha256sum rcodesign.tar.gz | cut -d ' ' -f 1)" = "$(cut -d ' ' -f 1 rcodesign.tar.gz.sha256)"
           tar xf rcodesign.tar.gz
           find "$PWD" -name rcodesign -type f -exec dirname {} \; >> "$GITHUB_PATH"

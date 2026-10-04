@@ -10,6 +10,8 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio, exit},
+    thread,
+    time::Duration,
 };
 
 pub mod bump;
@@ -79,25 +81,83 @@ fn failed(line: &str, status: std::process::ExitStatus) -> anyhow::Error {
 }
 
 /// `subprocess.check_output(args, text=True).strip()`: stderr is inherited.
+/// A [repeatable] command is retried.
 pub fn output(program: &str, args: &[&str]) -> Result<String> {
-    let result = crate::spawn::command(program)
-        .args(args)
-        .stderr(Stdio::inherit())
-        .output()?;
-    if !result.status.success() {
-        return Err(failed(&command_line(program, args), result.status));
+    let run = || {
+        let result = crate::spawn::command(program)
+            .args(args)
+            .stderr(Stdio::inherit())
+            .output()?;
+        if !result.status.success() {
+            return Err(failed(&command_line(program, args), result.status));
+        }
+        Ok(String::from_utf8(result.stdout)?.trim().to_string())
+    };
+    if repeatable(program, args) {
+        retry(run, thread::sleep)
+    } else {
+        run()
     }
-    Ok(String::from_utf8(result.stdout)?.trim().to_string())
 }
 
-/// `subprocess.run(command, check=True)`.
+/// `subprocess.run(command, check=True)`. A [repeatable] command is retried.
 pub fn checked(command: &mut Command) -> Result<()> {
-    let status = command.status()?;
-    if !status.success() {
-        let line = format!("{command:?}");
-        return Err(failed(&line, status));
+    let program = command.get_program().to_string_lossy().into_owned();
+    let args: Vec<String> = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut run = || {
+        let status = command.status()?;
+        if !status.success() {
+            let line = format!("{command:?}");
+            return Err(failed(&line, status));
+        }
+        Ok(())
+    };
+    if repeatable(&program, &args) {
+        retry(run, thread::sleep)
+    } else {
+        run()
     }
-    Ok(())
+}
+
+/// GitHub's API and release downloads fail transiently (an HTTP 500 on an asset, a connect
+/// timeout), and one such failure used to drop a whole release run. A `gh` call that only
+/// reads, or overwrites with `--clobber`, is safe to repeat; creating a release or writing
+/// through `gh api` is not. Downloads through `curl` retry with its own `--retry`.
+fn repeatable(program: &str, args: &[&str]) -> bool {
+    if program != "gh" {
+        return false;
+    }
+    match args {
+        ["api", rest @ ..] => !rest.iter().any(|arg| {
+            matches!(
+                *arg,
+                "-X" | "--method" | "-f" | "-F" | "--field" | "--raw-field" | "--input"
+            )
+        }),
+        ["release", "download" | "view", ..] => true,
+        ["release", "upload", ..] => args.contains(&"--clobber"),
+        _ => false,
+    }
+}
+
+/// Up to three attempts, waiting 5s and then 20s between them.
+fn retry<T>(mut attempt: impl FnMut() -> Result<T>, mut wait: impl FnMut(Duration)) -> Result<T> {
+    let mut delay = Duration::from_secs(5);
+    for _ in 1..3 {
+        match attempt() {
+            Ok(value) => return Ok(value),
+            Err(error) => {
+                eprintln!("{error:#}; retrying in {}s", delay.as_secs());
+                wait(delay);
+                delay *= 4;
+            }
+        }
+    }
+    attempt()
 }
 
 /// Python truthiness of a JSON value, for `if identity.get(...)`.
@@ -269,6 +329,66 @@ pub fn read_to_string(path: &Path) -> Result<String> {
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn only_reading_or_overwriting_gh_calls_repeat() {
+        assert!(repeatable(
+            "gh",
+            &["api", "repos/o/r/releases?per_page=100"]
+        ));
+        assert!(repeatable(
+            "gh",
+            &["release", "download", "v1", "--clobber"]
+        ));
+        assert!(repeatable(
+            "gh",
+            &["release", "view", "v1", "--json", "isDraft"]
+        ));
+        assert!(repeatable(
+            "gh",
+            &["release", "upload", "v1", "a", "--clobber"]
+        ));
+        assert!(!repeatable("gh", &["release", "upload", "v1", "a"]));
+        assert!(!repeatable("gh", &["release", "create", "v1", "--draft"]));
+        assert!(!repeatable(
+            "gh",
+            &["api", "-X", "DELETE", "repos/o/r/releases/1"]
+        ));
+        assert!(!repeatable("rcodesign", &["notary-submit"]));
+    }
+
+    #[test]
+    fn retry_backs_off_then_returns_the_first_success() {
+        let mut calls = 0;
+        let mut waits = Vec::new();
+        let result = retry(
+            || {
+                calls += 1;
+                if calls < 3 {
+                    Err(anyhow!("HTTP 500"))
+                } else {
+                    Ok(calls)
+                }
+            },
+            |delay| waits.push(delay.as_secs()),
+        );
+        assert_eq!(result.unwrap(), 3);
+        assert_eq!(waits, [5, 20]);
+    }
+
+    #[test]
+    fn retry_gives_up_after_three_attempts_with_the_last_error() {
+        let mut calls = 0;
+        let result: Result<()> = retry(
+            || {
+                calls += 1;
+                Err(anyhow!("attempt {calls}"))
+            },
+            |_| {},
+        );
+        assert_eq!(result.unwrap_err().to_string(), "attempt 3");
+        assert_eq!(calls, 3);
+    }
 
     #[test]
     fn archives_keep_symlinks_and_modes_and_overwrite_on_extract() {
