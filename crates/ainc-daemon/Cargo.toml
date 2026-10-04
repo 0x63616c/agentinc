@@ -57,7 +57,13 @@ sqlx = { version = "0.8", features = [
   "json",
   "macros",
 ] }
-tokio = { workspace = true, features = ["net", "process", "io-util", "signal"] }
+tokio = { workspace = true, features = [
+  "net",
+  "process",
+  "io-util",
+  "io-std",
+  "signal",
+] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid.workspace = true

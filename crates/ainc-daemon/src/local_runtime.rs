@@ -1,5 +1,6 @@
 //! Private, single-user runtime. Binaries come from the signed app bundle;
 //! mutable databases live beside the daemon discovery file, never in the app.
+use ainc_daemon::process::Stop;
 use anyhow::{Context, Result, ensure};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::{
@@ -201,14 +202,11 @@ impl Drop for LocalRuntime {
         // PostgreSQL fast shutdown disconnects residual pool sockets, rolls back
         // unfinished transactions and checkpoints. Smart shutdown could wait
         // forever on a detached SDK pool after its owner has drained.
-        for (child, signal) in [
-            (&mut self.temporal, libc::SIGTERM),
-            (&mut self.postgres, libc::SIGINT),
+        for (child, stop) in [
+            (&mut self.temporal, Stop::Terminate),
+            (&mut self.postgres, Stop::Interrupt),
         ] {
-            // SAFETY: these PIDs are owned children, not values from a PID file.
-            unsafe {
-                libc::kill(child.id() as i32, signal);
-            }
+            stop.send(child.id());
             let _ = child.wait();
         }
     }

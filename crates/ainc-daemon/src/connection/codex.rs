@@ -4,7 +4,6 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, BufReader, Read, Write},
-    os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
@@ -55,12 +54,8 @@ pub struct Client {
 impl Drop for Client {
     fn drop(&mut self) {
         // The child leads its own process group; take any helpers down with it.
-        if let Ok(group) = i32::try_from(self.child.id()) {
-            // SAFETY: killpg has no memory-safety preconditions; the group id is
-            // the child's own pid, which we created with process_group(0).
-            unsafe {
-                libc::killpg(group, libc::SIGKILL);
-            }
+        if let Some(group) = crate::process::Group::of(Some(self.child.id())) {
+            group.kill();
         }
         let _ = self.child.kill();
         let _ = self.child.wait();
@@ -69,7 +64,8 @@ impl Drop for Client {
 impl Client {
     pub fn start_at(home: &Path, executable: &Path) -> Result<Self> {
         std::fs::create_dir_all(home)?;
-        let child = Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args([
                 "app-server",
                 "--listen",
@@ -89,8 +85,9 @@ impl Client {
             .current_dir(home)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .process_group(0)
+            .stderr(Stdio::null());
+        crate::process::lead_group(&mut command);
+        let child = command
             .spawn()
             .context("Install the Codex CLI to connect ChatGPT, then refresh.")?;
         Self::from_child(child)

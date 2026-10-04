@@ -16,6 +16,7 @@ pub mod inference;
 #[cfg(feature = "legacy-import")]
 pub mod legacy;
 pub mod pg;
+pub mod process;
 pub mod product;
 pub mod receipts;
 pub mod terminals;

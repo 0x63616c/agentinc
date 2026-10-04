@@ -274,22 +274,11 @@ fn summary(args: &Value) -> String {
     safe.to_string().chars().take(2000).collect()
 }
 
+/// A tool process and its dedicated group, killed together on any exit.
 #[cfg(target_os = "macos")]
 struct ChildGroup {
     child: tokio::process::Child,
-    id: Option<i32>,
-}
-#[cfg(target_os = "macos")]
-impl Drop for ChildGroup {
-    fn drop(&mut self) {
-        if let Some(id) = self.id.take() {
-            // SAFETY: this is the dedicated process group created for this child;
-            // kill takes no pointers. Terminate remaining group members on any exit.
-            unsafe {
-                libc::kill(-id, libc::SIGKILL);
-            }
-        }
-    }
+    _group: Option<crate::process::KillOnDrop>,
 }
 
 async fn run_process(
@@ -307,7 +296,7 @@ async fn run_process(
     }
     #[cfg(target_os = "macos")]
     {
-        use std::{os::unix::process::CommandExt, process::Stdio};
+        use std::process::Stdio;
         // Scheme string escaping prevents a workspace name from changing the policy.
         let root = serde_json::to_string(&policy.root.to_string_lossy()).map_err(failed)?;
         let profile = format!(
@@ -327,10 +316,13 @@ async fn run_process(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        command.as_std_mut().process_group(0);
+        crate::process::lead_group(command.as_std_mut());
         let child = command.spawn().map_err(failed)?;
-        let id = child.id().and_then(|id| i32::try_from(id).ok());
-        let mut child = ChildGroup { child, id };
+        let group = crate::process::Group::of(child.id()).map(crate::process::Group::kill_on_drop);
+        let mut child = ChildGroup {
+            child,
+            _group: group,
+        };
         let mut stdin = child
             .child
             .stdin

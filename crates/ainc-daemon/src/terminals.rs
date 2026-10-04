@@ -1,5 +1,6 @@
 //! Owner-scoped terminal PTYs. A disconnected viewer does not own the shell.
 use crate::api::{AppState, CommandError, ErrorBody, Owner};
+use crate::process::{self, Group, Pty};
 use axum::{
     Json,
     extract::{
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
     fs::File,
-    os::fd::{AsRawFd, FromRawFd},
+    os::fd::AsRawFd,
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -49,7 +50,7 @@ impl FromRef<AppState> for Service {
 }
 struct Session {
     workspace_id: String,
-    pid: i32,
+    group: Group,
     master: File,
     input: mpsc::UnboundedSender<Vec<u8>>,
     output: broadcast::Sender<Vec<u8>>,
@@ -61,7 +62,7 @@ impl Drop for Session {
     fn drop(&mut self) {
         if !self.ended.load(Ordering::SeqCst) {
             // The shell is a session leader; its children share this process group.
-            unsafe { libc::kill(-self.pid, libc::SIGHUP) };
+            self.group.hangup();
         }
     }
 }
@@ -166,7 +167,7 @@ async fn close(
     drop(sessions);
     session.ended.store(true, Ordering::SeqCst);
     let _ = session.ending.send(true);
-    unsafe { libc::kill(-session.pid, libc::SIGHUP) };
+    session.group.hangup();
     Ok(StatusCode::NO_CONTENT)
 }
 async fn attach(
@@ -213,8 +214,7 @@ async fn attached(socket: WebSocket, session: Arc<Session>) {
                     1 if data.len() == 5 => {
                         let rows = u16::from_be_bytes([data[1], data[2]]);
                         let cols = u16::from_be_bytes([data[3], data[4]]);
-                        let size = libc::winsize { ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0 };
-                        unsafe { libc::ioctl(session.master.as_raw_fd(), libc::TIOCSWINSZ as libc::c_ulong, &size); libc::kill(-session.pid, libc::SIGWINCH); }
+                        process::resize(&session.master, session.group, rows, cols);
                     }
                     _ => {}
                 },
@@ -238,35 +238,7 @@ async fn attached(socket: WebSocket, session: Arc<Session>) {
     }
 }
 fn spawn_shell(workspace_id: String) -> anyhow::Result<Arc<Session>> {
-    let mut master = -1;
-    let mut slave = -1;
-    let size = libc::winsize {
-        ws_row: 24,
-        ws_col: 80,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
-    };
-    #[cfg(target_os = "macos")]
-    let mut size = size;
-    #[cfg(target_os = "macos")]
-    let size_ptr = &mut size;
-    #[cfg(not(target_os = "macos"))]
-    let size_ptr = &size;
-    anyhow::ensure!(
-        unsafe {
-            libc::openpty(
-                &mut master,
-                &mut slave,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                size_ptr,
-            )
-        } == 0,
-        "openpty: {}",
-        std::io::Error::last_os_error()
-    );
-    let master = unsafe { File::from_raw_fd(master) };
-    let slave = unsafe { File::from_raw_fd(slave) };
+    let pty = Pty::open(24, 80)?;
     let shell = std::env::var_os("SHELL")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/bin/zsh"));
@@ -277,36 +249,13 @@ fn spawn_shell(workspace_id: String) -> anyhow::Result<Arc<Session>> {
         .current_dir(home)
         .env("TERM", "xterm-256color")
         .env("COLORTERM", "truecolor");
-    let slave_fd = slave.as_raw_fd();
-    // SAFETY: only async-signal-safe libc calls run between fork and exec.
-    unsafe {
-        command.pre_exec(move || {
-            if libc::setsid() < 0 || libc::ioctl(slave_fd, libc::TIOCSCTTY as libc::c_ulong, 0) < 0
-            {
-                return Err(std::io::Error::last_os_error());
-            }
-            for fd in 0..=2 {
-                if libc::dup2(slave_fd, fd) < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-            }
-            if slave_fd > 2 {
-                libc::close(slave_fd);
-            }
-            Ok(())
-        });
-    }
-    let mut child = command.spawn()?;
-    drop(slave);
-    let pid = child
-        .id()
-        .ok_or_else(|| anyhow::anyhow!("shell has no pid"))? as i32;
+    let (mut child, group, master) = pty.spawn(&mut command)?;
     let (input, mut received) = mpsc::unbounded_channel::<Vec<u8>>();
     let (output, _) = broadcast::channel(128);
     let (ending, _) = watch::channel(false);
     let session = Arc::new(Session {
         workspace_id,
-        pid,
+        group,
         master: master.try_clone()?,
         input,
         output,
