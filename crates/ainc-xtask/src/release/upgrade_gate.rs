@@ -1,28 +1,16 @@
 //! Run signed, notarized upgrades through the native UI, including Sparkle deltas.
 use super::{
-    checked, file_server::FileServer, http, output, parse_args, proc::ManagedChild, read_to_string,
+    checked, file_server::FileServer, http, parse_args, proc::ManagedChild, read_to_string,
     resolve, sparkle, terminal_smoke,
 };
 use anyhow::{Result, anyhow, bail};
 use serde_json::Value;
 use std::{
-    collections::HashMap,
-    env, fs,
+    fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::Duration,
 };
-
-const KNOWN_BROKEN: &[(&str, &str)] = &[
-    (
-        "0.2.0",
-        "update window crashes when Check for Updates closes it",
-    ),
-    (
-        "0.3.1",
-        "update window crashes on Check for Updates and Update ready",
-    ),
-];
 
 fn release_json(app: &Path) -> Result<Value> {
     Ok(serde_json::from_str(&read_to_string(
@@ -487,141 +475,17 @@ fn exercise(
     cleanup
 }
 
-fn parse_version(version: &str) -> Result<Vec<u64>> {
-    version
-        .split('.')
-        .map(|part| part.parse::<u64>().map_err(|e| anyhow!("{version}: {e}")))
-        .collect()
-}
-
-/// Shipped clients have the GitHub feed URL and production key compiled in.
-/// Their candidate upgrade cannot be staged with a test key before publication.
-fn published_predecessors(candidate_version: &str, root: &Path) -> Result<HashMap<String, String>> {
-    let repo = env::var("GITHUB_REPOSITORY").map_err(|_| anyhow!("GITHUB_REPOSITORY"))?;
-    let mut releases = Vec::new();
-    for page in 1.. {
-        let batch: Value = serde_json::from_str(&output(
-            "gh",
-            &[
-                "api",
-                &format!("repos/{repo}/releases?per_page=100&page={page}"),
-            ],
-        )?)?;
-        let batch = batch.as_array().cloned().unwrap_or_default();
-        let last = batch.len() < 100;
-        releases.extend(batch);
-        if last {
-            break;
-        }
-    }
-    let candidate = parse_version(candidate_version)?;
-    let mut published = HashMap::new();
-    for release in releases {
-        let tag = release["tag_name"].as_str().unwrap_or("");
-        if release["draft"].as_bool().unwrap_or(false) || !tag.starts_with('v') {
-            continue;
-        }
-        let version = &tag[1..];
-        if parse_version(version)? >= candidate {
-            continue;
-        }
-        let has_asset = release["assets"]
-            .as_array()
-            .is_some_and(|assets| assets.iter().any(|a| a["name"] == "AgentInc.tar.gz"));
-        if !has_asset {
-            bail!("{version} has no published app archive");
-        }
-        let directory = root.join(version);
-        fs::create_dir(&directory)?;
-        checked(
-            Command::new("gh")
-                .args([
-                    "release",
-                    "download",
-                    tag,
-                    "--pattern",
-                    "AgentInc.tar.gz",
-                    "--dir",
-                ])
-                .arg(&directory),
-        )?;
-        let app = unpack(
-            &directory.join("AgentInc.tar.gz"),
-            &directory.join("installed"),
-        )?;
-        let identity = release_json(&app)?;
-        if field(&identity, "version")? != version {
-            bail!(
-                "published {version} contains {}",
-                field(&identity, "version")?
-            );
-        }
-        published.insert(version.to_string(), field(&identity, "commit")?);
-        match KNOWN_BROKEN.iter().find(|(known, _)| *known == version) {
-            Some((_, reason)) => println!("KNOWN BROKEN {version}: {reason}"),
-            None => println!(
-                "SHIPPED FEED LOCKED {version}: signed install verified; test-key rebuild required for candidate upgrade"
-            ),
-        }
-    }
-    Ok(published)
-}
-
 pub fn cli(args: &[String]) -> Result<()> {
     let opts = parse_args(
         "release-upgrade-gate",
         args,
         &[],
-        &[
-            "--candidate",
-            "--newer",
-            "--key",
-            "--manifest-tool",
-            "--prior",
-        ],
+        &["--candidate", "--newer", "--key", "--manifest-tool"],
     );
     let candidate = resolve(Path::new(opts.required("--candidate")));
     let newer = resolve(Path::new(opts.required("--newer")));
     let key = resolve(Path::new(opts.required("--key")));
     let manifest_tool = resolve(Path::new(opts.required("--manifest-tool")));
-    let published = {
-        let temporary = tempfile::Builder::new()
-            .prefix("agentinc-published-")
-            .tempdir()?;
-        let candidate_version = {
-            let install = tempfile::Builder::new()
-                .prefix("agentinc-candidate-")
-                .tempdir()?;
-            field(
-                &release_json(&unpack(&candidate, install.path())?)?,
-                "version",
-            )?
-        };
-        published_predecessors(&candidate_version, temporary.path())?
-    };
-    for prior in opts.many("--prior") {
-        let prior = resolve(Path::new(prior));
-        let identity = {
-            let install = tempfile::Builder::new()
-                .prefix("agentinc-prior-")
-                .tempdir()?;
-            release_json(&unpack(&prior, install.path())?)?
-        };
-        let (version, commit) = (field(&identity, "version")?, field(&identity, "commit")?);
-        if published.get(&version) != Some(&commit) {
-            bail!("prior test build does not match published {version}");
-        }
-        for mode in ["manual", "automatic"] {
-            exercise(
-                mode,
-                Payload::Full,
-                &prior,
-                &candidate,
-                &key,
-                &manifest_tool,
-            )?;
-        }
-    }
     for mode in ["manual", "automatic"] {
         exercise(
             mode,
@@ -677,13 +541,6 @@ mod tests {
         );
         assert!(Payload::BrokenDelta.verify(&[full, delta]).is_err());
         assert!(Payload::Full.verify(&[]).is_err());
-    }
-
-    #[test]
-    fn versions_compare_numerically_like_python_tuples() {
-        assert!(parse_version("0.3.5").unwrap() < parse_version("0.10.0").unwrap());
-        assert!(parse_version("0.4.0").unwrap() >= parse_version("0.4.0").unwrap());
-        assert!(parse_version("0.4.x").is_err());
     }
 
     #[test]

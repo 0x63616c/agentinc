@@ -190,7 +190,6 @@ pub fn sign_upgrade_fixture(
     source: &Path,
     destination: &Path,
     commit: &str,
-    version: Option<&str>,
     sign: &dyn Fn(&Path, &Path) -> Result<()>,
 ) -> Result<()> {
     let directory = tempfile::tempdir()?;
@@ -199,9 +198,6 @@ pub fn sign_upgrade_fixture(
     let identity: Value = serde_json::from_str(&read_to_string(&directory.join("handoff.json"))?)?;
     if key(&identity, "commit")?.as_str() != Some(commit)
         || identity.get("upgrade_test") != Some(&Value::Bool(true))
-        || version.is_some_and(|version| {
-            key(&identity, "version").ok().and_then(Value::as_str) != Some(version)
-        })
     {
         bail!("upgrade fixture is not a test build from {commit}");
     }
@@ -255,7 +251,6 @@ pub fn main(
             "--archive",
             "--upgrade-candidate",
             "--upgrade-newer",
-            "--upgrade-prior",
         ],
     );
     let requested = opts.required("--commit").to_string();
@@ -267,11 +262,6 @@ pub fn main(
     let archive_arg = opts.one("--archive").map(PathBuf::from);
     let candidate_arg = opts.one("--upgrade-candidate").map(PathBuf::from);
     let newer_arg = opts.one("--upgrade-newer").map(PathBuf::from);
-    let priors: Vec<PathBuf> = opts
-        .many("--upgrade-prior")
-        .iter()
-        .map(PathBuf::from)
-        .collect();
     let in_base = |path: &Path| base.join(path);
 
     if !test
@@ -447,40 +437,22 @@ pub fn main(
     if candidate_arg.is_some() != newer_arg.is_some() {
         bail!("both upgrade fixture handoffs are required");
     }
-    let mut fixture =
-        |source: PathBuf, destination: PathBuf, commit: String, version: Option<String>| {
-            let sign = &sign;
-            tasks.push(Box::new(move || {
-                sign_upgrade_fixture(&source, &destination, &commit, version.as_deref(), sign)
-            }));
-        };
+    let mut fixture = |source: PathBuf, destination: PathBuf, commit: String| {
+        let sign = &sign;
+        tasks.push(Box::new(move || {
+            sign_upgrade_fixture(&source, &destination, &commit, sign)
+        }));
+    };
     if let (Some(candidate), Some(newer)) = (&candidate_arg, &newer_arg) {
         fixture(
             in_base(candidate),
             out.join("upgrade-candidate.tar.gz"),
             commit.clone(),
-            None,
         );
         fixture(
             in_base(newer),
             out.join("upgrade-newer.tar.gz"),
             commit.clone(),
-            None,
-        );
-    }
-    for prior in &priors {
-        let file = name(prior);
-        let prior_version = file.strip_prefix("upgrade-prior-").unwrap_or(&file);
-        let prior_version = prior_version
-            .strip_suffix("-unsigned.tar.gz")
-            .unwrap_or(prior_version)
-            .to_string();
-        let prior_commit = rev_parse(shell, &format!("v{prior_version}^{{commit}}"))?;
-        fixture(
-            in_base(prior),
-            out.join(format!("upgrade-prior-{prior_version}.tar.gz")),
-            prior_commit,
-            Some(prior_version),
         );
     }
     shell.sign_all(
@@ -726,7 +698,6 @@ mod tests {
         let overrides = [
             json!({}),
             json!({"commit": "b".repeat(40)}),
-            json!({"version": "0.3.3"}),
             json!({"upgrade_test": false}),
             json!({"files": {}}),
         ];
@@ -741,13 +712,7 @@ mod tests {
                 *signed.lock().unwrap() += 1;
                 Ok(())
             };
-            let result = sign_upgrade_fixture(
-                &source,
-                &root.join("signed.tar.gz"),
-                COMMIT,
-                Some("0.3.5"),
-                &sign,
-            );
+            let result = sign_upgrade_fixture(&source, &root.join("signed.tar.gz"), COMMIT, &sign);
             if index == 0 {
                 result.unwrap();
                 assert_eq!(*signed.lock().unwrap(), 1);

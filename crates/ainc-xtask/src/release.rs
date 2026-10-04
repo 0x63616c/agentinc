@@ -32,7 +32,7 @@ pub mod terminal_smoke;
 pub mod upgrade_gate;
 
 /// The subcommands this module serves, for the xtask usage string.
-pub const NAMES: &str = "bump|release-next-patch|release-package-version|release-version|release-version-less|release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-terminal-smoke|release-upgrade-gate|release-pending|release-sparkle-deltas|release-sparkle-sign";
+pub const NAMES: &str = "bump|release-next-patch|release-package-version|release-version|release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-terminal-smoke|release-upgrade-gate|release-pending|release-sparkle-deltas|release-sparkle-sign";
 
 pub fn handles(operation: &str) -> bool {
     NAMES.split('|').any(|name| name == operation)
@@ -46,7 +46,6 @@ pub fn run(operation: &str, args: Vec<String>, root: &Path) -> Result<()> {
         "release-version" => bump::version_cli(root, &args),
         "release-package-version" => bump::package_version_cli(root, &args),
         "release-next-patch" => bump::next_patch_cli(&args),
-        "release-version-less" => bump::version_less_cli(&args),
         "release-ci-gate" => ci_gate::cli(&args),
         "release-distribute" => distribute::cli(&args),
         "release-sparkle-deltas" => sparkle::deltas_cli(root, &args),
@@ -292,10 +291,6 @@ impl Opts {
             .get(name)
             .and_then(|all| all.last())
             .map(String::as_str)
-    }
-
-    pub fn many(&self, name: &str) -> &[String] {
-        self.values.get(name).map_or(&[], Vec::as_slice)
     }
 
     /// A required option: exit 2 naming it, like argparse.

@@ -3,7 +3,7 @@
 use super::{checked, output, read_to_string};
 use anyhow::{Result, anyhow, bail};
 use regex::Regex;
-use std::{fs, path::Path, process::exit};
+use std::{fs, path::Path};
 
 type Version = (u64, u64, u64);
 
@@ -175,14 +175,6 @@ pub fn next_patch_cli(args: &[String]) -> Result<()> {
     };
     println!("{}", next_patch(version)?);
     Ok(())
-}
-
-/// `cargo xtask release-version-less A B`: exit 0 when A < B, 1 otherwise, silently.
-pub fn version_less_cli(args: &[String]) -> Result<()> {
-    let [a, b] = args else {
-        bail!("usage: cargo xtask release-version-less A B");
-    };
-    exit(if parse(a)? < parse(b)? { 0 } else { 1 });
 }
 
 #[cfg(test)]

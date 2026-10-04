@@ -56,30 +56,14 @@ both show startup output before input and run a command.
 
 ## Previously published apps
 
-The gate downloads every older published `AgentInc.tar.gz`, installs it in an
-isolated directory, and checks its code signature, Gatekeeper assessment and
-version. Versions 0.2.0 and 0.3.1 are explicitly reported as known broken:
-their updater windows crash when closing or replacing an offer. Both require
-a one-time manual installation of 0.3.2 or later.
-
-Already shipped binaries have the production GitHub feed URL and production
-public key compiled in. Before the candidate is published, they cannot accept
-the local feed signed with the test key. Signing a local test feed with the
-production update key would make it valid for every production client and is
-forbidden. Thus the predecessor check can verify installed release assets but
-cannot prove an old binary updates to the unpublished candidate. The gate
-reports this limitation for every version; it does not silently omit one.
-For a prior release whose tag contains the test-only feed build, Distribution
-also rebuilds that exact tagged source with this run's test key, signs and
-notarizes it, and drives both in-app paths from that version to the candidate.
-Legacy fixtures still use the original signed JSON feed and `ainc-update` helper;
-the migration release continues publishing that feed and full archive so already
-installed clients can acquire Sparkle. Their first migration download is necessarily
-full. Subsequent Sparkle-enabled versions can use deltas.
-The gate checks the rebuilt version and commit against the installed published
-asset. This begins with versions shipped after this gate lands; older binaries
-cannot be rebuilt with the override. The candidate's two in-app passes prevent
-a newly broken updater from shipping.
+The gate does not rebuild or exercise older versions. Each shipped version's own
+updater was proven by its candidate passes when it shipped, and shipped binaries
+only trust the production key, so a test-key rebuild of old source proved little
+while adding about four minutes of build and five of notarization per release,
+growing with every version. Versions 0.2.0 and 0.3.1 have updater windows that crash
+when closing or replacing an offer; they need a one-time manual installation of
+0.3.2 or later. Legacy clients still use the signed JSON feed and `ainc-update`
+helper, so the release keeps publishing that feed and the full archive.
 
 To validate a branch, dispatch `Distribution` at its exact commit with
 `test=true` and `build=true`. Never use `test=false` for branch validation.
