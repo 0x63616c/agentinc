@@ -1476,14 +1476,14 @@ pub mod types {
     ///  "type": "object",
     ///  "required": [
     ///    "id",
-    ///    "state",
+    ///    "status",
     ///    "workspace_id"
     ///  ],
     ///  "properties": {
     ///    "id": {
     ///      "type": "string"
     ///    },
-    ///    "state": {
+    ///    "status": {
     ///      "type": "string"
     ///    },
     ///    "workspace_id": {
@@ -1496,7 +1496,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
     pub struct Terminal {
         pub id: ::std::string::String,
-        pub state: ::std::string::String,
+        pub status: ::std::string::String,
         pub workspace_id: ::std::string::String,
     }
     impl Terminal {
@@ -4620,14 +4620,14 @@ pub mod types {
         #[derive(Clone, Debug)]
         pub struct Terminal {
             id: ::std::result::Result<::std::string::String, ::std::string::String>,
-            state: ::std::result::Result<::std::string::String, ::std::string::String>,
+            status: ::std::result::Result<::std::string::String, ::std::string::String>,
             workspace_id: ::std::result::Result<::std::string::String, ::std::string::String>,
         }
         impl ::std::default::Default for Terminal {
             fn default() -> Self {
                 Self {
                     id: Err("no value supplied for id".to_string()),
-                    state: Err("no value supplied for state".to_string()),
+                    status: Err("no value supplied for status".to_string()),
                     workspace_id: Err("no value supplied for workspace_id".to_string()),
                 }
             }
@@ -4643,14 +4643,14 @@ pub mod types {
                     .map_err(|e| format!("error converting supplied value for id: {e}"));
                 self
             }
-            pub fn state<T>(mut self, value: T) -> Self
+            pub fn status<T>(mut self, value: T) -> Self
             where
                 T: ::std::convert::TryInto<::std::string::String>,
                 T::Error: ::std::fmt::Display,
             {
-                self.state = value
+                self.status = value
                     .try_into()
-                    .map_err(|e| format!("error converting supplied value for state: {e}"));
+                    .map_err(|e| format!("error converting supplied value for status: {e}"));
                 self
             }
             pub fn workspace_id<T>(mut self, value: T) -> Self
@@ -4671,7 +4671,7 @@ pub mod types {
             ) -> ::std::result::Result<Self, super::error::ConversionError> {
                 Ok(Self {
                     id: value.id?,
-                    state: value.state?,
+                    status: value.status?,
                     workspace_id: value.workspace_id?,
                 })
             }
@@ -4680,7 +4680,7 @@ pub mod types {
             fn from(value: super::Terminal) -> Self {
                 Self {
                     id: Ok(value.id),
-                    state: Ok(value.state),
+                    status: Ok(value.status),
                     workspace_id: Ok(value.workspace_id),
                 }
             }

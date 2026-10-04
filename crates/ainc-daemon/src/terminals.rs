@@ -74,7 +74,7 @@ pub struct CreateTerminal {
 pub struct Terminal {
     pub id: String,
     pub workspace_id: String,
-    pub state: String,
+    pub status: String,
 }
 fn api_error(error: impl std::fmt::Display) -> CommandError {
     tracing::error!(%error, "terminal session failed");
@@ -107,7 +107,7 @@ async fn list(
         .map(|(id, session)| Terminal {
             id: id.to_string(),
             workspace_id: session.workspace_id.clone(),
-            state: if session.ended.load(Ordering::SeqCst) {
+            status: if session.ended.load(Ordering::SeqCst) {
                 "ended"
             } else {
                 "running"
@@ -140,7 +140,7 @@ async fn create(
     Ok(Json(Terminal {
         id: request.id,
         workspace_id,
-        state: if session.ended.load(Ordering::SeqCst) {
+        status: if session.ended.load(Ordering::SeqCst) {
             "ended"
         } else {
             "running"

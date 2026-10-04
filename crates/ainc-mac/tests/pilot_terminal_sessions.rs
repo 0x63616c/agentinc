@@ -232,7 +232,7 @@ fn split_session_survives_app_quit_and_relaunch() -> Result<()> {
                 ensure!(
                     sessions
                         .iter()
-                        .any(|item| item.id == second.to_string() && item.state == "running"),
+                        .any(|item| item.id == second.to_string() && item.status == "running"),
                     "long-running session ended when app quit"
                 );
                 Ok::<_, anyhow::Error>(())

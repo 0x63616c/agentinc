@@ -713,7 +713,7 @@
           "id": {
             "type": "string"
           },
-          "state": {
+          "status": {
             "type": "string"
           },
           "workspace_id": {
@@ -723,7 +723,7 @@
         "required": [
           "id",
           "workspace_id",
-          "state"
+          "status"
         ],
         "type": "object"
       },

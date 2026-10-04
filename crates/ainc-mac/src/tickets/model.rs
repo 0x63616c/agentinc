@@ -116,10 +116,7 @@ pub fn priority_from_key(key: &str) -> Option<TicketPriority> {
         .find(|priority| priority_key(*priority) == key)
 }
 
-/// `T-12`.
-pub fn ticket_key(id: i64) -> String {
-    format!("T-{id}")
-}
+pub use ainc_client::ticket_key;
 
 /// A stable color per label name, so a label looks the same everywhere.
 pub fn label_color(label: &str) -> u32 {
