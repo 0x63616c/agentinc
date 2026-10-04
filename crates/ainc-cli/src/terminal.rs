@@ -1,4 +1,4 @@
-//! `ainc terminals attach`: the reconnecting viewer the Mac app runs inside each Ghostty pane
+//! `ainc terminal attach`: the reconnecting viewer the Mac app runs inside each Ghostty pane
 //! for a daemon-owned Terminal. It keeps trying while the daemon restarts or updates.
 use ainc_client::{ClientError, types::CreateTerminal, types::ErrorCode};
 use anyhow::{Context, Result};

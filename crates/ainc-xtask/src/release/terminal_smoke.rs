@@ -107,7 +107,7 @@ fn check_pane(app: &Path, discovery: &Path, existing: bool) -> Result<()> {
     let session_id = uuid::Uuid::new_v4().to_string();
     let (master, slave) = open_pty()?;
     let mut command = Command::new(app.join("Contents/MacOS/ainc"));
-    command.args(["terminals", "attach", &session_id]);
+    command.args(["terminal", "attach", &session_id]);
     if existing {
         command.arg("--existing");
     }

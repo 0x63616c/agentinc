@@ -64,7 +64,7 @@ impl CommandFamily for Tickets {
     type Command = TicketCommand;
     const LABEL: &'static str = "Ticket";
     const READ_TOOL: &'static str = "list_tickets";
-    const READ_DESCRIPTION: &'static str = "Read the owner's Tickets (status, priority, labels, board order), relationships, Comments, assignees and work results.";
+    const READ_DESCRIPTION: &'static str = "Read the owner's Tickets (status, priority, labels, board order), relationships, Comments, assignees and work results. Say Tickets to the owner by their `key` (T-12); commands take the numeric `id`.";
     const COMMAND_TOOL: &'static str = "ticket_command";
     const COMMAND_DESCRIPTION: &'static str = "Apply a Ticket command requested in this Conversation. Read current revisions and assignee IDs first. Assigning actionable work to an agent starts that work. Autonomous file, shell and git work must use an assigned Ticket.";
     fn schema() -> &'static Value {
@@ -96,10 +96,14 @@ impl CommandFamily for Tickets {
         Ok(json!(receipt))
     }
     async fn read(pool: &PgPool, actor: &Actor) -> Result<Value, ToolError> {
-        tickets::snapshot(pool, actor)
-            .await
-            .map(|s| json!(s))
-            .map_err(ToolError::from)
+        let mut snapshot = json!(tickets::snapshot(pool, actor).await?);
+        // People say "T-12"; commands still take the numeric `id` beside it.
+        for ticket in snapshot["tickets"].as_array_mut().into_iter().flatten() {
+            if let Some(id) = ticket["id"].as_i64() {
+                ticket["key"] = json!(ainc_release::ticket_key(id));
+            }
+        }
+        Ok(snapshot)
     }
 }
 
@@ -237,5 +241,33 @@ impl<F: CommandFamily> Tool for ReadTool<F> {
             let actor = origin::<F>(&pool, &session_id).await?;
             F::read(&pool, &actor).await
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tickets::TicketCommandRequest as Request;
+
+    #[sqlx::test]
+    async fn the_ticket_tool_names_tickets_by_key_and_keeps_the_numeric_id(pool: PgPool) {
+        let created = tickets::execute(
+            &pool,
+            &Actor::owner(),
+            Request {
+                operation_id: uuid::Uuid::new_v4().to_string(),
+                command: TicketCommand::Create {
+                    title: "Keyed".into(),
+                },
+            },
+        )
+        .await
+        .unwrap()
+        .result_id
+        .unwrap();
+        let read = Tickets::read(&pool, &Actor::owner()).await.unwrap();
+        let ticket = &read["tickets"][0];
+        assert_eq!(ticket["id"], created);
+        assert_eq!(ticket["key"], format!("T-{created}"));
     }
 }

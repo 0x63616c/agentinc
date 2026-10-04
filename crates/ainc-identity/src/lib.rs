@@ -99,6 +99,10 @@ pub const DAEMON_READY: &str = "daemon ready";
 pub fn client_header() -> String {
     client_header_as("mac")
 }
+/// A Ticket's short name wherever a person reads it: `T-12`. Commands and JSON keep the number.
+pub fn ticket_key(id: i64) -> String {
+    format!("T-{id}")
+}
 /// The header a client of the given kind sends: `mac` for the app, `cli` for `ainc`.
 pub fn client_header_as(kind: &str) -> String {
     format!("{kind}/{VERSION} (build {BUILD}; api {API})")

@@ -50,7 +50,7 @@ occurred. The original signed bundle and daemon must remain intact and usable.
 This catches accidentally handing Sparkle an Install reply during background
 prefetch: after preparation, Sparkle may install on host termination even while
 the user driver's ready reply remains pending.
-After relaunch, the gate runs the signed bundle's `ainc terminals attach`
+After relaunch, the gate runs the signed bundle's `ainc terminal attach`
 through a PTY. A new pane and a saved pane whose daemon session is gone must
 both show startup output before input and run a command.
 

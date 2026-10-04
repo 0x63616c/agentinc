@@ -332,7 +332,7 @@ private final class TerminalHost: NSObject {
         pane.sessionID = id
         let command = helper.map {
             let quoted = "'\($0.replacingOccurrences(of: "'", with: "'\\''"))'"
-            return "\(quoted) terminals attach \(id)\(existing ? " --existing" : "")"
+            return "\(quoted) terminal attach \(id)\(existing ? " --existing" : "")"
         }
         pane.configuration = TerminalSurfaceOptions(workingDirectory: home, command: command,
                                                      waitAfterCommand: true)
@@ -415,7 +415,7 @@ private final class TerminalHost: NSObject {
         if let helper {
             let command = Process()
             command.executableURL = URL(fileURLWithPath: helper)
-            command.arguments = ["terminals", "close", "--id", pane.sessionID]
+            command.arguments = ["terminal", "close", "--id", pane.sessionID]
             do { try command.run() } catch { fputs("AgentInc close terminal: \(error)\n", stderr) }
         }
         layoutPanes()

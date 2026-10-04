@@ -45,14 +45,26 @@ fn display(value: &Value, json_output: bool) {
         }
     }
 }
+/// The `T-12` name of a Ticket-shaped object, for people; JSON output keeps only the number.
+fn ticket_label(fields: &serde_json::Map<String, Value>) -> Option<String> {
+    let id = fields.get("id")?.as_i64()?;
+    (fields.contains_key("title") && fields.contains_key("assignee_kind"))
+        .then(|| ainc_identity::ticket_key(id))
+}
 fn compact(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
-        Value::Object(fields) => fields
-            .iter()
-            .map(|(key, value)| format!("{key}={}", compact(value)))
-            .collect::<Vec<_>>()
-            .join("  "),
+        Value::Object(fields) => ticket_label(fields)
+            .map(|key| format!("key={key}  "))
+            .into_iter()
+            .chain(std::iter::once(
+                fields
+                    .iter()
+                    .map(|(key, value)| format!("{key}={}", compact(value)))
+                    .collect::<Vec<_>>()
+                    .join("  "),
+            ))
+            .collect(),
         _ => value.to_string(),
     }
 }
@@ -218,7 +230,8 @@ fn command_tree(spec: &Value) -> Command {
         *entry = entry.clone().subcommand(command);
     }
     if let Some(terminals) = groups.get_mut("terminals") {
-        *terminals = terminals.clone().subcommand(
+        // `ainc terminal attach` is the spelling the Mac app uses; `terminals` is the generated group.
+        *terminals = terminals.clone().visible_alias("terminal").subcommand(
             Command::new("attach")
                 .about(
                     "Attach this terminal to a daemon-owned Terminal, reconnecting until it ends",

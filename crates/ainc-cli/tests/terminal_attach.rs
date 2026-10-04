@@ -1,4 +1,4 @@
-//! `ainc terminals attach` against a real daemon: it creates the Terminal, runs a command in
+//! `ainc terminal attach` (alias `terminals`) against a real daemon: it creates the Terminal, runs a command in
 //! the daemon-owned shell, and recreates a Terminal whose saved ID the daemon no longer has.
 use std::{
     fs,
@@ -7,7 +7,11 @@ use std::{
 };
 
 /// Attach to a Terminal with `extra` arguments, run one command, return what the shell printed.
-async fn attach_and_run(pool: sqlx::PgPool, extra: &'static [&'static str]) -> String {
+async fn attach_and_run(
+    pool: sqlx::PgPool,
+    group: &'static str,
+    extra: &'static [&'static str],
+) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move {
@@ -26,7 +30,7 @@ async fn attach_and_run(pool: sqlx::PgPool, extra: &'static [&'static str]) -> S
     let id = uuid::Uuid::new_v4().to_string();
     let output = tokio::task::spawn_blocking(move || {
         let mut child = Command::new(env!("CARGO_BIN_EXE_ainc"))
-            .args(["terminals", "attach", &id])
+            .args([group, "attach", &id])
             .args(extra)
             .env("AINC_API_URL", &url)
             .env("AINC_TOKEN_FILE", &token)
@@ -62,11 +66,16 @@ async fn attach_and_run(pool: sqlx::PgPool, extra: &'static [&'static str]) -> S
 
 #[sqlx::test(migrations = "../ainc-daemon/migrations")]
 async fn attach_creates_the_terminal_and_runs_a_command(pool: sqlx::PgPool) {
-    let seen = attach_and_run(pool, &[]).await;
+    let seen = attach_and_run(pool, "terminal", &[]).await;
     assert!(seen.contains("[Connecting to AgentInc terminal...]"));
 }
 
 #[sqlx::test(migrations = "../ainc-daemon/migrations")]
 async fn attach_recreates_a_terminal_the_daemon_no_longer_has(pool: sqlx::PgPool) {
-    attach_and_run(pool, &["--existing"]).await;
+    attach_and_run(pool, "terminal", &["--existing"]).await;
+}
+
+#[sqlx::test(migrations = "../ainc-daemon/migrations")]
+async fn the_generated_plural_group_attaches_too(pool: sqlx::PgPool) {
+    attach_and_run(pool, "terminals", &[]).await;
 }

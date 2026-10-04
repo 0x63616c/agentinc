@@ -106,7 +106,7 @@ fn attached(ids: &[Uuid]) -> Result<()> {
         let processes = String::from_utf8(output.stdout)?;
         if ids
             .iter()
-            .all(|id| processes.contains(&format!("terminals attach {id}")))
+            .all(|id| processes.contains(&format!("terminal attach {id}")))
         {
             return Ok(());
         }

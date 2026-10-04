@@ -18,7 +18,7 @@ roles are appended last, deliberately overriding terminal colors and themes.
 The bridge intercepts Cmd+K, Cmd+comma, Cmd+number and Cmd+[/] only while a terminal
 pane is focused, forwarding them to AgentInc. Its Swift test verifies the focus rule;
 all other Ghostty keybinds pass through.
-Each pane runs `ainc terminals attach` through Ghostty's exec backend. The
+Each pane runs `ainc terminal attach` through Ghostty's exec backend. The
 daemon owns its login shell, PTY and bounded output buffer in
 `crates/ainc-daemon/src/terminals.rs`; the attach client reconnects and
 replays output. Drag either split divider to resize its panes. The bridge saves
