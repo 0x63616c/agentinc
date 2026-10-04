@@ -3,7 +3,8 @@
 Requested by Calum on 2026-10-03. This is the durable execution checklist for
 the tabs/sidebar request and the entire supplied cohesion follow-up handoff.
 The goal is to implement, verify, integrate on `main`, push, and **publish the
-next minor release**, expected to be **0.7.0** from the audited 0.6.0 baseline.
+next minor release**. Source main already contains the independent 0.7.0 release;
+this work's next minor is **0.8.0**. Published Latest was still 0.6.0 at the audit.
 Re-check the version before bumping; publication and the upgrade gate are part
 of completion, not a later optional step.
 
@@ -64,24 +65,31 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   regenerate API/client/CLI. No product_state/product_command uses remain.
   Old endpoint operation IDs returning 409 on the new endpoint is accepted.
   D-1…D-3 worker commit `d9a57be` integrated as `6ae6ebc`; generated API and
-  callers migrated together. Full integrated validation remains outstanding.
-- [ ] **D-4:** Compile-check SQL with sqlx query!/query_as! and committed .sqlx
+  callers migrated together. Integrated SQL, API/client generation and tests pass.
+- [x] **D-4:** Compile-check SQL with sqlx query!/query_as! and committed .sqlx
   offline metadata. One commit per module: tickets, automations,
   product/conversations, execution, workspaces, receipts, coding, terminal.
   No literal runtime queries except named/reasoned exceptions. Add prepare
   --check --workspace to check when DATABASE_URL exists (explicit skip otherwise),
   run in test, install sqlx-cli in CI and verify offline builds there.
-- [ ] **D-5:** Move terminal WebSocket attach to `ainc terminal attach <id>`;
+- [x] **D-5:** Move terminal WebSocket attach to `ainc terminal attach <id>`;
   bundle/sign ainc, change Mac host, bundle script, Ghostty docs, pilot terminal
   test and xtask smoke; delete aincd argv dispatch. Shared identity discovery.
   Terminal smoke and pilot terminal acceptance pass.
-- [ ] **D-6:** One process-group/PTY helper owns spawn-in-group,
+- [x] **D-6:** One process-group/PTY helper owns spawn-in-group,
   kill-group-on-drop, setpgid/setsid/killpg/openpty. Migrate coding, terminal,
   local runtime and Codex safely; test cleanup and process lifecycles.
-- [ ] **D-7:** Shared ainc-client ticket_key(id) produces T-42 and is used by CLI,
+- [x] **D-7:** Shared ainc-client ticket_key(id) produces T-42 and is used by CLI,
   Conversation tools and Mac. Use clock_timestamp for event times. Rename
   lifecycle state to status only on tables otherwise touched by a migration,
   with documented expand/contract compatibility.
+  Integrated checked-SQL modules in `cbd07e5`…`d12a236`, SQL gate `e91dcfd`,
+  attach `691d8ee`, process ownership `6f011e1`, event times `7faf659`, shared
+  keys/status `c281d9b`, singular CLI + key presentation `2696a6c`, compatible
+  occurrence status `dcee012`, mandatory local test SQL gate `2feaf68`.
+  Worker targeted audit tests: 99 daemon/CLI/client/identity and 93 xtask passed;
+  isolated PG backfill and bidirectional old/new status writes covered. Integrated
+  full tests and native terminal acceptance have passed (see below).
 
 ## Mac follow-up lane — after API integration
 
@@ -128,30 +136,53 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   workspace no-run 408→310 s wall / 1952→1501 s CPU / 5.3→5.1 GB. Workspace
   savings did not justify daemon regression or production test-support features.
   Worker measured under high host load; see `docs/cohesion-plan.md` for caveats.
-- [ ] **B-2:** Measure target after full tests plus rendered run. Reduce below
+- [x] **B-2:** Measure target after full tests plus rendered run. Reduce below
   15 GB using measured contributors/profile/incremental improvements or provide
   a concrete explanation.
+  Integrated `just test` plus the 211-frame rendered suite: coordinator target
+  is 10 GB, with rendered images another 51 MB. No profile change required.
+  Stale incremental artifacts from earlier feature combinations were cleared
+  once before integration; the measurement includes rebuilt incremental state.
 
 ## Verification and release gates
 
-- [ ] Follow-up allow-lists in xtask checks are empty; actual behavior tests
+- [x] Follow-up allow-lists in xtask checks are empty; actual behavior tests
   supplement the static standards. No source-string tests as behavior evidence.
-- [ ] Static checks and full tests pass with isolated Postgres. Docker was
+- [x] Static checks and full tests pass with isolated Postgres. Docker was
   unavailable at audit; use Homebrew Postgres, unique ports and disposable data.
   Never import the real application profile. No added sleeps/timers in tests.
-- [ ] Native rendered matrix: minimum/normal/large windows; minimum/default/max
+  `DATABASE_URL=postgres://postgres@127.0.0.1:54336/postgres just test`: 361
+  passed, 8 skipped (plus doctests). SQL prepare against both scratch databases
+  passed. Nextest's one leaky discovery report passed cleanly on isolated recheck.
+- [x] Native rendered matrix: minimum/normal/large windows; minimum/default/max
   sidebar; expanded/collapsed; all font sizes; 1/2/many tabs; first/middle/last
   selection; wheel/trackpad; hover and mouse-close; reopening persisted state;
   profile/support with/without updates and long names. Assert geometry and
   inspect real Metal images at logical resolution.
-- [ ] Terminal bridge shortcut tests, pilot native interactions, terminal attach
+  Final integrated run: 211 frames passed; native Swift ShortcutTests: 2 passed.
+- [x] Terminal bridge shortcut tests, pilot native interactions, terminal attach
   smoke and relevant detail navigation tests pass.
-- [ ] Build bundled app and confirm an actual isolated window before releasing.
+  Pilot acceptance passed Tickets, Comments, assignments, six statuses, Automation
+  creation/editing/run/history, detail Back and Assistant navigation. Packaged
+  terminal split-session quit/relaunch passed. Reopening Search with a recent
+  command exposed duplicate native IDs; palette rows now include their group in
+  their identity, and real native acceptance covers reopening without a crash.
+  Updated stale pilot selectors and development updater expectations for Sparkle.
+- [x] Build bundled app and confirm an actual isolated window before releasing.
   Visible updater/live Sparkle fixtures belong on the dedicated release Mac,
   never Calum's active desktop. Test the package, not just Cargo binaries.
-- [ ] Review all changes; commit coherent validated steps. Preserve work before
+  Ad-hoc signed automation bundle passed visible CLI/native WindowServer smoke:
+  PID/title matched, 1360×828 window, Search/type/wait/capture/quit and endpoint
+  cleanup passed. Packaged terminal smoke passed for new and restored terminals.
+  Full pilot acceptance exposed a hidden-window launch-animation wait; its real
+  capture suite now uses a visible owned window and waits on launch status.
+- [x] Review all changes; commit coherent validated steps. Preserve work before
   returning owned leases; never force-return dirty worktrees.
-- [ ] Write docs/releases/0.7.0.md (adjust only if baseline changed), run authorized
+  Final local full gate repeated after the Search crash fix: 361 passed, no leaks,
+  8 opt-in tests skipped; explicit native pilot suites passed separately. Release
+  notes are prepared at `docs/releases/0.8.0.md`. Distribution dry-run and exact-SHA
+  Linux CI remain required before publication.
+- [ ] Write docs/releases/0.8.0.md (source main already at 0.7.0), run authorized
   `just release minor` on clean main, and push version commit.
 - [ ] Watch Distribution prepare/native/distribute/upgrade/publish to success;
   verify GitHub Latest release, version and update feed. Do not claim shipping
@@ -166,12 +197,11 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   Reconcile remote changes before integration; next minor may therefore be 0.8.0.
 - Coordinator: `feat/tabs-cohesion-followups`, lease 12,
   ID `0e55267c7a52d7694616e7ddea5b152c`; owns Mac changes and integration.
-- Daemon Sonnet worker: lease 14, ID `f10cb12bcfb8769a74374f91a591b538`, D-1…D-7.
-  First pass completed through `a91f5ef` (342 tests passed, 8 skipped); D4…D7
-  integration pending. Audit sent the worker back for exact singular `terminal`
-  CLI spelling, shared Ticket keys in CLI/tools, lifecycle `status` compatibility
-  on tables touched by the event-time migration, and mandatory SQL prepare in
-  local tests. It continues on the same lease/Postgres 54334.
+- Daemon Sonnet worker completed through `73bafe1`; all commits integrated,
+  its Postgres stopped and lease 14 returned. Coordinator found and fixed remaining
+  retired endpoint callers in runtime smoke and stale API docs; process tests now
+  synchronize on readiness rather than sleeping. Remote main through `ad088d5`
+  merged as `6fcbc67`, preserving current release fixes.
 - Build Sonnet worker completed; lease 13 returned after integration. SHAs:
   `d5ce2fd`→`3dc5835`, `f3e9193`→`b3befe2`, `b89b721`→`1573d17`,
   `2e53ddc`→`f582c85`, `78fdcb9`→`aa25412`. Worker full test: 336 passed,
@@ -180,8 +210,10 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   for dev-loop cost). Integrated rendered/full-test size and Distribution dry-run
   remain coordinator gates. Use lease-local targets: shared xtask artifacts can
   otherwise race across leases.
-- Disk audit: 43 GiB free, main target 27 GB. Normal coordinator/daemon builds
-  share the existing main target; build measurements use owned fresh targets.
+- Disk audit: headroom reached 6.9 GiB; removed only coordinator's inactive
+  incremental cache (4.7 GB), recovering 11 GiB free. Lease-local target is used
+  for gates. Integrated `just test` runs with isolated UTF-8 Postgres on 54336
+  under temporary `opencode/pg-tabs-integration`.
 - Tab persistence, bounded header, shortcuts/terminal forwarding, compact sidebar
   and menu placement implemented. Mac library tests: 107 passed. Native Swift
   ShortcutTests: 2 passed. Rendered suite: 187 real Metal frames passed across
@@ -189,6 +221,6 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   hover-X pixel checks. Fixed first-frame restoration (GPUI item reveal had stale
   overflow state) and inactive tab backgrounds masking the panel border. Inspected
   saved images at logical resolution. `just check` passed before API integration;
-  full integrated tests still outstanding. No release yet.
+  later integrated evidence above supersedes these initial counts. No release yet.
 - Worker outputs: temporary opencode daemon-followups-result.md and
   build-followups-result.md; transfer final evidence here when integrating.
