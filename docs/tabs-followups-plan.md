@@ -190,7 +190,9 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   `37166504918`; explicit Distribution `test=true,build=true` run `37166520760`.
   Both are being watched. Final full-test/rendered target measurement: 11 GB.
   Authorized `just release minor` prepared `729a9ac` (0.8.0), including generated
-  API version metadata. It is held locally until the Distribution dry-run finishes.
+  API version metadata; its generation-current test passed. The release workflow
+  enforces exact-commit CI and native upgrade gates before publication. The
+  explicit dry-run remains a separate required B-5 evidence item.
 - [ ] Write docs/releases/0.8.0.md (source main already at 0.7.0), run authorized
   `just release minor` on clean main, and push version commit.
 - [ ] Watch Distribution prepare/native/distribute/upgrade/publish to success;
@@ -199,6 +201,22 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   version; failed unpublished drafts can be repaired/retried at an exact commit.
 
 ## Current checkpoint
+
+### Prompt-to-artifact audit
+
+| Requirements | Implementation and executable evidence |
+| --- | --- |
+| Curved tabs, hover close, shortcuts, bounded scroll/reveal | `shell/header.rs`; `shell/tests.rs` tests `tab_shortcuts_history_mouse_close_and_restore`, `overflowing_tabs_scroll_reveal_and_stay_between_controls`, `restored_active_tab_is_visible_on_the_first_frame`; rendered tab matrix in `tests/rendered/runner.rs` |
+| Native terminal shortcut forwarding | Swift `ShortcutTests`: focused real Ghostty pane → C callback values for new/close/previous/next/update; Rust `terminal/host.rs` maps those callbacks to shell actions |
+| Per-tab history, persistence, migrations and invalid saved state | `ui_state.rs` version-2 serialization and migration tests; `detail_history_tabs_and_reopening_restore_the_record`; delayed Conversation snapshot regression in `evee.rs` |
+| Compact sidebar, widened minimum, Search, profile/Support/update geometry | `shell/sidebar.rs`, `shell/menus.rs`, `ui/tokens.rs`; shell geometry tests plus 211 real Metal frames including all font sizes and long titles |
+| D-1…D-3 retired APIs and names | Generated `api/openapi-3.0.json`, client and CLI; daemon Conversation endpoint tests; client/CLI round trips; xtask OpenAPI legacy lists empty |
+| D-4 SQL and D-7 migration compatibility | `.sqlx/`, `checks/sqlx.rs`; mandatory scratch-Postgres `prepare --check --workspace`; daemon migration tests exercise backfill and both writer generations |
+| D-5 terminal CLI and D-6 process ownership | Real `ainc terminal attach` integration tests; packaged `release-terminal-smoke`; `pilot_terminal_sessions`; group/PTY readiness and teardown tests in daemon `process.rs` |
+| D-7 human Ticket keys | CLI `ticket_keys` test, Conversation tool `the_ticket_tool_names_tickets_by_key_and_keeps_the_numeric_id`, shared helper through `ainc-client` |
+| M-1…M-4 shared controls/fonts/native actions/dependencies | Automation agent-selection shell test and real pilot create/edit; `ui_state` font preference; `native_update` ABI tests; dependency audit and passing offline compile |
+| B-1…B-6 build follow-ups | Measured table in `cohesion-plan.md`; final target 11 GB; sibling engine/testing modules; consolidated SDK recovery tests; pinned Taplo in CI; Distribution dry-run tracked above |
+| Packaged launch and release | Signed development bundle executed via `AINC_TEST_APP` and native WindowServer PID/title/dimensions assertion; version notes and bump prepared; production Distribution/upgrade/Latest/feed still pending |
 
 - Original handoff baseline: local main `afa450e`, product version 0.6.0.
   Fresh leases actually start at `1323ec1`, which includes the now-integrated
