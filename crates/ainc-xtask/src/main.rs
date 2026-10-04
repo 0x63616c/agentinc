@@ -485,8 +485,8 @@ fn test(root: &Path, profile: Option<&str>) -> Result<()> {
             Some(postgres)
         }
     };
-    // Fails fast, before the long test run, if .sqlx/ is stale; CI installs sqlx-cli for it.
-    checks::sqlx::prepare_check(root, env::var_os("CI").is_some())?;
+    // Fails fast, before the long test run, if .sqlx/ is stale or sqlx-cli is missing.
+    checks::sqlx::prepare_check(root, true)?;
     let mut nextest = vec!["cargo", "nextest", "run", "--workspace", "--locked"];
     let mut doctests = vec!["cargo", "test", "--doc", "--workspace", "--locked"];
     if let Some(profile) = profile {

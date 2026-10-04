@@ -56,7 +56,7 @@ fn server_of(url: &str) -> Result<&str> {
 }
 
 /// Run `body` with a scratch database holding the daemon's migrations, then drop it. Needs
-/// `DATABASE_URL` (the server) and `sqlx-cli`; with `required` false a missing one is a note.
+/// `DATABASE_URL` (the server) and `sqlx-cli`; with `required` false a missing one is a note (`check` skips; `test` requires both).
 fn scratch(root: &Path, required: bool, body: impl FnOnce(&str) -> Result<()>) -> Result<()> {
     let Some(base) = env::var("DATABASE_URL").ok() else {
         if required {
