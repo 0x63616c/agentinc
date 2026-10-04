@@ -118,7 +118,7 @@ normal` has no `temporalio-*`. `cargo tree -p ainc-daemon` has no `tar`/`flate2`
 | `cargo nextest` in `just test` and CI (`cargo test --doc` separately; no doctests run today, all ignored) | 21.3 s → 12.8 s; 26 binaries serial | CI tests ~63 s → ~30 s; the flaky Temporal start test gets isolation | low |
 | Replace blanket `[profile.dev.package."*"] opt-level=3` with explicit entries: keep 3 for gpui, its layout/text engines and the proc-macros our crates use (serde_derive, utoipa-gen, sqlx-macros, thiserror-impl, temporalio-macros); set 0 for aws-lc-sys, wit/wasm crates, bon-macros, mockall_derive, derive_more-impl, darling_core, zerofrom/yoke/zerovec-derive, synstructure, prost-derive, libsqlite3-sys. `[profile.dev.build-override]` does NOT work here (tried: 172 s) because `package."*"` wins | 411 of 1345 CPU-s are proc-macro crates | ~30% of cold builds | low |
 | reqwest `default-features = false`, `rustls` with the ring provider installed at startup (`rustls::crypto::ring::default_provider().install_default()` in each binary's main) | aws-lc C build 100 s dev / 28 s CI, blocks every TLS crate until 119 s into a cold build; Temporal already uses ring; no openssl anywhere | ~100 s cold | medium: forgetting the provider install panics at first TLS use; add a smoke test |
-| cargo-hakari workspace-hack crate | 17–34 crates change features between `-p` selections (serde_core, syn, tokio, hashbrown); gpui `test-support` comes in through dev-deps | 35–68 s per first variant build; much of the 41 GB | medium |
+| cargo-hakari workspace-hack crate | 17–34 crates change features between `-p` selections (serde_core, syn, tokio, hashbrown); gpui `test-support` comes in through dev-deps | 35–68 s per first variant build; much of the 41 GB | medium; measured and rejected, see "cargo-hakari: measured and rejected" |
 | `bundle.sh`: stamp-file skip of `stage-ghostty.sh` when bridge inputs unchanged; read the version from `Cargo.toml` directly instead of `cargo xtask release-package-version` | 3.7 s + 0.9 s of 7.4 s | UI loop → ~3 s | low |
 | `just clean-incremental` recipe (cargo sweep or `rm target/*/incremental`); sccache shared across Treehouse worktrees | 24 GB incremental; each worktree starts cold (200 s) | disk, cold worktrees | low |
 | CI: fold the `fmt` job into the clippy lane; drop `libssl-dev` from apt; replace the whole-`target/` cache keyed by SHA (2.1 GB per push, thrashes the 10 GB limit) with Swatinem/rust-cache or sccache; use temporal's `vendored-protox` feature to drop protoc installs; have CI call `cargo xtask check` instead of re-listing fmt/clippy/check-ui; move the `just test` Postgres bootstrap (bash + Docker + `sleep`) into `cargo xtask test` | AGENTS.md says tooling is xtask | unmeasured, minutes on cache miss | low |
@@ -836,13 +836,44 @@ as `cli/…`; legacy import done-marker; remove `crates/ainc-mac/scripts/__pycac
 
 ## Phase 3 · Libraries (L1)
 
-Adopt: cargo-nextest, cargo-hakari, cargo-deny (`deny.toml`), cargo-machete, typos, taplo,
+Adopt: cargo-nextest, cargo-deny (`deny.toml`), cargo-machete, typos, taplo,
 cargo sweep / sccache, utoipa-axum, tower-http, eventsource-stream, sqlx `query_as!` offline,
 secrecy (owner token, access tokens), figment or envy (one config), command-group and
 pty-process, reqwest rustls + ring provider.
 Do not adopt: lld/mold/`-ld_new`, crate-splitting the app, release-plz, cargo-dist,
 cargo-semver-checks, Tower hooks in turnkeel (parked by decision), community model SDKs
 (decided: thin reqwest clients we own).
+
+### cargo-hakari: measured and rejected
+
+Both columns are cold builds in a fresh `target/` on one 12-core Mac that was under heavy
+load from other builds (load average 55 to 190), so read CPU time (user seconds), not wall
+time. Before is `1323ec1`; after adds a generated `workspace-hack` crate (hakari 0.9.39,
+aarch64-apple-darwin and x86_64-unknown-linux-gnu, the SDK crates excluded from the
+dependency line).
+
+| | before | with workspace-hack |
+|---|---|---|
+| `cargo build -p ainc-daemon` | 228 s wall, 922 s user, `target/` 1.9 GB | 260 s wall, 1357 s user, 3.0 GB |
+| `cargo nextest run --workspace --no-run` | 408 s wall, 1952 s user, 5.3 GB | 310 s wall, 1501 s user, 5.1 GB |
+
+Unification helps only the workspace-wide build (about 23% less CPU, 4% less disk) and makes
+the daemon-only build, the one `just dev` and the daemon tests repeat, 47% more CPU and 58%
+more disk, because the daemon now builds the Mac app's feature set (including gpui's
+`collections/test-support`). The saving does not offset a generated crate in every manifest,
+two extra checks and shipped binaries built with test features. Not adopted; revisit if the
+daemon and the app stop sharing dependency features.
+
+### `target/` size, measured
+
+One fresh worktree after a full `cargo xtask test` (336 tests) holds 5.5 GB: 3.1 GB of
+dependencies and 2.0 GB of incremental state. With `CARGO_INCREMENTAL=0` the same run holds
+3.6 GB but rebuilds every test binary on each edit, so the dev loop keeps incremental and
+CI (which already sets it to 0) does not. A shared `target/` reaches 30 GB or more only by
+accumulating stale artifacts from many worktrees and commits (one 16 GB incremental directory,
+seven 390 MB test-binary copies of which the merged `tests/temporal` binary now leaves one);
+`just clean-incremental` is the remedy, and no profile change shrinks a single worktree
+further.
 
 ## Phase 3 · Docs (X1)
 
