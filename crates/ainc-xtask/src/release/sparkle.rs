@@ -26,7 +26,7 @@ pub fn tools(root: &Path) -> Result<PathBuf> {
     let archive = cache.join(format!("Sparkle-{VERSION}.tar.xz"));
     if !archive.exists() {
         let download = tempfile::NamedTempFile::new_in(&cache)?;
-        checked(Command::new("curl").args(["--fail", "--location", "--output"]).arg(download.path()).arg(format!(
+        checked(Command::new("curl").args(["--fail", "--location", "--retry", "3", "--retry-all-errors", "--output"]).arg(download.path()).arg(format!(
             "https://github.com/sparkle-project/Sparkle/releases/download/{VERSION}/Sparkle-{VERSION}.tar.xz"
         )))?;
         ensure!(

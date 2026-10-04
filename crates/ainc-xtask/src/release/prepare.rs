@@ -265,7 +265,7 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
     fs::create_dir_all(&cache)?;
     let pg_archive = cache.join(format!("{pg_name}.tar.gz"));
     if !pg_archive.exists() {
-        checked(Command::new("curl").args(["--fail", "--location", "--output"]).arg(&pg_archive).arg(format!(
+        checked(Command::new("curl").args(["--fail", "--location", "--retry", "3", "--retry-all-errors", "--output"]).arg(&pg_archive).arg(format!(
             "https://github.com/theseus-rs/postgresql-binaries/releases/download/{PG_VERSION}/{pg_name}.tar.gz"
         )))?;
     }

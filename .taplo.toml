@@ -1,2 +1,2 @@
-# Vendored upstream manifests keep their own formatting.
-exclude = ["vendor/**"]
+# Vendored upstream manifests keep their own formatting; .local/ is ignored dev state.
+exclude = ["vendor/**", ".local/**"]
