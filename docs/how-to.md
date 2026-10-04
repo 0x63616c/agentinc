@@ -117,8 +117,9 @@ Planned: operation IDs become an `OperationId` type shared with receipts (D1).
 1. On a clean `main`, run `just release patch|minor|major`. It runs `cargo xtask bump`: bumps
    `[workspace.package].version` in the root `Cargo.toml`, runs `cargo update --workspace` and
    `cargo xtask generate`, and commits `chore(release): release X.Y.Z`. A dirty tree refuses.
-2. Push that commit to `main`. The `Distribution` workflow (`.github/workflows/release.yml`) starts
-   only on a product version change: the Mac runner builds and tests, Ubuntu signs, notarizes
+2. Push that commit to `main`. The `Distribution` workflow (`.github/workflows/release.yml`) runs
+   on every push to `main` until that version is published, so a failed run is retried by the next
+   push (an unpublished draft left by a failed run is replaced): the Mac runner builds and tests, Ubuntu signs, notarizes
    and staples, the [native upgrade gate](upgrade-gate.md) runs, then the release and
    legacy `feed.json` and Sparkle `appcast.xml` publish. Sparkle deltas are generated
    on the Mac from published signed bundles, round-trip verified, and signed on

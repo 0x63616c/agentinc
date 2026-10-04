@@ -33,7 +33,7 @@ Measured CI/release bottlenecks and the concurrency/cache safety rules are in th
 [performance audit](ci-release-performance.md).
 
 GPUI depends on AppKit, Metal and the Apple SDK. Linux cannot build this checkout's
-native macOS client. On a version change pushed to `main`, Distribution builds
+native macOS client. While `main`'s version has no published release, every push to `main` runs Distribution, which builds
 the unsigned bundle on the repository's [macOS release runner](release-runner.md)
 at the exact commit and passes it to the existing Linux signing job through
 an Actions artifact. For a local or fallback build at that commit:

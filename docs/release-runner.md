@@ -15,11 +15,12 @@ SwiftBuild Ghostty bridge used by shipped bundles.
 To bump the product version, edit the single `version` in the root
 `Cargo.toml` under `[workspace.package]`, run `cargo xtask generate`, then
 commit and merge to `main`. CI checks the generated API and client files.
-The SDK crates keep independent versions. A product version change starts
-Distribution after merge; other pushes do not.
+The SDK crates keep independent versions. Until the product version is
+published, every push to `main` starts Distribution; afterwards pushes do not.
 
-[`Distribution`](../.github/workflows/release.yml) starts on a product version
-change pushed to `main`. Its Ubuntu prepare job checks the version, then the
+[`Distribution`](../.github/workflows/release.yml) starts on any push to `main`
+whose product version has no published release. Publishing runs share one
+concurrency lane, so a push waits for an in-flight release instead of racing it. Its Ubuntu prepare job checks the version, then the
 Mac runs `cargo xtask release` at that exact commit. The unsigned archive moves
 to the Ubuntu job through a one-day Actions artifact. Only Ubuntu receives the
 Apple and update-signing secrets; it signs, notarizes, and staples. Distribution

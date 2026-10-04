@@ -21,6 +21,7 @@ pub mod file_server;
 pub mod http;
 pub mod measure_build;
 mod notes;
+pub mod pending;
 #[cfg(test)]
 mod pipeline_config;
 pub mod prepare;
@@ -29,10 +30,9 @@ pub mod runtime_smoke;
 pub mod sparkle;
 pub mod terminal_smoke;
 pub mod upgrade_gate;
-pub mod version_changed;
 
 /// The subcommands this module serves, for the xtask usage string.
-pub const NAMES: &str = "bump|release-next-patch|release-package-version|release-version|release-version-less|release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-terminal-smoke|release-upgrade-gate|release-version-changed|release-sparkle-deltas|release-sparkle-sign";
+pub const NAMES: &str = "bump|release-next-patch|release-package-version|release-version|release-version-less|release|release-ci-gate|release-distribute|release-measure-build|release-runtime-smoke|release-terminal-smoke|release-upgrade-gate|release-pending|release-sparkle-deltas|release-sparkle-sign";
 
 pub fn handles(operation: &str) -> bool {
     NAMES.split('|').any(|name| name == operation)
@@ -55,7 +55,7 @@ pub fn run(operation: &str, args: Vec<String>, root: &Path) -> Result<()> {
         "release-runtime-smoke" => runtime_smoke::cli(&args),
         "release-terminal-smoke" => terminal_smoke::cli(&args),
         "release-upgrade-gate" => upgrade_gate::cli(&args),
-        "release-version-changed" => version_changed::cli(&args),
+        "release-pending" => pending::cli(&args),
         other => Err(anyhow!("unknown release command {other}")),
     };
     if let Err(error) = result {

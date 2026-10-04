@@ -357,15 +357,22 @@ pub fn main(
     let mut notes = None;
     if code == 0 {
         let release: Value = serde_json::from_str(&stdout)?;
+        let draft = key(&release, "isDraft")? == &Value::Bool(true);
         if key(&release, "targetCommitish")?.as_str() != Some(commit.as_str()) {
-            bail!("release version already belongs to another commit");
-        }
-        if key(&release, "isDraft")? != &Value::Bool(true) {
+            if !draft {
+                bail!("release version already belongs to another commit");
+            }
+            // An earlier run of this version failed after staging its draft, and main has
+            // moved on. Nobody can have installed a draft, so rebuild it from this commit.
+            println!("Replacing the unpublished {tag} draft staged for another commit");
+            shell.run(&args(&["gh", "release", "delete", &tag, "--yes"]), None)?;
+        } else if !draft {
             println!("Release already published for this commit");
             return Ok(());
+        } else {
+            // A null body would have crashed the Python; treat it as empty.
+            notes = Some(key(&release, "body")?.as_str().unwrap_or("").to_string());
         }
-        // A null body would have crashed the Python; treat it as empty.
-        notes = Some(key(&release, "body")?.as_str().unwrap_or("").to_string());
     }
     let published = release_notes::published(shell, &repo, &version)?;
     let notes = if let Some(notes) = notes {
@@ -605,6 +612,8 @@ mod tests {
         fail_at: Option<usize>,
         outputs: Option<fn(&[String]) -> String>,
         draft: Option<String>,
+        /// A release already staged for another commit, and whether it is still a draft.
+        other_commit: Option<bool>,
         ci_error: bool,
     }
 
@@ -624,6 +633,11 @@ mod tests {
             Ok(())
         }
         fn probe(&self, _: &[String]) -> Result<(i32, String)> {
+            if let Some(is_draft) = self.other_commit {
+                let release =
+                    json!({"targetCommitish": "b".repeat(40), "isDraft": is_draft, "body": "Old"});
+                return Ok((0, release.to_string()));
+            }
             Ok(self.draft.as_ref().map_or((1, String::new()), |body| {
                 (
                     0,
@@ -750,38 +764,23 @@ mod tests {
 
     use sha2::Digest;
 
-    #[test]
-    fn ci_failure_prevents_assets_upload_and_publication() {
-        // Exercise main, not merely the gate helper: speculative signing can finish, but no
-        // feed/archive becomes available before complete CI.
-        let root = tempfile::tempdir().unwrap();
-        let root = root.path();
-        let app = root.join("AgentInc.app");
-        fs::create_dir(&app).unwrap();
-        let identity = json!({
-            "commit": COMMIT, "version": "0.3.5", "upgrade_test": false, "files": {},
-        });
-        let source = fixture_archive(root, &identity);
-        fn outputs(args: &[String]) -> String {
-            let args: Vec<&str> = args.iter().map(String::as_str).collect();
-            match args[..] {
-                ["git", "rev-parse", ..] => COMMIT.to_string(),
-                ["cargo", "metadata", ..] => json!({
-                    "packages": [{"name": "ainc-release", "version": "0.3.5"}],
-                    "target_directory": "/nonexistent/target",
-                })
-                .to_string(),
-                ["git", "log", ..] => format!("{COMMIT}\tA direct commit"),
-                ["gh", "api", ..] => "[[]]".to_string(),
-                _ => String::new(),
-            }
+    fn outputs(args: &[String]) -> String {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        match args[..] {
+            ["git", "rev-parse", ..] => COMMIT.to_string(),
+            ["cargo", "metadata", ..] => json!({
+                "packages": [{"name": "ainc-release", "version": "0.3.5"}],
+                "target_directory": "/nonexistent/target",
+            })
+            .to_string(),
+            ["git", "log", ..] => format!("{COMMIT}\tA direct commit"),
+            ["gh", "api", ..] => "[[]]".to_string(),
+            _ => String::new(),
         }
-        let shell = Recorder {
-            outputs: Some(outputs),
-            ci_error: true,
-            ..Default::default()
-        };
-        let env: HashMap<String, String> = [
+    }
+
+    fn production_env() -> HashMap<String, String> {
+        [
             ("GITHUB_REF", "refs/heads/main"),
             ("GITHUB_REPOSITORY", "owner/repo"),
             ("UPDATE_SIGNING_KEY_ED25519_PEM", "private"),
@@ -793,8 +792,75 @@ mod tests {
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
-        let raw = args(&["--commit", COMMIT, "--archive", &text(&source), "--stage"]);
+        .collect()
+    }
+
+    /// A production `--stage` invocation over a 0.3.5 handoff for `COMMIT`.
+    fn staged_release(root: &Path) -> Vec<String> {
+        fs::create_dir(root.join("AgentInc.app")).unwrap();
+        let identity = json!({
+            "commit": COMMIT, "version": "0.3.5", "upgrade_test": false, "files": {},
+        });
+        let source = fixture_archive(root, &identity);
+        args(&["--commit", COMMIT, "--archive", &text(&source), "--stage"])
+    }
+
+    #[test]
+    fn a_stale_draft_from_another_commit_is_replaced() {
+        let root = tempfile::tempdir().unwrap();
+        let raw = staged_release(root.path());
+        let shell = Recorder {
+            outputs: Some(outputs),
+            other_commit: Some(true),
+            ci_error: true,
+            ..Default::default()
+        };
+        let error = main(&raw, &production_env(), root.path(), &shell).unwrap_err();
+        assert!(error.to_string().contains("CI failed"));
+        let calls = shell.calls.lock().unwrap();
+        let delete = calls
+            .iter()
+            .position(|c| c == &args(&["gh", "release", "delete", "v0.3.5", "--yes"]))
+            .expect("stale draft deleted");
+        let create = calls
+            .iter()
+            .position(|c| c.starts_with(&args(&["gh", "release", "create", "v0.3.5"])))
+            .expect("fresh draft created");
+        assert!(delete < create);
+    }
+
+    #[test]
+    fn a_published_release_of_another_commit_is_never_replaced() {
+        let root = tempfile::tempdir().unwrap();
+        let raw = staged_release(root.path());
+        let shell = Recorder {
+            outputs: Some(outputs),
+            other_commit: Some(false),
+            ..Default::default()
+        };
+        let error = main(&raw, &production_env(), root.path(), &shell).unwrap_err();
+        assert!(error.to_string().contains("belongs to another commit"));
+        let calls = shell.calls.lock().unwrap();
+        assert!(
+            !calls
+                .iter()
+                .any(|c| c.starts_with(&args(&["gh", "release"])))
+        );
+    }
+
+    #[test]
+    fn ci_failure_prevents_assets_upload_and_publication() {
+        // Exercise main, not merely the gate helper: speculative signing can finish, but no
+        // feed/archive becomes available before complete CI.
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        let raw = staged_release(root);
+        let shell = Recorder {
+            outputs: Some(outputs),
+            ci_error: true,
+            ..Default::default()
+        };
+        let env = production_env();
         let error = main(&raw, &env, root, &shell).unwrap_err();
         assert!(error.to_string().contains("CI failed"));
         let notes = fs::read_to_string(root.join(".local/distribution/notes.md")).unwrap();

@@ -16,7 +16,9 @@ on:
         default: true
         description: Build on homelab-mini (disable to use an existing build-COMMIT draft)
 concurrency:
-  group: distribution-${{ inputs.commit || github.sha }}
+  # Publishing runs share one lane: a push never races an in-flight release of the same
+  # version, and the newest waiting run re-checks what is published. Test drafts run per commit.
+  group: distribution-${{ (github.event_name == 'push' || inputs.test == false) && 'publish' || inputs.commit }}
   cancel-in-progress: false
 jobs:
   prepare:
@@ -49,14 +51,17 @@ jobs:
         id: version
         env:
           COMMIT: ${{ inputs.commit || github.sha }}
-          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           CARGO_INCREMENTAL: "0"
         run: |
           test "$(git rev-parse HEAD)" = "$COMMIT"
-          echo "version=$(cargo run --locked --quiet --profile ci -p ainc-xtask -- release-version)" >> "$GITHUB_OUTPUT"
+          version=$(cargo run --locked --quiet --profile ci -p ainc-xtask -- release-version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = push ]; then
-            changed=$(cargo run --locked --quiet --profile ci -p ainc-xtask -- release-version-changed "$BEFORE")
-            echo "ready=$changed" >> "$GITHUB_OUTPUT"
+            # Every push retries main's version until it is published, so a failed run is not lost.
+            pending=$(cargo run --locked --quiet --profile ci -p ainc-xtask -- release-pending "$version")
+            echo "ready=$pending" >> "$GITHUB_OUTPUT"
           else
             echo 'ready=true' >> "$GITHUB_OUTPUT"
           fi
