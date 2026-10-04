@@ -10,7 +10,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 const KNOWN_BROKEN: &[(&str, &str)] = &[
@@ -77,7 +77,10 @@ fn wait_for(
     seconds: u64,
     description: &str,
 ) -> Result<()> {
-    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::{
+        os::fd::{AsRawFd, FromRawFd},
+        time::Instant,
+    };
     let watched = fs::File::open(directory)?;
     let queue = unsafe { libc::kqueue() };
     if queue < 0 {
