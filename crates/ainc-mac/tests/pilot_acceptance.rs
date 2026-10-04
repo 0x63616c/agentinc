@@ -43,7 +43,7 @@ fn act(client: &mut Client, id: &str, text: Option<&str>) -> Result<Snapshot> {
             {
                 continue;
             }
-            Reply::Error { error, .. } => bail!(error),
+            Reply::Error { error, .. } => bail!("{id}: {error}"),
         }
     }
 }
@@ -120,16 +120,24 @@ fn screenshot(client: &mut Client, name: &str, output: &std::path::Path) -> Resu
         bail!("screenshot reply")
     };
     let image = image::open(&path)?.into_rgba8();
+    image::imageops::resize(&image, 1360, 828, image::imageops::FilterType::Lanczos3)
+        .save(output.join(format!("{name}.png")))?;
     ensure!(image.dimensions() == (width, height), "dimensions");
     ensure!(
         frame > 0 && width == (1360. * scale) as u32 && height == (828. * scale) as u32,
         "frame/viewport"
     );
-    for (region, [x0, y0, x1, y1]) in [
-        ("header", [150, 10, 1350, 40]),
-        ("sidebar", [20, 110, 165, 390]),
-        ("profile", [15, 735, 170, 812]),
-    ] {
+    let regions = if snap(client)?.nodes.iter().any(|node| node.role == "Dialog") {
+        // A modal deliberately dims the shell below the normal ink threshold.
+        vec![("dialog", [460, 150, 900, 680])]
+    } else {
+        vec![
+            ("header", [150, 10, 1350, 40]),
+            ("sidebar", [20, 110, 165, 390]),
+            ("profile", [15, 735, 170, 812]),
+        ]
+    };
+    for (region, [x0, y0, x1, y1]) in regions {
         let mut bright = 0;
         for y in (y0 as f32 * scale) as u32..(y1 as f32 * scale) as u32 {
             for x in (x0 as f32 * scale) as u32..(x1 as f32 * scale) as u32 {
@@ -138,10 +146,11 @@ fn screenshot(client: &mut Client, name: &str, output: &std::path::Path) -> Resu
                 }
             }
         }
-        ensure!(bright > 100, "{region} missing from capture: {bright}");
+        ensure!(
+            bright > 100,
+            "{name}/{region} missing from capture: {bright}"
+        );
     }
-    image::imageops::resize(&image, 1360, 828, image::imageops::FilterType::Lanczos3)
-        .save(output.join(format!("{name}.png")))?;
     Ok(())
 }
 fn latency(client: &mut Client, command: Command, count: usize) -> Result<serde_json::Value> {
@@ -169,6 +178,8 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     let log = fs::File::create(output.join("app.log"))?;
     let mut app = App(Process::new(env!("CARGO_BIN_EXE_AgentInc"))
         .args(["--gpui-pilot-session", pilot.to_str().unwrap()])
+        // This suite verifies animated real captures, including the launch handoff.
+        .arg("--gpui-pilot-visible")
         .env("AINC_SESSION_PATH", directory.join("session.json"))
         .env(
             "AINC_DISCOVERY_FILE",
@@ -193,6 +204,12 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     }
     let mut client = Client::connect(&manifest)?;
     client.call(Command::Hello)?;
+    wait(
+        &mut client,
+        Condition::Absent {
+            author_id: "shell.launch".into(),
+        },
+    )?;
     let initial = snap(&mut client)?;
     ensure!(initial.by_id("shell.search")?.name.as_deref() == Some("Search"));
     ensure!(
@@ -232,11 +249,11 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
             .filter(|n| n
                 .author_id
                 .as_deref()
-                .is_some_and(|id| id.starts_with("search.result.")))
+                .is_some_and(|id| id.starts_with("palette.result.pages.")))
             .count()
             == 1
     );
-    act(&mut client, "search.result.tickets", None)?;
+    act(&mut client, "palette.result.pages.page.tickets", None)?;
     wait(
         &mut client,
         Condition::Absent {
@@ -244,7 +261,10 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         },
     )?;
     let stale = client.request(Command::Click {
-        reference: filtered.by_id("search.result.tickets")?.reference.clone(),
+        reference: filtered
+            .by_id("palette.result.pages.page.tickets")?
+            .reference
+            .clone(),
     })?;
     ensure!(matches!(stale.result, Reply::Error { error, .. } if error.code == "stale_ref"));
     act(&mut client, "tickets.create", None)?;
@@ -327,7 +347,7 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         "agents.instructions",
         Some("Produce fixture evidence for the assigned Ticket."),
     )?;
-    act(&mut client, "tickets.submit", None)?;
+    act(&mut client, "agents.submit", None)?;
     wait(
         &mut client,
         Condition::Absent {
@@ -353,8 +373,10 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
         .unwrap()
         .to_owned();
     screenshot(&mut client, "agents", &output)?;
-    act(&mut client, "nav.tickets", None)?;
-    // The detail stays open while visiting Agents.
+    client.call(Command::Press {
+        key: "cmd-[".into(),
+    })?;
+    // Back restores the exact Ticket detail visited before Agents.
     choose(&mut client, "tickets.detail.assignee", Some("Pilot worker"))?;
     // Backlog assignment does not invoke a provider. Reassign to the human before
     // making the Ticket actionable, so acceptance cannot spend a subscription.
@@ -461,7 +483,8 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
             equals: "Resume".into(),
         },
     )?;
-    // Typing through GPUI preserves normal selection and undo handling.
+    // A recent command also appears under Pages, with distinct native identities.
+    // Rendering both used to crash the accessibility tree.
     client.call(Command::Press {
         key: "cmd-k".into(),
     })?;
@@ -471,6 +494,14 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
             author_id: "search.dialog".into(),
         },
     )?;
+    let recent = snap(&mut client)?;
+    ensure!(
+        recent
+            .by_id("palette.result.recent.page.tickets")?
+            .reference
+            != recent.by_id("palette.result.pages.page.tickets")?.reference
+    );
+    // Typing through GPUI preserves normal selection and undo handling.
     act(&mut client, "search.input", Some("temporary"))?;
     client.call(Command::Press {
         key: "cmd-a".into(),
@@ -498,21 +529,24 @@ fn search_tickets_create_via_driver_and_real_capture() -> Result<()> {
     ensure!(
         matches!(timeout.result, Reply::Error { error, snapshot: Some(_) } if error.code == "deadline_exceeded")
     );
-    act(&mut client, "nav.settings", None)?;
+    client.call(Command::Press {
+        key: "cmd-,".into(),
+    })?;
     wait(
         &mut client,
         Condition::Present {
             author_id: "updates.check".into(),
         },
     )?;
-    act(&mut client, "updates.auto", None)?;
-    ensure!(snap(&mut client)?.by_id("updates.auto")?.checked == Some(false));
-    act(&mut client, "updates.auto", None)?;
-    ensure!(snap(&mut client)?.by_id("updates.auto")?.checked == Some(true));
-    act(&mut client, "updates.weekly", None)?;
-    ensure!(snap(&mut client)?.by_id("updates.weekly")?.checked == Some(true));
-    act(&mut client, "updates.daily", None)?;
-    ensure!(snap(&mut client)?.by_id("updates.daily")?.checked == Some(true));
+    // Development profiles never activate Sparkle. Its live settings and installer
+    // are exercised by the separate release-Mac upgrade gate.
+    let settings = snap(&mut client)?;
+    for id in ["updates.check", "updates.auto", "updates.download"] {
+        ensure!(
+            !settings.by_id(id)?.enabled,
+            "development update control {id}"
+        );
+    }
     screenshot(&mut client, "update-settings", &output)?;
     act(&mut client, "nav.assistant", None)?;
     screenshot(&mut client, "assistant-conversations", &output)?;

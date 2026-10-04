@@ -324,7 +324,7 @@ impl Palette<'_> {
                 results =
                     results.child(action_button(
                         ButtonSpec {
-                            id: ElementId::Name(entry.id.clone()),
+                            id: ElementId::Name(selector.clone().into()),
                             label: entry.label.clone(),
                             enabled: true,
                         },

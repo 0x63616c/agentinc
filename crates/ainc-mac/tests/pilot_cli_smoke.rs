@@ -100,7 +100,7 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
         std::thread::sleep(Duration::from_millis(20)); // Process readiness only; UI waits use the protocol.
     }
     let cli = Cli {
-        binary: app_binary.with_file_name("gpui-pilot-cli"),
+        binary: Path::new(env!("CARGO_BIN_EXE_AgentInc")).with_file_name("gpui-pilot-cli"),
         manifest: manifest.clone(),
     };
     ensure!(
@@ -186,10 +186,10 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
 #[ignore = "needs a real desktop and a visible window; run with --ignored"]
 fn cli_drives_the_visible_app_and_quits_cleanly() -> Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    run(
-        &root.canonicalize()?,
-        Path::new(env!("CARGO_BIN_EXE_AgentInc")),
-    )
+    let binary = std::env::var_os("AINC_TEST_APP")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_AgentInc")));
+    run(&root.canonicalize()?, &binary)
 }
 
 #[cfg(test)]

@@ -4,6 +4,15 @@
 
 ## Launch and use
 
+For packaged-window acceptance, run `crates/ainc-mac/scripts/bundle.sh automation` from the
+workspace root and set `AINC_TEST_APP` to the resulting
+`AgentInc Dev.app/Contents/MacOS/AgentInc` executable when running the visible
+`pilot_cli_smoke` test. Its CLI still comes from Cargo's target directory.
+Keep `AINC_DISCOVERY_FILE` pointed at the isolated test daemon.
+The real-capture `pilot_acceptance` suite also opts into a visible owned window
+so WindowServer delivers the launch animation; it waits for the launch status
+to disappear before asserting pixels.
+
 Normal `cargo build` and `crates/ainc-mac/scripts/bundle.sh [release]` omit the library and its host feature. Normal app binaries reject automation arguments before opening a window. `automation` must be explicitly compiled **and** `--gpui-pilot-session ABSOLUTE_NEW_DIRECTORY` must be passed. An automation-enabled binary launched without this argument creates no driver endpoint and does not activate the semantic observer. Pilot sessions open an undisplayed, unfocused native Metal window and leave the current app frontmost. Pass `--gpui-pilot-visible` after the session directory only for checks that require an on-screen OS window, such as `tests/pilot_cli_smoke.rs`. Ordinary launches remain visible.
 
 ```sh

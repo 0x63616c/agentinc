@@ -235,7 +235,7 @@ pub fn page_frame<V: 'static>(
 }
 
 /// A short handoff after the first shell frame; the main UI remains ready underneath.
-pub fn launch_overlay(start: Instant, window: &mut Window) -> Option<Div> {
+pub fn launch_overlay(start: Instant, window: &mut Window) -> Option<Stateful<Div>> {
     let elapsed = start.elapsed();
     if elapsed
         >= LAUNCH_OVERLAY_MIN_DURATION + Duration::from_secs_f32(LAUNCH_OVERLAY_FADE_DURATION)
@@ -254,6 +254,10 @@ pub fn launch_overlay(start: Instant, window: &mut Window) -> Option<Div> {
     let fade = (1. - (fade_elapsed / fade_duration).powi(3)).clamp(0., 1.);
     Some(
         column()
+            .id("shell.launch")
+            .accessibility_id("shell.launch")
+            .role(accesskit::Role::Status)
+            .aria_label("Starting AgentInc")
             .absolute()
             .inset_0()
             .occlude()
