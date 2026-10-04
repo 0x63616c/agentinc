@@ -132,7 +132,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-cli"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ainc-client",
  "ainc-daemon",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-client"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ainc-daemon",
  "ainc-identity",
@@ -173,7 +173,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-daemon"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ainc-identity",
  "anyhow",
@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-identity"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "libc",
  "semver",
@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-mac"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "accesskit",
  "ainc-client",
@@ -263,7 +263,7 @@ dependencies = [
 
 [[package]]
 name = "ainc-release"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ainc-identity",
  "anyhow",
