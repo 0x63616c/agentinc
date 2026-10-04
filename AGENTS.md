@@ -28,6 +28,9 @@ other CI check, `just release patch|minor|major` bumps the version and commits. 
 (`cargo xtask`, `bundle.sh`) is plumbing those use. Any `just` recipe points git at the tracked
 `.githooks/` first, so hooks install themselves; CI is the real gate.
 
+Daemon SQL is `sqlx::query!`-checked against `.sqlx/` (`cargo xtask prepare-sqlx` refreshes it; see
+[docs/how-to.md](docs/how-to.md)).
+
 Languages: Rust, with no Python. Tooling, checks, release steps and CI helpers are `cargo xtask`
 subcommands (`cargo xtask` with no arguments lists them), not scripts. Shell is only for thin
 wrappers around OS tools (`bundle.sh`, `codesign`). Swift and Objective-C only in
