@@ -4,6 +4,10 @@ use regex::Regex;
 use std::{fs, path::Path};
 
 fn validate(message: &str) -> Result<()> {
+    ensure!(
+        !message.contains('\u{2014}'),
+        "commit messages must not contain em dashes (U+2014); use a full stop, comma or hyphen"
+    );
     let subject = message.lines().next().unwrap_or_default();
     let pattern = Regex::new(r"^[a-z]+(?:\([^\s()]+\))?!?: \S.*$")?;
     ensure!(
@@ -67,6 +71,21 @@ mod tests {
             "Merge branch 'feature'",
         ] {
             assert!(validate(message).is_err(), "accepted {message:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_em_dashes_in_subject_and_body() {
+        for message in [
+            "fix: remove punctuation\u{2014}please",
+            "fix: remove punctuation\n\nNo em dashes\u{2014}in the body either.",
+        ] {
+            assert!(
+                validate(message)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("em dashes")
+            );
         }
     }
 

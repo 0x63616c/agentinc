@@ -521,7 +521,7 @@ fn main() -> Result<()> {
     let mut args = env::args().skip(1);
     let operation = args.next().ok_or_else(|| {
         anyhow!(
-            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-ui|check-names|check-layout|prepare-sqlx|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
+            "usage: cargo xtask dev|down|doctor|check|test|clean-incremental|check-ui|check-names|check-layout|prepare-sqlx|check-staged-copy|check-commit-msg|generate|vendor-pilot-gpui|{}|{}",
             release::NAMES,
             readme::NAMES
         )
@@ -540,6 +540,7 @@ fn main() -> Result<()> {
         "check-layout" => check_layout(&root),
         "prepare-sqlx" => checks::sqlx::prepare(&root),
         "check-commit-msg" => checks::commit_msg::run(&args.collect::<Vec<_>>()),
+        "check-staged-copy" => checks::staged_copy::run(&root),
         "vendor-pilot-gpui" => vendor_pilot_gpui::cli(&args.collect::<Vec<_>>(), &root),
         "generate" => generate(&root, args.collect()),
         "dev" => {

@@ -158,7 +158,9 @@ Commit proactively. Every coherent step that builds and passes tests gets its ow
 commit, without waiting to be asked. Use Conventional Commit subjects (`feat: ...`,
 `fix(scope): ...`, `chore: ...`); `.githooks/commit-msg` enforces them through
 `cargo xtask check-commit-msg`. Small commits with a clear message beat one large
-one at the end. Push validated commits to the intended remote branch proactively.
+one at the end. Do not add em dashes: pre-commit checks staged additions with
+`cargo xtask check-staged-copy`, and commit-msg checks the entire commit message.
+Push validated commits to the intended remote branch proactively.
 Do not create a pull request unless the user explicitly asks for one; a request to
 push is not a request for a PR. Do not invoke a PR-creating workflow by default.
 Never force-push or publish unrelated changes. When work is delegated, workers commit

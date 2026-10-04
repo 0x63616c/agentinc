@@ -1,2 +1,3 @@
 #!/bin/sh
+cargo xtask check-staged-copy || exit $?
 exec just check

@@ -14,6 +14,7 @@ pub mod naming;
 pub mod openapi;
 pub mod sdk_vocabulary;
 pub mod sqlx;
+pub mod staged_copy;
 pub mod ui_core;
 pub mod ui_spacing;
 pub mod ui_vocabulary;

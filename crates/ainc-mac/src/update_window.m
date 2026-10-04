@@ -100,7 +100,7 @@ void ainc_update_offer(const char *version, const char *current, const char *htm
     NSString *question = ready ? @"Downloaded. Verify and install it now?" : @"Would you like to download and install it now?";
     NSString *description = changelog
         ? [NSString stringWithFormat:@"All published releases.\nYou have AgentInc %@.", installed]
-        : [NSString stringWithFormat:@"AgentInc %@ is now available—you have %@.\n%@", next, installed, question];
+        : [NSString stringWithFormat:@"AgentInc %@ is now available. You have %@.\n%@", next, installed, question];
     [content addSubview:label(description, NSMakeRect(108, 348, 480, 40), [NSFont systemFontOfSize:13])];
 
     CGFloat notesBottom = changelog ? 64 : 94;
