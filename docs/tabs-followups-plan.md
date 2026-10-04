@@ -182,6 +182,10 @@ Calum requests one. Do not run a PR-creating validation pipeline by default.
   8 opt-in tests skipped; explicit native pilot suites passed separately. Release
   notes are prepared at `docs/releases/0.8.0.md`. Distribution dry-run and exact-SHA
   Linux CI remain required before publication.
+  Integrated and pushed `6d28801b276ecddfbb20192c5c44e61807bb6080` to remote
+  `main` by fast-forward, preserving the independent updater commits. CI run
+  `37166504918`; explicit Distribution `test=true,build=true` run `37166520760`.
+  Both are being watched. Final full-test/rendered target measurement: 11 GB.
 - [ ] Write docs/releases/0.8.0.md (source main already at 0.7.0), run authorized
   `just release minor` on clean main, and push version commit.
 - [ ] Watch Distribution prepare/native/distribute/upgrade/publish to success;
