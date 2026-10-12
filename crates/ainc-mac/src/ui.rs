@@ -42,6 +42,8 @@ mod settings;
 pub mod shortcuts;
 #[path = "ui/table.rs"]
 mod table;
+#[path = "ui/themes.rs"]
+pub mod themes;
 #[path = "ui/time.rs"]
 pub mod time;
 #[path = "ui/toast.rs"]

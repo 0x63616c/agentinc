@@ -54,9 +54,9 @@ impl TicketsPage {
                     .pl(px(SPACE_4))
                     .pr(px(SPACE_2))
                     .gap(px(SPACE_2))
-                    .bg(rgb(SURFACE))
+                    .bg(rgb(theme().surface))
                     .border_b_1()
-                    .border_color(rgb(BORDER_SUBTLE))
+                    .border_color(rgb(theme().border_subtle))
                     .child(status_group_header(status, tickets.len()))
                     .child(div().flex_1())
                     .child(
@@ -68,7 +68,7 @@ impl TicketsPage {
                         .small()
                         .icon(Icon::Plus)
                         .icon_only()
-                        .tint(TEXT_TERTIARY)
+                        .tint(theme().text_tertiary)
                         .enabled(!self.pending.busy())
                         .build(ui, move |this: &mut Self, window, cx| {
                             this.open_create(Some(status), window, cx)
@@ -135,7 +135,7 @@ impl TicketsPage {
                 div()
                     .truncate()
                     .text_size(type_size(LABEL_SIZE))
-                    .text_color(rgb(TEXT_SECONDARY))
+                    .text_color(rgb(theme().text_secondary))
                     .child(self.assignee_name(&ticket.assignee_id)),
             );
         TableRow::new(

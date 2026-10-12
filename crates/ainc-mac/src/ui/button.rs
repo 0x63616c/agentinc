@@ -137,42 +137,46 @@ impl ButtonKind {
     fn look(self, selected: bool) -> Look {
         match self {
             Self::Primary => Look {
-                base: PRIMARY,
-                hover: PRIMARY_HOVER,
-                active: PRIMARY_ACTIVE,
-                text: TEXT_ON_PRIMARY,
-                text_hover: TEXT_ON_PRIMARY,
+                base: theme().primary,
+                hover: theme().primary_hover,
+                active: theme().primary_active,
+                text: theme().text_on_primary,
+                text_hover: theme().text_on_primary,
                 border: None,
             },
             Self::Secondary => Look {
                 base: if selected {
-                    SELECTED_STRONG
+                    theme().selected_strong
                 } else {
-                    SURFACE_CONTROL
+                    theme().surface_control
                 },
-                hover: HOVER_STRONG,
-                active: ACTIVE,
-                text: TEXT,
-                text_hover: TEXT,
-                border: Some(if selected { BORDER_STRONG } else { BORDER }),
+                hover: theme().hover_strong,
+                active: theme().active,
+                text: theme().text,
+                text_hover: theme().text,
+                border: Some(if selected {
+                    theme().border_strong
+                } else {
+                    theme().border
+                }),
             },
             // Ghost rests transparent; its hover surface is painted as an alpha
             // overlay in `build`, so it sits on any surface without a rectangle.
             Self::Ghost => Look {
-                base: SELECTED,
-                hover: HOVER_STRONG,
-                active: ACTIVE,
-                text: TEXT,
-                text_hover: TEXT,
+                base: theme().selected,
+                hover: theme().hover_strong,
+                active: theme().active,
+                text: theme().text,
+                text_hover: theme().text,
                 border: None,
             },
             Self::Destructive => Look {
-                base: SURFACE_ERROR,
-                hover: DESTRUCTIVE_HOVER,
-                active: DESTRUCTIVE_HOVER,
-                text: DESTRUCTIVE_TEXT,
-                text_hover: DESTRUCTIVE_TEXT,
-                border: Some(ERROR_BORDER),
+                base: theme().surface_error,
+                hover: theme().destructive_hover,
+                active: theme().destructive_hover,
+                text: theme().destructive_text,
+                text_hover: theme().destructive_text,
+                border: Some(theme().error_border),
             },
         }
     }
@@ -317,16 +321,16 @@ impl Button {
         if !enabled && kind == ButtonKind::Primary {
             // A disabled primary is an outline, not a gray slab.
             look = Look {
-                base: SURFACE_CONTROL,
-                hover: SURFACE_CONTROL,
-                active: SURFACE_CONTROL,
-                text: TEXT_TERTIARY,
-                text_hover: TEXT_TERTIARY,
-                border: Some(BORDER),
+                base: theme().surface_control,
+                hover: theme().surface_control,
+                active: theme().surface_control,
+                text: theme().text_tertiary,
+                text_hover: theme().text_tertiary,
+                border: Some(theme().border),
             };
         }
         if icon_only && kind == ButtonKind::Secondary && !selected {
-            look.base = SURFACE;
+            look.base = theme().surface;
         }
         let (progress, on_hover) = ui.hover(&id, enabled);
         let text_color = match tint {

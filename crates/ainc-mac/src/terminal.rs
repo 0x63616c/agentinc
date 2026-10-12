@@ -172,11 +172,18 @@ impl Render for TerminalPage {
 fn terminal_colors() -> String {
     // Ghostty reads the user's config first. These final color values use the
     // same roles as the surrounding AgentInc surface and controls.
-    let selection = TEXT_SELECTION >> 8;
-    let mut config = format!(
-        "background = #{SURFACE:06x}\nforeground = #{TEXT:06x}\ncursor-color = #{PRIMARY:06x}\ncursor-text = #{TEXT_ON_PRIMARY:06x}\nselection-background = #{selection:06x}\nselection-foreground = #{TEXT:06x}\nbackground-opacity = 1\n"
+    let theme = theme();
+    let (background, foreground, cursor, cursor_text) = (
+        theme.surface,
+        theme.text,
+        theme.primary,
+        theme.text_on_primary,
     );
-    for (index, color) in TERMINAL_ANSI.into_iter().enumerate() {
+    let selection = theme.text_selection >> 8;
+    let mut config = format!(
+        "background = #{background:06x}\nforeground = #{foreground:06x}\ncursor-color = #{cursor:06x}\ncursor-text = #{cursor_text:06x}\nselection-background = #{selection:06x}\nselection-foreground = #{foreground:06x}\nbackground-opacity = 1\n"
+    );
+    for (index, color) in theme.terminal_ansi.into_iter().enumerate() {
         config.push_str(&format!("palette = {index}=#{color:06x}\n"));
     }
     config

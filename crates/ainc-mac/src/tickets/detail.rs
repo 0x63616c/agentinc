@@ -88,7 +88,7 @@ impl TicketsPage {
                     .ghost()
                     .small()
                     .icon(Icon::ChevronLeft)
-                    .tint(TEXT_SECONDARY)
+                    .tint(theme().text_secondary)
                     .build(ui, |this, _, cx| this.close_detail(cx))
                     .ml(px(-CONTROL_INSET_X_SM)),
             )
@@ -115,7 +115,7 @@ impl TicketsPage {
                         Button::new("tickets.delete", "Delete")
                             .ghost()
                             .icon(Icon::Trash)
-                            .tint(TEXT_SECONDARY)
+                            .tint(theme().text_secondary)
                             .enabled(enabled && !has_runs)
                             .build(ui, move |this, window, cx| {
                                 this.overlays.open_dialog(
@@ -131,7 +131,7 @@ impl TicketsPage {
                         Button::new("tickets.rename", "Rename")
                             .ghost()
                             .icon(Icon::Edit)
-                            .tint(TEXT_SECONDARY)
+                            .tint(theme().text_secondary)
                             .enabled(enabled)
                             .build(ui, move |this: &mut Self, window, cx| {
                                 let title = this.ticket(id).map(|t| t.title.clone());
@@ -223,7 +223,7 @@ impl TicketsPage {
                             Button::new("tickets.description.edit", "Edit")
                                 .ghost()
                                 .small()
-                                .tint(TEXT_SECONDARY)
+                                .tint(theme().text_secondary)
                                 .enabled(!self.pending.busy())
                                 .build(ui, move |this: &mut Self, window, cx| {
                                     this.description
@@ -324,7 +324,7 @@ impl TicketsPage {
         let (glyph, action) = describe(entry, |id| self.assignee_name(id).to_string());
         let text = format!("{actor} {action}");
         let emphasis = HighlightStyle {
-            color: Some(rgb(TEXT).into()),
+            color: Some(rgb(theme().text).into()),
             font_weight: Some(FontWeight::MEDIUM),
             ..Default::default()
         };
@@ -336,7 +336,7 @@ impl TicketsPage {
                     .size(px(AVATAR_SIZE))
                     .flex_shrink_0()
                     .justify_center()
-                    .child(icon(glyph, ICON_SIZE_SM).text_color(rgb(TEXT_TERTIARY))),
+                    .child(icon(glyph, ICON_SIZE_SM).text_color(rgb(theme().text_tertiary))),
             )
             .child(
                 div()
@@ -344,7 +344,7 @@ impl TicketsPage {
                     .min_w_0()
                     .pt(px(SPACE_HALF))
                     .text_size(type_size(LABEL_SIZE))
-                    .text_color(rgb(TEXT_SECONDARY))
+                    .text_color(rgb(theme().text_secondary))
                     .child(StyledText::new(text).with_highlights([(0..actor.len(), emphasis)])),
             )
             .child(
@@ -387,7 +387,7 @@ impl TicketsPage {
                             .py(px(SPACE_2))
                             .rounded(px(RADIUS_MD))
                             .border_1()
-                            .border_color(rgb(BORDER))
+                            .border_color(rgb(theme().border))
                             .text_size(type_size(BODY_SIZE))
                             .line_height(relative(BODY_LINE_HEIGHT))
                             .child(comment.body.clone()),
@@ -548,7 +548,7 @@ impl TicketsPage {
                             .small()
                             .icon(Icon::Plus)
                             .icon_only()
-                            .tint(TEXT_SECONDARY)
+                            .tint(theme().text_secondary)
                             .enabled(!self.pending.busy() && self.state.tickets.len() > 1)
                             .build(ui, move |this: &mut Self, window, cx| {
                                 this.link_relation = Relation::BlockedBy;
@@ -585,9 +585,9 @@ impl TicketsPage {
                                 .pt(px(SPACE_2))
                                 .text_size(type_size(CAPTION_SIZE))
                                 .text_color(rgb(if open_blocker {
-                                    STATUS_RED
+                                    theme().status_red
                                 } else {
-                                    TEXT_TERTIARY
+                                    theme().text_tertiary
                                 }))
                                 .child(relation.name())
                                 .into_any_element(),
@@ -638,7 +638,7 @@ impl TicketsPage {
                 .small()
                 .icon(Icon::Close)
                 .icon_only()
-                .tint(TEXT_TERTIARY)
+                .tint(theme().text_tertiary)
                 .enabled(!self.pending.busy())
                 .build(ui, move |this: &mut Self, _, cx| {
                     this.command(
@@ -683,7 +683,7 @@ impl TicketsPage {
                             Button::new("tickets.runs", "All Work")
                                 .ghost()
                                 .small()
-                                .tint(TEXT_SECONDARY)
+                                .tint(theme().text_secondary)
                                 .trailing(icon(Icon::ArrowUpRight, ICON_SIZE_SM))
                                 .build(ui, |_: &mut Self, _, cx| {
                                     cx.emit(Destination::Page(Route::Temporal))

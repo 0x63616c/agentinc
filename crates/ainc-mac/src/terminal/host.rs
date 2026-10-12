@@ -141,7 +141,7 @@ mod macos {
                     helper.as_ptr(),
                     layout.as_ptr(),
                     colors.as_ptr(),
-                    crate::ui::BORDER_SUBTLE,
+                    crate::ui::theme().border_subtle,
                     Some(shortcut),
                     (&*navigation as *const Navigation).cast_mut().cast(),
                 )

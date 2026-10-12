@@ -48,9 +48,9 @@ impl Segmented {
             .p(px(SEGMENT_TRACK_INSET))
             .gap(px(SEGMENT_GAP))
             .rounded(px(RADIUS_MD))
-            .bg(rgb(SURFACE_CONTROL))
+            .bg(rgb(theme().surface_control))
             .border_1()
-            .border_color(rgb(BORDER));
+            .border_color(rgb(theme().border));
         for (index, option) in options.into_iter().enumerate() {
             let on_select = on_select.clone();
             let is_selected = index == selected;
@@ -67,7 +67,8 @@ impl Segmented {
                     .aria_toggled(toggled(is_selected))
                     .rounded(px(RADIUS_SM))
                     .when(is_selected, |s| {
-                        s.bg(rgb(SELECTED_STRONG)).text_color(rgb(TEXT))
+                        s.bg(rgb(theme().selected_strong))
+                            .text_color(rgb(theme().text))
                     }),
             );
         }
@@ -113,7 +114,7 @@ impl Tabs {
             .w_full()
             .gap(px(SPACE_5))
             .border_b_1()
-            .border_color(rgb(BORDER));
+            .border_color(rgb(theme().border));
         for (index, label) in labels.into_iter().enumerate() {
             let on_select = on_select.clone();
             let is_selected = index == selected;
@@ -128,7 +129,7 @@ impl Tabs {
                             .role(accesskit::Role::Tab)
                             .aria_toggled(toggled(is_selected))
                             .px(px(0.))
-                            .when(!is_selected, |s| s.text_color(rgb(TEXT_SECONDARY)))
+                            .when(!is_selected, |s| s.text_color(rgb(theme().text_secondary)))
                             .mb(px(SPACE_1)),
                     )
                     .child(
@@ -137,7 +138,7 @@ impl Tabs {
                             .h(px(TAB_UNDERLINE))
                             .mb(px(-1.))
                             .rounded_t(px(TAB_UNDERLINE))
-                            .bg(rgb(PRIMARY))
+                            .bg(rgb(theme().primary))
                             .when(!is_selected, |s| s.opacity(0.)),
                     ),
             );
@@ -191,6 +192,6 @@ impl Chip {
             .role(accesskit::Role::RadioButton)
             .aria_toggled(toggled(selected))
             .rounded_full()
-            .when(selected, |s| s.border_color(rgb(FOCUS)))
+            .when(selected, |s| s.border_color(rgb(theme().focus)))
     }
 }

@@ -58,11 +58,11 @@ pub fn status_icon(status: TicketStatus) -> Icon {
 /// Status glyphs stay gray until work is moving, stuck or finished.
 pub fn status_color(status: TicketStatus) -> u32 {
     match status {
-        TicketStatus::Backlog | TicketStatus::Cancelled => TEXT_TERTIARY,
-        TicketStatus::ToDo => TEXT_SECONDARY,
-        TicketStatus::InProgress => STATUS_AMBER,
-        TicketStatus::Blocked => STATUS_RED,
-        TicketStatus::Done => STATUS_GREEN,
+        TicketStatus::Backlog | TicketStatus::Cancelled => theme().text_tertiary,
+        TicketStatus::ToDo => theme().text_secondary,
+        TicketStatus::InProgress => theme().status_amber,
+        TicketStatus::Blocked => theme().status_red,
+        TicketStatus::Done => theme().status_green,
     }
 }
 /// An agent assignee works on a Ticket only in these statuses.
@@ -105,9 +105,9 @@ pub fn priority_icon(priority: TicketPriority) -> Icon {
 /// Only urgent work takes a color; the bars carry the rest.
 pub fn priority_color(priority: TicketPriority) -> u32 {
     match priority {
-        TicketPriority::Urgent => STATUS_RED,
-        TicketPriority::None => TEXT_TERTIARY,
-        _ => TEXT_SECONDARY,
+        TicketPriority::Urgent => theme().status_red,
+        TicketPriority::None => theme().text_tertiary,
+        _ => theme().text_secondary,
     }
 }
 pub fn priority_from_key(key: &str) -> Option<TicketPriority> {
@@ -126,7 +126,7 @@ pub fn label_color(label: &str) -> u32 {
         .fold(2166136261u32, |hash, byte| {
             (hash ^ u32::from(byte)).wrapping_mul(16777619)
         });
-    LABEL_COLORS[hash as usize % LABEL_COLORS.len()]
+    theme().label_colors[hash as usize % theme().label_colors.len()]
 }
 
 /// What the board and list show: a search plus any number of values per facet.

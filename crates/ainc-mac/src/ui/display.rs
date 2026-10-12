@@ -78,7 +78,7 @@ impl PageHeader {
                 s.child(
                     div()
                         .text_size(type_size(LABEL_SIZE))
-                        .text_color(rgb(TEXT_SECONDARY))
+                        .text_color(rgb(theme().text_secondary))
                         .child(description),
                 )
             })
@@ -90,7 +90,7 @@ pub fn eyebrow(text: impl Into<SharedString>) -> Div {
     div()
         .text_size(type_size(CAPTION_SIZE))
         .font_weight(FontWeight::MEDIUM)
-        .text_color(rgb(TEXT_TERTIARY))
+        .text_color(rgb(theme().text_tertiary))
         .child(text.into().to_uppercase())
 }
 
@@ -107,7 +107,7 @@ pub fn heading(text: impl Into<SharedString>) -> Div {
 pub fn hint(text: impl Into<SharedString>) -> Div {
     div()
         .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(TEXT_TERTIARY))
+        .text_color(rgb(theme().text_tertiary))
         .child(text.into())
 }
 
@@ -115,7 +115,7 @@ pub fn hint(text: impl Into<SharedString>) -> Div {
 pub fn caption(text: impl Into<SharedString>) -> Div {
     div()
         .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(TEXT_SECONDARY))
+        .text_color(rgb(theme().text_secondary))
         .child(text.into())
 }
 
@@ -123,7 +123,7 @@ pub fn icon(name: Icon, size: f32) -> Svg {
     svg()
         .path(name.path())
         .size(px(size))
-        .text_color(rgb(TEXT_SECONDARY))
+        .text_color(rgb(theme().text_secondary))
         .flex_shrink_0()
 }
 pub fn nav_icon(
@@ -140,7 +140,7 @@ pub fn nav_icon(
         })
         .size(px(NAV_ICON_SIZE))
         .text_color(rgb(tint))
-        .group_hover(hover_group, |s| s.text_color(rgb(TEXT)))
+        .group_hover(hover_group, |s| s.text_color(rgb(theme().text)))
         .flex_shrink_0()
 }
 
@@ -153,12 +153,12 @@ pub fn kbd(label: impl Into<SharedString>) -> Div {
         .justify_center()
         .flex_shrink_0()
         .rounded(px(RADIUS_XS))
-        .bg(rgb(SURFACE_CONTROL))
+        .bg(rgb(theme().surface_control))
         .border_1()
-        .border_color(rgb(BORDER))
+        .border_color(rgb(theme().border))
         .text_size(type_size(MICRO_SIZE))
         .line_height(relative(1.))
-        .text_color(rgb(TEXT_SECONDARY))
+        .text_color(rgb(theme().text_secondary))
         .whitespace_nowrap()
         .child(label.into())
 }
@@ -168,7 +168,7 @@ pub fn kbd_hint(keys: impl Into<SharedString>, action: impl Into<SharedString>) 
     row()
         .gap(px(KBD_HINT_GAP))
         .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(TEXT_TERTIARY))
+        .text_color(rgb(theme().text_tertiary))
         .child(kbd(keys))
         .child(action.into())
 }

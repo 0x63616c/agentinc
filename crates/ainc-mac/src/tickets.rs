@@ -499,8 +499,8 @@ impl TicketsPage {
         row()
             .gap(px(SPACE_1))
             .text_size(type_size(CAPTION_SIZE))
-            .text_color(rgb(TEXT_SECONDARY))
-            .child(icon(Icon::StatusBlocked, ICON_SIZE_XS).text_color(rgb(STATUS_RED)))
+            .text_color(rgb(theme().text_secondary))
+            .child(icon(Icon::StatusBlocked, ICON_SIZE_XS).text_color(rgb(theme().status_red)))
             .child(keys)
     }
     /// The header's icon-only Refresh: every page that polls the daemon has one.
@@ -670,7 +670,7 @@ impl TicketsPage {
                 s.child(
                     Button::new("tickets.filter.clear", "Clear")
                         .ghost()
-                        .tint(TEXT_SECONDARY)
+                        .tint(theme().text_secondary)
                         .build(ui, |this: &mut Self, _, cx| {
                             this.filters = Filters::default();
                             this.search.update(cx, |input, cx| {

@@ -169,9 +169,9 @@ impl ListRow {
                     .gap(px(SPACE_3))
                     .rounded(px(RADIUS_MD))
                     .bg(if selected {
-                        blend(SELECTED, HOVER_STRONG, progress)
+                        blend(theme().selected, theme().hover_strong, progress)
                     } else {
-                        rgba((HOVER_STRONG << 8) | (progress * 255.) as u32)
+                        rgba((theme().hover_strong << 8) | (progress * 255.) as u32)
                     })
                     .on_hover(on_hover)
                     .when_some(leading, |s, leading| s.child(leading))
@@ -184,7 +184,7 @@ impl ListRow {
                                 div()
                                     .truncate()
                                     .text_size(type_size(BODY_SIZE))
-                                    .text_color(rgb(TEXT))
+                                    .text_color(rgb(theme().text))
                                     .child(title),
                             )
                             .when_some(subtitle, |s, subtitle| {
@@ -192,7 +192,7 @@ impl ListRow {
                                     div()
                                         .truncate()
                                         .text_size(type_size(CAPTION_SIZE))
-                                        .text_color(rgb(TEXT_SECONDARY))
+                                        .text_color(rgb(theme().text_secondary))
                                         .child(subtitle),
                                 )
                             }),
@@ -208,18 +208,18 @@ impl ListRow {
 /// The content card and other bordered panels on the shell canvas.
 pub fn panel() -> Div {
     column()
-        .bg(rgb(SURFACE))
+        .bg(rgb(theme().surface))
         .border_1()
-        .border_color(rgb(BORDER))
+        .border_color(rgb(theme().border))
         .rounded(px(PANEL_RADIUS))
 }
 
 /// A raised card that groups related content on a page.
 pub fn card() -> Div {
     column()
-        .bg(rgb(SURFACE_RAISED))
+        .bg(rgb(theme().surface_raised))
         .border_1()
-        .border_color(rgb(BORDER))
+        .border_color(rgb(theme().border))
         .rounded(px(RADIUS_LG))
         .p(px(SPACE_4))
         .gap(px(SPACE_3))
@@ -240,7 +240,7 @@ pub fn property_row(label: impl Into<SharedString>, value: impl IntoElement) -> 
                 .w(px(PROPERTY_LABEL_WIDTH))
                 .flex_shrink_0()
                 .text_size(type_size(LABEL_SIZE))
-                .text_color(rgb(TEXT_SECONDARY))
+                .text_color(rgb(theme().text_secondary))
                 .child(label.into()),
         )
         .child(
@@ -254,7 +254,7 @@ pub fn property_row(label: impl Into<SharedString>, value: impl IntoElement) -> 
 
 /// A hairline between stacked content.
 pub fn divider() -> Div {
-    div().w_full().h(px(1.)).bg(rgb(BORDER_SUBTLE))
+    div().w_full().h(px(1.)).bg(rgb(theme().border_subtle))
 }
 
 /// The bar inside the bottom of the content card.
@@ -267,7 +267,7 @@ pub fn status_bar() -> Div {
         .px(px(STATUS_BAR_X))
         .gap(px(SPACE_3))
         .border_t_1()
-        .border_color(rgb(BORDER_SUBTLE))
+        .border_color(rgb(theme().border_subtle))
         .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(TEXT_SECONDARY))
+        .text_color(rgb(theme().text_secondary))
 }

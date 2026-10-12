@@ -2,7 +2,7 @@
 // Adapted from GPUI 0.2.2 examples/input.rs (Apache-2.0). See THIRD_PARTY.md.
 use std::ops::Range;
 
-use crate::ui::{FOCUS, TEXT, TEXT_PLACEHOLDER, TEXT_SELECTION, type_size};
+use crate::ui::{theme, type_size};
 use gpui::prelude::*;
 use gpui::*;
 use unicode_segmentation::*;
@@ -675,7 +675,7 @@ impl Element for TextElement {
             let cursor_text: SharedString = content[cursor_start..cursor].to_owned().into();
             let font_size = style.font_size.to_pixels(window.rem_size());
             let color = if content.is_empty() {
-                rgb(TEXT_PLACEHOLDER).into()
+                rgb(theme().text_placeholder).into()
             } else {
                 style.color
             };
@@ -718,7 +718,7 @@ impl Element for TextElement {
                             point(origin.x + line.x_for_index(cursor - offset), origin.y),
                             size(px(2.), height),
                         ),
-                        rgb(FOCUS),
+                        rgb(theme().focus),
                     ));
                 }
                 let start = selected_range.start.max(offset);
@@ -732,7 +732,7 @@ impl Element for TextElement {
                                 height,
                             ),
                         ),
-                        rgba(TEXT_SELECTION),
+                        rgba(theme().text_selection),
                     ));
                 }
                 lines.push((offset, line, line_bounds));
@@ -749,7 +749,10 @@ impl Element for TextElement {
         }
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), rgb(TEXT_PLACEHOLDER).into())
+            (
+                input.placeholder.clone(),
+                rgb(theme().text_placeholder).into(),
+            )
         } else if input.secret {
             ("*".repeat(content.len()).into(), style.color)
         } else {
@@ -812,7 +815,7 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    rgb(FOCUS),
+                    rgb(theme().focus),
                 )),
             )
         } else {
@@ -828,7 +831,7 @@ impl Element for TextElement {
                             bounds.bottom(),
                         ),
                     ),
-                    rgba(TEXT_SELECTION),
+                    rgba(theme().text_selection),
                 )),
                 None,
             )
@@ -1001,7 +1004,7 @@ impl Render for TextInput {
             .overflow_hidden()
             .line_height(type_size(20.))
             .text_size(type_size(13.))
-            .text_color(rgb(TEXT))
+            .text_color(rgb(theme().text))
             .child(TextElement { input: cx.entity() })
     }
 }

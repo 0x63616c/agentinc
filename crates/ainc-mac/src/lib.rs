@@ -19,6 +19,7 @@ pub mod shell;
 pub mod sync;
 pub mod temporal;
 pub mod terminal;
+pub mod theme;
 pub mod tickets;
 pub mod ui;
 pub mod ui_state;

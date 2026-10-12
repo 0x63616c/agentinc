@@ -6,9 +6,24 @@ use gpui::{prelude::*, *};
 /// and warning banners explain a limitation the user can do nothing about.
 pub fn banner(tone: Tone, text: impl Into<SharedString>) -> Div {
     let (foreground, border, surface, glyph) = match tone {
-        Tone::Danger => (DESTRUCTIVE_TEXT, ERROR_BORDER, SURFACE_ERROR, Icon::Warning),
-        Tone::Warning => (STATUS_AMBER, BORDER, SURFACE_RAISED, Icon::Warning),
-        _ => (TEXT, BORDER, SURFACE_RAISED, Icon::Info),
+        Tone::Danger => (
+            theme().destructive_text,
+            theme().error_border,
+            theme().surface_error,
+            Icon::Warning,
+        ),
+        Tone::Warning => (
+            theme().status_amber,
+            theme().border,
+            theme().surface_raised,
+            Icon::Warning,
+        ),
+        _ => (
+            theme().text,
+            theme().border,
+            theme().surface_raised,
+            Icon::Info,
+        ),
     };
     row()
         .w_full()
@@ -30,7 +45,7 @@ pub fn error_text(text: impl Into<SharedString>) -> Div {
     row()
         .gap(px(SPACE_2))
         .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(ERROR))
-        .child(icon(Icon::Warning, ICON_SIZE_SM).text_color(rgb(ERROR)))
+        .text_color(rgb(theme().error))
+        .child(icon(Icon::Warning, ICON_SIZE_SM).text_color(rgb(theme().error)))
         .child(text.into())
 }

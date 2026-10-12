@@ -262,7 +262,7 @@ impl AutomationsPage {
                         div()
                             .text_size(type_size(LABEL_SIZE))
                             .font_weight(FontWeight::MEDIUM)
-                            .text_color(rgb(TEXT_SECONDARY))
+                            .text_color(rgb(theme().text_secondary))
                             .child("Assign to"),
                     )
                     .child(
@@ -335,7 +335,7 @@ impl AutomationsPage {
                     .ghost()
                     .small()
                     .icon(Icon::ChevronLeft)
-                    .tint(TEXT_SECONDARY)
+                    .tint(theme().text_secondary)
                     .build(ui, |this, _, cx| {
                         this.selected = None;
                         cx.notify();
@@ -444,7 +444,7 @@ impl AutomationsPage {
                                         .px(px(SPACE_3))
                                         .gap(px(SPACE_3))
                                         .border_b_1()
-                                        .border_color(rgb(BORDER_SUBTLE))
+                                        .border_color(rgb(theme().border_subtle))
                                         .child(status_pill(state, tone))
                                         .child(
                                             div()

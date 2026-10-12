@@ -58,13 +58,13 @@ impl Toggle {
                         SpringAnimation::new(SPRING_SNAPPY).to(if on { 1f32 } else { 0f32 }),
                         move |track, progress| {
                             // The track brightens on hover in both states.
-                            let off = blend(BORDER_STRONG, FOCUS_FIELD, hover);
-                            let on = blend(PRIMARY, PRIMARY_HOVER, hover);
+                            let off = blend(theme().border_strong, theme().focus_field, hover);
+                            let on = blend(theme().primary, theme().primary_hover, hover);
                             track.bg(mix(off, on, progress)).child(
                                 div()
                                     .size(px(knob))
                                     .rounded_full()
-                                    .bg(blend(PRIMARY, TEXT_ON_PRIMARY, progress))
+                                    .bg(blend(theme().primary, theme().text_on_primary, progress))
                                     .ml(px(travel * progress)),
                             )
                         },
@@ -115,13 +115,13 @@ impl Checkbox {
         let (hover, on_hover) = ui.hover(&id, enabled);
         let (border, surface) = if checked {
             (
-                blend(PRIMARY, PRIMARY_HOVER, hover),
-                blend(PRIMARY, PRIMARY_HOVER, hover),
+                blend(theme().primary, theme().primary_hover, hover),
+                blend(theme().primary, theme().primary_hover, hover),
             )
         } else {
             (
-                blend(BORDER_STRONG, FOCUS_FIELD, hover),
-                blend(SURFACE_INPUT, SURFACE_CONTROL, hover),
+                blend(theme().border_strong, theme().focus_field, hover),
+                blend(theme().surface_input, theme().surface_control, hover),
             )
         };
         action_button(
@@ -149,14 +149,14 @@ impl Checkbox {
                             .when(checked, |s| {
                                 s.child(
                                     icon(Icon::Check, ICON_SIZE_XS)
-                                        .text_color(rgb(TEXT_ON_PRIMARY)),
+                                        .text_color(rgb(theme().text_on_primary)),
                                 )
                             }),
                     )
                     .child(
                         div()
                             .text_size(type_size(LABEL_SIZE))
-                            .text_color(rgb(TEXT))
+                            .text_color(rgb(theme().text))
                             .child(label),
                     )
             },

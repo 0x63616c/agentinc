@@ -183,7 +183,7 @@ impl AgentsPage {
         .py(px(SPACE_2))
         .gap(px(SPACE_3))
         .when(index + 1 < count, |s| {
-            s.border_b_1().border_color(rgb(BORDER_SUBTLE))
+            s.border_b_1().border_color(rgb(theme().border_subtle))
         })
         .child(assignee_avatar(
             &AssigneeFace::agent(name.clone()),

@@ -30,7 +30,7 @@ impl Shell {
                         .accessibility_id("sidebar.version")
                         .role(accesskit::Role::Label)
                         .aria_label(ainc_release::identity::version())
-                        .text_color(rgb(TEXT_TERTIARY))
+                        .text_color(rgb(theme().text_tertiary))
                         .child(ainc_release::identity::version()),
                 ),
             )
@@ -41,8 +41,8 @@ impl Shell {
             .items_center()
             .justify_center()
             .gap(px(SPACE_5))
-            .bg(rgb(SHELL))
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme().shell))
+            .text_color(rgb(theme().text))
             .child(
                 div()
                     .text_size(type_size(DISPLAY_SIZE))
@@ -95,13 +95,9 @@ impl Shell {
             .flex()
             .items_center()
             .justify_center()
-            .child(
-                div()
-                    .w(px(2.))
-                    .h(px(22.))
-                    .rounded_full()
-                    .bg(rgba(GRIP_TINT | (self.grip_opacity * 255.) as u32)),
-            )
+            .child(div().w(px(2.)).h(px(22.)).rounded_full().bg(rgba(
+                (theme().grip << 8) | (self.grip_opacity * 255.) as u32,
+            )))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, _, window, cx| {

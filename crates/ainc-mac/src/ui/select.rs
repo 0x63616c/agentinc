@@ -149,8 +149,10 @@ impl Select {
             .enabled(enabled)
             .selected(open)
             .build(ui, on_toggle)
-            .when(!open && !quiet, |s| s.bg(rgb(SURFACE_INPUT)))
-            .when(value.is_none(), |s| s.text_color(rgb(TEXT_SECONDARY)));
+            .when(!open && !quiet, |s| s.bg(rgb(theme().surface_input)))
+            .when(value.is_none(), |s| {
+                s.text_color(rgb(theme().text_secondary))
+            });
         column()
             .relative()
             .w(px(width))

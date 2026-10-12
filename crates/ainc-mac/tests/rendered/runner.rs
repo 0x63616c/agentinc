@@ -34,7 +34,7 @@ impl Render for LoadingPreview {
         div()
             .relative()
             .size_full()
-            .bg(gpui::rgb(ui::SHELL))
+            .bg(gpui::rgb(ui::theme().shell))
             .flex()
             .items_center()
             .justify_center()

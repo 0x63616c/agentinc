@@ -38,7 +38,7 @@ impl LoadingFrame {
                 div()
                     .size(px(if self.still { 5. } else { 4. + 2. * wave }))
                     .rounded_full()
-                    .bg(rgb(PRIMARY))
+                    .bg(rgb(theme().primary))
                     .opacity(if self.still { 0.7 } else { 0.25 + 0.7 * wave }),
             );
         }
@@ -46,7 +46,7 @@ impl LoadingFrame {
             .gap(px(10.))
             .items_center()
             .text_size(type_size(LABEL_SIZE))
-            .text_color(rgb(TEXT_SECONDARY))
+            .text_color(rgb(theme().text_secondary))
             .child(dots)
             .child(label.into())
     }
@@ -85,8 +85,10 @@ impl LoadingFrame {
                     .justify_center()
                     .rounded_full()
                     .border_1()
-                    .border_color(rgba((BORDER_STRONG << 8) | (70. + 100. * breath) as u32))
-                    .bg(rgba((PRIMARY << 8) | (8. + 10. * breath) as u32))
+                    .border_color(rgba(
+                        (theme().border_strong << 8) | (70. + 100. * breath) as u32,
+                    ))
+                    .bg(rgba((theme().primary << 8) | (8. + 10. * breath) as u32))
                     .child(
                         img(ImageSource::Resource(Resource::Embedded("evee.png".into())))
                             .size(px(size))
@@ -105,7 +107,7 @@ impl LoadingFrame {
                         .top(px(center + orbit * angle.sin() - dot / 2.))
                         .size(px(dot))
                         .rounded_full()
-                        .bg(rgb(PRIMARY))
+                        .bg(rgb(theme().primary))
                         .opacity(0.35 + 0.2 * index as f32),
                 );
             }
@@ -121,7 +123,7 @@ pub fn skeleton(id: impl Into<ElementId>, width: Option<f32>, height: f32) -> im
         .when_some(width, |s, width| s.w(px(width)))
         .when(width.is_none(), |s| s.w_full())
         .rounded(px(RADIUS_SM))
-        .bg(rgb(SKELETON))
+        .bg(rgb(theme().skeleton))
         .with_animation(
             id,
             Animation::new(Duration::from_millis(SKELETON_MS))
@@ -264,13 +266,13 @@ pub fn launch_overlay(start: Instant, window: &mut Window) -> Option<Stateful<Di
             .items_center()
             .justify_center()
             .gap(px(20.))
-            .bg(rgb(SHELL))
+            .bg(rgb(theme().shell))
             .opacity(fade)
             .child(frame.mark(84.))
             .child(
                 div()
                     .text_size(type_size(CAPTION_SIZE))
-                    .text_color(rgb(TEXT_SECONDARY))
+                    .text_color(rgb(theme().text_secondary))
                     .child("AGENTINC"),
             ),
     )

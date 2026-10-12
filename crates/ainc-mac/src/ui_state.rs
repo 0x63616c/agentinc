@@ -100,6 +100,8 @@ pub struct UiState {
     pub sidebar: PanePreference,
     pub font: FontChoice,
     pub font_size: FontSize,
+    /// The chosen theme: a preset id or `custom:<slug>`; see `theme::Themes`.
+    pub theme: String,
     /// Command palette entries the user chose most recently, newest first.
     pub recent_commands: Vec<String>,
 }
@@ -115,6 +117,7 @@ impl Default for UiState {
             },
             font: FontChoice::System,
             font_size: FontSize::Default,
+            theme: "dark".to_owned(),
             recent_commands: Vec::new(),
         }
     }
@@ -216,6 +219,9 @@ impl UiState {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
         {
             state.font_size = font_size;
+        }
+        if let Some(theme) = value.get("theme").and_then(|v| v.as_str()) {
+            state.theme = theme.to_owned();
         }
         if let Some(recent) = value.get("recent_commands").and_then(|v| v.as_array()) {
             state.recent_commands = recent
@@ -555,6 +561,20 @@ mod tests {
             FontSize::Default
         );
     }
+    #[test]
+    fn theme_choice_is_a_ui_preference_that_defaults_to_dark() {
+        assert_eq!(UiState::default().theme, "dark");
+        assert_eq!(UiState::from_json("{}").theme, "dark");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.json");
+        let state = UiState {
+            theme: "custom:deep-sea".to_owned(),
+            ..UiState::default()
+        };
+        state.save(&path).unwrap();
+        assert_eq!(UiState::load(&path).theme, "custom:deep-sea");
+    }
+
     #[test]
     fn recent_commands_dedupe_and_persist() {
         let mut state = UiState::default();

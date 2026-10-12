@@ -113,9 +113,9 @@ impl ToastStack<'_> {
                     .gap(px(SPACE_3))
                     .p(px(SPACE_3))
                     .rounded(px(RADIUS_LG))
-                    .bg(rgb(SURFACE_OVERLAY))
+                    .bg(rgb(theme().surface_overlay))
                     .border_1()
-                    .border_color(rgb(BORDER_STRONG))
+                    .border_color(rgb(theme().border_strong))
                     .shadow(shadow_toast())
                     .child(
                         div()
@@ -137,7 +137,7 @@ impl ToastStack<'_> {
                                 s.child(
                                     div()
                                         .text_size(type_size(CAPTION_SIZE))
-                                        .text_color(rgb(TEXT_SECONDARY))
+                                        .text_color(rgb(theme().text_secondary))
                                         .child(body),
                                 )
                             }),

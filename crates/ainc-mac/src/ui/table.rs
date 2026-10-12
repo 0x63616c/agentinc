@@ -40,8 +40,8 @@ pub fn table_container() -> Div {
         .w_full()
         .rounded(px(RADIUS_LG))
         .border_1()
-        .border_color(rgb(BORDER))
-        .bg(rgb(SURFACE_RAISED))
+        .border_color(rgb(theme().border))
+        .bg(rgb(theme().surface_raised))
         .overflow_hidden()
 }
 
@@ -52,10 +52,10 @@ pub fn table_header(columns: &[TableColumn]) -> Div {
         .px(px(SPACE_4))
         .gap(px(SPACE_3))
         .border_b_1()
-        .border_color(rgb(BORDER))
+        .border_color(rgb(theme().border))
         .text_size(type_size(CAPTION_SIZE))
         .font_weight(FontWeight::MEDIUM)
-        .text_color(rgb(TEXT_TERTIARY))
+        .text_color(rgb(theme().text_tertiary))
         .children(
             columns
                 .iter()
@@ -124,9 +124,13 @@ impl<'a> TableRow<'a> {
                     .h_auto()
                     .rounded(px(0.))
                     .opacity(1.)
-                    .bg(blend(SURFACE_RAISED, HOVER_STRONG, progress))
+                    .bg(blend(
+                        theme().surface_raised,
+                        theme().hover_strong,
+                        progress,
+                    ))
                     .border_b_1()
-                    .border_color(rgb(BORDER_SUBTLE))
+                    .border_color(rgb(theme().border_subtle))
                     .on_hover(on_hover)
                     .child(table_cells(columns, cells))
             },

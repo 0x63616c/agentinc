@@ -1,139 +1,332 @@
 //! The AgentInc design tokens: color, type, spacing, radius, shadow and motion.
-//! Every authored value in the native app lives here; components and pages
-//! compose these names and never restate a raw value.
+//! Every authored value in the native app lives here or, for the color values
+//! of each theme, in `ui/themes.rs`; components and pages compose these names
+//! and never restate a raw value.
 use gpui::{BoxShadow, Pixels, Point, SpringConfig, px, rgba};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 // ---------------------------------------------------------------------------
-// Color. A near-black canvas, white primary actions, restrained grays and thin
-// borders instead of heavy fills. Status colors stay muted so text leads.
+// Color. Every color is a slot on the current `Theme`; the values themselves
+// are authored per preset in `ui/themes.rs`. Components read `theme().slot`
+// at render time, so switching the theme re-tints the whole app on the next
+// frame. The default look is a near-black canvas, white primary actions,
+// restrained grays and thin borders instead of heavy fills.
 // ---------------------------------------------------------------------------
 
-/// The one neutral ramp. Every gray surface, hover, selection and border below
-/// is a step of this ramp, so shifting a step here re-tints the whole app.
-/// Lower the numbers to darken the app; keep the steps in ascending order.
-mod gray {
-    pub const N0: u32 = 0x000000;
-    pub const N1: u32 = 0x060606;
-    pub const N2: u32 = 0x0a0a0a;
-    pub const N3: u32 = 0x0d0d0d;
-    pub const N4: u32 = 0x101010;
-    pub const N5: u32 = 0x131313;
-    pub const N6: u32 = 0x181818;
-    pub const N7: u32 = 0x1d1d1d;
-    pub const N8: u32 = 0x222222;
-    pub const N9: u32 = 0x2a2a2a;
-    pub const N10: u32 = 0x303030;
+/// Which hex form a slot is written in: `#rrggbb`, or `#rrggbbaa` for the few
+/// that carry their own opacity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ColorForm {
+    Rgb,
+    Rgba,
 }
-use gray::*;
 
-/// The window canvas behind every panel.
-pub const SHELL: u32 = N0;
-/// The content card, sidebar-level surfaces and inputs.
-pub const SURFACE: u32 = N2;
-/// Cards, grouped sections and list containers that sit on `SURFACE`.
-pub const SURFACE_RAISED: u32 = N4;
-/// Menus, dialogs, popovers and the command palette.
-pub const SURFACE_OVERLAY: u32 = N5;
-/// Text inputs, search fields and the composer.
-pub const SURFACE_INPUT: u32 = N3;
-/// Segmented-control tracks and secondary chips.
-pub const SURFACE_CONTROL: u32 = N5;
-/// Error banners and failed rows.
-pub const SURFACE_ERROR: u32 = 0x231414;
-/// Wells recessed into the content card, such as board lanes, so the cards on
-/// them read as raised.
-pub const SURFACE_SUNKEN: u32 = N1;
+/// One editable color on a `Theme`: its JSON key, label and group for the
+/// theme editor, and how to read and write it.
+#[derive(Clone, Copy)]
+pub struct ThemeSlot {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub group: &'static str,
+    pub form: ColorForm,
+    pub get: fn(&Theme) -> u32,
+    pub set: fn(&mut Theme, u32),
+}
 
-/// Quiet hover on rows and ghost buttons.
-pub const HOVER: u32 = N4;
-/// Hover on controls that already have a surface.
-pub const HOVER_STRONG: u32 = N7;
-/// Pressed state on gray controls.
-pub const ACTIVE: u32 = N8;
-/// The selected row, tab or segment.
-pub const SELECTED: u32 = N6;
-/// A stronger selected segment inside a control track.
-pub const SELECTED_STRONG: u32 = N9;
+macro_rules! theme_slots {
+    (
+        $( $group:literal { $( $(#[doc = $doc:literal])* $name:ident: $form:ident = $label:literal ),* $(,)? } )*
+    ) => {
+        /// The color slots every component paints with. Opaque slots hold
+        /// `0xrrggbb`; `Rgba` slots hold `0xrrggbbaa`. Every preset fills all
+        /// of them, and a saved custom theme falls back to the default for any
+        /// slot it leaves out.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct Theme {
+            $( $(
+                $(#[doc = $doc])*
+                pub $name: u32,
+            )* )*
+            /// Label dots: eight muted hues at the status palette's lightness,
+            /// so labels stay apart from each other without shouting. Red is
+            /// left to status.
+            pub label_colors: [u32; 8],
+            /// The terminal's sixteen ANSI colors.
+            pub terminal_ansi: [u32; 16],
+        }
+        /// Every scalar slot, in editor order; `Theme::slots()` adds the lists.
+        const SCALAR_SLOTS: &[ThemeSlot] = &[
+            $( $(
+                ThemeSlot {
+                    key: stringify!($name),
+                    label: $label,
+                    group: $group,
+                    form: theme_slots!(@form $form),
+                    get: |theme| theme.$name,
+                    set: |theme, value| theme.$name = value,
+                },
+            )* )*
+        ];
+    };
+    (@form rgb) => { ColorForm::Rgb };
+    (@form rgba) => { ColorForm::Rgba };
+}
 
-/// The default hairline between and around surfaces.
-pub const BORDER: u32 = N8;
-/// Dividers inside a surface.
-pub const BORDER_SUBTLE: u32 = N6;
-/// Borders on raised overlays and selected chips.
-pub const BORDER_STRONG: u32 = N10;
-/// The keyboard focus ring.
-pub const FOCUS: u32 = 0xbdbdbd;
-/// The border of a text field or composer while it is being edited.
-pub const FOCUS_FIELD: u32 = 0x707070;
-/// Selected text inside inputs. Values that carry an alpha byte say so in a
-/// comment; every other color token is opaque RGB.
-pub const TEXT_SELECTION: u32 = 0x454545ff;
+theme_slots! {
+    "Surfaces" {
+        /// The window canvas behind every panel.
+        shell: rgb = "Shell",
+        /// The content card, sidebar-level surfaces and inputs.
+        surface: rgb = "Surface",
+        /// Cards, grouped sections and list containers that sit on `surface`.
+        surface_raised: rgb = "Raised surface",
+        /// Menus, dialogs, popovers and the command palette.
+        surface_overlay: rgb = "Overlay surface",
+        /// Text inputs, search fields and the composer.
+        surface_input: rgb = "Input surface",
+        /// Segmented-control tracks and secondary chips.
+        surface_control: rgb = "Control surface",
+        /// Wells recessed into the content card, such as board lanes, so the
+        /// cards on them read as raised.
+        surface_sunken: rgb = "Sunken surface",
+        /// Error banners and failed rows.
+        surface_error: rgb = "Error surface",
+        /// Skeleton placeholder surface.
+        skeleton: rgb = "Skeleton",
+    }
+    "States" {
+        /// Quiet hover on rows and ghost buttons.
+        hover: rgb = "Hover",
+        /// Hover on controls that already have a surface.
+        hover_strong: rgb = "Strong hover",
+        /// Pressed state on gray controls.
+        active: rgb = "Pressed",
+        /// The selected row, tab or segment.
+        selected: rgb = "Selected",
+        /// A stronger selected segment inside a control track.
+        selected_strong: rgb = "Strong selected",
+        /// The keyboard focus ring.
+        focus: rgb = "Focus ring",
+        /// The border of a text field or composer while it is being edited.
+        focus_field: rgb = "Editing field border",
+        /// Selected text inside inputs.
+        text_selection: rgba = "Text selection",
+    }
+    "Borders" {
+        /// The default hairline between and around surfaces.
+        border: rgb = "Border",
+        /// Dividers inside a surface.
+        border_subtle: rgb = "Subtle border",
+        /// Borders on raised overlays and selected chips.
+        border_strong: rgb = "Strong border",
+        /// The border of an invalid field.
+        error_border: rgb = "Error border",
+    }
+    "Text" {
+        /// Primary text.
+        text: rgb = "Text",
+        /// Secondary text: descriptions, timestamps, captions.
+        text_secondary: rgb = "Secondary text",
+        /// Tertiary text: hints, disabled labels, section eyebrows. Keep it AA
+        /// (4.5:1 or better) on every surface up to the overlay.
+        text_tertiary: rgb = "Tertiary text",
+        /// Placeholder text inside inputs.
+        text_placeholder: rgb = "Placeholder text",
+        /// Ink on primary surfaces.
+        text_on_primary: rgb = "Text on primary",
+    }
+    "Actions" {
+        /// The primary action.
+        primary: rgb = "Primary",
+        primary_hover: rgb = "Primary hover",
+        primary_active: rgb = "Primary pressed",
+        /// The destructive action is an outlined red control, never a solid
+        /// slab; this is its hover surface.
+        destructive_hover: rgb = "Destructive hover",
+        /// Destructive text on a neutral surface.
+        destructive_text: rgb = "Destructive text",
+        /// Inline error text.
+        error: rgb = "Error text",
+    }
+    "Status" {
+        /// Status palette: each tone has a foreground and a matching quiet surface.
+        status_neutral: rgb = "Neutral",
+        status_neutral_surface: rgb = "Neutral surface",
+        status_green: rgb = "Green",
+        status_green_surface: rgb = "Green surface",
+        status_blue: rgb = "Blue",
+        status_blue_surface: rgb = "Blue surface",
+        status_amber: rgb = "Amber",
+        status_amber_surface: rgb = "Amber surface",
+        status_red: rgb = "Red",
+        status_red_surface: rgb = "Red surface",
+        status_purple: rgb = "Purple",
+        status_purple_surface: rgb = "Purple surface",
+    }
+    "Effects" {
+        /// The resize grip's tint; the pane adds its own opacity.
+        grip: rgb = "Resize grip",
+        /// The dimming layer behind dialogs and the palette.
+        scrim: rgba = "Scrim",
+        /// Shadow ink; each shadow adds its own opacity.
+        shadow: rgb = "Shadow",
+    }
+}
 
-/// Primary text.
-pub const TEXT: u32 = 0xf2f2f2;
-/// Secondary text: descriptions, timestamps, captions.
-pub const TEXT_SECONDARY: u32 = 0x9c9c9c;
-/// Tertiary text: hints, disabled labels, section eyebrows.
-pub const TEXT_TERTIARY: u32 = 0x858585; // AA (4.5:1 or better) on every surface up to the overlay.
-/// Placeholder text inside inputs.
-pub const TEXT_PLACEHOLDER: u32 = 0x5a5a5a;
-/// Ink on white primary surfaces.
-pub const TEXT_ON_PRIMARY: u32 = N2;
+impl Theme {
+    /// Every editable slot in editor order: the scalars, then the eight label
+    /// hues and the sixteen terminal colors.
+    pub fn slots() -> Vec<ThemeSlot> {
+        let mut slots = SCALAR_SLOTS.to_vec();
+        slots.extend(LABEL_SLOTS);
+        slots.extend(TERMINAL_SLOTS);
+        slots
+    }
+    /// The slot with this JSON key (`label_colors.3` for a list entry).
+    pub fn slot(key: &str) -> Option<ThemeSlot> {
+        Self::slots().into_iter().find(|slot| slot.key == key)
+    }
+}
 
-/// The white primary action.
-pub const PRIMARY: u32 = 0xffffff;
-pub const PRIMARY_HOVER: u32 = 0xe9e9e9;
-pub const PRIMARY_ACTIVE: u32 = 0xd9d9d9;
+macro_rules! list_slots {
+    ($const:ident, $field:ident, $group:literal, $label:literal, $( $index:literal ),*) => {
+        const $const: [ThemeSlot; list_slots!(@count $($index)*)] = [
+            $( ThemeSlot {
+                key: concat!(stringify!($field), ".", $index),
+                label: concat!($label, " ", $index),
+                group: $group,
+                form: ColorForm::Rgb,
+                get: |theme| theme.$field[$index],
+                set: |theme, value| theme.$field[$index] = value,
+            }, )*
+        ];
+    };
+    (@count) => { 0 };
+    (@count $head:literal $($tail:literal)*) => { 1 + list_slots!(@count $($tail)*) };
+}
+list_slots!(
+    LABEL_SLOTS,
+    label_colors,
+    "Labels",
+    "Label",
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+);
+list_slots!(
+    TERMINAL_SLOTS,
+    terminal_ansi,
+    "Terminal",
+    "ANSI",
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+);
 
-/// The destructive action is an outlined red control, never a solid slab;
-/// this is its hover surface.
-pub const DESTRUCTIVE_HOVER: u32 = 0x321a1a;
-/// Destructive text on a neutral surface.
-pub const DESTRUCTIVE_TEXT: u32 = 0xf08c8b;
-/// Inline error text.
-pub const ERROR: u32 = 0xf08c8b;
-pub const ERROR_BORDER: u32 = 0x7a3736;
+/// Parses `#rrggbb` / `rrggbb`, or `#rrggbbaa` for an `Rgba` slot. An `Rgba`
+/// slot accepts six digits and fills in full opacity; an `Rgb` slot refuses
+/// eight.
+pub fn parse_hex(text: &str, form: ColorForm) -> Option<u32> {
+    let digits = text.trim().trim_start_matches('#');
+    if !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let value = u32::from_str_radix(digits, 16).ok()?;
+    match (digits.len(), form) {
+        (6, ColorForm::Rgb) => Some(value),
+        (6, ColorForm::Rgba) => Some((value << 8) | 0xff),
+        (8, ColorForm::Rgba) => Some(value),
+        _ => None,
+    }
+}
 
-/// Status palette: each tone has a foreground and a matching quiet surface.
-pub const STATUS_NEUTRAL: u32 = 0xa3a3a3;
-pub const STATUS_NEUTRAL_SURFACE: u32 = N6;
-pub const STATUS_GREEN: u32 = 0x8fd9a8;
-pub const STATUS_GREEN_SURFACE: u32 = 0x13231a;
-pub const STATUS_BLUE: u32 = 0x94bdf0;
-pub const STATUS_BLUE_SURFACE: u32 = 0x142033;
-pub const STATUS_AMBER: u32 = 0xe8c37e;
-pub const STATUS_AMBER_SURFACE: u32 = 0x2a2213;
-pub const STATUS_RED: u32 = 0xf08c8b;
-pub const STATUS_RED_SURFACE: u32 = 0x2c1717;
-pub const STATUS_PURPLE: u32 = 0xc1a6ec;
-pub const STATUS_PURPLE_SURFACE: u32 = 0x231a33;
-/// Label dots: eight muted hues at the status palette's lightness, so labels
-/// stay apart from each other without shouting. Red is left to status.
-pub const LABEL_COLORS: [u32; 8] = [
-    STATUS_BLUE,
-    STATUS_GREEN,
-    STATUS_AMBER,
-    STATUS_PURPLE,
-    0xeba2c8,
-    0x86d0cf,
-    0xeeaa7c,
-    0xa9b4c6,
-];
-/// The resize grip tint before its opacity byte.
-pub const GRIP_TINT: u32 = 0x3a3a3a00;
-/// The dimming layer behind dialogs and the palette.
-pub const SCRIM: u32 = 0x000000cc;
-/// Shadow ink before its opacity byte.
-pub const SHADOW_INK: u32 = 0x00000000;
-/// Skeleton placeholder surface.
-pub const SKELETON: u32 = N5;
+/// Formats a slot's value the way `parse_hex` reads it.
+pub fn format_hex(value: u32, form: ColorForm) -> String {
+    match form {
+        ColorForm::Rgb => format!("#{value:06x}"),
+        ColorForm::Rgba => format!("#{value:08x}"),
+    }
+}
 
-#[cfg(target_os = "macos")]
-pub const TERMINAL_ANSI: [u32; 16] = [
-    0x171717, 0xb67171, 0x8eae9b, 0xcbb38a, 0x7aa7d8, 0xb69aca, 0x82b4bc, 0xc6c6c6, 0x555555,
-    0xe6acac, 0xb1d4ba, 0xe2cea0, 0xa4c9f1, 0xd0b2e2, 0xa6d5dd, 0xededed,
-];
+/// A theme serializes as one flat JSON object of slot keys to hex strings, so
+/// a saved file is easy to edit by hand. Reading starts from the default theme
+/// and overrides the slots present; an unknown key or a malformed color is an
+/// error rather than a silent miss.
+impl serde::Serialize for Theme {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let slots = Self::slots();
+        let mut map = s.serialize_map(Some(slots.len()))?;
+        for slot in slots {
+            map.serialize_entry(slot.key, &format_hex((slot.get)(self), slot.form))?;
+        }
+        map.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for Theme {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let entries: Vec<(String, String)> = serde::Deserialize::deserialize(d)
+            .map(|map: std::collections::BTreeMap<String, String>| map.into_iter().collect())?;
+        let mut theme = Self::default();
+        for (key, text) in entries {
+            let slot = Self::slot(&key)
+                .ok_or_else(|| D::Error::custom(format!("unknown color slot: {key}")))?;
+            let value = parse_hex(&text, slot.form)
+                .ok_or_else(|| D::Error::custom(format!("{key}: not a hex color: {text}")))?;
+            (slot.set)(&mut theme, value);
+        }
+        Ok(theme)
+    }
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        super::themes::DARK
+    }
+}
+
+// The single app window shares a theme with its separately rendered page entities.
+static THEME: std::sync::RwLock<Theme> = std::sync::RwLock::new(super::themes::DARK);
+
+/// The theme every component paints with this frame.
+pub fn theme() -> Theme {
+    *THEME
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Switches the whole app to `theme`; callers redraw afterwards.
+pub fn set_theme(theme: Theme) {
+    *THEME
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = theme;
+}
+
+/// The applied theme is process-wide; tests that change it take turns.
+#[cfg(test)]
+pub fn theme_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 // ---------------------------------------------------------------------------
 // Spacing. One 4-point scale; page and control insets are named so the same
@@ -238,6 +431,10 @@ pub const EMPTY_TEXT_MAX_WIDTH: f32 = 480.;
 pub const TEXTAREA_MIN_HEIGHT: f32 = 96.;
 /// A form select's width, and a short numeric field's.
 pub const SELECT_WIDTH: f32 = 240.;
+/// The color swatch beside each field of the theme editor.
+pub const THEME_SWATCH_SIZE: f32 = 18.;
+/// The hex field of the theme editor.
+pub const THEME_HEX_WIDTH: f32 = 112.;
 pub const SHORT_FIELD_WIDTH: f32 = 180.;
 /// The Assistant's chat column, a reply's measure and a sent message's.
 pub const READING_WIDTH: f32 = 900.;
@@ -383,7 +580,7 @@ pub fn type_size(size: f32) -> Pixels {
 
 fn shadow(alpha: u32, y: f32, blur: f32, spread: f32) -> BoxShadow {
     BoxShadow {
-        color: rgba(SHADOW_INK | alpha).into(),
+        color: rgba((theme().shadow << 8) | alpha).into(),
         offset: Point {
             x: px(0.),
             y: px(y),
@@ -412,7 +609,7 @@ pub fn shadow_toast() -> Vec<BoxShadow> {
 /// The keyboard focus ring, drawn outside a control without shifting its layout.
 pub fn focus_ring() -> Vec<BoxShadow> {
     vec![BoxShadow {
-        color: rgba((FOCUS << 8) | 0xff).into(),
+        color: rgba((theme().focus << 8) | 0xff).into(),
         offset: Point::default(),
         blur_radius: px(0.),
         spread_radius: px(2.),

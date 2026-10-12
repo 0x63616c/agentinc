@@ -39,11 +39,11 @@ impl DraggedTicket {
             .p(px(SPACE_3))
             .gap(px(SPACE_1))
             .rounded(px(RADIUS_MD))
-            .bg(rgb(SURFACE_OVERLAY))
+            .bg(rgb(theme().surface_overlay))
             .border_1()
-            .border_color(rgb(BORDER_STRONG))
+            .border_color(rgb(theme().border_strong))
             .shadow(shadow_dialog())
-            .text_color(rgb(TEXT))
+            .text_color(rgb(theme().text))
             .gap(px(SPACE_2))
             .child(ticket_card_body(
                 self.key.clone(),
@@ -211,17 +211,17 @@ impl TicketsPage {
             .min_h_0()
             .rounded(px(RADIUS_LG))
             .bg(rgb(if over.is_some() {
-                SURFACE
+                theme().surface
             } else {
-                SURFACE_SUNKEN
+                theme().surface_sunken
             }))
             // A lane is a well, not another box: its edge shows only while a card
             // is over it.
             .border_1()
             .border_color(rgb(if over.is_some() {
-                BORDER_STRONG
+                theme().border_strong
             } else {
-                SURFACE_SUNKEN
+                theme().surface_sunken
             }))
             .child(
                 row()
@@ -243,7 +243,7 @@ impl TicketsPage {
                             .small()
                             .icon(Icon::Plus)
                             .icon_only()
-                            .tint(TEXT_TERTIARY)
+                            .tint(theme().text_tertiary)
                             .enabled(!self.pending.busy())
                             .build(
                                 ui,
@@ -296,8 +296,8 @@ impl TicketsPage {
             .filter(|(landed, _)| *landed == id)
             .map(|(_, at)| (at.elapsed().as_millis() as f32 / SETTLE_MS as f32).min(1.));
         let border = match settle {
-            Some(t) => blend(FOCUS_FIELD, BORDER, t * t),
-            None => blend(BORDER, BORDER_STRONG, progress),
+            Some(t) => blend(theme().focus_field, theme().border, t * t),
+            None => blend(theme().border, theme().border_strong, progress),
         };
         let key: SharedString = ticket_key(id).into();
         let title: SharedString = ticket.title.clone().into();
@@ -329,7 +329,7 @@ impl TicketsPage {
                     .pt(px(SPACE_3 - CARD_OPTICAL_LIFT))
                     .gap(px(SPACE_2))
                     .rounded(px(RADIUS_MD))
-                    .bg(blend(SURFACE_RAISED, HOVER, progress))
+                    .bg(blend(theme().surface_raised, theme().hover, progress))
                     .border_1()
                     .border_color(border)
                     .when(ghost, |s| s.opacity(GHOST_OPACITY))
@@ -410,7 +410,7 @@ impl TicketsPage {
             .map(|(name, count)| {
                 row()
                     .gap(px(SPACE_1))
-                    .child(icon(name, ICON_SIZE_XS).text_color(rgb(TEXT_TERTIARY)))
+                    .child(icon(name, ICON_SIZE_XS).text_color(rgb(theme().text_tertiary)))
                     .child(hint(count.to_string()))
             })
             .collect()
@@ -508,7 +508,7 @@ fn drop_line(active: bool) -> Div {
         .h(px(if active { DROP_INDICATOR_HEIGHT } else { 0. }))
         .mx(px(SPACE_1))
         .rounded_full()
-        .bg(rgb(PRIMARY))
+        .bg(rgb(theme().primary))
 }
 
 #[cfg(test)]

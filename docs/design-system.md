@@ -19,22 +19,26 @@ hover surfaces fade over `HOVER_MS`, toggles and toasts use `SPRING_SNAPPY` and
 
 ## Tokens (`ui/tokens.rs`)
 
+Colors are slots of the runtime `Theme`, read as `rgb(theme().slot)` each frame. The presets
+live in `ui/themes.rs` (`DARK` is the default); the Settings page swaps them with `set_theme`,
+and custom themes are JSON files of the same slot names under the session directory.
+
 | Group | Names | Use |
 | --- | --- | --- |
-| Surfaces | `SHELL`, `SURFACE`, `SURFACE_RAISED`, `SURFACE_OVERLAY`, `SURFACE_INPUT`, `SURFACE_CONTROL`, `SURFACE_ERROR`, `SURFACE_SUNKEN` | Window, content card, cards, menus and dialogs, inputs, control tracks, error banners, wells recessed into the card (board lanes). |
-| States | `HOVER`, `HOVER_STRONG`, `ACTIVE`, `SELECTED`, `SELECTED_STRONG`, `FOCUS` | Hover on quiet rows and on controls, pressed, selected rows and segments, the focus ring. |
-| Borders | `BORDER`, `BORDER_SUBTLE`, `BORDER_STRONG`, `ERROR_BORDER` | Around surfaces, inside them, on overlays, on invalid fields. |
-| Text | `TEXT`, `TEXT_SECONDARY`, `TEXT_TERTIARY`, `TEXT_PLACEHOLDER`, `TEXT_ON_PRIMARY` | Body, descriptions, eyebrows and hints, placeholders, ink on white. |
-| Actions | `PRIMARY`, `PRIMARY_HOVER`, `PRIMARY_ACTIVE`, `DESTRUCTIVE`, `DESTRUCTIVE_HOVER`, `DESTRUCTIVE_TEXT`, `ERROR` | The white button, the red button, red text. |
-| Status | `STATUS_{NEUTRAL,GREEN,BLUE,AMBER,RED,PURPLE}` and `_SURFACE` pairs, `LABEL_COLORS` | Badge and pill tones; eight muted label hues. |
+| Surfaces | `shell`, `surface`, `surface_raised`, `surface_overlay`, `surface_input`, `surface_control`, `surface_error`, `surface_sunken` | Window, content card, cards, menus and dialogs, inputs, control tracks, error banners, wells recessed into the card (board lanes). |
+| States | `hover`, `hover_strong`, `active`, `selected`, `selected_strong`, `focus` | Hover on quiet rows and on controls, pressed, selected rows and segments, the focus ring. |
+| Borders | `border`, `border_subtle`, `border_strong`, `error_border` | Around surfaces, inside them, on overlays, on invalid fields. |
+| Text | `text`, `text_secondary`, `text_tertiary`, `text_placeholder`, `text_on_primary` | Body, descriptions, eyebrows and hints, placeholders, ink on the primary button. |
+| Actions | `primary`, `primary_hover`, `primary_active`, `destructive_hover`, `destructive_text`, `error` | The primary button, the red button, red text. |
+| Status | `status_{neutral,green,blue,amber,red,purple}` and `_surface` pairs, `label_colors` | Badge and pill tones; eight muted label hues. |
 | Spacing | `SPACE_HALF`, `SPACE_1` … `SPACE_10`, `PAGE_X`, `PANEL_GAP`, `SIDEBAR_INSET`, `SECTION_GAP`, control and row sizes | Every gap, inset and control dimension. |
 | Radius | `RADIUS_XS` … `RADIUS_XL`, `PANEL_RADIUS`, `CONTROL_RADIUS`, `FIELD_RADIUS` | Chips and hints, controls, cards, panels. |
 | Type | `DISPLAY_SIZE`, `TITLE_SIZE`, `HEADING_SIZE`, `BODY_SIZE`, `LABEL_SIZE`, `CAPTION_SIZE`, `MICRO_SIZE`; `type_size()` | Page titles, dialog titles, section headings, body, labels, captions, hints. |
 | Shadow | `shadow_overlay()`, `shadow_dialog()`, `shadow_toast()`, `focus_ring()` | Menus, dialogs and the palette, toasts, keyboard focus. Focus rings appear after keyboard navigation and hide on the next pointer press. |
 | Motion | `HOVER_MS`, `PANEL_MS`, `MESSAGE_MS`, `SKELETON_MS`, `SPRING_SNAPPY`, `SPRING_GENTLE` | Fades, panel reveal, message arrival, skeleton pulse, springs. |
 
-`cargo xtask check-ui` (`crates/ainc-xtask/src/checks/colors.rs`) fails the build when a color literal appears anywhere
-else; `checks/ui_spacing.rs` fails on new raw spacing literals in the files listed in
+`cargo xtask check-ui` (`crates/ainc-xtask/src/checks/colors.rs`) fails the build when a color literal appears
+outside `tokens.rs` and `themes.rs`; `checks/ui_spacing.rs` fails on new raw spacing literals in the files listed in
 `crates/ainc-mac/scripts/ui-spacing-baseline.json`.
 
 ## Components

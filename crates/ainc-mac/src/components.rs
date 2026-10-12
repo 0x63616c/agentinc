@@ -347,7 +347,7 @@ impl ComponentsPage {
                     ].into_iter().map(|(label, tone)| status_pill(label, tone))))
                     .child(row().flex_wrap().gap(px(SPACE_2)).children(
                         ["Home", "Money", "Travel", "Health"].into_iter().enumerate()
-                            .map(|(index, label)| tag(label, LABEL_COLORS[index])),
+                            .map(|(index, label)| tag(label, theme().label_colors[index])),
                     )),
             ))
             .child(specimen(
@@ -364,7 +364,7 @@ impl ComponentsPage {
                 column()
                     .w(px(PROPERTIES_WIDTH))
                     .child(property_row("Status", caption("In progress")))
-                    .child(property_row("Labels", row().flex_wrap().gap(px(CHIP_GAP)).child(tag("Money", LABEL_COLORS[1])).child(tag("Admin", LABEL_COLORS[3])))),
+                    .child(property_row("Labels", row().flex_wrap().gap(px(CHIP_GAP)).child(tag("Money", theme().label_colors[1])).child(tag("Admin", theme().label_colors[3])))),
             ))
             .child(specimen(
                 "List rows",
@@ -384,7 +384,7 @@ impl ComponentsPage {
                             name,
                             &columns,
                             vec![
-                                div().text_color(rgb(TEXT)).child(name).into_any_element(),
+                                div().text_color(rgb(theme().text)).child(name).into_any_element(),
                                 row().child(status_pill(status, tone)).into_any_element(),
                                 caption(when).into_any_element(),
                             ],

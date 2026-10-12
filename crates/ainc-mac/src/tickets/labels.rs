@@ -129,7 +129,7 @@ impl TicketsPage {
                         .small()
                         .icon(Icon::Close)
                         .icon_only()
-                        .tint(TEXT_TERTIARY)
+                        .tint(theme().text_tertiary)
                         .enabled(!self.pending.busy())
                         .build(ui, move |this: &mut Self, _, cx| {
                             this.toggle_label(removed.clone(), cx)
@@ -152,7 +152,7 @@ impl TicketsPage {
                             .ghost()
                             .small()
                             .icon(Icon::Plus)
-                            .tint(TEXT_SECONDARY)
+                            .tint(theme().text_secondary)
                             .selected(open)
                             .enabled(!self.pending.busy() && applied.len() < 10);
                         let compact = !applied.is_empty();

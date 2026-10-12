@@ -99,9 +99,9 @@ fn highlighted(label: &SharedString, positions: &[usize], window: &Window) -> An
         return div().truncate().child(label.clone()).into_any_element();
     }
     let mut style = window.text_style();
-    style.color = rgb(TEXT_SECONDARY).into();
+    style.color = rgb(theme().text_secondary).into();
     let highlight = HighlightStyle {
-        color: Some(rgb(TEXT).into()),
+        color: Some(rgb(theme().text).into()),
         font_weight: Some(FontWeight::SEMIBOLD),
         ..Default::default()
     };
@@ -187,9 +187,9 @@ pub fn palette_frame(
         .role(accesskit::Role::Dialog)
         .aria_label(aria_label)
         .w(px(PALETTE_WIDTH))
-        .bg(rgb(SURFACE_OVERLAY))
+        .bg(rgb(theme().surface_overlay))
         .border_1()
-        .border_color(rgb(BORDER_STRONG))
+        .border_color(rgb(theme().border_strong))
         .rounded(px(DIALOG_RADIUS))
         .shadow(shadow_dialog())
         .overflow_hidden()
@@ -201,7 +201,7 @@ pub fn palette_frame(
                 .px(px(SPACE_4))
                 .gap(px(SPACE_3))
                 .border_b_1()
-                .border_color(rgb(BORDER))
+                .border_color(rgb(theme().border))
                 .text_size(type_size(HEADING_SIZE))
                 .child(header),
         )
@@ -212,7 +212,7 @@ pub fn palette_frame(
                 .px(px(SPACE_4))
                 .gap(px(SPACE_4))
                 .border_t_1()
-                .border_color(rgb(BORDER))
+                .border_color(rgb(theme().border))
                 .child(footer),
         )
 }
@@ -289,7 +289,7 @@ impl Palette<'_> {
                     .items_center()
                     .py(px(SPACE_8))
                     .gap(px(SPACE_1))
-                    .child(div().text_color(rgb(TEXT)).child("No matches"))
+                    .child(div().text_color(rgb(theme().text)).child("No matches"))
                     .child(caption(empty)),
             );
         }
@@ -339,10 +339,10 @@ impl Palette<'_> {
                                 .px(px(SPACE_2))
                                 .gap(px(SPACE_3))
                                 .rounded(px(RADIUS_MD))
-                                .when(is_selected, |s| s.bg(rgb(SELECTED_STRONG)))
+                                .when(is_selected, |s| s.bg(rgb(theme().selected_strong)))
                                 .child(match entry.icon {
                                     Some(name) => icon(name, ICON_SIZE_LG)
-                                        .when(is_selected, |s| s.text_color(rgb(TEXT)))
+                                        .when(is_selected, |s| s.text_color(rgb(theme().text)))
                                         .when_some(entry.icon_color, |s, color| {
                                             s.text_color(rgb(color))
                                         })
@@ -354,7 +354,7 @@ impl Palette<'_> {
                                         .flex_1()
                                         .min_w_0()
                                         .text_size(type_size(BODY_SIZE))
-                                        .text_color(rgb(TEXT))
+                                        .text_color(rgb(theme().text))
                                         .child(label),
                                 )
                                 .when_some(entry.detail.clone(), |s, detail| {
@@ -362,7 +362,7 @@ impl Palette<'_> {
                                         div()
                                             .flex_shrink_0()
                                             .text_size(type_size(CAPTION_SIZE))
-                                            .text_color(rgb(TEXT_TERTIARY))
+                                            .text_color(rgb(theme().text_tertiary))
                                             .child(detail),
                                     )
                                 })
@@ -399,8 +399,8 @@ impl Palette<'_> {
                     .h(px(PALETTE_ROW_HEIGHT * 0.75))
                     .bg(linear_gradient(
                         180.,
-                        linear_color_stop(rgba(SURFACE_OVERLAY << 8), 0.),
-                        linear_color_stop(rgb(SURFACE_OVERLAY), 1.),
+                        linear_color_stop(rgba(theme().surface_overlay << 8), 0.),
+                        linear_color_stop(rgb(theme().surface_overlay), 1.),
                     )),
             )
         });

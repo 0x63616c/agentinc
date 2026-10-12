@@ -28,12 +28,12 @@ pub fn current_page_contour() -> impl IntoElement {
             fill.line_to(p(0., TAB_HEIGHT));
             fill.close();
             if let Ok(path) = fill.build() {
-                window.paint_path(path, rgb(SURFACE));
+                window.paint_path(path, rgb(theme().surface));
             }
             let mut line = PathBuilder::stroke(px(1.));
             contour(&mut line);
             if let Ok(path) = line.build() {
-                window.paint_path(path, rgb(BORDER));
+                window.paint_path(path, rgb(theme().border));
             }
         },
     )
@@ -54,7 +54,7 @@ impl Shell {
             .into_iter()
             .filter(|(_, shown)| *shown)
             .map(|(trailing, _)| {
-                let (from, to) = (rgba(SHELL << 8), rgb(SHELL));
+                let (from, to) = (rgba(theme().shell << 8), rgb(theme().shell));
                 div()
                     .absolute()
                     .top_0()
@@ -125,7 +125,7 @@ impl Shell {
                     .w(px(TAB_WIDTH))
                     .h(px(TAB_HEIGHT))
                     .rounded_t(px(TAB_RADIUS))
-                    .bg(rgba(SHELL << 8))
+                    .bg(rgba(theme().shell << 8))
                     .when(selected, |tab| tab.child(current_page_contour()))
                     .child(
                         row()
@@ -136,7 +136,11 @@ impl Shell {
                             .pr(px(TAB_CLOSE_INSET))
                             .gap(px(TAB_LABEL_GAP))
                             .text_size(type_size(LABEL_SIZE))
-                            .text_color(rgb(if selected { TEXT } else { TEXT_SECONDARY }))
+                            .text_color(rgb(if selected {
+                                theme().text
+                            } else {
+                                theme().text_secondary
+                            }))
                             .font_weight(FontWeight::MEDIUM)
                             .child(icon(route.icon(), TAB_ICON_SIZE))
                             .child(div().flex_1().min_w_0().truncate().child(label))
@@ -153,7 +157,7 @@ impl Shell {
                                 .flex_shrink_0()
                                 .justify_center()
                                 .rounded(px(RADIUS_SM))
-                                .bg(rgba(SHELL << 8))
+                                .bg(rgba(theme().shell << 8))
                                 .opacity(0.)
                                 .group_hover(group, |s| s.opacity(1.))
                                 .focus(|s| s.opacity(1.).shadow(focus_ring()))
@@ -190,9 +194,9 @@ impl Shell {
             |button| {
                 button
                     .gap(px(CONTROL_GAP))
-                    .bg(blend(SHELL, HOVER, progress))
+                    .bg(blend(theme().shell, theme().hover, progress))
                     .on_hover(on_hover)
-                    .hover(|s| s.text_color(rgb(TEXT)))
+                    .hover(|s| s.text_color(rgb(theme().text)))
             },
             move |this: &mut Self, window, cx| this.dispatch(click_control.clone(), window, cx),
             ui.cx,

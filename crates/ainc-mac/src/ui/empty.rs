@@ -45,15 +45,15 @@ impl EmptyState {
             .gap(px(SPACE_3))
             .rounded(px(RADIUS_LG))
             .border_1()
-            .border_color(rgb(BORDER))
+            .border_color(rgb(theme().border))
             .child(
                 row()
                     .size(px(EMPTY_ICON_TILE))
                     .justify_center()
                     .rounded(px(RADIUS_MD))
-                    .bg(rgb(SURFACE_RAISED))
+                    .bg(rgb(theme().surface_raised))
                     .border_1()
-                    .border_color(rgb(BORDER))
+                    .border_color(rgb(theme().border))
                     .child(icon(self.icon, ICON_SIZE_LG)),
             )
             .child(
@@ -72,7 +72,7 @@ impl EmptyState {
                                 .max_w(px(EMPTY_TEXT_MAX_WIDTH))
                                 .text_align(TextAlign::Center)
                                 .text_size(type_size(LABEL_SIZE))
-                                .text_color(rgb(TEXT_SECONDARY))
+                                .text_color(rgb(theme().text_secondary))
                                 .child(description),
                         )
                     }),

@@ -30,7 +30,7 @@ impl Shell {
                     .child(icon(Icon::ChevronRight, ICON_SIZE)),
             )
             .build(ui, Self::menu_action(Control::SupportMenu))
-            .when(support, |s| s.bg(rgb(SELECTED)));
+            .when(support, |s| s.bg(rgb(theme().selected)));
         let submenu = || {
             menu_shell(support_width)
                 .debug_selector(|| "user-menu.support.menu".into())
@@ -89,13 +89,16 @@ impl Shell {
                         .p(px(SPACE_3))
                         .gap(px(SPACE_2))
                         .rounded(px(RADIUS_MD))
-                        .bg(rgb(SURFACE_RAISED))
+                        .bg(rgb(theme().surface_raised))
                         .border_1()
-                        .border_color(rgb(BORDER))
+                        .border_color(rgb(theme().border))
                         .child(
                             row()
                                 .gap(px(SPACE_2))
-                                .child(icon(Icon::Download, ICON_SIZE_SM).text_color(rgb(TEXT)))
+                                .child(
+                                    icon(Icon::Download, ICON_SIZE_SM)
+                                        .text_color(rgb(theme().text)),
+                                )
                                 .child(
                                     div()
                                         .text_size(type_size(LABEL_SIZE))

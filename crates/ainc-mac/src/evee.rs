@@ -603,9 +603,9 @@ impl AssistantPage {
                         .px(px(SPACE_4))
                         .py(px(SPACE_3))
                         .rounded(px(RADIUS_XL))
-                        .bg(rgb(SURFACE_CONTROL))
+                        .bg(rgb(theme().surface_control))
                         .border_1()
-                        .border_color(rgb(BORDER))
+                        .border_color(rgb(theme().border))
                         .text_size(type_size(BODY_SIZE))
                         .child(turn.prompt.clone()),
                 ),
@@ -628,7 +628,7 @@ impl AssistantPage {
                                         div()
                                             .text_size(type_size(CAPTION_SIZE))
                                             .font_weight(FontWeight::MEDIUM)
-                                            .text_color(rgb(TEXT_SECONDARY))
+                                            .text_color(rgb(theme().text_secondary))
                                             .child("Evee"),
                                     )
                                     .when_some(turn.response.clone(), |s, reply| {
@@ -802,7 +802,7 @@ impl Render for AssistantPage {
                     .ghost()
                     .small()
                     .icon(Icon::ChevronLeft)
-                    .tint(TEXT_SECONDARY)
+                    .tint(theme().text_secondary)
                     .build(ui, |this, _, cx| this.show_list(cx))
                     .ml(px(-CONTROL_INSET_X_SM)),
             )
@@ -877,11 +877,11 @@ impl Render for AssistantPage {
                                 .rounded(px(RADIUS_LG))
                                 .border_1()
                                 .border_color(rgb(if composer_focused {
-                                    FOCUS_FIELD
+                                    theme().focus_field
                                 } else {
-                                    BORDER
+                                    theme().border
                                 }))
-                                .bg(rgb(SURFACE_INPUT))
+                                .bg(rgb(theme().surface_input))
                                 .debug_selector(|| "composer".into())
                                 .child(self.input.clone())
                                 .child(

@@ -15,12 +15,12 @@ pub enum Tone {
 impl Tone {
     pub fn colors(self) -> (u32, u32) {
         match self {
-            Self::Neutral => (STATUS_NEUTRAL, STATUS_NEUTRAL_SURFACE),
-            Self::Success => (STATUS_GREEN, STATUS_GREEN_SURFACE),
-            Self::Info => (STATUS_BLUE, STATUS_BLUE_SURFACE),
-            Self::Warning => (STATUS_AMBER, STATUS_AMBER_SURFACE),
-            Self::Danger => (STATUS_RED, STATUS_RED_SURFACE),
-            Self::Accent => (STATUS_PURPLE, STATUS_PURPLE_SURFACE),
+            Self::Neutral => (theme().status_neutral, theme().status_neutral_surface),
+            Self::Success => (theme().status_green, theme().status_green_surface),
+            Self::Info => (theme().status_blue, theme().status_blue_surface),
+            Self::Warning => (theme().status_amber, theme().status_amber_surface),
+            Self::Danger => (theme().status_red, theme().status_red_surface),
+            Self::Accent => (theme().status_purple, theme().status_purple_surface),
         }
     }
 }
@@ -59,9 +59,9 @@ pub fn status_pill(label: impl Into<SharedString>, tone: Tone) -> Div {
         .flex_shrink_0()
         .rounded_full()
         .border_1()
-        .border_color(rgb(BORDER_STRONG))
+        .border_color(rgb(theme().border_strong))
         .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(TEXT))
+        .text_color(rgb(theme().text))
         .whitespace_nowrap()
         .child(status_dot(tone))
         .child(label.into())
@@ -76,9 +76,9 @@ pub fn tag(label: impl Into<SharedString>, color: u32) -> Div {
         .flex_shrink_0()
         .rounded_full()
         .border_1()
-        .border_color(rgb(BORDER_STRONG))
+        .border_color(rgb(theme().border_strong))
         .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(TEXT))
+        .text_color(rgb(theme().text))
         .whitespace_nowrap()
         .child(
             div()
@@ -99,9 +99,9 @@ pub fn count_badge(count: usize) -> Div {
         .justify_center()
         .flex_shrink_0()
         .rounded_full()
-        .bg(rgb(SELECTED_STRONG))
+        .bg(rgb(theme().selected_strong))
         .text_size(type_size(MICRO_SIZE))
         .font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(TEXT))
+        .text_color(rgb(theme().text))
         .child(count.to_string())
 }

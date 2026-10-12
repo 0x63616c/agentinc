@@ -91,6 +91,8 @@ pub struct Shell {
     ui_state: UiState,
     /// The type preferences, shared with the Settings page that edits them.
     appearance: Rc<Cell<Appearance>>,
+    /// The chosen theme and the custom ones, shared with Settings.
+    themes: Rc<RefCell<crate::theme::Themes>>,
     overlays: Rc<RefCell<OverlayHost<Overlay>>>,
     pages: Vec<PageHandle>,
     /// The route whose page was last told it is shown.
@@ -98,6 +100,7 @@ pub struct Shell {
     /// A page asked for a destination; honoured at the next render, with the window.
     pending_destination: Option<Destination>,
     _settings_subscription: Subscription,
+    _theme_subscription: Subscription,
     _update_subscription: Option<Subscription>,
     profile: crate::profile::Profile,
     path: PathBuf,
@@ -182,6 +185,13 @@ impl Shell {
         let ui_state = loaded.unwrap_or_default();
         set_type_scale(ui_state.font_size.scale());
         let appearance = Rc::new(Cell::new(ui_state.appearance()));
+        let themes_dir = path
+            .parent()
+            .map_or_else(|| PathBuf::from("themes"), |dir| dir.join("themes"));
+        let themes = Rc::new(RefCell::new(crate::theme::Themes::load(
+            themes_dir,
+            &ui_state.theme,
+        )));
         let overlays = Rc::new(RefCell::new(OverlayHost::default()));
         let sync = cx.new(|cx| crate::sync::Sync::new(daemon.clone(), clock, cx));
         let sync_subscription = window.observe_window_visibility({
@@ -223,11 +233,22 @@ impl Shell {
                 let _ = shell.update(cx, |shell, cx| shell.set_command_held(held, cx));
             }),
         };
-        let settings = cx.new(|cx| crate::settings::SettingsPage::new(appearance.clone(), cx));
+        let settings = cx.new(|cx| {
+            crate::settings::SettingsPage::new(
+                appearance.clone(),
+                themes.clone(),
+                overlays.clone(),
+                cx,
+            )
+        });
         let settings_subscription = cx
             .subscribe(&settings, |this, _, appearance: &Appearance, cx| {
                 this.apply_appearance(*appearance, cx)
             });
+        let theme_subscription = cx.subscribe(
+            &settings,
+            |this, _, event: &crate::settings::ThemeEvent, cx| this.apply_theme(*event, cx),
+        );
         let pages = vec![
             PageHandle::new(
                 cx.new(|cx| {
@@ -337,11 +358,13 @@ impl Shell {
             _sync_subscription: sync_subscription,
             ui_state,
             appearance,
+            themes,
             overlays,
             pages,
             shown: None,
             pending_destination: None,
             _settings_subscription: settings_subscription,
+            _theme_subscription: theme_subscription,
             _update_subscription: update_subscription,
             profile: crate::profile::Profile {
                 name: String::new(),
@@ -451,6 +474,7 @@ impl Shell {
         let appearance = self.appearance.get();
         self.ui_state.font = appearance.font;
         self.ui_state.font_size = appearance.font_size;
+        self.ui_state.theme = self.themes.borrow().choice().to_owned();
         self.save_error = match self.ui_state.save(&self.path) {
             Ok(()) => false,
             Err(error) => {
@@ -481,6 +505,19 @@ impl Shell {
     fn apply_appearance(&mut self, appearance: Appearance, cx: &mut Context<Self>) {
         self.appearance.set(appearance);
         set_type_scale(appearance.font_size.scale());
+        self.repaint(cx);
+        self.save(cx);
+    }
+    /// The theme (already applied to the tokens) changed: repaint, and save a new choice.
+    fn apply_theme(&mut self, event: crate::settings::ThemeEvent, cx: &mut Context<Self>) {
+        self.repaint(cx);
+        if event == crate::settings::ThemeEvent::Changed {
+            self.save(cx);
+        }
+        cx.notify();
+    }
+    /// Every view reads the tokens at render; tell them all to render again.
+    fn repaint(&mut self, cx: &mut Context<Self>) {
         for page in &self.pages {
             page.refresh(cx);
         }
@@ -488,7 +525,6 @@ impl Shell {
         if let Some(updates) = cx.try_global::<crate::updates::Updates>().cloned() {
             updates.0.update(cx, |_, cx| cx.notify());
         }
-        self.save(cx);
     }
     fn focus_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selected = 0;
@@ -851,8 +887,8 @@ impl Render for Shell {
             .id("shell")
             .relative()
             .size_full()
-            .bg(rgb(SHELL))
-            .text_color(rgb(TEXT))
+            .bg(rgb(theme().shell))
+            .text_color(rgb(theme().text))
             .font_family(self.appearance.get().font.family())
             .text_size(type_size(BODY_SIZE))
             .line_height(relative(BODY_LINE_HEIGHT))
@@ -989,13 +1025,7 @@ impl Render for Shell {
                         .absolute()
                         .inset_0()
                         .cursor_default()
-                        .bg(rgba(SCRIM))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .when(active_overlay == Some(Overlay::GoTo), |s| {
-                            s.items_start().pt(px(PALETTE_TOP))
-                        })
+                        .bg(rgba(theme().scrim))
                         .on_mouse_move(|_, _, cx| cx.stop_propagation())
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -1005,7 +1035,16 @@ impl Render for Shell {
                             cx.notify();
                         }))
                         .child(
+                            // Full size, so a sheet can pin itself to the window's edge;
+                            // dialogs and the palette are centred inside it.
                             div()
+                                .size_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .when(active_overlay == Some(Overlay::GoTo), |s| {
+                                    s.items_start().pt(px(PALETTE_TOP))
+                                })
                                 .when(active_overlay == Some(Overlay::GoTo), |s| {
                                     s.opacity(0.65 + 0.35 * palette_progress)
                                         .mt(px(-6. * (1. - palette_progress)))

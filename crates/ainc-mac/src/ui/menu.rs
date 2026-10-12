@@ -97,7 +97,7 @@ impl MenuEntry {
             .align_start()
             .enabled(enabled);
         if destructive {
-            button = button.tint(DESTRUCTIVE_TEXT);
+            button = button.tint(theme().destructive_text);
         }
         if let Some(name) = icon_name {
             button = button.icon(name);
@@ -112,7 +112,7 @@ impl MenuEntry {
             trail = trail.child(kbd(shortcut));
         }
         if checked {
-            trail = trail.child(icon(Icon::Check, ICON_SIZE_SM).text_color(rgb(TEXT)));
+            trail = trail.child(icon(Icon::Check, ICON_SIZE_SM).text_color(rgb(theme().text)));
         }
         if let Some(trailing) = trailing {
             trail = trail.child(trailing);
@@ -206,7 +206,7 @@ pub fn menu_label(text: impl Into<SharedString>) -> Div {
         .px(px(CONTROL_INSET_X))
         .py(px(6.))
         .text_size(type_size(CAPTION_SIZE))
-        .text_color(rgb(TEXT_TERTIARY))
+        .text_color(rgb(theme().text_tertiary))
         .child(text.into())
 }
 
@@ -215,5 +215,5 @@ pub fn menu_divider() -> Div {
         .my(px(MENU_INSET))
         .mx(px(-MENU_INSET))
         .h(px(1.))
-        .bg(rgb(BORDER))
+        .bg(rgb(theme().border))
 }

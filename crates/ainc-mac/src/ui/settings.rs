@@ -39,7 +39,7 @@ pub fn settings_row(
                 .child(
                     div()
                         .text_size(type_size(CAPTION_SIZE))
-                        .text_color(rgb(TEXT_SECONDARY))
+                        .text_color(rgb(theme().text_secondary))
                         .child(description.into()),
                 ),
         )
@@ -56,5 +56,5 @@ pub fn settings_divider() -> Div {
     div()
         .ml(px(SETTINGS_INSET))
         .h(px(1.))
-        .bg(rgb(BORDER_SUBTLE))
+        .bg(rgb(theme().border_subtle))
 }

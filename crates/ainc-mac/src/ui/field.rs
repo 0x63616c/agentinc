@@ -12,7 +12,7 @@ use gpui::{prelude::*, *};
 /// The label above a field or a control that sits in a form, such as a select.
 pub fn field_label(text: impl Into<SharedString>) -> Div {
     div()
-        .text_color(rgb(TEXT_SECONDARY))
+        .text_color(rgb(theme().text_secondary))
         .text_size(type_size(LABEL_SIZE))
         .font_weight(FontWeight::MEDIUM)
         .child(text.into())
@@ -86,11 +86,11 @@ impl Field {
         let selector = self.selector;
         let has_error = self.error.is_some();
         let border = if has_error {
-            ERROR_BORDER
+            theme().error_border
         } else if focused {
-            FOCUS_FIELD
+            theme().focus_field
         } else {
-            BORDER
+            theme().border
         };
         column_gap(FIELD_LABEL_GAP)
             .when_some(self.label, |s, label| {
@@ -112,7 +112,7 @@ impl Field {
                     })
                     .px(px(FIELD_INSET_X))
                     .gap(px(SPACE_2))
-                    .bg(rgb(SURFACE_INPUT))
+                    .bg(rgb(theme().surface_input))
                     .border_1()
                     .border_color(rgb(border))
                     .rounded(px(FIELD_RADIUS))
@@ -124,7 +124,7 @@ impl Field {
                 s.child(
                     div()
                         .text_size(type_size(CAPTION_SIZE))
-                        .text_color(rgb(ERROR))
+                        .text_color(rgb(theme().error))
                         .child(error),
                 )
             })

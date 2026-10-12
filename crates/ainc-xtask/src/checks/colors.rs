@@ -1,10 +1,12 @@
-//! Fail when native source or SVG assets author colors outside `ui/tokens.rs`.
+//! Fail when native source or SVG assets author colors outside `ui/tokens.rs` and
+//! the built-in themes in `ui/themes.rs`.
 //!
 //! Rust: no hex or numeric color literals, no `hsla(...)`, no named gpui colors such as
 //! `white()`, no `Rgba { .. }` / `Hsla { .. }` literals. Use `rgb(TOKEN)`.
 //! SVG: paints must be `none`, `currentColor` or a `url(#...)` reference, so every icon is
 //! tinted by the app's token colors. Luminance masks (`<mask>`) are exempt: white/black there
 //! select shape, not color.
+//! Test modules (from `#[cfg(test)]` to the end of the file) are exempt: they assert on colors.
 //! Clippy's `disallowed-methods` (clippy.toml) bans the same gpui constructors at compile time.
 use super::files;
 use anyhow::{Result, bail};
@@ -28,6 +30,7 @@ fn rust_violations(text: &str) -> Vec<(usize, String)> {
     let literal = rust_literal();
     text.lines()
         .enumerate()
+        .take_while(|(_, line)| line.trim() != "#[cfg(test)]")
         .filter(|(_, line)| literal.is_match(line))
         .map(|(i, line)| (i + 1, line.trim().to_string()))
         .collect()
@@ -58,11 +61,11 @@ fn svg_violations(text: &str) -> Vec<(usize, String)> {
 }
 
 pub fn run(app: &Path) -> Result<()> {
-    let tokens = app.join("src/ui/tokens.rs");
+    let authored = [app.join("src/ui/tokens.rs"), app.join("src/ui/themes.rs")];
     let mut offenders = Vec::new();
     let relative = |path: &Path| path.strip_prefix(app).unwrap_or(path).display().to_string();
     for path in files(&app.join("src"), "rs")? {
-        if path != tokens {
+        if !authored.contains(&path) {
             for (n, line) in rust_violations(&fs::read_to_string(&path)?) {
                 offenders.push(format!("{}:{n}: {line}", relative(&path)));
             }
@@ -75,11 +78,11 @@ pub fn run(app: &Path) -> Result<()> {
     }
     if !offenders.is_empty() {
         bail!(
-            "Colors belong in src/ui/tokens.rs; SVGs must paint with currentColor:\n{}",
+            "Colors belong in src/ui/tokens.rs or src/ui/themes.rs; SVGs must paint with currentColor:\n{}",
             offenders.join("\n")
         );
     }
-    println!("Native colors are centralized in src/ui/tokens.rs");
+    println!("Native colors are centralized in src/ui/tokens.rs and src/ui/themes.rs");
     Ok(())
 }
 
@@ -111,6 +114,13 @@ mod tests {
         ] {
             assert!(rust_violations(line).is_empty(), "{line}");
         }
+    }
+
+    #[test]
+    fn exempts_test_modules() {
+        let text =
+            "let c = rgb(SURFACE);\n#[cfg(test)]\nmod tests {\n    let c = rgb(0xffffff);\n}\n";
+        assert!(rust_violations(text).is_empty());
     }
 
     #[test]

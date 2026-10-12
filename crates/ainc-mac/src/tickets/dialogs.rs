@@ -327,7 +327,7 @@ impl TicketsPage {
                         let other = ticket.id;
                         column()
                             .when(index + 1 < count, |s| {
-                                s.border_b_1().border_color(rgb(BORDER_SUBTLE))
+                                s.border_b_1().border_color(rgb(theme().border_subtle))
                             })
                             .child(
                                 ListRow::new(
@@ -349,7 +349,7 @@ impl TicketsPage {
                                 .selected(self.link_target == Some(other))
                                 .trailing(
                                     icon(Icon::Check, ICON_SIZE_SM)
-                                        .text_color(rgb(TEXT))
+                                        .text_color(rgb(theme().text))
                                         .when(self.link_target != Some(other), |s| s.opacity(0.)),
                                 )
                                 .build(

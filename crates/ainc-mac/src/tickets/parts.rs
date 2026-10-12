@@ -50,7 +50,7 @@ pub(super) fn ticket_card_body(
                 .w_full()
                 .text_size(type_size(BODY_SIZE))
                 .line_height(relative(TITLE_LINE_HEIGHT))
-                .text_color(rgb(TEXT))
+                .text_color(rgb(theme().text))
                 .line_clamp(3)
                 .text_ellipsis()
                 .child(title),

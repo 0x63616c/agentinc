@@ -99,9 +99,9 @@ impl<O: Copy + PartialEq> OverlayHost<O> {
 fn overlay_surface(id: &'static str) -> Stateful<Div> {
     column()
         .id(id)
-        .bg(rgb(SURFACE_OVERLAY))
+        .bg(rgb(theme().surface_overlay))
         .border_1()
-        .border_color(rgb(BORDER_STRONG))
+        .border_color(rgb(theme().border_strong))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(|_, _, cx| cx.stop_propagation())
 }

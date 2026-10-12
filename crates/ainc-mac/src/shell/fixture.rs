@@ -46,6 +46,9 @@ impl Shell {
         self.page_entity::<crate::temporal::TemporalPage>()
             .update(cx, |view, cx| view.fixture_loading(cx));
     }
+    pub fn fixture_settings(&self) -> Entity<crate::settings::SettingsPage> {
+        self.page_entity::<crate::settings::SettingsPage>()
+    }
     pub fn fixture_profile_name(&mut self, name: &str, cx: &mut Context<Self>) {
         self.profile.name = name.into();
         cx.notify();

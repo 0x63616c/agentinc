@@ -147,7 +147,8 @@ impl HoverFade {
 
 #[cfg(test)]
 mod tests {
-    use super::{PRIMARY, SHELL, SURFACE, SURFACE_RAISED, blend};
+    use super::blend;
+    use crate::ui::themes::DARK;
     use gpui::rgb;
 
     #[test]
@@ -167,10 +168,13 @@ mod tests {
 
     #[test]
     fn blend_interpolates_each_channel() {
-        assert_eq!(blend(SHELL, PRIMARY, 0.), rgb(SHELL));
-        assert_eq!(blend(SHELL, PRIMARY, 1.), rgb(PRIMARY));
-        let mid = blend(SHELL, PRIMARY, 0.5);
+        assert_eq!(blend(DARK.shell, DARK.primary, 0.), rgb(DARK.shell));
+        assert_eq!(blend(DARK.shell, DARK.primary, 1.), rgb(DARK.primary));
+        let mid = blend(DARK.shell, DARK.primary, 0.5);
         assert!((mid.r - 0.5).abs() < 0.01 && (mid.g - 0.5).abs() < 0.01);
-        assert_eq!(blend(SURFACE, SURFACE_RAISED, 2.), rgb(SURFACE_RAISED));
+        assert_eq!(
+            blend(DARK.surface, DARK.surface_raised, 2.),
+            rgb(DARK.surface_raised)
+        );
     }
 }

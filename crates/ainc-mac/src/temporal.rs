@@ -192,14 +192,14 @@ impl TemporalPage {
                             div()
                                 .truncate()
                                 .font_weight(FontWeight::MEDIUM)
-                                .text_color(rgb(TEXT))
+                                .text_color(rgb(theme().text))
                                 .child(kind_label(execution.kind).to_owned()),
                         )
                         .child(
                             div()
                                 .truncate()
                                 .text_size(type_size(CAPTION_SIZE))
-                                .text_color(rgb(TEXT_SECONDARY))
+                                .text_color(rgb(theme().text_secondary))
                                 .child(id.clone()),
                         )
                         .into_any_element(),
@@ -210,7 +210,7 @@ impl TemporalPage {
                         .gap(px(SPACE_HALF))
                         .child(
                             div()
-                                .text_color(rgb(TEXT))
+                                .text_color(rgb(theme().text))
                                 .child(time::relative(execution.started_at / 1000, now)),
                         )
                         .child(caption(time::absolute(execution.started_at / 1000)))
@@ -218,7 +218,7 @@ impl TemporalPage {
                     div()
                         .font_family(self.appearance.get().font.monospace_family())
                         .text_size(type_size(LABEL_SIZE))
-                        .text_color(rgb(TEXT))
+                        .text_color(rgb(theme().text))
                         .child(time::duration(
                             execution.closed_at.unwrap_or(now * 1000) - execution.started_at,
                         ))
