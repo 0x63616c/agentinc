@@ -63,6 +63,18 @@ _Avoid_: cron job, background task
 One firing of an Automation, linked to the Ticket it creates.
 _Avoid_: run, job
 
+**Todo**:
+One item on the Owner's checklist in a Workspace: a title, done or not.
+_Avoid_: task, ticket, item
+
+**Calendar**:
+The Owner's Events in a Workspace, shown by day.
+_Avoid_: schedule, agenda
+
+**Event**:
+One entry on the Calendar: a title with a start and an end.
+_Avoid_: appointment, meeting, booking
+
 **Connection**:
 A user's link to an external account or provider that makes its capabilities available in AgentInc.
 _Avoid_: integration, account

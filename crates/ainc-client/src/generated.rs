@@ -570,6 +570,213 @@ pub mod types {
             Default::default()
         }
     }
+    ///`CalendarCommand`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "ends_at",
+    ///        "kind",
+    ///        "starts_at",
+    ///        "title"
+    ///      ],
+    ///      "properties": {
+    ///        "ends_at": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "create"
+    ///          ]
+    ///        },
+    ///        "starts_at": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "title": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "delete"
+    ///          ]
+    ///        }
+    ///      }
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    #[serde(tag = "kind")]
+    pub enum CalendarCommand {
+        #[serde(rename = "create")]
+        Create {
+            ends_at: i64,
+            starts_at: i64,
+            title: ::std::string::String,
+        },
+        #[serde(rename = "delete")]
+        Delete { id: i64 },
+    }
+    ///Times are epoch seconds.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "Times are epoch seconds.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "ends_at",
+    ///    "id",
+    ///    "starts_at",
+    ///    "title"
+    ///  ],
+    ///  "properties": {
+    ///    "ends_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "starts_at": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "title": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CalendarEvent {
+        pub ends_at: i64,
+        pub id: i64,
+        pub starts_at: i64,
+        pub title: ::std::string::String,
+    }
+    impl CalendarEvent {
+        pub fn builder() -> builder::CalendarEvent {
+            Default::default()
+        }
+    }
+    ///The id of the Event the command touched.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "The id of the Event the command touched.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "result_id"
+    ///  ],
+    ///  "properties": {
+    ///    "result_id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CalendarReceipt {
+        pub result_id: i64,
+    }
+    impl CalendarReceipt {
+        pub fn builder() -> builder::CalendarReceipt {
+            Default::default()
+        }
+    }
+    ///`CalendarRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "command",
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "command": {
+    ///      "$ref": "#/components/schemas/CalendarCommand"
+    ///    },
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CalendarRequest {
+        pub command: CalendarCommand,
+        pub operation_id: ::std::string::String,
+    }
+    impl CalendarRequest {
+        pub fn builder() -> builder::CalendarRequest {
+            Default::default()
+        }
+    }
+    ///`CalendarSnapshot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "events"
+    ///  ],
+    ///  "properties": {
+    ///    "events": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CalendarEvent"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct CalendarSnapshot {
+        pub events: ::std::vec::Vec<CalendarEvent>,
+    }
+    impl CalendarSnapshot {
+        pub fn builder() -> builder::CalendarSnapshot {
+            Default::default()
+        }
+    }
     ///`Comment`
     ///
     /// <details><summary>JSON schema</summary>
@@ -2638,6 +2845,216 @@ pub mod types {
             value.parse()
         }
     }
+    ///`Todo`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "completed",
+    ///    "id",
+    ///    "title"
+    ///  ],
+    ///  "properties": {
+    ///    "completed": {
+    ///      "type": "boolean"
+    ///    },
+    ///    "id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    },
+    ///    "title": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct Todo {
+        pub completed: bool,
+        pub id: i64,
+        pub title: ::std::string::String,
+    }
+    impl Todo {
+        pub fn builder() -> builder::Todo {
+            Default::default()
+        }
+    }
+    ///`TodoCommand`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "oneOf": [
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "kind",
+    ///        "title"
+    ///      ],
+    ///      "properties": {
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "add"
+    ///          ]
+    ///        },
+    ///        "title": {
+    ///          "type": "string"
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "completed",
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "completed": {
+    ///          "type": "boolean"
+    ///        },
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "complete"
+    ///          ]
+    ///        }
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "object",
+    ///      "required": [
+    ///        "id",
+    ///        "kind"
+    ///      ],
+    ///      "properties": {
+    ///        "id": {
+    ///          "type": "integer",
+    ///          "format": "int64"
+    ///        },
+    ///        "kind": {
+    ///          "type": "string",
+    ///          "enum": [
+    ///            "delete"
+    ///          ]
+    ///        }
+    ///      }
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    #[serde(tag = "kind")]
+    pub enum TodoCommand {
+        #[serde(rename = "add")]
+        Add { title: ::std::string::String },
+        #[serde(rename = "complete")]
+        Complete { completed: bool, id: i64 },
+        #[serde(rename = "delete")]
+        Delete { id: i64 },
+    }
+    ///The id of the Todo the command touched.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "description": "The id of the Todo the command touched.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "result_id"
+    ///  ],
+    ///  "properties": {
+    ///    "result_id": {
+    ///      "type": "integer",
+    ///      "format": "int64"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TodoReceipt {
+        pub result_id: i64,
+    }
+    impl TodoReceipt {
+        pub fn builder() -> builder::TodoReceipt {
+            Default::default()
+        }
+    }
+    ///`TodoRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "command",
+    ///    "operation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "command": {
+    ///      "$ref": "#/components/schemas/TodoCommand"
+    ///    },
+    ///    "operation_id": {
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TodoRequest {
+        pub command: TodoCommand,
+        pub operation_id: ::std::string::String,
+    }
+    impl TodoRequest {
+        pub fn builder() -> builder::TodoRequest {
+            Default::default()
+        }
+    }
+    ///`TodoSnapshot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "todos"
+    ///  ],
+    ///  "properties": {
+    ///    "todos": {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Todo"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, schemars::JsonSchema)]
+    pub struct TodoSnapshot {
+        pub todos: ::std::vec::Vec<Todo>,
+    }
+    impl TodoSnapshot {
+        pub fn builder() -> builder::TodoSnapshot {
+            Default::default()
+        }
+    }
     ///`Turn`
     ///
     /// <details><summary>JSON schema</summary>
@@ -3703,6 +4120,223 @@ pub mod types {
                     automations: Ok(value.automations),
                     history: Ok(value.history),
                     occurrences: Ok(value.occurrences),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct CalendarEvent {
+            ends_at: ::std::result::Result<i64, ::std::string::String>,
+            id: ::std::result::Result<i64, ::std::string::String>,
+            starts_at: ::std::result::Result<i64, ::std::string::String>,
+            title: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for CalendarEvent {
+            fn default() -> Self {
+                Self {
+                    ends_at: Err("no value supplied for ends_at".to_string()),
+                    id: Err("no value supplied for id".to_string()),
+                    starts_at: Err("no value supplied for starts_at".to_string()),
+                    title: Err("no value supplied for title".to_string()),
+                }
+            }
+        }
+        impl CalendarEvent {
+            pub fn ends_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.ends_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for ends_at: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn starts_at<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.starts_at = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for starts_at: {e}"));
+                self
+            }
+            pub fn title<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.title = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for title: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CalendarEvent> for super::CalendarEvent {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CalendarEvent,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    ends_at: value.ends_at?,
+                    id: value.id?,
+                    starts_at: value.starts_at?,
+                    title: value.title?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CalendarEvent> for CalendarEvent {
+            fn from(value: super::CalendarEvent) -> Self {
+                Self {
+                    ends_at: Ok(value.ends_at),
+                    id: Ok(value.id),
+                    starts_at: Ok(value.starts_at),
+                    title: Ok(value.title),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct CalendarReceipt {
+            result_id: ::std::result::Result<i64, ::std::string::String>,
+        }
+        impl ::std::default::Default for CalendarReceipt {
+            fn default() -> Self {
+                Self {
+                    result_id: Err("no value supplied for result_id".to_string()),
+                }
+            }
+        }
+        impl CalendarReceipt {
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CalendarReceipt> for super::CalendarReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CalendarReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CalendarReceipt> for CalendarReceipt {
+            fn from(value: super::CalendarReceipt) -> Self {
+                Self {
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct CalendarRequest {
+            command: ::std::result::Result<super::CalendarCommand, ::std::string::String>,
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for CalendarRequest {
+            fn default() -> Self {
+                Self {
+                    command: Err("no value supplied for command".to_string()),
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                }
+            }
+        }
+        impl CalendarRequest {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::CalendarCommand>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CalendarRequest> for super::CalendarRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CalendarRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    command: value.command?,
+                    operation_id: value.operation_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CalendarRequest> for CalendarRequest {
+            fn from(value: super::CalendarRequest) -> Self {
+                Self {
+                    command: Ok(value.command),
+                    operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct CalendarSnapshot {
+            events:
+                ::std::result::Result<::std::vec::Vec<super::CalendarEvent>, ::std::string::String>,
+        }
+        impl ::std::default::Default for CalendarSnapshot {
+            fn default() -> Self {
+                Self {
+                    events: Err("no value supplied for events".to_string()),
+                }
+            }
+        }
+        impl CalendarSnapshot {
+            pub fn events<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::CalendarEvent>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.events = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for events: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<CalendarSnapshot> for super::CalendarSnapshot {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: CalendarSnapshot,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    events: value.events?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::CalendarSnapshot> for CalendarSnapshot {
+            fn from(value: super::CalendarSnapshot) -> Self {
+                Self {
+                    events: Ok(value.events),
                 }
             }
         }
@@ -5401,6 +6035,206 @@ pub mod types {
             }
         }
         #[derive(Clone, Debug)]
+        pub struct Todo {
+            completed: ::std::result::Result<bool, ::std::string::String>,
+            id: ::std::result::Result<i64, ::std::string::String>,
+            title: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for Todo {
+            fn default() -> Self {
+                Self {
+                    completed: Err("no value supplied for completed".to_string()),
+                    id: Err("no value supplied for id".to_string()),
+                    title: Err("no value supplied for title".to_string()),
+                }
+            }
+        }
+        impl Todo {
+            pub fn completed<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<bool>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.completed = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for completed: {e}"));
+                self
+            }
+            pub fn id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for id: {e}"));
+                self
+            }
+            pub fn title<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.title = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for title: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<Todo> for super::Todo {
+            type Error = super::error::ConversionError;
+            fn try_from(value: Todo) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    completed: value.completed?,
+                    id: value.id?,
+                    title: value.title?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::Todo> for Todo {
+            fn from(value: super::Todo) -> Self {
+                Self {
+                    completed: Ok(value.completed),
+                    id: Ok(value.id),
+                    title: Ok(value.title),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TodoReceipt {
+            result_id: ::std::result::Result<i64, ::std::string::String>,
+        }
+        impl ::std::default::Default for TodoReceipt {
+            fn default() -> Self {
+                Self {
+                    result_id: Err("no value supplied for result_id".to_string()),
+                }
+            }
+        }
+        impl TodoReceipt {
+            pub fn result_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<i64>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.result_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for result_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TodoReceipt> for super::TodoReceipt {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TodoReceipt,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    result_id: value.result_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TodoReceipt> for TodoReceipt {
+            fn from(value: super::TodoReceipt) -> Self {
+                Self {
+                    result_id: Ok(value.result_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TodoRequest {
+            command: ::std::result::Result<super::TodoCommand, ::std::string::String>,
+            operation_id: ::std::result::Result<::std::string::String, ::std::string::String>,
+        }
+        impl ::std::default::Default for TodoRequest {
+            fn default() -> Self {
+                Self {
+                    command: Err("no value supplied for command".to_string()),
+                    operation_id: Err("no value supplied for operation_id".to_string()),
+                }
+            }
+        }
+        impl TodoRequest {
+            pub fn command<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<super::TodoCommand>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.command = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for command: {e}"));
+                self
+            }
+            pub fn operation_id<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::string::String>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.operation_id = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for operation_id: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TodoRequest> for super::TodoRequest {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TodoRequest,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    command: value.command?,
+                    operation_id: value.operation_id?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TodoRequest> for TodoRequest {
+            fn from(value: super::TodoRequest) -> Self {
+                Self {
+                    command: Ok(value.command),
+                    operation_id: Ok(value.operation_id),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
+        pub struct TodoSnapshot {
+            todos: ::std::result::Result<::std::vec::Vec<super::Todo>, ::std::string::String>,
+        }
+        impl ::std::default::Default for TodoSnapshot {
+            fn default() -> Self {
+                Self {
+                    todos: Err("no value supplied for todos".to_string()),
+                }
+            }
+        }
+        impl TodoSnapshot {
+            pub fn todos<T>(mut self, value: T) -> Self
+            where
+                T: ::std::convert::TryInto<::std::vec::Vec<super::Todo>>,
+                T::Error: ::std::fmt::Display,
+            {
+                self.todos = value
+                    .try_into()
+                    .map_err(|e| format!("error converting supplied value for todos: {e}"));
+                self
+            }
+        }
+        impl ::std::convert::TryFrom<TodoSnapshot> for super::TodoSnapshot {
+            type Error = super::error::ConversionError;
+            fn try_from(
+                value: TodoSnapshot,
+            ) -> ::std::result::Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    todos: value.todos?,
+                })
+            }
+        }
+        impl ::std::convert::From<super::TodoSnapshot> for TodoSnapshot {
+            fn from(value: super::TodoSnapshot) -> Self {
+                Self {
+                    todos: Ok(value.todos),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct Turn {
             conversation_id: ::std::result::Result<i64, ::std::string::String>,
             error: ::std::result::Result<
@@ -6171,6 +7005,27 @@ impl Client {
     pub fn automations_command(&self) -> builder::AutomationsCommand<'_> {
         builder::AutomationsCommand::new(self)
     }
+    /*Sends a `GET` request to `/v1/calendar`
+
+    ```ignore
+    let response = client.calendar_state()
+        .send()
+        .await;
+    ```*/
+    pub fn calendar_state(&self) -> builder::CalendarState<'_> {
+        builder::CalendarState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/calendar/commands`
+
+    ```ignore
+    let response = client.calendar_command()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn calendar_command(&self) -> builder::CalendarCommand<'_> {
+        builder::CalendarCommand::new(self)
+    }
     /*Sends a `GET` request to `/v1/connection`
 
     ```ignore
@@ -6299,6 +7154,27 @@ impl Client {
     ```*/
     pub fn tickets_activity(&self) -> builder::TicketsActivity<'_> {
         builder::TicketsActivity::new(self)
+    }
+    /*Sends a `GET` request to `/v1/todos`
+
+    ```ignore
+    let response = client.todos_state()
+        .send()
+        .await;
+    ```*/
+    pub fn todos_state(&self) -> builder::TodosState<'_> {
+        builder::TodosState::new(self)
+    }
+    /*Sends a `POST` request to `/v1/todos/commands`
+
+    ```ignore
+    let response = client.todos_command()
+        .body(body)
+        .send()
+        .await;
+    ```*/
+    pub fn todos_command(&self) -> builder::TodosCommand<'_> {
+        builder::TodosCommand::new(self)
     }
     /*Sends a `GET` request to `/v1/work`
 
@@ -6607,6 +7483,165 @@ pub mod builder {
                     ResponseValue::from_response(response).await?,
                 )),
                 403u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::calendar_state`]
+
+    [`Client::calendar_state`]: super::Client::calendar_state*/
+    #[derive(Debug, Clone)]
+    pub struct CalendarState<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> CalendarState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `GET` request to `/v1/calendar`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::CalendarSnapshot>, Error<types::ErrorBody>> {
+            let Self { client } = self;
+            let url = format!("{}/v1/calendar", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "calendar_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::calendar_command`]
+
+    [`Client::calendar_command`]: super::Client::calendar_command*/
+    #[derive(Debug, Clone)]
+    pub struct CalendarCommand<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::CalendarRequest, String>,
+    }
+    impl<'a> CalendarCommand<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::CalendarRequest>,
+            <V as std::convert::TryInto<types::CalendarRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value
+                .try_into()
+                .map(From::from)
+                .map_err(|s| format!("conversion to `CalendarRequest` for body failed: {}", s));
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(types::builder::CalendarRequest) -> types::builder::CalendarRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/calendar/commands`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::CalendarReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::CalendarRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/calendar/commands", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "calendar_command",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 404u16 => Err(Error::ErrorResponse(
@@ -7531,6 +8566,165 @@ pub mod builder {
                     ResponseValue::from_response(response).await?,
                 )),
                 403u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::todos_state`]
+
+    [`Client::todos_state`]: super::Client::todos_state*/
+    #[derive(Debug, Clone)]
+    pub struct TodosState<'a> {
+        client: &'a super::Client,
+    }
+    impl<'a> TodosState<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self { client: client }
+        }
+        ///Sends a `GET` request to `/v1/todos`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::TodoSnapshot>, Error<types::ErrorBody>> {
+            let Self { client } = self;
+            let url = format!("{}/v1/todos", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .get(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "todos_state",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                426u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                500u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                _ => Err(Error::UnexpectedResponse(response)),
+            }
+        }
+    }
+    /*Builder for [`Client::todos_command`]
+
+    [`Client::todos_command`]: super::Client::todos_command*/
+    #[derive(Debug, Clone)]
+    pub struct TodosCommand<'a> {
+        client: &'a super::Client,
+        body: Result<types::builder::TodoRequest, String>,
+    }
+    impl<'a> TodosCommand<'a> {
+        pub fn new(client: &'a super::Client) -> Self {
+            Self {
+                client: client,
+                body: Ok(::std::default::Default::default()),
+            }
+        }
+        pub fn body<V>(mut self, value: V) -> Self
+        where
+            V: std::convert::TryInto<types::TodoRequest>,
+            <V as std::convert::TryInto<types::TodoRequest>>::Error: std::fmt::Display,
+        {
+            self.body = value
+                .try_into()
+                .map(From::from)
+                .map_err(|s| format!("conversion to `TodoRequest` for body failed: {}", s));
+            self
+        }
+        pub fn body_map<F>(mut self, f: F) -> Self
+        where
+            F: std::ops::FnOnce(types::builder::TodoRequest) -> types::builder::TodoRequest,
+        {
+            self.body = self.body.map(f);
+            self
+        }
+        ///Sends a `POST` request to `/v1/todos/commands`
+        pub async fn send(
+            self,
+        ) -> Result<ResponseValue<types::TodoReceipt>, Error<types::ErrorBody>> {
+            let Self { client, body } = self;
+            let body = body
+                .and_then(|v| types::TodoRequest::try_from(v).map_err(|e| e.to_string()))
+                .map_err(Error::InvalidRequest)?;
+            let url = format!("{}/v1/todos/commands", client.baseurl,);
+            let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+            header_map.append(
+                ::reqwest::header::HeaderName::from_static("api-version"),
+                ::reqwest::header::HeaderValue::from_static(super::Client::api_version()),
+            );
+            #[allow(unused_mut)]
+            let mut request = client
+                .client
+                .post(url)
+                .header(
+                    ::reqwest::header::ACCEPT,
+                    ::reqwest::header::HeaderValue::from_static("application/json"),
+                )
+                .json(&body)
+                .headers(header_map)
+                .build()?;
+            let info = OperationInfo {
+                operation_id: "todos_command",
+            };
+            match (crate::client_header)(&mut request).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            client.pre(&mut request, &info).await?;
+            let result = client.exec(request, &info).await;
+            client.post(&result, &info).await?;
+            match (crate::server_compatibility)(&result).await {
+                Ok(_) => {}
+                Err(e) => return Err(Error::Custom(e.to_string())),
+            }
+            let response = result?;
+            match response.status().as_u16() {
+                200u16 => ResponseValue::from_response(response).await,
+                400u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                401u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                404u16 => Err(Error::ErrorResponse(
+                    ResponseValue::from_response(response).await?,
+                )),
+                409u16 => Err(Error::ErrorResponse(
                     ResponseValue::from_response(response).await?,
                 )),
                 426u16 => Err(Error::ErrorResponse(

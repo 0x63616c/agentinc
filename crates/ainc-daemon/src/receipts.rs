@@ -62,6 +62,10 @@ pub(crate) enum Scope {
     Automation { workspace: String },
     /// Workspace commands: one ID space.
     Workspace,
+    /// Todo commands: one ID space per workspace.
+    Todo { workspace: String },
+    /// Calendar commands: one ID space per workspace.
+    Calendar { workspace: String },
 }
 impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -70,6 +74,8 @@ impl fmt::Display for Scope {
             Scope::Ticket { workspace, actor } => write!(f, "ticket/{workspace}/{actor}"),
             Scope::Automation { workspace } => write!(f, "automation/{workspace}"),
             Scope::Workspace => f.write_str("workspace"),
+            Scope::Todo { workspace } => write!(f, "todo/{workspace}"),
+            Scope::Calendar { workspace } => write!(f, "calendar/{workspace}"),
         }
     }
 }
@@ -197,6 +203,20 @@ mod tests {
             "automation/local"
         );
         assert_eq!(Scope::Workspace.to_string(), "workspace");
+        assert_eq!(
+            Scope::Todo {
+                workspace: "local".into()
+            }
+            .to_string(),
+            "todo/local"
+        );
+        assert_eq!(
+            Scope::Calendar {
+                workspace: "local".into()
+            }
+            .to_string(),
+            "calendar/local"
+        );
     }
 
     #[sqlx::test]

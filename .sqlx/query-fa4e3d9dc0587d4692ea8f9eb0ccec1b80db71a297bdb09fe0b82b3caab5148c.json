@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE todos SET completed=$3 WHERE workspace_id=$1 AND id=$2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fa4e3d9dc0587d4692ea8f9eb0ccec1b80db71a297bdb09fe0b82b3caab5148c"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM todos WHERE workspace_id=$1 AND id=$2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "95a9a9dfbecd26fffef5cbf794f4f11b1a1849cf9af674dcc73cfb62fcaa33b6"
+}

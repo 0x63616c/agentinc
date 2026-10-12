@@ -274,6 +274,126 @@
         ],
         "type": "object"
       },
+      "CalendarCommand": {
+        "oneOf": [
+          {
+            "properties": {
+              "ends_at": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "create"
+                ],
+                "type": "string"
+              },
+              "starts_at": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "starts_at",
+              "ends_at",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "delete"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "CalendarEvent": {
+        "description": "Times are epoch seconds.",
+        "properties": {
+          "ends_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "starts_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "starts_at",
+          "ends_at"
+        ],
+        "type": "object"
+      },
+      "CalendarReceipt": {
+        "description": "The id of the Event the command touched.",
+        "properties": {
+          "result_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "result_id"
+        ],
+        "type": "object"
+      },
+      "CalendarRequest": {
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/CalendarCommand"
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "command"
+        ],
+        "type": "object"
+      },
+      "CalendarSnapshot": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarEvent"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      },
       "Comment": {
         "properties": {
           "author_id": {
@@ -1424,6 +1544,132 @@
         ],
         "type": "string"
       },
+      "Todo": {
+        "properties": {
+          "completed": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "completed"
+        ],
+        "type": "object"
+      },
+      "TodoCommand": {
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "add"
+                ],
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "completed": {
+                "type": "boolean"
+              },
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "complete"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "completed",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "delete"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "TodoReceipt": {
+        "description": "The id of the Todo the command touched.",
+        "properties": {
+          "result_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "result_id"
+        ],
+        "type": "object"
+      },
+      "TodoRequest": {
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/TodoCommand"
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "command"
+        ],
+        "type": "object"
+      },
+      "TodoSnapshot": {
+        "properties": {
+          "todos": {
+            "items": {
+              "$ref": "#/components/schemas/Todo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "todos"
+        ],
+        "type": "object"
+      },
       "Turn": {
         "properties": {
           "conversation_id": {
@@ -1838,6 +2084,98 @@
               }
             },
             "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        }
+      }
+    },
+    "/v1/calendar": {
+      "get": {
+        "operationId": "calendar_state",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSnapshot"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        }
+      }
+    },
+    "/v1/calendar/commands": {
+      "post": {
+        "operationId": "calendar_command",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarReceipt"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "404": {
             "content": {
@@ -2398,6 +2736,98 @@
           }
         },
         "summary": "One Ticket's history, oldest first. Comments stay in the snapshot."
+      }
+    },
+    "/v1/todos": {
+      "get": {
+        "operationId": "todos_state",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoSnapshot"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        }
+      }
+    },
+    "/v1/todos/commands": {
+      "post": {
+        "operationId": "todos_command",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoReceipt"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        }
       }
     },
     "/v1/work": {

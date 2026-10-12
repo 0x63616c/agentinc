@@ -7,6 +7,7 @@ pub fn http_client() -> reqwest::ClientBuilder {
 
 pub mod api;
 pub mod automations;
+pub mod calendar;
 pub mod coding;
 pub mod connection;
 pub mod conversations;
@@ -22,6 +23,7 @@ pub mod receipts;
 pub mod terminals;
 pub mod testing;
 pub mod tickets;
+pub mod todos;
 pub mod work;
 mod worker;
 pub mod workspaces;

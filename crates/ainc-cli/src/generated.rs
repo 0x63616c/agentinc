@@ -14,6 +14,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::HealthReady => Self::cli_health_ready(),
             CliCommand::AutomationsState => Self::cli_automations_state(),
             CliCommand::AutomationsCommand => Self::cli_automations_command(),
+            CliCommand::CalendarState => Self::cli_calendar_state(),
+            CliCommand::CalendarCommand => Self::cli_calendar_command(),
             CliCommand::ConnectionStatus => Self::cli_connection_status(),
             CliCommand::ConnectionCancel => Self::cli_connection_cancel(),
             CliCommand::ConnectionLogin => Self::cli_connection_login(),
@@ -26,6 +28,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::TicketsState => Self::cli_tickets_state(),
             CliCommand::TicketsCommand => Self::cli_tickets_command(),
             CliCommand::TicketsActivity => Self::cli_tickets_activity(),
+            CliCommand::TodosState => Self::cli_todos_state(),
+            CliCommand::TodosCommand => Self::cli_todos_command(),
             CliCommand::WorkList => Self::cli_work_list(),
             CliCommand::WorkspacesState => Self::cli_workspaces_state(),
             CliCommand::WorkspacesCommand => Self::cli_workspaces_command(),
@@ -42,6 +46,32 @@ impl<T: CliConfig> Cli<T> {
         ::clap::Command::new("")
     }
     pub fn cli_automations_command() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("operation-id")
+                    .long("operation-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
+    pub fn cli_calendar_state() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_calendar_command() -> ::clap::Command {
         ::clap::Command::new("")
             .arg(
                 ::clap::Arg::new("operation-id")
@@ -173,6 +203,32 @@ impl<T: CliConfig> Cli<T> {
             )
             .about("One Ticket's history, oldest first. Comments stay in the snapshot.")
     }
+    pub fn cli_todos_state() -> ::clap::Command {
+        ::clap::Command::new("")
+    }
+    pub fn cli_todos_command() -> ::clap::Command {
+        ::clap::Command::new("")
+            .arg(
+                ::clap::Arg::new("operation-id")
+                    .long("operation-id")
+                    .value_parser(::clap::value_parser!(::std::string::String))
+                    .required_unless_present("json-body"),
+            )
+            .arg(
+                ::clap::Arg::new("json-body")
+                    .long("json-body")
+                    .value_name("JSON-FILE")
+                    .required(true)
+                    .value_parser(::clap::value_parser!(std::path::PathBuf))
+                    .help("Path to a file that contains the full json body."),
+            )
+            .arg(
+                ::clap::Arg::new("json-body-template")
+                    .long("json-body-template")
+                    .action(::clap::ArgAction::SetTrue)
+                    .help("XXX"),
+            )
+    }
     pub fn cli_work_list() -> ::clap::Command {
         ::clap::Command::new("")
             .arg(
@@ -237,6 +293,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::HealthReady => self.execute_health_ready(matches).await,
             CliCommand::AutomationsState => self.execute_automations_state(matches).await,
             CliCommand::AutomationsCommand => self.execute_automations_command(matches).await,
+            CliCommand::CalendarState => self.execute_calendar_state(matches).await,
+            CliCommand::CalendarCommand => self.execute_calendar_command(matches).await,
             CliCommand::ConnectionStatus => self.execute_connection_status(matches).await,
             CliCommand::ConnectionCancel => self.execute_connection_cancel(matches).await,
             CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
@@ -249,6 +307,8 @@ impl<T: CliConfig> Cli<T> {
             CliCommand::TicketsState => self.execute_tickets_state(matches).await,
             CliCommand::TicketsCommand => self.execute_tickets_command(matches).await,
             CliCommand::TicketsActivity => self.execute_tickets_activity(matches).await,
+            CliCommand::TodosState => self.execute_todos_state(matches).await,
+            CliCommand::TodosCommand => self.execute_todos_command(matches).await,
             CliCommand::WorkList => self.execute_work_list(matches).await,
             CliCommand::WorkspacesState => self.execute_workspaces_state(matches).await,
             CliCommand::WorkspacesCommand => self.execute_workspaces_command(matches).await,
@@ -321,6 +381,50 @@ impl<T: CliConfig> Cli<T> {
         }
         self.config
             .execute_automations_command(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_calendar_state(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.calendar_state();
+        self.config.execute_calendar_state(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_calendar_command(
+        &self,
+        matches: &::clap::ArgMatches,
+    ) -> anyhow::Result<()> {
+        let mut request = self.client.calendar_command();
+        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
+            request = request.body_map(|body| body.operation_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::CalendarRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config
+            .execute_calendar_command(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -587,6 +691,46 @@ impl<T: CliConfig> Cli<T> {
             }
         }
     }
+    pub async fn execute_todos_state(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.todos_state();
+        self.config.execute_todos_state(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
+    pub async fn execute_todos_command(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
+        let mut request = self.client.todos_command();
+        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
+            request = request.body_map(|body| body.operation_id(value.clone()));
+        }
+        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
+            let body_txt = std::fs::read_to_string(value)
+                .with_context(|| format!("failed to read {}", value.display()))?;
+            let body_value = serde_json::from_str::<types::TodoRequest>(&body_txt)
+                .with_context(|| format!("failed to parse {}", value.display()))?;
+            request = request.body(body_value);
+        }
+        self.config.execute_todos_command(matches, &mut request)?;
+        let result = request.send().await;
+        match result {
+            Ok(r) => {
+                self.config.success_item(&r);
+                Ok(())
+            }
+            Err(r) => {
+                self.config.error(&r);
+                Err(anyhow::Error::new(r))
+            }
+        }
+    }
     pub async fn execute_work_list(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
         let mut request = self.client.work_list();
         if let Some(value) = matches.get_one::<::std::string::String>("page") {
@@ -720,6 +864,20 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_calendar_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::CalendarState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_calendar_command(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::CalendarCommand,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_connection_status(
         &self,
         matches: &::clap::ArgMatches,
@@ -804,6 +962,20 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn execute_todos_state(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::TodosState,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn execute_todos_command(
+        &self,
+        matches: &::clap::ArgMatches,
+        request: &mut builder::TodosCommand,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn execute_work_list(
         &self,
         matches: &::clap::ArgMatches,
@@ -839,6 +1011,8 @@ pub enum CliCommand {
     HealthReady,
     AutomationsState,
     AutomationsCommand,
+    CalendarState,
+    CalendarCommand,
     ConnectionStatus,
     ConnectionCancel,
     ConnectionLogin,
@@ -851,6 +1025,8 @@ pub enum CliCommand {
     TicketsState,
     TicketsCommand,
     TicketsActivity,
+    TodosState,
+    TodosCommand,
     WorkList,
     WorkspacesState,
     WorkspacesCommand,
@@ -863,6 +1039,8 @@ impl CliCommand {
             CliCommand::HealthReady,
             CliCommand::AutomationsState,
             CliCommand::AutomationsCommand,
+            CliCommand::CalendarState,
+            CliCommand::CalendarCommand,
             CliCommand::ConnectionStatus,
             CliCommand::ConnectionCancel,
             CliCommand::ConnectionLogin,
@@ -875,6 +1053,8 @@ impl CliCommand {
             CliCommand::TicketsState,
             CliCommand::TicketsCommand,
             CliCommand::TicketsActivity,
+            CliCommand::TodosState,
+            CliCommand::TodosCommand,
             CliCommand::WorkList,
             CliCommand::WorkspacesState,
             CliCommand::WorkspacesCommand,
@@ -888,6 +1068,8 @@ impl CliCommand {
             CliCommand::HealthReady => "health_ready",
             CliCommand::AutomationsState => "automations_state",
             CliCommand::AutomationsCommand => "automations_command",
+            CliCommand::CalendarState => "calendar_state",
+            CliCommand::CalendarCommand => "calendar_command",
             CliCommand::ConnectionStatus => "connection_status",
             CliCommand::ConnectionCancel => "connection_cancel",
             CliCommand::ConnectionLogin => "connection_login",
@@ -900,6 +1082,8 @@ impl CliCommand {
             CliCommand::TicketsState => "tickets_state",
             CliCommand::TicketsCommand => "tickets_command",
             CliCommand::TicketsActivity => "tickets_activity",
+            CliCommand::TodosState => "todos_state",
+            CliCommand::TodosCommand => "todos_command",
             CliCommand::WorkList => "work_list",
             CliCommand::WorkspacesState => "workspaces_state",
             CliCommand::WorkspacesCommand => "workspaces_command",

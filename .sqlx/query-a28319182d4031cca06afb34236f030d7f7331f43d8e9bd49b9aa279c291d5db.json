@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id,title,starts_at,ends_at FROM calendar_events WHERE workspace_id=$1 ORDER BY starts_at,id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "starts_at",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "ends_at",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a28319182d4031cca06afb34236f030d7f7331f43d8e9bd49b9aa279c291d5db"
+}

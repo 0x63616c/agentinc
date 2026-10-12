@@ -157,6 +157,8 @@ fn variants(spec: &Value, group: &str) -> Vec<Variant> {
         "tickets" => "TicketCommand",
         "automations" => "AutomationCommand",
         "conversations" => "ConversationCommand",
+        "todos" => "TodoCommand",
+        "calendar" => "CalendarCommand",
         _ => return vec![],
     };
     let variants = &spec["components"]["schemas"][request]["oneOf"];

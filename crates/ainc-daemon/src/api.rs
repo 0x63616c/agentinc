@@ -257,6 +257,8 @@ fn routes() -> OpenApiRouter<AppState> {
         .merge(crate::automations::routes())
         .merge(terminals::routes())
         .merge(workspaces::routes())
+        .merge(crate::todos::routes())
+        .merge(crate::calendar::routes())
 }
 
 /// The whole document, from the same registrations the router serves.
