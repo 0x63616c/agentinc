@@ -1,7 +1,6 @@
 #![allow(clippy::disallowed_macros)] // user-facing output
 #[allow(unused_variables, dead_code, clippy::clone_on_copy)] // Progenitor output.
 mod generated;
-mod terminal;
 
 use ainc_client::{Client, Error, ResponseValue};
 use anyhow::{Context, Result, bail, ensure};
@@ -45,26 +44,14 @@ fn display(value: &Value, json_output: bool) {
         }
     }
 }
-/// The `T-12` name of a Ticket-shaped object, for people; JSON output keeps only the number.
-fn ticket_label(fields: &serde_json::Map<String, Value>) -> Option<String> {
-    let id = fields.get("id")?.as_i64()?;
-    (fields.contains_key("title") && fields.contains_key("assignee_kind"))
-        .then(|| ainc_identity::ticket_key(id))
-}
 fn compact(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
-        Value::Object(fields) => ticket_label(fields)
-            .map(|key| format!("key={key}  "))
-            .into_iter()
-            .chain(std::iter::once(
-                fields
-                    .iter()
-                    .map(|(key, value)| format!("{key}={}", compact(value)))
-                    .collect::<Vec<_>>()
-                    .join("  "),
-            ))
-            .collect(),
+        Value::Object(fields) => fields
+            .iter()
+            .map(|(key, value)| format!("{key}={}", compact(value)))
+            .collect::<Vec<_>>()
+            .join("  "),
         _ => value.to_string(),
     }
 }
@@ -154,11 +141,9 @@ type Variant = (String, Vec<Field>);
 
 fn variants(spec: &Value, group: &str) -> Vec<Variant> {
     let request = match group {
-        "tickets" => "TicketCommand",
-        "automations" => "AutomationCommand",
-        "conversations" => "ConversationCommand",
         "todos" => "TodoCommand",
         "calendar" => "CalendarCommand",
+        "workspaces" => "WorkspaceCommand",
         _ => return vec![],
     };
     let variants = &spec["components"]["schemas"][request]["oneOf"];
@@ -231,23 +216,7 @@ fn command_tree(spec: &Value) -> Command {
             .or_insert_with(|| Command::new(group).subcommand_required(true));
         *entry = entry.clone().subcommand(command);
     }
-    if let Some(terminals) = groups.get_mut("terminals") {
-        // `ainc terminal attach` is the spelling the Mac app uses; `terminals` is the generated group.
-        *terminals = terminals.clone().visible_alias("terminal").subcommand(
-            Command::new("attach")
-                .about(
-                    "Attach this terminal to a daemon-owned Terminal, reconnecting until it ends",
-                )
-                .arg(Arg::new("id").required(true).value_name("UUID"))
-                .arg(
-                    Arg::new("existing")
-                        .long("existing")
-                        .action(ArgAction::SetTrue)
-                        .help("The Terminal already exists; do not create it first"),
-                ),
-        );
-    }
-    for group in ["tickets", "automations", "conversations"] {
+    for group in ["todos", "calendar", "workspaces"] {
         if let Some(entry) = groups.get_mut(group) {
             for (kind, fields) in variants(spec, group) {
                 let mut command =
@@ -353,13 +322,6 @@ async fn main() -> Result<()> {
     if group == "install-cli" {
         return install_cli();
     }
-    if group == "terminals"
-        && let Some(("attach", attach)) = args.subcommand()
-    {
-        // No readiness probe: the viewer waits for a daemon that is still starting.
-        let id = attach.get_one::<String>("id").expect("required").parse()?;
-        return terminal::attach(id, attach.get_flag("existing")).await;
-    }
     let (url, token_path) = configuration()?;
     let token = fs::read_to_string(&token_path).with_context(|| {
         format!(
@@ -418,9 +380,9 @@ async fn main() -> Result<()> {
         .map(|(_, fields)| fields)
         .context("unknown command")?;
     let op = operation(match group {
-        "tickets" => "tickets_command",
-        "automations" => "automations_command",
-        "conversations" => "conversations_command",
+        "todos" => "todos_command",
+        "calendar" => "calendar_command",
+        "workspaces" => "workspaces_command",
         _ => bail!("unsupported command"),
     });
     let body = if let Some(path) = action_args.get_one::<String>("json-body") {
@@ -485,22 +447,16 @@ mod tests {
     fn optional_command_fields_may_be_omitted() {
         let tree = command_tree(&schema());
         let matches = tree
-            .try_get_matches_from(["ainc", "tickets", "create-detailed", "--title", "Pay rent"])
+            .try_get_matches_from(["ainc", "workspaces", "create", "--name", "Personal"])
             .expect("optional fields are not required");
-        let (_, tickets) = matches.subcommand().unwrap();
-        let (_, create) = tickets.subcommand().unwrap();
-        assert!(create.get_one::<String>("status").is_none());
+        let (_, workspaces) = matches.subcommand().unwrap();
+        let (_, create) = workspaces.subcommand().unwrap();
+        assert!(create.get_one::<String>("icon").is_none());
         assert!(
             command_tree(&schema())
-                .try_get_matches_from([
-                    "ainc",
-                    "tickets",
-                    "create-detailed",
-                    "--status",
-                    "\"done\""
-                ])
+                .try_get_matches_from(["ainc", "workspaces", "create", "--icon", "P"])
                 .is_err(),
-            "the title is still required"
+            "the name is still required"
         );
     }
     #[test]

@@ -5,7 +5,6 @@ extend-exclude = [
   "target/",
   ".local/",
   "crates/ainc-mac/dist/",
-  "crates/ainc-mac/ghostty-bridge/",
   "crates/*/src/generated.rs",
   "api/",
   "Cargo.lock",

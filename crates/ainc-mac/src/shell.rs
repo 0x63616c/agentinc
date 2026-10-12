@@ -349,6 +349,13 @@ impl Shell {
     }
     /// The local person, shown in the sidebar.
     fn set_profile(&mut self, profile: crate::profile::Profile, cx: &mut Context<Self>) {
+        let name = profile.name.clone();
+        self.page(Route::Overview)
+            .entity::<crate::overview::OverviewPage>()
+            .update(cx, |page, cx| {
+                page.set_name(name);
+                cx.notify();
+            });
         self.profile = profile;
         cx.notify();
     }

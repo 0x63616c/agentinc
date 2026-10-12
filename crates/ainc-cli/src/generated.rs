@@ -12,25 +12,10 @@ impl<T: CliConfig> Cli<T> {
         match cmd {
             CliCommand::HealthLive => Self::cli_health_live(),
             CliCommand::HealthReady => Self::cli_health_ready(),
-            CliCommand::AutomationsState => Self::cli_automations_state(),
-            CliCommand::AutomationsCommand => Self::cli_automations_command(),
             CliCommand::CalendarState => Self::cli_calendar_state(),
             CliCommand::CalendarCommand => Self::cli_calendar_command(),
-            CliCommand::ConnectionStatus => Self::cli_connection_status(),
-            CliCommand::ConnectionCancel => Self::cli_connection_cancel(),
-            CliCommand::ConnectionLogin => Self::cli_connection_login(),
-            CliCommand::ConnectionLogout => Self::cli_connection_logout(),
-            CliCommand::ConversationsState => Self::cli_conversations_state(),
-            CliCommand::ConversationsCommand => Self::cli_conversations_command(),
-            CliCommand::TerminalsList => Self::cli_terminals_list(),
-            CliCommand::TerminalsCreate => Self::cli_terminals_create(),
-            CliCommand::TerminalsClose => Self::cli_terminals_close(),
-            CliCommand::TicketsState => Self::cli_tickets_state(),
-            CliCommand::TicketsCommand => Self::cli_tickets_command(),
-            CliCommand::TicketsActivity => Self::cli_tickets_activity(),
             CliCommand::TodosState => Self::cli_todos_state(),
             CliCommand::TodosCommand => Self::cli_todos_command(),
-            CliCommand::WorkList => Self::cli_work_list(),
             CliCommand::WorkspacesState => Self::cli_workspaces_state(),
             CliCommand::WorkspacesCommand => Self::cli_workspaces_command(),
             CliCommand::VersionShow => Self::cli_version_show(),
@@ -41,32 +26,6 @@ impl<T: CliConfig> Cli<T> {
     }
     pub fn cli_health_ready() -> ::clap::Command {
         ::clap::Command::new("")
-    }
-    pub fn cli_automations_state() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_automations_command() -> ::clap::Command {
-        ::clap::Command::new("")
-            .arg(
-                ::clap::Arg::new("operation-id")
-                    .long("operation-id")
-                    .value_parser(::clap::value_parser!(::std::string::String))
-                    .required_unless_present("json-body"),
-            )
-            .arg(
-                ::clap::Arg::new("json-body")
-                    .long("json-body")
-                    .value_name("JSON-FILE")
-                    .required(true)
-                    .value_parser(::clap::value_parser!(std::path::PathBuf))
-                    .help("Path to a file that contains the full json body."),
-            )
-            .arg(
-                ::clap::Arg::new("json-body-template")
-                    .long("json-body-template")
-                    .action(::clap::ArgAction::SetTrue)
-                    .help("XXX"),
-            )
     }
     pub fn cli_calendar_state() -> ::clap::Command {
         ::clap::Command::new("")
@@ -94,115 +53,6 @@ impl<T: CliConfig> Cli<T> {
                     .help("XXX"),
             )
     }
-    pub fn cli_connection_status() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_connection_cancel() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_connection_login() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_connection_logout() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_conversations_state() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_conversations_command() -> ::clap::Command {
-        ::clap::Command::new("")
-            .arg(
-                ::clap::Arg::new("operation-id")
-                    .long("operation-id")
-                    .value_parser(::clap::value_parser!(::std::string::String))
-                    .required_unless_present("json-body"),
-            )
-            .arg(
-                ::clap::Arg::new("json-body")
-                    .long("json-body")
-                    .value_name("JSON-FILE")
-                    .required(true)
-                    .value_parser(::clap::value_parser!(std::path::PathBuf))
-                    .help("Path to a file that contains the full json body."),
-            )
-            .arg(
-                ::clap::Arg::new("json-body-template")
-                    .long("json-body-template")
-                    .action(::clap::ArgAction::SetTrue)
-                    .help("XXX"),
-            )
-    }
-    pub fn cli_terminals_list() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_terminals_create() -> ::clap::Command {
-        ::clap::Command::new("")
-            .arg(
-                ::clap::Arg::new("id")
-                    .long("id")
-                    .value_parser(::clap::value_parser!(::std::string::String))
-                    .required_unless_present("json-body"),
-            )
-            .arg(
-                ::clap::Arg::new("json-body")
-                    .long("json-body")
-                    .value_name("JSON-FILE")
-                    .required(false)
-                    .value_parser(::clap::value_parser!(std::path::PathBuf))
-                    .help("Path to a file that contains the full json body."),
-            )
-            .arg(
-                ::clap::Arg::new("json-body-template")
-                    .long("json-body-template")
-                    .action(::clap::ArgAction::SetTrue)
-                    .help("XXX"),
-            )
-    }
-    pub fn cli_terminals_close() -> ::clap::Command {
-        ::clap::Command::new("").arg(
-            ::clap::Arg::new("id")
-                .long("id")
-                .value_parser(::clap::value_parser!(::std::string::String))
-                .required(true),
-        )
-    }
-    pub fn cli_tickets_state() -> ::clap::Command {
-        ::clap::Command::new("")
-    }
-    pub fn cli_tickets_command() -> ::clap::Command {
-        ::clap::Command::new("")
-            .arg(
-                ::clap::Arg::new("operation-id")
-                    .long("operation-id")
-                    .value_parser(::clap::value_parser!(::std::string::String))
-                    .required_unless_present("json-body"),
-            )
-            .arg(
-                ::clap::Arg::new("json-body")
-                    .long("json-body")
-                    .value_name("JSON-FILE")
-                    .required(true)
-                    .value_parser(::clap::value_parser!(std::path::PathBuf))
-                    .help("Path to a file that contains the full json body."),
-            )
-            .arg(
-                ::clap::Arg::new("json-body-template")
-                    .long("json-body-template")
-                    .action(::clap::ArgAction::SetTrue)
-                    .help("XXX"),
-            )
-    }
-    pub fn cli_tickets_activity() -> ::clap::Command {
-        ::clap::Command::new("")
-            .arg(
-                ::clap::Arg::new("id")
-                    .long("id")
-                    .value_parser(::clap::value_parser!(i64))
-                    .required(true)
-                    .help("Ticket ID"),
-            )
-            .about("One Ticket's history, oldest first. Comments stay in the snapshot.")
-    }
     pub fn cli_todos_state() -> ::clap::Command {
         ::clap::Command::new("")
     }
@@ -227,31 +77,6 @@ impl<T: CliConfig> Cli<T> {
                     .long("json-body-template")
                     .action(::clap::ArgAction::SetTrue)
                     .help("XXX"),
-            )
-    }
-    pub fn cli_work_list() -> ::clap::Command {
-        ::clap::Command::new("")
-            .arg(
-                ::clap::Arg::new("page")
-                    .long("page")
-                    .value_parser(::clap::value_parser!(::std::string::String))
-                    .required(false)
-                    .help("Opaque next-page token"),
-            )
-            .arg(
-                ::clap::Arg::new("status")
-                    .long("status")
-                    .value_parser(::clap::builder::TypedValueParser::map(
-                        ::clap::builder::PossibleValuesParser::new([
-                            types::WorkStatus::Running.to_string(),
-                            types::WorkStatus::Completed.to_string(),
-                            types::WorkStatus::Failed.to_string(),
-                            types::WorkStatus::Cancelled.to_string(),
-                        ]),
-                        |s| types::WorkStatus::try_from(s).unwrap(),
-                    ))
-                    .required(false)
-                    .help("Only work in this status"),
             )
     }
     pub fn cli_workspaces_state() -> ::clap::Command {
@@ -291,25 +116,10 @@ impl<T: CliConfig> Cli<T> {
         match cmd {
             CliCommand::HealthLive => self.execute_health_live(matches).await,
             CliCommand::HealthReady => self.execute_health_ready(matches).await,
-            CliCommand::AutomationsState => self.execute_automations_state(matches).await,
-            CliCommand::AutomationsCommand => self.execute_automations_command(matches).await,
             CliCommand::CalendarState => self.execute_calendar_state(matches).await,
             CliCommand::CalendarCommand => self.execute_calendar_command(matches).await,
-            CliCommand::ConnectionStatus => self.execute_connection_status(matches).await,
-            CliCommand::ConnectionCancel => self.execute_connection_cancel(matches).await,
-            CliCommand::ConnectionLogin => self.execute_connection_login(matches).await,
-            CliCommand::ConnectionLogout => self.execute_connection_logout(matches).await,
-            CliCommand::ConversationsState => self.execute_conversations_state(matches).await,
-            CliCommand::ConversationsCommand => self.execute_conversations_command(matches).await,
-            CliCommand::TerminalsList => self.execute_terminals_list(matches).await,
-            CliCommand::TerminalsCreate => self.execute_terminals_create(matches).await,
-            CliCommand::TerminalsClose => self.execute_terminals_close(matches).await,
-            CliCommand::TicketsState => self.execute_tickets_state(matches).await,
-            CliCommand::TicketsCommand => self.execute_tickets_command(matches).await,
-            CliCommand::TicketsActivity => self.execute_tickets_activity(matches).await,
             CliCommand::TodosState => self.execute_todos_state(matches).await,
             CliCommand::TodosCommand => self.execute_todos_command(matches).await,
-            CliCommand::WorkList => self.execute_work_list(matches).await,
             CliCommand::WorkspacesState => self.execute_workspaces_state(matches).await,
             CliCommand::WorkspacesCommand => self.execute_workspaces_command(matches).await,
             CliCommand::VersionShow => self.execute_version_show(matches).await,
@@ -333,54 +143,6 @@ impl<T: CliConfig> Cli<T> {
     pub async fn execute_health_ready(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
         let mut request = self.client.health_ready();
         self.config.execute_health_ready(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_automations_state(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.automations_state();
-        self.config
-            .execute_automations_state(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_automations_command(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.automations_command();
-        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
-            request = request.body_map(|body| body.operation_id(value.clone()));
-        }
-        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
-            let body_txt = std::fs::read_to_string(value)
-                .with_context(|| format!("failed to read {}", value.display()))?;
-            let body_value = serde_json::from_str::<types::AutomationRequest>(&body_txt)
-                .with_context(|| format!("failed to parse {}", value.display()))?;
-            request = request.body(body_value);
-        }
-        self.config
-            .execute_automations_command(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -437,260 +199,6 @@ impl<T: CliConfig> Cli<T> {
             }
         }
     }
-    pub async fn execute_connection_status(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.connection_status();
-        self.config
-            .execute_connection_status(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_connection_cancel(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.connection_cancel();
-        self.config
-            .execute_connection_cancel(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_connection_login(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.connection_login();
-        self.config
-            .execute_connection_login(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_connection_logout(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.connection_logout();
-        self.config
-            .execute_connection_logout(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_conversations_state(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.conversations_state();
-        self.config
-            .execute_conversations_state(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_conversations_command(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.conversations_command();
-        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
-            request = request.body_map(|body| body.operation_id(value.clone()));
-        }
-        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
-            let body_txt = std::fs::read_to_string(value)
-                .with_context(|| format!("failed to read {}", value.display()))?;
-            let body_value = serde_json::from_str::<types::ConversationCommandRequest>(&body_txt)
-                .with_context(|| format!("failed to parse {}", value.display()))?;
-            request = request.body(body_value);
-        }
-        self.config
-            .execute_conversations_command(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_terminals_list(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
-        let mut request = self.client.terminals_list();
-        self.config.execute_terminals_list(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_terminals_create(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.terminals_create();
-        if let Some(value) = matches.get_one::<::std::string::String>("id") {
-            request = request.body_map(|body| body.id(value.clone()));
-        }
-        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
-            let body_txt = std::fs::read_to_string(value)
-                .with_context(|| format!("failed to read {}", value.display()))?;
-            let body_value = serde_json::from_str::<types::CreateTerminal>(&body_txt)
-                .with_context(|| format!("failed to parse {}", value.display()))?;
-            request = request.body(body_value);
-        }
-        self.config
-            .execute_terminals_create(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_terminals_close(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.terminals_close();
-        if let Some(value) = matches.get_one::<::std::string::String>("id") {
-            request = request.id(value.clone());
-        }
-        self.config.execute_terminals_close(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_no_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_tickets_state(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
-        let mut request = self.client.tickets_state();
-        self.config.execute_tickets_state(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_tickets_command(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.tickets_command();
-        if let Some(value) = matches.get_one::<::std::string::String>("operation-id") {
-            request = request.body_map(|body| body.operation_id(value.clone()));
-        }
-        if let Some(value) = matches.get_one::<std::path::PathBuf>("json-body") {
-            let body_txt = std::fs::read_to_string(value)
-                .with_context(|| format!("failed to read {}", value.display()))?;
-            let body_value = serde_json::from_str::<types::TicketCommandRequest>(&body_txt)
-                .with_context(|| format!("failed to parse {}", value.display()))?;
-            request = request.body(body_value);
-        }
-        self.config.execute_tickets_command(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_tickets_activity(
-        &self,
-        matches: &::clap::ArgMatches,
-    ) -> anyhow::Result<()> {
-        let mut request = self.client.tickets_activity();
-        if let Some(value) = matches.get_one::<i64>("id") {
-            request = request.id(value.clone());
-        }
-        self.config
-            .execute_tickets_activity(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
     pub async fn execute_todos_state(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
         let mut request = self.client.todos_state();
         self.config.execute_todos_state(matches, &mut request)?;
@@ -719,27 +227,6 @@ impl<T: CliConfig> Cli<T> {
             request = request.body(body_value);
         }
         self.config.execute_todos_command(matches, &mut request)?;
-        let result = request.send().await;
-        match result {
-            Ok(r) => {
-                self.config.success_item(&r);
-                Ok(())
-            }
-            Err(r) => {
-                self.config.error(&r);
-                Err(anyhow::Error::new(r))
-            }
-        }
-    }
-    pub async fn execute_work_list(&self, matches: &::clap::ArgMatches) -> anyhow::Result<()> {
-        let mut request = self.client.work_list();
-        if let Some(value) = matches.get_one::<::std::string::String>("page") {
-            request = request.page(value.clone());
-        }
-        if let Some(value) = matches.get_one::<types::WorkStatus>("status") {
-            request = request.status(value.clone());
-        }
-        self.config.execute_work_list(matches, &mut request)?;
         let result = request.send().await;
         match result {
             Ok(r) => {
@@ -850,20 +337,6 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
-    fn execute_automations_state(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::AutomationsState,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_automations_command(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::AutomationsCommand,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
     fn execute_calendar_state(
         &self,
         matches: &::clap::ArgMatches,
@@ -878,90 +351,6 @@ pub trait CliConfig {
     ) -> anyhow::Result<()> {
         Ok(())
     }
-    fn execute_connection_status(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConnectionStatus,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_connection_cancel(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConnectionCancel,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_connection_login(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConnectionLogin,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_connection_logout(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConnectionLogout,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_conversations_state(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConversationsState,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_conversations_command(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::ConversationsCommand,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_terminals_list(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::TerminalsList,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_terminals_create(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::TerminalsCreate,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_terminals_close(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::TerminalsClose,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_tickets_state(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::TicketsState,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_tickets_command(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::TicketsCommand,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_tickets_activity(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::TicketsActivity,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
     fn execute_todos_state(
         &self,
         matches: &::clap::ArgMatches,
@@ -973,13 +362,6 @@ pub trait CliConfig {
         &self,
         matches: &::clap::ArgMatches,
         request: &mut builder::TodosCommand,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn execute_work_list(
-        &self,
-        matches: &::clap::ArgMatches,
-        request: &mut builder::WorkList,
     ) -> anyhow::Result<()> {
         Ok(())
     }
@@ -1009,25 +391,10 @@ pub trait CliConfig {
 pub enum CliCommand {
     HealthLive,
     HealthReady,
-    AutomationsState,
-    AutomationsCommand,
     CalendarState,
     CalendarCommand,
-    ConnectionStatus,
-    ConnectionCancel,
-    ConnectionLogin,
-    ConnectionLogout,
-    ConversationsState,
-    ConversationsCommand,
-    TerminalsList,
-    TerminalsCreate,
-    TerminalsClose,
-    TicketsState,
-    TicketsCommand,
-    TicketsActivity,
     TodosState,
     TodosCommand,
-    WorkList,
     WorkspacesState,
     WorkspacesCommand,
     VersionShow,
@@ -1037,25 +404,10 @@ impl CliCommand {
         vec![
             CliCommand::HealthLive,
             CliCommand::HealthReady,
-            CliCommand::AutomationsState,
-            CliCommand::AutomationsCommand,
             CliCommand::CalendarState,
             CliCommand::CalendarCommand,
-            CliCommand::ConnectionStatus,
-            CliCommand::ConnectionCancel,
-            CliCommand::ConnectionLogin,
-            CliCommand::ConnectionLogout,
-            CliCommand::ConversationsState,
-            CliCommand::ConversationsCommand,
-            CliCommand::TerminalsList,
-            CliCommand::TerminalsCreate,
-            CliCommand::TerminalsClose,
-            CliCommand::TicketsState,
-            CliCommand::TicketsCommand,
-            CliCommand::TicketsActivity,
             CliCommand::TodosState,
             CliCommand::TodosCommand,
-            CliCommand::WorkList,
             CliCommand::WorkspacesState,
             CliCommand::WorkspacesCommand,
             CliCommand::VersionShow,
@@ -1066,25 +418,10 @@ impl CliCommand {
         match self {
             CliCommand::HealthLive => "health_live",
             CliCommand::HealthReady => "health_ready",
-            CliCommand::AutomationsState => "automations_state",
-            CliCommand::AutomationsCommand => "automations_command",
             CliCommand::CalendarState => "calendar_state",
             CliCommand::CalendarCommand => "calendar_command",
-            CliCommand::ConnectionStatus => "connection_status",
-            CliCommand::ConnectionCancel => "connection_cancel",
-            CliCommand::ConnectionLogin => "connection_login",
-            CliCommand::ConnectionLogout => "connection_logout",
-            CliCommand::ConversationsState => "conversations_state",
-            CliCommand::ConversationsCommand => "conversations_command",
-            CliCommand::TerminalsList => "terminals_list",
-            CliCommand::TerminalsCreate => "terminals_create",
-            CliCommand::TerminalsClose => "terminals_close",
-            CliCommand::TicketsState => "tickets_state",
-            CliCommand::TicketsCommand => "tickets_command",
-            CliCommand::TicketsActivity => "tickets_activity",
             CliCommand::TodosState => "todos_state",
             CliCommand::TodosCommand => "todos_command",
-            CliCommand::WorkList => "work_list",
             CliCommand::WorkspacesState => "workspaces_state",
             CliCommand::WorkspacesCommand => "workspaces_command",
             CliCommand::VersionShow => "version_show",

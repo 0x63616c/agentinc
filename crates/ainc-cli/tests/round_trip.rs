@@ -8,9 +8,7 @@ async fn cli_reads_and_commands_against_real_daemon(pool: sqlx::PgPool) {
     let server = tokio::spawn(async move {
         axum::serve(
             listener,
-            ainc_daemon::product_router(
-                ainc_daemon::product::Product::new(pool, "fixture".into()).unwrap(),
-            ),
+            ainc_daemon::app(ainc_daemon::product::Product::new(pool, "fixture".into()).unwrap()),
         )
         .await
         .unwrap();
@@ -30,9 +28,9 @@ async fn cli_reads_and_commands_against_real_daemon(pool: sqlx::PgPool) {
         (
             run(&["--help"]),
             run(&["status"]),
-            run(&["tickets", "list"]),
-            run(&["tickets", "create", "--title", "CLI round trip"]),
-            run(&["tickets", "list"]),
+            run(&["todos", "list"]),
+            run(&["todos", "add", "--title", "CLI round trip"]),
+            run(&["todos", "list"]),
         )
     })
     .await
@@ -41,9 +39,9 @@ async fn cli_reads_and_commands_against_real_daemon(pool: sqlx::PgPool) {
     for (command, output) in [
         ("ainc --help", help),
         ("ainc status", status),
-        ("ainc tickets list", before),
-        ("ainc tickets create --title 'CLI round trip'", create),
-        ("ainc tickets list", after),
+        ("ainc todos list", before),
+        ("ainc todos add --title 'CLI round trip'", create),
+        ("ainc todos list", after),
     ] {
         assert!(
             output.status.success(),

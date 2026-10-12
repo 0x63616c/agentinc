@@ -18,16 +18,6 @@ pub const LEGACY_EXECUTABLE: &str = "agentinc-os";
 const PG_VERSION: &str = "16.15.0";
 const PG_SHA256: &str = "46f6382024d9b633d1f4b4903ffef8c2404e00ae83098d628c00591048cb0512";
 
-/// `shutil.which`: the first executable regular file named `binary` on PATH.
-fn which(binary: &str) -> Option<PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
-    env::split_paths(&env::var_os("PATH")?)
-        .map(|dir| dir.join(binary))
-        .find(|path| {
-            fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        })
-}
-
 /// `fnmatch` for the three patterns `copytree` ignores: a literal or a `*suffix`.
 fn ignored(name: &str) -> bool {
     name == "pgxs" || name.ends_with(".a") || name.ends_with(".pc")
@@ -296,11 +286,6 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
         for license in ["LICENSE", "COPYRIGHT", "README.md"] {
             fs::copy(pg.join(license), destination.join(license))?;
         }
-    }
-    for binary in ["temporal", "codex"] {
-        let source = which(binary)
-            .ok_or_else(|| anyhow!("{binary} binary required for the self-contained bundle"))?;
-        fs::copy(fs::canonicalize(source)?, runtime.join(binary))?;
     }
     // Audit every Mach-O, including dylibs. A packaging regression fails before
     // the artifact reaches signing; no machine-local paths are tolerated.

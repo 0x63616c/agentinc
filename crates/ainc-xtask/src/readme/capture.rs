@@ -4,7 +4,7 @@
 //! GPUI Pilot reads the running app's retina Metal frame. No desktop input is
 //! synthesized and the app is closed immediately afterward.
 //! Usage: `cargo xtask readme-capture OUTPUT.png` (raw PNG path under ignored `.local/`).
-use crate::release::{parse_args, proc::ManagedChild, resolve, truthy, usage_error};
+use crate::release::{http, parse_args, proc::ManagedChild, resolve, truthy, usage_error};
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 use std::{
@@ -13,18 +13,24 @@ use std::{
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 const TITLE: &str = "AgentInc README Capture";
-const TICKETS: [(&str, &str); 7] = [
-    ("Explore offline onboarding", "backlog"),
-    ("Map connector permissions", "backlog"),
-    ("Draft first-run checklist", "to_do"),
-    ("Review sync error copy", "to_do"),
-    ("Stabilize ticket import", "in_progress"),
-    ("Polish keyboard navigation", "in_progress"),
-    ("Ship updater smoke test", "done"),
+/// The open Todos the Overview and the Todos page show.
+const TODOS: [&str; 5] = [
+    "Book the dentist",
+    "Water the plants",
+    "Reply to Sam about the weekend",
+    "Order a new desk lamp",
+    "Renew the passport",
+];
+/// Upcoming Events as (title, hours from the next full hour, length in hours).
+const EVENTS: [(&str, i64, i64); 4] = [
+    ("Coffee with Jamie", 2, 1),
+    ("Team sync", 5, 1),
+    ("Dinner at Nonna's", 27, 2),
+    ("Weekend hike", 50, 4),
 ];
 const RETINA: (u64, u64) = (2720, 1656);
 
@@ -129,91 +135,6 @@ impl Session<'_> {
         })
     }
 
-    fn type_into(&self, author_id: &str, value: &str) -> Result<Value> {
-        self.click(author_id)?;
-        self.retry(author_id, "Pilot input stayed stale", |reference| {
-            self.call(&["type", reference, "--stdin"], Some(value))
-        })
-    }
-
-    fn wait(&self, kind: &str, author_id: &str) -> Result<()> {
-        if kind == "absent" {
-            let deadline = ten_seconds();
-            while Instant::now() < deadline {
-                if !self
-                    .nodes()?
-                    .iter()
-                    .any(|n| field(n, "author_id") == Some(author_id))
-                {
-                    return Ok(());
-                }
-            }
-            bail!("Pilot node remained present: {author_id}");
-        }
-        let gate = json!({"kind": kind, "author_id": author_id}).to_string();
-        self.call(&["wait", &gate, "10000"], None).map(drop)
-    }
-
-    fn wait_status(&self, status: &str) -> Result<()> {
-        let author_id = format!("tickets.status.{status}");
-        let deadline = ten_seconds();
-        while Instant::now() < deadline {
-            let nodes = self.nodes()?;
-            let find = |id: &str| {
-                nodes
-                    .iter()
-                    .find(|n| field(n, "author_id") == Some(id))
-                    .ok_or_else(|| anyhow!("Pilot node not found: {id}"))
-            };
-            let (status_node, back) = (find(&author_id)?, find("tickets.back")?);
-            if !truthy(status_node.get("enabled")) && truthy(back.get("enabled")) {
-                return Ok(());
-            }
-        }
-        bail!("Ticket status did not settle: {status}");
-    }
-
-    fn matches(&self, title: &str) -> Result<Vec<Value>> {
-        Ok(self
-            .nodes()?
-            .into_iter()
-            .filter(|n| {
-                field(n, "name") == Some(title)
-                    && field(n, "author_id").unwrap_or("").starts_with("ticket.")
-            })
-            .collect())
-    }
-
-    fn create_ticket(&self, title: &str, status: &str) -> Result<()> {
-        if self.matches(title)?.is_empty() {
-            self.click("tickets.create")?;
-            self.type_into("tickets.title", title)?;
-            let gate =
-                json!({"kind": "value", "author_id": "tickets.title", "equals": title}).to_string();
-            self.call(&["wait", &gate, "10000"], None)?;
-            self.click("tickets.submit")?;
-            self.wait("absent", "tickets.title")?;
-        }
-        let deadline = ten_seconds();
-        while self.matches(title)?.is_empty() && Instant::now() < deadline {}
-        let found = self.matches(title)?;
-        if found.len() != 1 {
-            bail!("Expected one visible Ticket: {title}");
-        }
-        if status == "to_do" {
-            return Ok(());
-        }
-        self.click(field(&found[0], "author_id").unwrap_or_default())?;
-        self.wait("present", "tickets.back")?;
-        let button = format!("tickets.status.{status}");
-        if truthy(self.node(&button)?.get("enabled")) {
-            self.click(&button)?;
-            self.wait_status(status)?;
-        }
-        self.click("tickets.back")?;
-        self.wait("present", "tickets.create")
-    }
-
     fn wait_for_manifest(&self, app: &mut ManagedChild, log_path: &Path) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(20);
         while !self.manifest.is_file() {
@@ -279,27 +200,93 @@ fn spawn_app(
     Ok(ManagedChild::spawn(command)?)
 }
 
-fn stop(app: &mut ManagedChild) -> Result<()> {
-    app.terminate();
-    app.wait_timeout(Duration::from_secs(5)).map(drop)
+/// The isolated daemon of the running dev stack: seed it over the owner API.
+struct Stack {
+    url: String,
+    token: String,
+}
+impl Stack {
+    fn open(root: &Path) -> Result<Self> {
+        let dev = root.join(".local/dev");
+        Ok(Self {
+            url: fs::read_to_string(dev.join("api-url"))?.trim().to_owned(),
+            token: fs::read_to_string(dev.join("owner-token"))?
+                .trim()
+                .to_owned(),
+        })
+    }
+    fn call(&self, path: &str, body: Option<&Value>) -> Result<Value> {
+        let headers = [
+            ("Authorization", format!("Bearer {}", self.token)),
+            (ainc_release::CLIENT_HEADER, ainc_release::client_header()),
+            ("Content-Type", "application/json".to_string()),
+        ];
+        let payload = body.map(Value::to_string);
+        let reply = http::request(
+            &format!("{}{path}", self.url),
+            if body.is_none() { "GET" } else { "POST" },
+            &headers,
+            payload.as_deref().map(str::as_bytes),
+            Duration::from_secs(10),
+        )?;
+        Ok(serde_json::from_slice(&reply)?)
+    }
+    fn command(&self, family: &str, command: Value) -> Result<Value> {
+        self.call(
+            &format!("/v1/{family}/commands"),
+            Some(&json!({"operation_id": uuid::Uuid::new_v4().to_string(), "command": command})),
+        )
+    }
+    /// Seed the Todos and Events once; a rerun against the same stack adds nothing.
+    fn seed(&self) -> Result<()> {
+        let todos = self.call("/v1/todos", None)?;
+        let existing: Vec<&str> = todos["todos"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|t| field(t, "title"))
+            .collect();
+        for title in TODOS {
+            if !existing.contains(&title) {
+                self.command("todos", json!({"kind": "add", "title": title}))?;
+            }
+        }
+        let events = self.call("/v1/calendar", None)?;
+        let existing: Vec<&str> = events["events"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|e| field(e, "title"))
+            .collect();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
+        let next_hour = now - now.rem_euclid(3600) + 3600;
+        for (title, offset, length) in EVENTS {
+            if !existing.contains(&title) {
+                let starts_at = next_hour + offset * 3600;
+                self.command(
+                    "calendar",
+                    json!({"kind": "create", "title": title, "starts_at": starts_at, "ends_at": starts_at + length * 3600}),
+                )?;
+            }
+        }
+        Ok(())
+    }
 }
 
-/// Seed Tickets in a fresh isolated app, restart it, and screenshot the board.
+/// Seed the stack, open a fresh isolated app on the Overview and screenshot it.
 fn capture(root: &Path, state: &Path, output: &Path) -> Result<()> {
     let app_path = root.join("crates/ainc-mac/dist/AgentInc Dev.app/Contents/MacOS/AgentInc");
     let pilot_path = root.join("target/debug/gpui-pilot-cli");
     let discovery = root.join(".local/dev/api-url");
+    Stack::open(root)?.seed()?;
     let env = [
         ("AINC_SESSION_PATH", state.join("session.json")),
         ("AINC_DISCOVERY_FILE", discovery),
-        ("AINC_LEGACY_DIR", state.join("legacy")),
-        ("AINC_CODEX_HOME", state.join("codex")),
     ]
     .map(|(key, path)| (key, path.display().to_string()))
     .into_iter()
     .chain([
         ("AINC_WINDOW_TITLE", TITLE.to_string()),
-        ("AINC_CAPTURE_WORKSPACE", "Acme Inc".to_string()),
         ("AINC_CAPTURE_PROFILE", "Alex".to_string()),
     ])
     .collect::<Vec<_>>();
@@ -307,7 +294,7 @@ fn capture(root: &Path, state: &Path, output: &Path) -> Result<()> {
     let log = fs::File::create(&log_path)?;
     let mut app = spawn_app(&app_path, &state.join("p"), &env, &log)?;
     let result = (|| -> Result<()> {
-        let mut session = Session {
+        let session = Session {
             pilot: &pilot_path,
             manifest: state.join("p/instance.json"),
         };
@@ -324,52 +311,22 @@ fn capture(root: &Path, state: &Path, output: &Path) -> Result<()> {
                 other.unwrap_or("None")
             ),
         }
-        session.click("nav.tickets")?;
-        session.wait("present", "tickets.create")?;
-        for (title, status) in TICKETS {
-            session.create_ticket(title, status)?;
-        }
-        stop(&mut app)?;
-        app = spawn_app(&app_path, &state.join("q"), &env, &log)?;
-        session.manifest = state.join("q/instance.json");
-        session.wait_for_manifest(&mut app, &log_path)?;
-        session.click("nav.tickets")?;
+        session.click("nav.overview")?;
         let deadline = ten_seconds();
         loop {
-            if session
+            let names: Vec<String> = session
                 .nodes()?
                 .iter()
-                .any(|n| field(n, "name") == Some("Ship updater smoke test"))
+                .filter_map(|n| field(n, "name").map(str::to_string))
+                .collect();
+            if TODOS.iter().all(|t| names.iter().any(|n| n == t))
+                && EVENTS.iter().all(|(t, _, _)| names.iter().any(|n| n == t))
             {
                 break;
             }
             if Instant::now() >= deadline {
-                bail!("Seeded Tickets did not load");
+                bail!("Seeded Todos and Events did not load: {names:?}");
             }
-        }
-        let visible: Vec<Option<String>> = session
-            .nodes()?
-            .iter()
-            .filter(|n| field(n, "author_id").unwrap_or("").starts_with("ticket."))
-            .map(|n| field(n, "name").map(str::to_string))
-            .collect();
-        let mut seen = visible.clone();
-        seen.sort();
-        let mut expected: Vec<Option<String>> = TICKETS
-            .iter()
-            .map(|(title, _)| Some(title.to_string()))
-            .collect();
-        expected.sort();
-        if seen != expected {
-            bail!("Capture stack contains unexpected Tickets: {visible:?}");
-        }
-        if session
-            .nodes()?
-            .iter()
-            .any(|n| field(n, "author_id") == Some("close-evee"))
-        {
-            session.click("close-evee")?;
-            session.wait("absent", "close-evee")?;
         }
         let capture = session.call(&["screenshot"], None)?;
         if (capture["width"].as_u64(), capture["height"].as_u64())
@@ -403,6 +360,7 @@ pub fn cli(root: &Path, args: &[String]) -> Result<()> {
     if !app.is_file()
         || !root.join("target/debug/gpui-pilot-cli").is_file()
         || !root.join(".local/dev/api-url").is_file()
+        || !root.join(".local/dev/owner-token").is_file()
     {
         usage_error(
             "readme-capture",

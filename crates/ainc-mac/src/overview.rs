@@ -22,6 +22,8 @@ pub struct OverviewPage {
     home: Entity<SmartHomePage>,
     todos: Arc<TodoSnapshot>,
     calendar: Arc<CalendarSnapshot>,
+    /// The local person's first name, once the profile has loaded.
+    name: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 impl EventEmitter<Destination> for OverviewPage {}
@@ -55,8 +57,12 @@ impl OverviewPage {
             daemon,
             sync,
             home,
+            name: None,
             _subscriptions: subscriptions,
         }
+    }
+    pub(crate) fn set_name(&mut self, name: String) {
+        self.name = Some(name);
     }
     pub(crate) fn reload(&mut self) {
         self.todos = self.daemon.todos();
@@ -214,20 +220,23 @@ impl Render for OverviewPage {
         );
         let ui = &mut Ui::new(window, cx);
         PageFrame::document(
-            PageHeader::new(format!("{}, Calum", greeting(today.hour())))
-                .description(summary)
-                .actions(
-                    row()
-                        .items_center()
-                        .gap(px(SPACE_2))
-                        .child(icon(weather.icon, ICON_SIZE_LG).text_color(rgb(theme().text)))
-                        .child(
-                            div()
-                                .text_size(type_size(HEADING_SIZE))
-                                .child(format!("{}°", weather.temperature)),
-                        )
-                        .child(caption(weather.summary)),
-                ),
+            PageHeader::new(match &self.name {
+                Some(name) => format!("{}, {name}", greeting(today.hour())),
+                None => greeting(today.hour()).to_owned(),
+            })
+            .description(summary)
+            .actions(
+                row()
+                    .items_center()
+                    .gap(px(SPACE_2))
+                    .child(icon(weather.icon, ICON_SIZE_LG).text_color(rgb(theme().text)))
+                    .child(
+                        div()
+                            .text_size(type_size(HEADING_SIZE))
+                            .child(format!("{}°", weather.temperature)),
+                    )
+                    .child(caption(weather.summary)),
+            ),
         )
         .child(column().gap(px(SPACE_4)).children(page_frame(
             "overview",

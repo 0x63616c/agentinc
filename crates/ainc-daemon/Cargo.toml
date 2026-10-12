@@ -13,41 +13,14 @@ workspace = true
 name = "aincd"
 path = "src/main.rs"
 
-# Test fixture only: a fake Codex app-server for AINC_CODEX_PATH.
-[[bin]]
-name = "codex-fixture"
-path = "src/bin/codex_fixture.rs"
-
-[features]
-# Imports the pre-Postgres app data once. Remove after 2027-01-01; see docs/ownership.md.
-default = ["legacy-import"]
-legacy-import = ["dep:rusqlite"]
-
 [dependencies]
 # The daemon needs only the product identity. Kept under the old crate name until the
 # sources switch to `ainc_identity::` (a mechanical rename deferred to avoid merge churn).
 ainc-release = { package = "ainc-identity", path = "../ainc-identity" }
 libc = "0.2"
-sha2 = "0.10"
-turnkeel.workspace = true
 futures.workspace = true
-reqwest = { version = "0.13", default-features = false, features = [
-  "rustls-no-provider",
-  "charset",
-  "http2",
-  "system-proxy",
-  "json",
-  "stream",
-] }
-rustls = { version = "0.23", default-features = false, features = [
-  "ring",
-  "std",
-  "tls12",
-  "logging",
-] }
-eventsource-stream = "0.2"
 anyhow.workspace = true
-axum = { version = "0.8", features = ["ws"] }
+axum = "0.8"
 serde.workspace = true
 serde_json.workspace = true
 sqlx = { version = "0.8", features = [
@@ -63,20 +36,14 @@ tokio = { workspace = true, features = [
   "io-util",
   "io-std",
   "signal",
+  "time",
 ] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid.workspace = true
-rusqlite = { version = "0.32", features = [
-  "bundled",
-  "backup",
-], optional = true }
 utoipa = { version = "5.5", features = ["axum_extras"] }
 utoipa-axum = "0.2"
 tower-http = { version = "0.6", features = ["set-header", "trace"] }
 
 [dev-dependencies]
-turnkeel = { workspace = true, features = ["testing"] }
-tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
-tokio-tungstenite = "0.29"

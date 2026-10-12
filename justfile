@@ -3,7 +3,7 @@
 _default:
     @just --list
 
-# Run everything: Postgres, Temporal, the daemon and the Mac app, all rebuilding on save. Needs Docker running.
+# Run everything: Postgres, the daemon and the Mac app, all rebuilding on save. Needs Docker running.
 dev: _hooks
     cargo xtask dev
 

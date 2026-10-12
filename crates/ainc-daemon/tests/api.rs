@@ -1,9 +1,8 @@
 //! The HTTP seam every module shares: one error shape, one status per failure,
 //! the shared layers applied once.
 use ainc_daemon::{
-    conversations::{ConversationCommand as Command, ConversationCommandRequest as CommandRequest},
     product::Product,
-    tickets::{TicketCommand, TicketCommandRequest},
+    todos::{TodoCommand, TodoRequest},
 };
 use axum::{
     Router,
@@ -15,7 +14,7 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 
 fn app(pool: &PgPool) -> Router {
-    ainc_daemon::product_router(Product::new(pool.clone(), "owner-fixture".into()).unwrap())
+    ainc_daemon::app(Product::new(pool.clone(), "owner-fixture".into()).unwrap())
 }
 
 async fn send(app: &Router, request: Request<Body>) -> (StatusCode, Value) {
@@ -60,15 +59,7 @@ fn post(path: &str, token: &str, body: &impl serde::Serialize) -> Request<Body> 
 #[sqlx::test]
 async fn an_unknown_credential_is_unauthorized_on_every_endpoint(pool: PgPool) {
     let app = app(&pool);
-    for path in [
-        "/v1/conversations",
-        "/v1/tickets",
-        "/v1/tickets/1/activity",
-        "/v1/automations",
-        "/v1/workspaces",
-        "/v1/terminals",
-        "/v1/connection",
-    ] {
+    for path in ["/v1/todos", "/v1/calendar", "/v1/workspaces"] {
         for token in [None, Some("wrong-token")] {
             let (status, body) = send(&app, get(path, token)).await;
             assert_eq!(status, StatusCode::UNAUTHORIZED, "{path} {token:?}");
@@ -81,26 +72,11 @@ async fn an_unknown_credential_is_unauthorized_on_every_endpoint(pool: PgPool) {
 #[sqlx::test]
 async fn a_missing_record_is_not_found_everywhere(pool: PgPool) {
     let app = app(&pool);
-    let ticket = TicketCommandRequest {
+    let todo = TodoRequest {
         operation_id: uuid::Uuid::new_v4().to_string(),
-        command: TicketCommand::Rename {
-            id: 404,
-            revision: 0,
-            title: "gone".into(),
-        },
+        command: TodoCommand::Delete { id: 404 },
     };
-    let (status, body) = send(&app, post("/v1/tickets/commands", "owner-fixture", &ticket)).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert_eq!(body["code"], "not_found");
-    let product = CommandRequest {
-        operation_id: uuid::Uuid::new_v4().to_string(),
-        command: Command::Select { id: 404 },
-    };
-    let (status, body) = send(
-        &app,
-        post("/v1/conversations/commands", "owner-fixture", &product),
-    )
-    .await;
+    let (status, body) = send(&app, post("/v1/todos/commands", "owner-fixture", &todo)).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["code"], "not_found");
     let workspace = serde_json::json!({"operation_id": uuid::Uuid::new_v4().to_string(), "command": {"kind": "switch", "id": "nowhere"}});
@@ -110,17 +86,6 @@ async fn a_missing_record_is_not_found_everywhere(pool: PgPool) {
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    let (status, body) = send(
-        &app,
-        Request::delete(format!("/v1/terminals/{}", uuid::Uuid::new_v4()))
-            .header(ainc_release::CLIENT_HEADER, ainc_release::client_header())
-            .header("authorization", "Bearer owner-fixture")
-            .body(Body::empty())
-            .unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert_eq!(body["code"], "not_found");
 }
 
 #[sqlx::test]
@@ -128,7 +93,7 @@ async fn an_old_client_gets_the_shared_error_body(pool: PgPool) {
     let app = app(&pool);
     let (status, body) = send(
         &app,
-        Request::get("/v1/conversations")
+        Request::get("/v1/todos")
             .header(ainc_release::CLIENT_HEADER, "mac/0.0.1 (api 1)")
             .header("authorization", "Bearer owner-fixture")
             .body(Body::empty())

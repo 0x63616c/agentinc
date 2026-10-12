@@ -130,12 +130,6 @@ pub async fn execute(
                     .execute(&mut **tx)
                     .await?;
                     sqlx::query!(
-                        "INSERT INTO principals(workspace_id,id,kind,name) VALUES ($1,'owner','human','You')",
-                        id
-                    )
-                    .execute(&mut **tx)
-                    .await?;
-                    sqlx::query!(
                         "UPDATE selected_workspace SET workspace_id=$1 WHERE owner_id='owner'",
                         id
                     )
@@ -204,7 +198,7 @@ fn is_color(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{automations, conversations, tickets};
+    use crate::todos;
 
     fn request(command: WorkspaceCommand) -> WorkspaceRequest {
         WorkspaceRequest {
@@ -213,37 +207,24 @@ mod tests {
         }
     }
 
+    fn add(title: &str) -> todos::TodoRequest {
+        todos::TodoRequest {
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            command: todos::TodoCommand::Add {
+                title: title.into(),
+            },
+        }
+    }
+
     #[sqlx::test]
-    async fn migrates_legacy_workspace_and_scopes_product_data(pool: PgPool) {
+    async fn the_first_workspace_exists_and_product_data_stays_in_its_workspace(pool: PgPool) {
         let initial = snapshot(&pool).await.unwrap();
         assert_eq!(initial.current_id, "local");
         assert_eq!(initial.workspaces[0].name, "World Wide Webb");
-
-        let conversation_operation = uuid::Uuid::new_v4().to_string();
-        let conversation = conversations::execute(
-            &pool,
-            "local",
-            conversations::ConversationCommandRequest {
-                operation_id: conversation_operation.clone(),
-                command: conversations::ConversationCommand::Create,
-            },
-        )
-        .await
-        .unwrap()
-        .result_id
-        .unwrap();
-        conversations::execute(
-            &pool,
-            "local",
-            conversations::ConversationCommandRequest {
-                operation_id: uuid::Uuid::new_v4().to_string(),
-                command: conversations::ConversationCommand::SelectModel {
-                    model: "original".into(),
-                },
-            },
-        )
-        .await
-        .unwrap();
+        let operation = add("Water the plants");
+        todos::execute(&pool, "local", operation.clone())
+            .await
+            .unwrap();
 
         let created = execute(
             &pool,
@@ -258,41 +239,18 @@ mod tests {
         .result_id;
         assert_eq!(current(&pool).await.unwrap(), created);
         assert_eq!(snapshot(&pool).await.unwrap().workspaces.len(), 2);
-        let fresh = conversations::snapshot(&pool, &created).await.unwrap();
-        assert!(fresh.conversations.is_empty());
-        assert!(fresh.settings.model.is_none());
         assert!(
-            conversations::execute(
-                &pool,
-                &created,
-                conversations::ConversationCommandRequest {
-                    operation_id: conversation_operation,
-                    command: conversations::ConversationCommand::Create,
-                }
-            )
-            .await
-            .is_err()
-        );
-        assert_eq!(
-            conversations::snapshot(&pool, "local")
+            todos::snapshot(&pool, &created)
                 .await
                 .unwrap()
-                .conversations[0]
-                .id,
-            conversation
+                .todos
+                .is_empty()
         );
-        assert!(
-            conversations::execute(
-                &pool,
-                &created,
-                conversations::ConversationCommandRequest {
-                    operation_id: uuid::Uuid::new_v4().to_string(),
-                    command: conversations::ConversationCommand::Select { id: conversation },
-                }
-            )
-            .await
-            .is_err()
-        );
+        // A replay in the first workspace is the same command, not a second Todo.
+        todos::execute(&pool, "local", operation).await.unwrap();
+        let local = todos::snapshot(&pool, "local").await.unwrap().todos;
+        assert_eq!(local.len(), 1);
+        assert_eq!(local[0].title, "Water the plants");
         execute(
             &pool,
             request(WorkspaceCommand::Switch { id: "local".into() }),
@@ -300,120 +258,5 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(current(&pool).await.unwrap(), "local");
-        assert_eq!(
-            conversations::snapshot(&pool, "local")
-                .await
-                .unwrap()
-                .settings
-                .model
-                .as_deref(),
-            Some("original")
-        );
-    }
-
-    #[sqlx::test]
-    async fn tickets_agents_and_automations_stay_in_their_workspace(pool: PgPool) {
-        let created = execute(
-            &pool,
-            request(WorkspaceCommand::Create {
-                name: "Other".into(),
-                icon: None,
-                color: None,
-            }),
-        )
-        .await
-        .unwrap()
-        .result_id;
-        let actor = tickets::Actor::owner_in(created.clone());
-        tickets::execute(
-            &pool,
-            &actor,
-            tickets::TicketCommandRequest {
-                operation_id: uuid::Uuid::new_v4().to_string(),
-                command: tickets::TicketCommand::RegisterAgent {
-                    name: "Other agent".into(),
-                    instructions: "Work".into(),
-                    model: "fixture".into(),
-                },
-            },
-        )
-        .await
-        .unwrap();
-        let agent: String = sqlx::query_scalar(
-            "SELECT id FROM principals WHERE workspace_id=$1 AND name='Other agent'",
-        )
-        .bind(&created)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        tickets::execute(
-            &pool,
-            &actor,
-            tickets::TicketCommandRequest {
-                operation_id: uuid::Uuid::new_v4().to_string(),
-                command: tickets::TicketCommand::Create {
-                    title: "Other ticket".into(),
-                },
-            },
-        )
-        .await
-        .unwrap();
-        automations::execute(
-            &pool,
-            &actor,
-            automations::AutomationRequest {
-                operation_id: uuid::Uuid::new_v4().to_string(),
-                command: automations::AutomationCommand::Save {
-                    id: None,
-                    revision: None,
-                    name: "Other rule".into(),
-                    proposal: tickets::TicketProposal {
-                        title: "Scheduled".into(),
-                        agent_id: agent,
-                    },
-                    every_minutes: 60,
-                },
-            },
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            tickets::snapshot(&pool, &actor)
-                .await
-                .unwrap()
-                .tickets
-                .len(),
-            1
-        );
-        assert_eq!(
-            automations::snapshot(&pool, &actor)
-                .await
-                .unwrap()
-                .automations
-                .len(),
-            1
-        );
-        assert!(
-            tickets::snapshot(&pool, &tickets::Actor::owner())
-                .await
-                .unwrap()
-                .tickets
-                .is_empty()
-        );
-        assert!(
-            tickets::snapshot(&pool, &tickets::Actor::owner())
-                .await
-                .unwrap()
-                .assignees
-                .iter()
-                .all(|agent| agent.name != "Other agent")
-        );
-        assert!(
-            automations::snapshot(&pool, &tickets::Actor::owner())
-                .await
-                .unwrap()
-                .automations
-                .is_empty()
-        );
     }
 }

@@ -1,7 +1,7 @@
 //! The HTTP seam every product module shares: who is calling (`Owner`, `Actor`),
 //! how a refused command is reported (`CommandError` → one `ErrorBody`), and the
 //! one router every endpoint is registered on exactly once.
-use crate::{connection::Connection, terminals, tickets::Actor, workspaces};
+use crate::workspaces;
 use axum::{
     Json, Router,
     extract::{FromRef, FromRequestParts, Request},
@@ -10,7 +10,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use tower_http::{set_header::SetResponseHeaderLayer, trace::TraceLayer};
 use utoipa::{OpenApi, ToSchema};
@@ -48,11 +47,6 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
 pub struct Owner {
     pub workspace: String,
 }
-impl Owner {
-    pub(crate) fn actor(self) -> Actor {
-        Actor::owner_in(self.workspace)
-    }
-}
 impl<S> FromRequestParts<S> for Owner
 where
     Product: FromRef<S>,
@@ -64,37 +58,6 @@ where
         product.authorize(&parts.headers)?;
         Ok(Self {
             workspace: workspaces::current(&product.pool).await?,
-        })
-    }
-}
-
-/// Whoever holds a credential: the owner in the current Workspace, or an agent
-/// named by an assignment credential. Whether that assignment is still live is
-/// decided by the fence inside each read or write transaction.
-impl<S> FromRequestParts<S> for Actor
-where
-    Product: FromRef<S>,
-    S: Send + Sync,
-{
-    type Rejection = CommandError;
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, CommandError> {
-        let product = Product::from_ref(state);
-        if product.authorize(&parts.headers).is_ok() {
-            return Ok(Actor::owner_in(workspaces::current(&product.pool).await?));
-        }
-        let token = bearer(&parts.headers).ok_or(CommandError::Unauthorized)?;
-        let row = sqlx::query!(
-            "SELECT c.workspace_id,r.agent_id,r.ticket_id,r.generation FROM agent_credentials c JOIN ticket_runs r ON r.run_id=c.run_id WHERE c.token_hash=$1",
-            format!("{:x}", Sha256::digest(token.as_bytes()))
-        )
-        .fetch_optional(&product.pool)
-        .await?
-        .ok_or(CommandError::Unauthorized)?;
-        Ok(Actor {
-            workspace: row.workspace_id,
-            id: row.agent_id,
-            assignment: Some((row.ticket_id, row.generation)),
-            conversation: None,
         })
     }
 }
@@ -151,7 +114,7 @@ impl CommandError {
                 message
             }
             Self::Unauthorized => "Owner credential required.",
-            Self::Forbidden => "This command is outside the current assignment.",
+            Self::Forbidden => "This command is outside what the credential allows.",
             Self::NotFound => "The record does not exist.",
             Self::Internal => "The daemon failed. Try again.",
         }
@@ -190,21 +153,6 @@ impl From<sqlx::Error> for CommandError {
         Self::Internal
     }
 }
-/// A refused command reaches the model with its reason intact.
-impl From<CommandError> for turnkeel::ToolError {
-    fn from(error: CommandError) -> Self {
-        let message = error.message().to_owned();
-        match error {
-            CommandError::Invalid(_)
-            | CommandError::Conflict(_)
-            | CommandError::Forbidden
-            | CommandError::NotFound => Self::InvalidArguments(message),
-            CommandError::Unauthorized | CommandError::Unavailable(_) | CommandError::Internal => {
-                Self::Failed(message)
-            }
-        }
-    }
-}
 
 /// The closed set of error codes a client can switch on.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, ToSchema, PartialEq, Eq)]
@@ -226,13 +174,11 @@ pub struct ErrorBody {
     pub message: String,
 }
 
-/// Everything a handler can extract: the product, its Connection and the
-/// terminal registry. Each module's state is a `FromRef` view of this.
+/// Everything a handler can extract: the product. Each module's state is a
+/// `FromRef` view of this.
 #[derive(Clone)]
 pub struct AppState {
     pub product: Product,
-    pub connection: Connection,
-    pub(crate) terminals: terminals::Sessions,
 }
 impl FromRef<AppState> for Product {
     fn from_ref(state: &AppState) -> Self {
@@ -251,11 +197,6 @@ pub(crate) use ainc_release::{CLIENT_HEADER, SERVER_HEADER};
 fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .merge(crate::health::routes())
-        .merge(crate::conversations::routes())
-        .merge(crate::connection::routes())
-        .merge(crate::tickets::routes())
-        .merge(crate::automations::routes())
-        .merge(terminals::routes())
         .merge(workspaces::routes())
         .merge(crate::todos::routes())
         .merge(crate::calendar::routes())
@@ -268,7 +209,6 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     struct Shared;
     let mut api = Shared::openapi();
     api.merge(routes().into_openapi());
-    api.merge(crate::work::routes().into_openapi());
     declare_shared_errors(&mut api);
     api
 }
@@ -328,18 +268,11 @@ fn declare_shared_errors(api: &mut utoipa::openapi::OpenApi) {
     }
 }
 
-/// The served application: every module's routes plus `extra` (the daemon's
-/// runtime visibility), with the compatibility check, the server version header
-/// and request tracing applied exactly once.
-pub fn app(product: Product, connection: Connection, extra: Router) -> Router {
-    let state = AppState {
-        product,
-        connection,
-        terminals: terminals::Sessions::default(),
-    };
-    let (router, _) = routes().with_state(state).split_for_parts();
+/// The served application: every module's routes with the compatibility check,
+/// the server version header and request tracing applied exactly once.
+pub fn app(product: Product) -> Router {
+    let (router, _) = routes().with_state(AppState { product }).split_for_parts();
     router
-        .merge(extra)
         .layer(axum::middleware::from_fn(compatibility))
         .layer(SetResponseHeaderLayer::overriding(
             HeaderName::from_static(SERVER_HEADER),
@@ -388,18 +321,6 @@ mod tests {
             serde_json::from_str(r#"{"code":"conflict","message":"stale"}"#).unwrap();
         assert_eq!(body.code, ErrorCode::Conflict);
         assert!(serde_json::from_str::<ErrorBody>(r#"{"code":"busy","message":""}"#).is_err());
-    }
-
-    #[test]
-    fn tool_errors_keep_the_reason() {
-        let refused: turnkeel::ToolError =
-            CommandError::Conflict("revision 3 is stale".into()).into();
-        assert_eq!(
-            refused.to_string(),
-            "invalid arguments: revision 3 is stale"
-        );
-        let failed: turnkeel::ToolError = CommandError::Internal.into();
-        assert_eq!(failed.to_string(), "The daemon failed. Try again.");
     }
 
     #[test]

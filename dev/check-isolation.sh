@@ -75,12 +75,6 @@ psql "$pg_b" -v ON_ERROR_STOP=1 -qAtc "CREATE TABLE IF NOT EXISTS isolation_prob
 test "$(psql "$pg_a" -Atc 'SELECT marker FROM isolation_probe')" = "$id_a"
 test "$(psql "$pg_b" -Atc 'SELECT marker FROM isolation_probe')" = "$id_b"
 
-temporal_a=$(cd "$a" && docker compose --env-file .local/dev/compose.env -p "$id_a" -f dev/compose.yaml port temporal 7233)
-temporal_b=$(cd "$b" && docker compose --env-file .local/dev/compose.env -p "$id_b" -f dev/compose.yaml port temporal 7233)
-test "$temporal_a" != "$temporal_b"
-temporal --address "$temporal_a" operator namespace describe --namespace "$id_a" >/dev/null
-temporal --address "$temporal_b" operator namespace describe --namespace "$id_b" >/dev/null
-
 kill "$pid_a"
 wait "$pid_a" 2>/dev/null || true
 pid_a=

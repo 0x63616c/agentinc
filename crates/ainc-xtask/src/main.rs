@@ -21,7 +21,6 @@ use std::{
 struct Instance {
     id: String,
     path: PathBuf,
-    namespace: String,
     tilt_port: u16,
 }
 
@@ -35,7 +34,6 @@ fn identity(path: &Path) -> Result<Instance> {
     let id = format!("agentinc-{short}");
     let tilt_port = 11000 + u16::from_be_bytes([hash[6], hash[7]]) % 40000;
     Ok(Instance {
-        namespace: id.clone(),
         id,
         path,
         tilt_port,
@@ -75,8 +73,7 @@ fn write_instance(instance: &Instance) -> Result<Instance> {
     let mut selected = instance.clone();
     if path.exists() {
         let old: Instance = serde_json::from_slice(&fs::read(&path)?)?;
-        if old.id != instance.id || old.path != instance.path || old.namespace != instance.namespace
-        {
+        if old.id != instance.id || old.path != instance.path {
             bail!("existing instance identity differs from canonical worktree path");
         }
         selected.tilt_port = old.tilt_port;
@@ -136,157 +133,17 @@ fn port(instance: &Instance, service: &str, inner: &str) -> Result<u16> {
         .context("parse Compose port")
 }
 
-fn temporal(instance: &Instance, args: &[&str]) -> Result<String> {
-    let addr = format!("127.0.0.1:{}", port(instance, "temporal", "7233")?);
-    let output = cmd(instance, "temporal")
-        .args(["--address", &addr])
-        .args(args)
-        .output()?;
-    if !output.status.success() {
-        bail!(
-            "temporal command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-    Ok(String::from_utf8(output.stdout)?)
-}
-
-fn bootstrap(instance: &Instance) -> Result<()> {
-    // Tilt can start a dependent local process while Compose is still exposing
-    // its port. Poll the server's actual health instead of assuming a delay.
-    let mut ready = false;
-    for _ in 0..120 {
-        if temporal(instance, &["operator", "cluster", "health"]).is_ok() {
-            ready = true;
-            break;
-        }
-        thread::sleep(Duration::from_secs(1));
-    }
-    if !ready {
-        bail!("Temporal did not become healthy");
-    }
-    if temporal(
-        instance,
-        &[
-            "operator",
-            "namespace",
-            "describe",
-            "--namespace",
-            &instance.namespace,
-        ],
-    )
-    .is_err()
-    {
-        temporal(
-            instance,
-            &[
-                "operator",
-                "namespace",
-                "create",
-                "--namespace",
-                &instance.namespace,
-                "--retention",
-                "3d",
-            ],
-        )?;
-    }
-    let mut visible = false;
-    for _ in 0..30 {
-        if temporal(
-            instance,
-            &[
-                "operator",
-                "search-attribute",
-                "list",
-                "--namespace",
-                &instance.namespace,
-            ],
-        )
-        .is_ok()
-        {
-            visible = true;
-            break;
-        }
-        thread::sleep(Duration::from_secs(1));
-    }
-    if !visible {
-        bail!("Temporal namespace was created but did not become visible");
-    }
-    for name in [
-        "WorkspaceId",
-        "TicketId",
-        "ConversationId",
-        "AutomationId",
-        "AgentId",
-    ] {
-        // The server refuses a conflicting type. A matching existing attribute is harmless.
-        let result = temporal(
-            instance,
-            &[
-                "operator",
-                "search-attribute",
-                "create",
-                "--namespace",
-                &instance.namespace,
-                "--name",
-                name,
-                "--type",
-                "Keyword",
-            ],
-        );
-        if let Err(error) = result {
-            let existing = temporal(
-                instance,
-                &[
-                    "operator",
-                    "search-attribute",
-                    "list",
-                    "--namespace",
-                    &instance.namespace,
-                ],
-            )?;
-            let matches = existing.lines().any(|line| {
-                let mut fields = line.split_whitespace();
-                fields.next() == Some(name) && fields.next() == Some("Keyword")
-            });
-            if !matches {
-                return Err(error);
-            }
-        }
-    }
-    Ok(())
-}
-
 fn daemon(instance: &Instance) -> Result<()> {
-    bootstrap(instance)?;
     let pg = port(instance, "postgres", "5432")?;
     let db = format!(
         "postgres://agentinc:agentinc@127.0.0.1:{pg}/agentinc_{}",
         instance.id.trim_start_matches("agentinc-")
     );
     let discovery = local(instance).join("api-url");
-    let runtime = serde_json::json!({
-        "endpoint": format!("http://127.0.0.1:{}", port(instance, "temporal", "7233")?),
-        "scope": instance.namespace,
-        "worker_group": format!("{}-agents", instance.id),
-        "ui_url": format!("http://127.0.0.1:{}", port(instance, "temporal-ui", "8080")?),
-    });
-    fs::write(
-        local(instance).join("runtime.json"),
-        serde_json::to_vec_pretty(&runtime)?,
-    )?;
     let status = cmd(instance, "cargo")
         .args(["run", "-p", "ainc-daemon", "--bin", "aincd"])
         .env("DATABASE_URL", db)
-        .env("AINC_RUNTIME_CONFIG", runtime.to_string())
-        .env("AINC_WORKSPACE_DIR", local(instance).join("workspace"))
-        .env(
-            "AINC_TOOL_ALLOW",
-            "[\"read_file\",\"write_file\",\"shell\",\"git\"]",
-        )
         .env("AINC_DISCOVERY_FILE", discovery)
-        .env("AINC_LEGACY_DIR", local(instance).join("legacy"))
-        .env("AINC_CODEX_HOME", local(instance).join("codex"))
         .status()?;
     if !status.success() {
         bail!("aincd exited with {status}");
@@ -598,21 +455,18 @@ fn main() -> Result<()> {
         "doctor" => {
             let instance = write_instance(&instance)?;
             println!(
-                "{}\npath: {}\nTilt: http://127.0.0.1:{}\nTemporal namespace: {}",
+                "{}\npath: {}\nTilt: http://127.0.0.1:{}",
                 instance.id,
                 instance.path.display(),
-                instance.tilt_port,
-                instance.namespace
+                instance.tilt_port
             );
-            for service in ["postgres", "temporal", "temporal-ui"] {
-                println!(
-                    "{service}: {}",
-                    compose(&instance, &["ps", "--status", "running", "--services"])
-                        .unwrap_or_default()
-                        .lines()
-                        .any(|line| line == service)
-                );
-            }
+            println!(
+                "postgres: {}",
+                compose(&instance, &["ps", "--status", "running", "--services"])
+                    .unwrap_or_default()
+                    .lines()
+                    .any(|line| line == "postgres")
+            );
             if let Ok(url) = fs::read_to_string(local(&instance).join("api-url")) {
                 println!("API: {}", url.trim());
             }

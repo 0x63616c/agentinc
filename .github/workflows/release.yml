@@ -101,26 +101,8 @@ jobs:
             echo "RUSTUP_HOME=$RUSTUP_HOME"
             echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
           } >> "$GITHUB_ENV"
-          {
-            echo "$HOME/.cargo/bin"
-            echo "$RUNNER_WORKSPACE/release-tools"
-          } >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/rustup" toolchain install 1.98.1 --profile minimal
-          tools="$RUNNER_WORKSPACE/release-tools"
-          mkdir -p "$tools"
-          if [ ! -x "$tools/temporal" ]; then
-            curl --fail --location --retry 3 --retry-all-errors --output "$tools/temporal.tar.gz" https://github.com/temporalio/cli/releases/download/v1.9.1/temporal_cli_1.9.1_darwin_arm64.tar.gz
-            test "$(shasum -a 256 "$tools/temporal.tar.gz" | cut -d ' ' -f 1)" = 41e0425378fcb4fb5766340b97435e20fe47bbff2d7bf644ec2d51f7662b7c56
-            tar -xzf "$tools/temporal.tar.gz" -C "$tools" temporal
-            rm "$tools/temporal.tar.gz"
-          fi
-          if [ ! -x "$tools/codex" ]; then
-            curl --fail --location --retry 3 --retry-all-errors --output "$tools/codex.tar.gz" https://github.com/openai/codex/releases/download/rust-v0.155.1/codex-aarch64-apple-darwin.tar.gz
-            test "$(shasum -a 256 "$tools/codex.tar.gz" | cut -d ' ' -f 1)" = 5e5a51470dce2423f9d96bd191d0bbc4cc0e2848a6833df5178eaf47a07a3768
-            tar -xzf "$tools/codex.tar.gz" -C "$tools"
-            mv "$tools/codex-aarch64-apple-darwin" "$tools/codex"
-            rm "$tools/codex.tar.gz"
-          fi
       - name: Run visible updater acceptance on the dedicated Mac
         env:
           AINC_NATIVE_UPDATE_TESTS: "1"

@@ -17,13 +17,11 @@ def watch(name):
     return ['Cargo.toml', 'Cargo.lock'] + [packages[n]['manifest_path'].rsplit('/', 1)[0] for n in seen]
 
 docker_compose('dev/compose.yaml', env_file='.local/dev/compose.env', project_name=instance['id'], wait=True)
-dc_resource('temporal', resource_deps=['postgres'])
-dc_resource('temporal-ui', resource_deps=['temporal'])
 local_resource(
     'aincd',
     serve_cmd='cargo xtask serve',
     deps=watch('ainc-xtask'),
-    resource_deps=['postgres', 'temporal'],
+    resource_deps=['postgres'],
     readiness_probe=probe(exec=exec_action(command=['sh', '-c', 'test -s .local/dev/api-url && curl -fsS "$(cat .local/dev/api-url)/health/ready" >/dev/null'])),
 )
 local_resource(
@@ -35,6 +33,6 @@ local_resource(
         'AINC_SESSION_PATH': os.getcwd() + '/.local/dev/session.json',
     },
     deps=watch('ainc-mac'),
-    ignore=['crates/ainc-mac/dist', 'crates/ainc-mac/ghostty-bridge/.build'],
+    ignore=['crates/ainc-mac/dist'],
     resource_deps=['aincd'],
 )

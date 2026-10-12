@@ -12,50 +12,25 @@ use std::{
 /// Everything the daemon takes from its environment, read once at start.
 /// Every variable is `AINC_*` except `DATABASE_URL`, which is sqlx's name.
 struct Config {
-    /// Where the daemon publishes its URL; the lock, token, runtime and
-    /// workspace defaults live beside it.
+    /// Where the daemon publishes its URL; the lock, token and database
+    /// defaults live beside it.
     discovery: PathBuf,
-    /// An external Postgres; without it the daemon manages its own runtime.
+    /// An external Postgres; without it the daemon manages its own database.
     database_url: Option<String>,
-    #[cfg(feature = "legacy-import")]
-    legacy_dir: Option<PathBuf>,
-    /// The durable runtime as JSON; otherwise `runtime.json` beside discovery.
-    runtime_config: Option<String>,
-    workspace_dir: Option<PathBuf>,
-    tool_allow: Option<String>,
-    codex_home: Option<PathBuf>,
-    codex_path: Option<PathBuf>,
 }
 impl Config {
     fn from_env() -> Result<Self> {
-        let path = |name| env::var_os(name).map(PathBuf::from);
         Ok(Self {
-            discovery: path("AINC_DISCOVERY_FILE").context("AINC_DISCOVERY_FILE is required")?,
+            discovery: env::var_os("AINC_DISCOVERY_FILE")
+                .map(PathBuf::from)
+                .context("AINC_DISCOVERY_FILE is required")?,
             database_url: env::var("DATABASE_URL").ok(),
-            #[cfg(feature = "legacy-import")]
-            legacy_dir: path("AINC_LEGACY_DIR"),
-            runtime_config: env::var("AINC_RUNTIME_CONFIG").ok(),
-            workspace_dir: path("AINC_WORKSPACE_DIR"),
-            tool_allow: env::var("AINC_TOOL_ALLOW").ok(),
-            codex_home: path("AINC_CODEX_HOME"),
-            codex_path: path("AINC_CODEX_PATH"),
         })
     }
 }
 
-fn runtime_config(bytes: &[u8]) -> Result<(turnkeel::RuntimeConfig, Option<String>)> {
-    let value: serde_json::Value = serde_json::from_slice(bytes)?;
-    let ui_url = value
-        .get("ui_url")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned);
-    Ok((serde_json::from_value(value)?, ui_url))
-}
-
 fn main() -> Result<()> {
     ainc_release::process::reset_inherited_signals()?;
-    // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
-    let _ = rustls::crypto::ring::default_provider().install_default();
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
@@ -100,16 +75,6 @@ async fn run() -> Result<()> {
     ainc_daemon::migrate(&pool)
         .await
         .context("migrate product database")?;
-    #[cfg(feature = "legacy-import")]
-    {
-        let legacy = config
-            .legacy_dir
-            .clone()
-            .unwrap_or_else(ainc_release::identity::support_dir);
-        ainc_daemon::legacy::import_once(&pool, &legacy)
-            .await
-            .context("import legacy app data")?;
-    }
     let token_path = discovery.with_file_name("owner-token");
     fs::create_dir_all(token_path.parent().context("token directory")?)?;
     let token = match fs::OpenOptions::new()
@@ -129,39 +94,6 @@ async fn run() -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     let product = ainc_daemon::product::Product::new(pool.clone(), token.trim().into())?;
-    let (runtime, _ui_url): (turnkeel::RuntimeConfig, Option<String>) =
-        if let Some(local) = &local {
-            (local.config.clone(), Some(local.ui_url.clone()))
-        } else if let Some(runtime) = &config.runtime_config {
-            runtime_config(runtime.as_bytes()).context("parse AINC_RUNTIME_CONFIG")?
-        } else {
-            runtime_config(&fs::read(discovery.with_file_name("runtime.json")).context(
-                "configure the durable runtime in runtime.json beside daemon discovery",
-            )?)?
-        };
-    let workspace = config
-        .workspace_dir
-        .clone()
-        .unwrap_or_else(|| discovery.with_file_name("workspace"));
-    fs::create_dir_all(&workspace)?;
-    let allowed = serde_json::from_str(config.tool_allow.as_deref().unwrap_or("[]"))
-        .context("AINC_TOOL_ALLOW must be a JSON list of read_file, write_file, shell, git")?;
-    let policy = ainc_daemon::coding::WorkspacePolicy::new(workspace, allowed)?;
-    let connection = ainc_daemon::connection::Connection::local_with(
-        config.codex_home.clone(),
-        config.codex_path.clone(),
-    );
-    let models = std::sync::Arc::new(ainc_daemon::inference::CodexModels::new(
-        connection.clone(),
-    )?);
-    let runner =
-        ainc_daemon::conversations::Runner::start(pool.clone(), runtime.clone(), models.clone())
-            .await?;
-    let tickets =
-        ainc_daemon::execution::Runner::start(pool.clone(), runtime.clone(), models, policy)
-            .await?;
-    let automations =
-        ainc_daemon::automations::Runner::start(pool.clone(), runtime.clone()).await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     publish_address(discovery, address)?;
@@ -186,21 +118,12 @@ async fn run() -> Result<()> {
         let _ = shutdown.send(true);
         anyhow::Ok(())
     });
-    let result = tokio::try_join!(
-        async {
-            axum::serve(
-                listener,
-                ainc_daemon::app_with_runtime(product, connection, runtime)
-                    .route("/internal/drain", drain),
-            )
-            .with_graceful_shutdown(stopping(receiver.clone()))
-            .await
-            .map_err(anyhow::Error::from)
-        },
-        runner.run_until(stopping(receiver.clone())),
-        tickets.run_until(stopping(receiver.clone())),
-        automations.run_until(stopping(receiver.clone())),
-    );
+    let result = axum::serve(
+        listener,
+        ainc_daemon::app(product).route("/internal/drain", drain),
+    )
+    .with_graceful_shutdown(stopping(receiver))
+    .await;
     signal_task.abort();
     let _ = fs::remove_file(discovery);
     result?;
@@ -220,19 +143,4 @@ fn publish_address(path: &Path, address: SocketAddr) -> Result<()> {
 
 async fn stopping(mut receiver: tokio::sync::watch::Receiver<bool>) {
     let _ = receiver.wait_for(|stopping| *stopping).await;
-}
-
-#[cfg(test)]
-mod config_tests {
-    use super::*;
-
-    #[test]
-    fn runtime_ui_address_stays_in_daemon_configuration() {
-        let (config, ui_url) = runtime_config(
-            br#"{"endpoint":"http://127.0.0.1:7233","scope":"agentinc-dev","worker_group":"personal","ui_url":"http://127.0.0.1:8233"}"#,
-        )
-        .unwrap();
-        assert_eq!(config.scope, "agentinc-dev");
-        assert_eq!(ui_url.as_deref(), Some("http://127.0.0.1:8233"));
-    }
 }

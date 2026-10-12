@@ -1,4 +1,4 @@
-//! Private, single-user runtime. Binaries come from the signed app bundle;
+//! Private, single-user database. Binaries come from the signed app bundle;
 //! mutable databases live beside the daemon discovery file, never in the app.
 use ainc_daemon::process::Stop;
 use anyhow::{Context, Result, ensure};
@@ -14,10 +14,7 @@ use std::{
 pub struct LocalRuntime {
     _owner: fs::File,
     postgres: Child,
-    temporal: Child,
     pub database_url: String,
-    pub config: turnkeel::RuntimeConfig,
-    pub ui_url: String,
 }
 fn port() -> Result<u16> {
     Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
@@ -103,67 +100,16 @@ impl LocalRuntime {
             .args(["-h", "127.0.0.1", "-p", &pg_port.to_string(), "-k", ""])
             .spawn()
             .context("start bundled database")?;
-        let runtime_port = port()?;
-        let ui_port = port()?;
-        let mut temporal_command = command(&resources.join("temporal"), root, "runtime.log")?;
-        temporal_command
-            .args([
-                "server",
-                "start-dev",
-                "--ip",
-                "127.0.0.1",
-                "--port",
-                &runtime_port.to_string(),
-                "--ui-ip",
-                "127.0.0.1",
-                "--ui-port",
-                &ui_port.to_string(),
-                "--namespace",
-                if ainc_release::identity::PRODUCTION {
-                    "agentinc"
-                } else {
-                    "agentinc-dev"
-                },
-            ])
-            .arg("--db-filename")
-            .arg(root.join("runtime.sqlite"));
-        for name in [
-            "WorkspaceId",
-            "TicketId",
-            "ConversationId",
-            "AutomationId",
-            "AgentId",
-        ] {
-            temporal_command.args(["--search-attribute", &format!("{name}=Keyword")]);
-        }
-        let temporal = match temporal_command.spawn() {
-            Ok(child) => child,
-            Err(error) => {
-                let mut postgres = postgres;
-                let _ = postgres.kill();
-                let _ = postgres.wait();
-                return Err(error.into());
-            }
-        };
         let mut runtime = Self {
             _owner: owner,
             postgres,
-            temporal,
             database_url: format!("postgres://agentinc:{password}@127.0.0.1:{pg_port}/postgres"),
-            ui_url: format!("http://127.0.0.1:{ui_port}"),
-            config: serde_json::from_value(
-                serde_json::json!({"endpoint":format!("http://127.0.0.1:{runtime_port}"),"scope":if ainc_release::identity::PRODUCTION { "agentinc" } else { "agentinc-dev" },"worker_group":if ainc_release::identity::PRODUCTION { "agentinc-personal" } else { "agentinc-development" }}),
-            )?,
         };
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             ensure!(
                 runtime.postgres.try_wait()?.is_none(),
                 "bundled database exited; see postgres.log"
-            );
-            ensure!(
-                runtime.temporal.try_wait()?.is_none(),
-                "bundled runtime exited; see runtime.log"
             );
             let db_ready = sqlx::postgres::PgPoolOptions::new()
                 .max_connections(1)
@@ -172,25 +118,11 @@ impl LocalRuntime {
                 .await;
             if let Ok(pool) = db_ready {
                 pool.close().await;
-                let healthy = tokio::process::Command::new(resources.join("temporal"))
-                    .args([
-                        "--address",
-                        &format!("127.0.0.1:{runtime_port}"),
-                        "operator",
-                        "cluster",
-                        "health",
-                    ])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status()
-                    .await?;
-                if healthy.success() {
-                    return Ok(runtime);
-                }
+                return Ok(runtime);
             }
             ensure!(
                 Instant::now() < deadline,
-                "local runtime did not become ready; see runtime.log"
+                "local database did not become ready; see postgres.log"
             );
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -202,13 +134,8 @@ impl Drop for LocalRuntime {
         // PostgreSQL fast shutdown disconnects residual pool sockets, rolls back
         // unfinished transactions and checkpoints. Smart shutdown could wait
         // forever on a detached SDK pool after its owner has drained.
-        for (child, stop) in [
-            (&mut self.temporal, Stop::Terminate),
-            (&mut self.postgres, Stop::Interrupt),
-        ] {
-            stop.send(child.id());
-            let _ = child.wait();
-        }
+        Stop::Interrupt.send(self.postgres.id());
+        let _ = self.postgres.wait();
     }
 }
 pub fn bundled_resources() -> Result<PathBuf> {
@@ -224,7 +151,7 @@ pub async fn helper(root: &Path) -> Result<()> {
     use std::io::Write;
     use tokio::io::AsyncReadExt;
     let runtime = LocalRuntime::start(root, &bundled_resources()?).await?;
-    let identity = serde_json::json!({"database_url":runtime.database_url,"config":runtime.config,"ui_url":runtime.ui_url});
+    let identity = serde_json::json!({"database_url":runtime.database_url});
     writeln!(std::io::stdout(), "{}", identity)?;
     std::io::stdout().flush()?;
     let mut ignored = Vec::new();
@@ -237,8 +164,6 @@ pub struct ManagedRuntime {
     child: Child,
     lifetime: Option<std::process::ChildStdin>,
     pub database_url: String,
-    pub config: turnkeel::RuntimeConfig,
-    pub ui_url: String,
 }
 impl ManagedRuntime {
     pub async fn start(root: PathBuf) -> Result<Self> {
@@ -255,31 +180,23 @@ impl ManagedRuntime {
             let lifetime = child.stdin.take();
             let output = child.stdout.take().context("runtime identity pipe")?;
             let mut line = String::new();
-            let result = (|| -> Result<(String, turnkeel::RuntimeConfig, String)> {
+            let result = (|| -> Result<String> {
                 ensure!(
                     std::io::BufReader::new(output).read_line(&mut line)? > 0,
                     "bundled runtime helper exited before readiness"
                 );
-                let mut identity: serde_json::Value =
+                let identity: serde_json::Value =
                     serde_json::from_str(&line).context("runtime identity")?;
-                let database = identity["database_url"]
+                Ok(identity["database_url"]
                     .as_str()
                     .context("runtime database")?
-                    .to_owned();
-                let config = serde_json::from_value(identity["config"].take())?;
-                let ui_url = identity["ui_url"]
-                    .as_str()
-                    .context("runtime UI URL")?
-                    .to_owned();
-                Ok((database, config, ui_url))
+                    .to_owned())
             })();
             match result {
-                Ok((database_url, config, ui_url)) => Ok(Self {
+                Ok(database_url) => Ok(Self {
                     child,
                     lifetime,
                     database_url,
-                    config,
-                    ui_url,
                 }),
                 Err(error) => {
                     drop(lifetime);

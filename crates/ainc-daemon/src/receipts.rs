@@ -6,7 +6,6 @@ use std::fmt;
 
 use futures::future::BoxFuture;
 use serde::{Serialize, de::DeserializeOwned};
-use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Transaction};
 
 use crate::api::CommandError;
@@ -24,14 +23,6 @@ impl OperationId {
         uuid::Uuid::parse_str(text)
             .map(Self)
             .map_err(|_| InvalidOperationId)
-    }
-    /// Derive a stable operation ID from a tool's idempotency key, so a
-    /// retried tool call replays the receipt of its first attempt.
-    pub fn from_idempotency_key(key: &str) -> Self {
-        let digest = Sha256::digest(key.as_bytes());
-        Self(uuid::Uuid::from_bytes(
-            digest[..16].try_into().expect("SHA-256 has 32 bytes"),
-        ))
     }
 }
 impl fmt::Display for OperationId {
@@ -53,13 +44,6 @@ impl From<InvalidOperationId> for CommandError {
 /// The command family an operation ID is unique within.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Scope {
-    /// Product commands: one ID space across workspaces; the workspace is part
-    /// of the request, so reuse from another workspace conflicts.
-    Product,
-    /// Ticket commands: one ID space per actor per workspace.
-    Ticket { workspace: String, actor: String },
-    /// Automation commands: one ID space per workspace.
-    Automation { workspace: String },
     /// Workspace commands: one ID space.
     Workspace,
     /// Todo commands: one ID space per workspace.
@@ -70,9 +54,6 @@ pub(crate) enum Scope {
 impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Scope::Product => f.write_str("product"),
-            Scope::Ticket { workspace, actor } => write!(f, "ticket/{workspace}/{actor}"),
-            Scope::Automation { workspace } => write!(f, "automation/{workspace}"),
             Scope::Workspace => f.write_str("workspace"),
             Scope::Todo { workspace } => write!(f, "todo/{workspace}"),
             Scope::Calendar { workspace } => write!(f, "calendar/{workspace}"),
@@ -83,7 +64,6 @@ impl fmt::Display for Scope {
 /// A committed command and its result.
 #[derive(Clone, Debug)]
 pub(crate) struct Receipt<R> {
-    pub operation_id: OperationId,
     pub result: R,
 }
 
@@ -144,10 +124,7 @@ where
             result
         }
     };
-    Ok(Receipt {
-        operation_id,
-        result,
-    })
+    Ok(Receipt { result })
 }
 
 #[cfg(test)]
@@ -167,41 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn idempotency_keys_derive_stable_distinct_ids() {
-        let a = OperationId::from_idempotency_key("run-1/tool-call-7");
-        assert_eq!(a, OperationId::from_idempotency_key("run-1/tool-call-7"));
-        assert_ne!(a, OperationId::from_idempotency_key("run-1/tool-call-8"));
-        // The first 16 bytes of SHA-256, as before the derivation was shared.
-        assert_eq!(
-            a.to_string(),
-            uuid::Uuid::from_bytes(
-                Sha256::digest(b"run-1/tool-call-7")[..16]
-                    .try_into()
-                    .unwrap()
-            )
-            .to_string()
-        );
-        assert_eq!(OperationId::parse(&a.to_string()), Ok(a));
-    }
-
-    #[test]
     fn scopes_name_what_the_receipt_is_unique_within() {
-        assert_eq!(Scope::Product.to_string(), "product");
-        assert_eq!(
-            Scope::Ticket {
-                workspace: "local".into(),
-                actor: "owner".into()
-            }
-            .to_string(),
-            "ticket/local/owner"
-        );
-        assert_eq!(
-            Scope::Automation {
-                workspace: "local".into()
-            }
-            .to_string(),
-            "automation/local"
-        );
         assert_eq!(Scope::Workspace.to_string(), "workspace");
         assert_eq!(
             Scope::Todo {
@@ -222,10 +165,10 @@ mod tests {
     #[sqlx::test]
     async fn replays_same_request_conflicts_on_changed_request_and_runs_once(pool: sqlx::PgPool) {
         let op = OperationId::parse("2f1c5a1e-6b4e-4b0e-9d3a-0f3b0d7c1a2b").unwrap();
-        let scope = Scope::Automation {
+        let scope = Scope::Todo {
             workspace: "local".into(),
         };
-        let request = serde_json::json!({"kind":"save","name":"nightly"});
+        let request = serde_json::json!({"kind":"add","title":"Water the plants"});
         let mut tx = pool.begin().await.unwrap();
         let first = execute(&mut tx, scope.clone(), op, &request, |tx| {
             Box::pin(async move {
@@ -237,7 +180,6 @@ mod tests {
         .unwrap();
         tx.commit().await.unwrap();
         assert_eq!(first.result, "rule-1");
-        assert_eq!(first.operation_id, op);
 
         // Replay: apply must not run again, the stored result comes back.
         let mut tx = pool.begin().await.unwrap();
@@ -263,7 +205,7 @@ mod tests {
         let mut tx = pool.begin().await.unwrap();
         let other = execute(
             &mut tx,
-            Scope::Automation {
+            Scope::Todo {
                 workspace: "other".into(),
             },
             op,

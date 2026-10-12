@@ -316,10 +316,8 @@ pub fn cli(args: &[String]) -> Result<()> {
     let mut env: HashMap<String, String> = env::vars().collect();
     let path = |name: &str| root.join(name).to_string_lossy().into_owned();
     env.insert("AINC_DISCOVERY_FILE".into(), path("api-url"));
-    env.insert("AINC_LEGACY_DIR".into(), path("legacy"));
-    env.insert("AINC_CODEX_HOME".into(), path("codex"));
     env.insert("RUST_LOG".into(), "info".into());
-    for name in ["DATABASE_URL", "AINC_RUNTIME_CONFIG", "AINC_DATABASE_URL"] {
+    for name in ["DATABASE_URL", "AINC_DATABASE_URL"] {
         env.remove(name);
     }
     let smoke = Smoke {
@@ -348,7 +346,7 @@ pub fn cli(args: &[String]) -> Result<()> {
 mod tests {
     use super::*;
 
-    const PS: &str = "  100     1 Ss   /bundle/aincd\n  101   100 S    /bundle/runtime/temporal --local-runtime\n  102   101 S    pg_ctl\n";
+    const PS: &str = "  100     1 Ss   /bundle/aincd\n  101   100 S    /bundle/aincd --local-runtime\n  102   101 S    postgres\n";
 
     #[test]
     fn reaped_health_check_children_pass() {

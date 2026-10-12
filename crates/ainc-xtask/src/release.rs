@@ -28,7 +28,6 @@ pub mod prepare;
 pub mod proc;
 pub mod runtime_smoke;
 pub mod sparkle;
-pub mod terminal_smoke;
 pub mod upgrade_gate;
 
 /// The subcommands this module serves, for the xtask usage string.
@@ -52,7 +51,6 @@ pub fn run(operation: &str, args: Vec<String>, root: &Path) -> Result<()> {
         "release-sparkle-sign" => sparkle::sign_cli(&args),
         "release-measure-build" => measure_build::cli(&args),
         "release-runtime-smoke" => runtime_smoke::cli(&args),
-        "release-terminal-smoke" => terminal_smoke::cli(&args),
         "release-upgrade-gate" => upgrade_gate::cli(&args),
         "release-pending" => pending::cli(&args),
         other => Err(anyhow!("unknown release command {other}")),

@@ -1,7 +1,7 @@
 //! Run signed, notarized upgrades through the native UI, including Sparkle deltas.
 use super::{
     checked, file_server::FileServer, http, parse_args, proc::ManagedChild, read_to_string,
-    resolve, sparkle, terminal_smoke,
+    resolve, sparkle,
 };
 use anyhow::{Result, anyhow, bail};
 use serde_json::Value;
@@ -338,8 +338,6 @@ fn exercise(
         .env("AINC_UPGRADE_TEST_PREPARATION_FILE", &preparation)
         .env("AINC_SESSION_PATH", profile.join("session.json"))
         .env("AINC_DISCOVERY_FILE", profile.join("daemon/api-url"))
-        .env("AINC_LEGACY_DIR", profile.join("legacy"))
-        .env("AINC_CODEX_HOME", profile.join("codex"))
         .stdout(Stdio::null())
         .stderr(fs::File::create(&stderr_path)?);
     let mut process = ManagedChild::spawn(command)?;
@@ -373,7 +371,6 @@ fn exercise(
             );
             verify_app(&app)?;
             verify_runtime(&profile, &old_version)?;
-            terminal_smoke::check(&app, &profile)?;
             payload.verify(&server.requests())?;
             println!(
                 "PASS download-only {payload:?}: UI SIGKILL left {old_version} and its runtime intact; no Sparkle preparation"
@@ -426,7 +423,6 @@ fn exercise(
         }
         verify_app(&app)?;
         verify_runtime(&profile, &next_version)?;
-        terminal_smoke::check(&app, &profile)?;
         if uses_sparkle {
             anyhow::ensure!(
                 read_to_string(&preparation)?.trim()
