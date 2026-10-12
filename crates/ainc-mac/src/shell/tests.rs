@@ -4,6 +4,7 @@ use crate::{
     input,
     overlay::Overlay,
     routes::Route,
+    ui::CONTROL_HEIGHT,
     ui_state::{SIDEBAR_DEFAULT, SIDEBAR_MIN, UiState},
 };
 use gpui::{
@@ -379,23 +380,31 @@ fn automation_agent_select_keeps_stable_ids_and_dismisses_before_dialog(cx: &mut
 }
 
 #[gpui::test]
-fn compact_sidebar_preserves_icon_positions_and_profile_access(cx: &mut TestAppContext) {
+fn compact_sidebar_centres_square_items_and_keeps_profile_access(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let (shell, cx) =
         cx.add_window_view(|window, cx| Shell::fixture(dir.path().join("tabs.json"), window, cx));
     cx.update(|window, cx| window.draw(cx).clear(cx));
     let search = cx.debug_bounds("shell.search").unwrap();
-    let nav = cx.debug_bounds("sidebar-nav-1").unwrap();
-    let profile = cx.debug_bounds("sidebar-profile-avatar").unwrap();
     shell.update(cx, |shell, cx| {
         shell.ui_state.sidebar.open = false;
         shell.sidebar_visible = crate::ui_state::SIDEBAR_COLLAPSED;
         cx.notify();
     });
     cx.update(|window, cx| window.draw(cx).clear(cx));
-    assert_eq!(cx.debug_bounds("shell.search").unwrap().top(), search.top());
-    assert_eq!(cx.debug_bounds("sidebar-nav-1").unwrap().origin, nav.origin);
-    assert_eq!(cx.debug_bounds("sidebar-profile-avatar").unwrap(), profile);
+    let rail_centre = px(crate::ui_state::SIDEBAR_COLLAPSED / 2.);
+    let square = gpui::size(px(CONTROL_HEIGHT), px(CONTROL_HEIGHT));
+    let compact_search = cx.debug_bounds("shell.search").unwrap();
+    assert_eq!(compact_search.top(), search.top());
+    assert_eq!(compact_search.size, square);
+    assert_eq!(compact_search.center().x, rail_centre);
+    for index in 1..=3 {
+        let item = cx.debug_bounds(sidebar_nav(index)).unwrap();
+        assert_eq!(item.size, square, "nav {index} is square");
+        assert_eq!(item.center().x, rail_centre, "nav {index} is centred");
+    }
+    let profile = cx.debug_bounds("sidebar-profile-avatar").unwrap();
+    assert_eq!(profile.center().x, rail_centre);
     assert!(cx.debug_bounds("sidebar-profile-name").is_none());
     let main = cx.debug_bounds("main-pane").unwrap();
     assert_eq!(main.left(), px(crate::ui_state::SIDEBAR_COLLAPSED));
@@ -411,6 +420,15 @@ fn compact_sidebar_preserves_icon_positions_and_profile_access(cx: &mut TestAppC
             Some(Overlay::UserMenu { support: false })
         )
     });
+}
+
+fn sidebar_nav(index: usize) -> &'static str {
+    [
+        "sidebar-nav-0",
+        "sidebar-nav-1",
+        "sidebar-nav-2",
+        "sidebar-nav-3",
+    ][index]
 }
 
 #[gpui::test]

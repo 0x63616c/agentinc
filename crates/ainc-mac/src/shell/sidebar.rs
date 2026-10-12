@@ -7,7 +7,11 @@ impl Shell {
     }
     fn sidebar_item(&self, route: Route, index: usize, ui: &mut Ui<Self>) -> Stateful<Div> {
         let selected = self.ui_state.current().page() == route;
-        let tint = if selected { TEXT } else { TEXT_SECONDARY };
+        let tint = if selected {
+            theme().text
+        } else {
+            theme().text_secondary
+        };
         let hover_group = format!("sidebar-item-{index}");
         self.button(
             ("nav", index),
@@ -23,14 +27,21 @@ impl Shell {
         .h(px(CONTROL_HEIGHT))
         .flex_shrink_0()
         .when(route == Route::Agents, |s| s.mt(px(SPACE_6)))
-        .px(px(SPACE_2))
-        .gap(px(SIDEBAR_TEXT_GAP))
+        // Expanded: icon on the icon column, label on the rail. Compact: a
+        // square with the icon centred.
+        .map(|s| {
+            if self.sidebar_labels() {
+                s.px(px(SPACE_2)).gap(px(SIDEBAR_TEXT_GAP))
+            } else {
+                s.w(px(CONTROL_HEIGHT)).justify_center()
+            }
+        })
         .rounded(px(RADIUS_MD))
         .debug_selector(move || format!("sidebar-nav-{index}"))
         .text_size(type_size(LABEL_SIZE))
         .text_color(rgb(tint))
         .when(selected, |s| {
-            s.bg(rgb(SELECTED)).font_weight(FontWeight::MEDIUM)
+            s.bg(rgb(theme().selected)).font_weight(FontWeight::MEDIUM)
         })
         .child(nav_icon(route.icon(), selected, tint, hover_group))
         .when(self.sidebar_labels(), |s| {
@@ -66,7 +77,7 @@ impl Shell {
         } else {
             update_button.icon_only()
         };
-        let mut nav = column().gap(px(2.));
+        let mut nav = column().gap(px(2.)).when(!expanded, |s| s.items_center());
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             nav = nav.child(self.sidebar_item(page.route, index + 1, ui));
         }
@@ -90,22 +101,28 @@ impl Shell {
                     ui,
                 )
                 .debug_selector(|| "shell.search".into())
-                .w_full()
                 .min_w_0()
                 .h(px(CONTROL_HEIGHT))
                 .flex_shrink_0()
                 .mb(px(SPACE_4))
-                // The magnifier centres on the navigation icon column and the
-                // placeholder lands on the label rail.
-                .pl(px(SPACE_2))
-                .pr(px(HEADER_SEARCH_RIGHT_INSET))
-                // One more than the label rail's gap: the field's border sits inside it.
-                .gap(px(SPACE_3 + 1.))
+                .map(|s| {
+                    if expanded {
+                        // The magnifier centres on the navigation icon column and the
+                        // placeholder lands on the label rail. One more than the label
+                        // rail's gap: the field's border sits inside it.
+                        s.w_full()
+                            .pl(px(SPACE_2))
+                            .pr(px(HEADER_SEARCH_RIGHT_INSET))
+                            .gap(px(SPACE_3 + 1.))
+                    } else {
+                        s.w(px(CONTROL_HEIGHT)).justify_center().mx_auto()
+                    }
+                })
                 .rounded(px(RADIUS_MD))
-                .bg(rgb(SURFACE_INPUT))
+                .bg(rgb(theme().surface_input))
                 .border_1()
-                .border_color(rgb(BORDER))
-                .text_color(rgb(TEXT_SECONDARY))
+                .border_color(rgb(theme().border))
+                .text_color(rgb(theme().text_secondary))
                 .text_size(type_size(LABEL_SIZE))
                 .child(icon(Icon::Search, ICON_SIZE_SM))
                 .when(expanded, |s| {
@@ -148,13 +165,19 @@ impl Shell {
                             .flex_shrink_0()
                             .w_full()
                             .items_center()
-                            .pl(px(SIDEBAR_PROFILE_INSET))
-                            // Align the visible glyph, not its transparent SVG box.
-                            .pr(px(SIDEBAR_PROFILE_INSET - CHEVRON_UP_DOWN_GLYPH_INSET))
-                            // Keep the name on the navigation label rail.
-                            .gap(px(SPACE_1))
+                            .map(|s| {
+                                if expanded {
+                                    // Align the visible glyph, not its transparent SVG
+                                    // box, and keep the name on the navigation label rail.
+                                    s.pl(px(SIDEBAR_PROFILE_INSET))
+                                        .pr(px(SIDEBAR_PROFILE_INSET - CHEVRON_UP_DOWN_GLYPH_INSET))
+                                        .gap(px(SPACE_1))
+                                } else {
+                                    s.justify_center()
+                                }
+                            })
                             .rounded(px(RADIUS_MD))
-                            .when(user_menu_open, |s| s.bg(rgb(SELECTED)))
+                            .when(user_menu_open, |s| s.bg(rgb(theme().selected)))
                             .debug_selector(|| "sidebar-profile".into())
                             .child(
                                 div()
@@ -175,7 +198,7 @@ impl Shell {
                                             .debug_selector(|| "sidebar-profile-name".into())
                                             .text_size(type_size(LABEL_SIZE))
                                             .font_weight(FontWeight::MEDIUM)
-                                            .text_color(rgb(TEXT))
+                                            .text_color(rgb(theme().text))
                                             .child(self.profile.name.clone()),
                                     ),
                                 )
