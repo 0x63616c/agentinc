@@ -34,10 +34,6 @@ const EVENTS: [(&str, i64, i64); 4] = [
 ];
 const RETINA: (u64, u64) = (2720, 1656);
 
-fn ten_seconds() -> Instant {
-    Instant::now() + Duration::from_secs(10)
-}
-
 /// Run one `gpui-pilot-cli` command against an instance and return its `output`.
 fn pilot(pilot: &Path, manifest: &Path, args: &[&str], typed: Option<&str>) -> Result<Value> {
     let mut command = Command::new(pilot);
@@ -311,23 +307,37 @@ fn capture(root: &Path, state: &Path, output: &Path) -> Result<()> {
                 other.unwrap_or("None")
             ),
         }
-        session.click("nav.overview")?;
-        let deadline = ten_seconds();
+        // The launch overlay covers the window until the first snapshot arrives.
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while session
+            .nodes()?
+            .iter()
+            .any(|n| field(n, "author_id") == Some("shell.launch"))
+        {
+            if Instant::now() >= deadline {
+                bail!("The app did not finish starting");
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+        // The Todos page names each row's checkbox after its title, so it shows when
+        // the seeded records have arrived; the Overview then has them too.
+        session.click("nav.todos")?;
         loop {
             let names: Vec<String> = session
                 .nodes()?
                 .iter()
-                .filter_map(|n| field(n, "name").map(str::to_string))
+                .filter_map(|n| field(n, "name").map(str::to_owned))
                 .collect();
-            if TODOS.iter().all(|t| names.iter().any(|n| n == t))
-                && EVENTS.iter().all(|(t, _, _)| names.iter().any(|n| n == t))
-            {
+            if TODOS.iter().all(|t| names.iter().any(|n| n == t)) {
                 break;
             }
             if Instant::now() >= deadline {
-                bail!("Seeded Todos and Events did not load: {names:?}");
+                bail!("Seeded Todos did not load: {names:?}");
             }
+            thread::sleep(Duration::from_millis(200));
         }
+        session.click("nav.overview")?;
+        thread::sleep(Duration::from_millis(800));
         let capture = session.call(&["screenshot"], None)?;
         if (capture["width"].as_u64(), capture["height"].as_u64())
             != (Some(RETINA.0), Some(RETINA.1))

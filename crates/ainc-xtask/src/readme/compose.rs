@@ -224,15 +224,18 @@ fn compose(app: &RgbaImage, native: &RgbaImage, layout: &Layout) -> Result<RgbaI
     if native.width() != app.width() {
         bail!("Native reference width differs from Pilot render");
     }
-    // The app and reference use the same #0c0c0c top bar. Copy only the actual
-    // macOS traffic-light region at the configured 18 pt window offset.
+    // Copy only the actual macOS traffic-light region at the configured 18 pt
+    // window offset, retinting the reference's top bar to the app's own.
     let controls = layout.controls;
-    if app.get_pixel(layout.probe.0, layout.probe.1)
-        != native.get_pixel(layout.probe.0, layout.probe.1)
-    {
-        bail!("Native control background no longer matches app header");
+    let header = *app.get_pixel(layout.probe.0, layout.probe.1);
+    let reference = *native.get_pixel(layout.probe.0, layout.probe.1);
+    let mut lights = crop(native, controls);
+    for pixel in lights.pixels_mut() {
+        if *pixel == reference {
+            *pixel = header;
+        }
     }
-    paste(&mut app, &crop(native, controls), (controls.0, controls.1));
+    paste(&mut app, &lights, (controls.0, controls.1));
     // Reuse the alpha of a real native window at the same retina width, with
     // its exact top/bottom corner contours. The middle rows remain opaque.
     let mut mask = GrayImage::from_pixel(app.width(), app.height(), Luma([255]));
@@ -417,6 +420,17 @@ mod tests {
         let image = compose(&app(), &native(), &layout).unwrap();
         assert_eq!(image.dimensions(), (60, 50));
         let (left, top) = (10, 15);
+        // A reference on a different top bar is retinted to the app's.
+        let black = RgbaImage::from_pixel(40, 20, Rgba([0, 0, 0, 255]));
+        let retinted = compose(&black, &native(), &layout).unwrap();
+        assert_eq!(
+            retinted.get_pixel(left + 5, top + 5),
+            &Rgba([255, 0, 0, 255])
+        );
+        assert_eq!(
+            retinted.get_pixel(left + 4, top + 11),
+            &Rgba([0, 0, 0, 255])
+        );
         // Controls come from the native reference, the rest of the app is untouched.
         assert_eq!(image.get_pixel(left + 5, top + 5).0, [255, 0, 0, 255]);
         assert_eq!(image.get_pixel(left + 20, top + 10), &HEADER);
@@ -446,12 +460,6 @@ mod tests {
         assert_eq!(
             compose(&app(), &narrow, &layout).unwrap_err().to_string(),
             "Native reference width differs from Pilot render"
-        );
-        let mut off = native();
-        off.put_pixel(20, 10, Rgba([1, 2, 3, 255]));
-        assert_eq!(
-            compose(&app(), &off, &layout).unwrap_err().to_string(),
-            "Native control background no longer matches app header"
         );
         let crowded = Layout {
             canvas: (41, 100),
