@@ -5,10 +5,11 @@
 ```sh
 ainc --help
 ainc status
-ainc tickets list
-ainc tickets create --title 'Review launch checklist'
-ainc automations list
-ainc --json tickets list
+ainc todos list
+ainc todos add --title 'Water the plants'
+ainc calendar list
+ainc workspaces create --name Personal
+ainc --json todos list
 ainc completions zsh > ~/.zfunc/_ainc
 ```
 

@@ -1,5 +1,8 @@
 # Tabs, cohesion follow-ups, and the next minor release
 
+> Historical. Written before 2026-10-12, when Agents, Tickets, Automations, Conversations,
+> the terminal and Temporal were removed from the product. Items about them no longer apply.
+
 Requested by Calum on 2026-10-03. This is the durable execution checklist for
 the tabs/sidebar request and the entire supplied cohesion follow-up handoff.
 The goal is to implement, verify, integrate on `main`, push, and **publish the

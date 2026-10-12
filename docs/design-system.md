@@ -48,7 +48,7 @@ surface can fade between frames) and a `cx.listener`-style action; hosts impleme
 `HoverHost` and call `hover.animate(window)` once per render. `HoverFade::track`
 is the one place a control gets its hover amount and listener.
 
-Labelled add/create buttons place their `+` after the text ("New Agent +").
+Labelled add/create buttons place their `+` after the text ("New Todo +").
 Other button icons lead the text; icon-only buttons stay centered.
 
 Sheets, tabs and checkboxes are built for the 1.0 workstreams (onboarding,
@@ -64,14 +64,14 @@ providers) and are exercised only on the Components page today.
 | `toggle`, `checkbox` | `toggle.rs` | Boolean settings. Toggles for immediate effect, checkboxes inside forms. |
 | `segmented`, `tabs`, `chip` | `segmented.rs` | One of a few options (segments hug their content), switching views inside a page (tabs underline their label), picking a value in a form (chips: the chosen one is filled with full-strength text, the rest are outlined). |
 | `badge`, `status_pill`, `status_dot`, `count_badge`, `tag`, `Tone` | `badge.rs` | States and counts. Use `badge` in lists and headers, `status_pill` in tables and property rows, `tag` for labels and `chip` for form picks; never mix them on one surface. A `tag` is a label: a bordered pill with a dot in one of the `LABEL_COLORS`, never red, which stays for status. |
-| `avatar`, `agent_avatar`, `AssigneeFace`, `assignee_avatar` | `avatar.rs` | Show an assignee with `assignee_avatar(&AssigneeFace, size)` everywhere (cards, rows, selects, the Agents page). People are round, with a photo or initials; agents are rounded squares with initials, so the two read apart wherever they appear together. |
-| `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `property_row`, `PageFrame`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. A detail page makes its record the one H1 and puts the way back in `PageHeader::leading`; rows live in a `card` with hairlines between them. `PageFrame::fill` is a document page whose content fills the height under its header and scrolls its own parts (the Tickets board). `property_row` is a record's labeled value, the label kept beside a wrapping value's first line. |
+| `avatar` | `avatar.rs` | The local person in the sidebar: round, with a photo or initials. |
+| `card`, `panel`, `divider`, `ListRow`, `list_item`, `status_bar`, `property_row`, `PageFrame`, `PageHeader` | `layout.rs`, `display.rs` | Page frames, grouped content, interactive rows and static entries. A detail page makes its record the one H1 and puts the way back in `PageHeader::leading`; rows live in a `card` with hairlines between them. `PageFrame::fill` is a document page whose content fills the height under its header and scrolls its own parts. `property_row` is a record's labeled value, the label kept beside a wrapping value's first line. |
 | `LoadState`, `page_frame`, `skeleton_rows`, `LoadingFrame` | `loading.rs` | Every data page's loading frame: `page_frame(id, &state, rows, ui, body)` gives the `{id}.error` banner, the reconnecting hint, `{id}.loading` skeleton rows until the first load, then the page's body. Pages never hand-assemble these. |
 | `table_container`, `table_header`, `table_cells`, `table_row`, `TableColumn` | `table.rs` | Columnar data with an eyebrow header and clickable rows. |
 | `dialog_shell`, `DialogFooter`, `Verb`, `sheet_shell`, `popover_shell`, `menu_shell`, `OverlayHost<O>` | `overlay.rs` | Modal confirmations and forms with a Cancel / confirm footer whose confirm label and pending label ("Creating…", "Deleting…") follow a `Verb`, side panels, floating surfaces; one active overlay per window with focus return. The overlay vocabulary itself (`overlay::Overlay`) belongs to the shell; a page registers its own dialogs under its route through `page::PageOverlays`. |
 | `Toasts` | `toast.rs` | Transient notices; the host anchors the stack on its content rail and schedules dismissal for transient ones (the shell keeps a sticky one while the session cannot be saved). |
 | `EmptyState` | `empty.rs` | A page or section with nothing in it: icon, title, one line, one action. |
-| `skeleton`, `skeleton_rows`, `LoadingFrame` | `loading.rs` | Placeholders while data loads; the Evee mark for longer waits. |
+| `skeleton`, `skeleton_rows`, `LoadingFrame` | `loading.rs` | Placeholders while data loads. |
 | `kbd`, `kbd_hint`, `eyebrow`, `heading`, `caption`, `icon` | `display.rs` | Shortcut hints, section labels, secondary copy, icons. |
 | `settings_section`, `settings_row`, `settings_divider` | `settings.rs` | Grouped preference rows with a label, description and right-aligned control. |
 | `render_palette`, `palette_frame`, `palette_header`, `PaletteGroup`, `PaletteEntry`, `fuzzy_match` | `palette.rs`, `fuzzy.rs` | The ⌘K palette: grouped, fuzzy-matched results with highlighted matches, keyboard navigation and shortcut hints; the frame is reused by any form that replaces the results. |
@@ -83,7 +83,7 @@ The shell (`src/shell.rs` and `src/shell/`) composes the sidebar (workspace card
 the content card with its status bar, the Go to… palette, the user menu popover and
 toasts. Pages receive the content card and render inside `PageFrame::document` (header
 plus scrolling content), `PageFrame::fill` (header plus content that fills the height: the
-board, the Conversation view) or `PageFrame::canvas` (the Terminal).
+Smart Home panel) or `PageFrame::canvas` (full-bleed content).
 
 ## Copy
 
@@ -93,8 +93,7 @@ Every string a person reads in the app follows these rules. Constructs are the n
 1. Title Case for buttons, menu items and dialog, page and section titles.
 2. Sentence case for field labels, descriptions, hints, placeholders, empty-state bodies,
    toasts and errors.
-3. Capitalize a construct (Ticket, Comment, Conversation, Automation, Agent, Occurrence,
-   Connection) when it means the construct.
+3. Capitalize a construct (Workspace, Todo, Event, Calendar) when it means the construct.
 4. Full sentences end with a period; titles, labels and buttons do not.
 5. Typographic `…` (U+2026) and `’`, always. An action gets `…` only when it opens further
    input.
@@ -109,25 +108,20 @@ Every string a person reads in the app follows these rules. Constructs are the n
    never interpolated. Validation errors go to `Field::error`, load errors to `banner`.
 10. Empty states read `No {things} yet.` plus one action, always through `EmptyState`.
 11. British spelling: Cancelled.
-12. People are round avatars (`avatar`); agents are rounded squares (`agent_avatar`). Everywhere.
+12. People are round avatars (`avatar`). Everywhere.
 
 The decisions the rules leave open, settled once:
 
-- Placeholders name the value as a sentence-case noun phrase ("Ticket title", "Name",
-  "Automation name", "Minutes", "Comment"); search fields read "Search {Things}"; the
-  composer reads "Message Evee".
+- Placeholders name the value as a sentence-case noun phrase ("Todo title", "Name",
+  "Event title"); search fields read "Search {Things}".
 - An empty state reads `No {things} yet.` when nothing exists and `No matching {things}.`
   when a filter hides everything. The title keeps its period; it is a sentence.
-- A detail page is a `PageHeader` whose `leading` is a small ghost back control (the parent
-  page's name with `chevronLeft`), on Tickets, Automations and the Conversation view alike.
 - Every page that polls the daemon through `Sync` has an icon-only secondary Refresh as the
-  first header action and shows `banner` + "Reconnecting…" the same way; Temporal, which
-  loads on demand, has the same icon-only Refresh. Nothing else offers a refresh.
+  first header action and shows `banner` + "Reconnecting…" the same way. Nothing else offers a refresh.
 - Loading lists show `SKELETON_ROWS` skeleton rows, never a page-specific count.
 - A toast stays until dismissed; a transient one follows `Toasts::push` with
   `Toasts::dismiss_later`, which removes it after `TOAST_MS`.
-- A disabled destructive control stays visible and the nearest section says why ("A Ticket
-  with Work cannot be deleted.").
+- A disabled destructive control stays visible and the nearest section says why.
 
 `cargo xtask check-copy` (`crates/ainc-xtask/src/checks/copy.rs`) enforces the mechanical
 rules over the string literals passed to `Button::new`, `MenuEntry::new`, `PaletteEntry::new`,

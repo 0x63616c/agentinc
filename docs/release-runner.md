@@ -8,7 +8,7 @@ and also runs Home Assistant and other services. It runs macOS 15.6 with
 Xcode 27.0 at `/Applications/Xcode-27.0.app` alongside Xcode 26.3. Distribution
 sets `DEVELOPER_DIR` to Xcode 27 for both Mac jobs and logs `xcodebuild -version`;
 the machine's default Xcode remains 26.3. Xcode 27 is required for the
-SwiftBuild Ghostty bridge used by shipped bundles.
+shipped bundles.
 
 ## Release path
 
@@ -45,22 +45,12 @@ publishable release until the fallback also supplies both test fixture builds.
 
 The Mac job caps Cargo at four build jobs, has a three-hour timeout, and keeps
 one Cargo target directory and its toolchain under the runner workspace for
-reuse. It downloads checksum-pinned Temporal 1.9.1 and Codex 0.155.1 into the
-same workspace. It removes per-release bundles and archives after artifact
+reuse. It removes per-release bundles and archives after artifact
 upload. The Linux job waits for the exact commit's Rust CI check, then verifies
 the handoff's commit, version, and file hashes before signing. Check free space
 in `~/actions-runner/_work`; the persistent
 `.cargo-target` may be removed **only while the runner is idle** if space is
 needed, at the cost of a full rebuild.
-
-The native packaging step also runs `crates/ainc-mac/scripts/stage-ghostty.sh`.
-It uses the runner's Xcode Swift 6 toolchain and network access to resolve the
-exact Swift package revisions in `crates/ainc-mac/ghostty-bridge/Package.resolved`;
-it does not build Ghostty from source or require Zig. It stages GhosttyKit's
-prebuilt libghostty, its runtime resources, the checked-in built-in themes and
-license notices before the unsigned handoff is inventoried. See
-`crates/ainc-mac/ghostty-bridge/README.md` for provenance and checksum. The
-signed app's minimum macOS version remains 15.0.
 
 Sparkle's framework, helper apps and tools are pinned by version and archive digest
 in `crates/ainc-xtask/src/release/sparkle.rs`. Framework symlinks and executable

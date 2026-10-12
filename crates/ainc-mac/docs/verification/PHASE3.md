@@ -18,7 +18,7 @@ output and tool evidence arrive through the same snapshot as human Comments.
 ## Checks on this Mac
 
 - Full workspace tests and strict Clippy pass, with disposable SQLx databases and
-  scripted/loopback inference. Backend evidence is in [execution.md](../../../../docs/execution.md).
+  scripted/loopback inference. The backend this evidence covers was removed on 2026-10-12; see git history.
 - The 38-frame real Metal suite covers navigation, two window sizes, dialogs,
   search and the Evee panel, including negative capture-integrity controls.
 - `pilot_acceptance` drives the actual app through gpui-pilot: search, Unicode Ticket

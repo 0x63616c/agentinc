@@ -1,10 +1,10 @@
 # AgentInc
 
-A native macOS workspace built with Rust and GPUI. Its sidebar contains Tickets, Assistant, Agents, Automations, Terminal and Temporal, with the user row in the footer; Settings opens from the user menu or ⌘K. The Assistant provides full-page, Codex subscription-backed Evee conversations; there is no Today widget, Calendar page or Evee side pane. The design system behind every screen is documented in [docs/design-system.md](../../docs/design-system.md) and rendered live on the **Components** page (⌘K, "Components").
+A native macOS app built with Rust and GPUI. Its sidebar holds Overview, Smart Home, Todos and Calendar, with the user row in the footer; Settings opens from the user menu or ⌘K. The design system behind every screen is documented in [docs/design-system.md](../../docs/design-system.md) and rendered live on the **Components** page (⌘K, "Components").
 
 ## Build and run
 
-Requires macOS 15 or later, Xcode command-line tools, Swift 6 and Rust installed through rustup. `rust-toolchain.toml` selects Rust 1.98.1. GPUI comes from Zed commit `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`, pinned in `Cargo.toml` and `Cargo.lock`. Core/platform `font-kit` and platform `runtime_shaders` provide macOS text and Metal shaders. The bundle script also resolves the pinned GhosttyKit Swift package and stages its libghostty renderer, shell integration, terminfo and themes before signing. See `ghostty-bridge/README.md` for provenance and release packaging.
+Requires macOS 15 or later, Xcode command-line tools, Swift 6 and Rust installed through rustup. `rust-toolchain.toml` selects Rust 1.98.1. GPUI comes from Zed commit `4c902c9db22a82f5f3a14c02442e7f60ec40d9c8`, pinned in `Cargo.toml` and `Cargo.lock`. Core/platform `font-kit` and platform `runtime_shaders` provide macOS text and Metal shaders.
 
 ```sh
 crates/ainc-mac/scripts/bundle.sh
@@ -35,7 +35,7 @@ ordinary bundle.
 
 The development Dock/Finder icon is generated from `assets/AppIcon.png` with
 `scripts/build-dev-icon.sh` (requires ImageMagick, librsvg and macOS `iconutil`).
-The default border leaves Evee unobscured; pass `banner` to compare the angled
+The default border leaves the mark unobscured; pass `banner` to compare the angled
 strip alternative. Commit the generated `assets/AppIconDev.icns` when changing
 the production art. Launch the development app bundle to show this icon in the
 Dock; the bundled icon receives macOS's app-icon shape.
@@ -48,31 +48,22 @@ The ordinary GPUI interaction tests run with `cargo test --locked`. On macOS, ru
 cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell
 ```
 
-It captures frames across every route, three window sizes, dialogs, Temporal states and full-page Evee conversations. It checks rendered shell regions and the shared page frame, content width and Settings/Automations right edges. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
+It captures frames across every route, three window sizes, dialogs and the Settings pages. It checks rendered shell regions and the shared page frame, content width and right edges. Images go to `target/rendered-shell/`. This main-thread runner uses isolated test fixtures and is skipped on Linux; see [upgrade provenance and acceptance](docs/verification/GPUI_UPGRADE.md).
 
-## Evee and Tickets
+## Pages
 
-Install the official [Codex CLI](https://developers.openai.com/codex/cli), then open **Settings → Connections → Sign in with ChatGPT** and complete Codex’s browser sign-in. Evee uses your ChatGPT/Codex subscription; there is no API-key setup. Codex manages credentials in an app-specific profile. Connections shows the real sign-in state, Sign Out, and the model choices returned by Codex.
-
-Open **Assistant** in the sidebar to start, reopen, rename or delete Conversations. Existing single-Conversation history migrates into “Previous conversation”. Send with ↵ or the composer’s arrow; ⇧↵ inserts a new line. Failed replies remain retryable and Conversations persist on the daemon, including when the app closes.
-
-**Tickets** opens on a Kanban board with a lane per status (Backlog, To do, In progress, Blocked, Done, Cancelled). Drag cards between and within lanes; the order is saved. Switch to the grouped list, search, and filter by priority, label or assignee. A Ticket's page edits its description, status, priority, assignee and labels, relates it to other Tickets (blocks, relates to, duplicates, parent and Sub-Ticket), and shows its history, Comments, Work and the Conversation it came from. Create from any lane's + or from ⌘K, where Tickets are also found by title. Conversations, Tickets and product preferences are owned by `aincd` in Postgres. Its repeat-safe one-way import reads the previous SQLite database without migrating it in place. See [daemon ownership and setup](../../docs/ownership.md) and [native ownership verification](docs/verification/OWNERSHIP.md).
+**Overview** greets you by your local account name and shows the weather, the open Todos, the next Events and the state of the house, each one click from its page. **Smart Home** is the wall panel for the house: lights, the fan, climate, the Sonos rooms, alarms and Wi-Fi, with recent activity beside them; every control works on local state until the house is wired in. **Todos** is the checklist; tick items off in place, add one with New Todo. **Calendar** lists upcoming Events by day and creates one from New Event. Todos and Events are owned by `aincd` in Postgres per Workspace; switch Workspaces from the sidebar. See [daemon ownership and setup](../../docs/ownership.md).
 
 ## Using the shell
 
 The app retains one multi-thread Tokio runtime for concurrent HTTP requests and
-update-drain coordination; GPUI background tasks call into it. Codex login runs
-in the daemon, not on the app's UI thread. Tokio macros and test socket helpers
+update-drain coordination; GPUI background tasks call into it. Tokio macros and test socket helpers
 are dev-only. The direct Objective-C dependencies enable only the About panel's
 `NSApplication`, `NSDictionary` and `NSString` surfaces; GPUI selects its own
 platform features. The app and the pinned GPUI resolve one AccessKit version
 (0.24.1 in the lockfile).
 
-Sidebar destinations and Search navigate the active tab. Each tab retains its own Back/Forward history. Open tabs with ⌘T or +, switch with ⇧⌘[ / ⇧⌘], and close with ⌘W or the X revealed on hover. The tab strip scrolls horizontally when full; opening or selecting a tab brings it into view. Closing the final tab leaves a fresh Assistant tab.
-
-Ticket and Conversation details are part of that history: Back, Forward, tab
-switching and reopening the app restore the record itself. Detail tabs show its
-title, truncating long titles while keeping the close button reachable.
+Sidebar destinations and Search navigate the active tab. Each tab retains its own Back/Forward history. Open tabs with ⌘T or +, switch with ⇧⌘[ / ⇧⌘], and close with ⌘W or the X revealed on hover. The tab strip scrolls horizontally when full; opening or selecting a tab brings it into view. Closing the final tab leaves a fresh Overview tab. Hold ⌘ and the tab's close button reads ⌘W.
 
 <!-- shortcuts -->
 | Shortcut | Action |
@@ -93,11 +84,9 @@ title, truncating long titles while keeping the close button reachable.
 | ⇧↵ | New line |
 <!-- /shortcuts -->
 
-Search (⌘K) fuzzy-matches pages and actions, groups the results, remembers your recent choices, and supports ↑↓ and ↵ selection, pointer selection, bounded ⇥ and ⇧⇥ focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. Collapsing the sidebar leaves a compact icon rail. The profile menu offers updates, Settings and an adjacent Support menu (Help Center, Send Feedback, About). Available updates also appear in the sidebar. Settings holds persisted font family and size controls that update the whole app immediately. Transient notices appear as toasts above the status bar.
+Search (⌘K) fuzzy-matches pages and actions, groups the results, remembers your recent choices, and supports ↑↓ and ↵ selection, pointer selection, bounded ⇥ and ⇧⇥ focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. Collapsing the sidebar leaves a compact icon rail. The profile menu offers updates, Settings and an adjacent Support menu (Help Center, Send Feedback, About). Available updates also appear in the sidebar. Settings holds the theme presets and editor, custom theme files, and persisted font family and size controls that update the whole app immediately. Transient notices appear as toasts above the status bar.
 
-Terminal hosts a live Ghostty session in your home directory. It loads your Ghostty configuration, including font, keybinds and included files, then applies AgentInc's colors. The session and split panes stay alive when you visit another page; drag their dividers to resize them. With a Terminal pane focused, ⌘D splits right, ⇧⌘D splits below, ⌘W closes the focused pane when another exists, and ⇧⌘↵ or ⇧⌘= toggles a pane to fill the Terminal page. ⌘K opens Search without clearing the terminal; tab shortcuts, ⇧⌘U, ⌘, and ⌘1–6 retain their app actions. Other Ghostty bindings, including ⌃L, remain available.
-
-Development UI state saves to `~/Library/Application Support/AgentInc Development/session.json`; installed production state retains `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/distribution.md). Single-tab and older multi-tab files restore retained destinations and history; missing or invalid state starts on Assistant. The profile name/photo is read locally at runtime and is not bundled.
+Development UI state saves to `~/Library/Application Support/AgentInc Development/session.json`; installed production state retains `~/Library/Application Support/Agentinc OS/session.json`. See [channel isolation](../../docs/distribution.md). Single-tab and older multi-tab files restore retained destinations and history; missing or invalid state starts on Overview. The profile name/photo is read locally at runtime and is not bundled.
 
 For an isolated session without changing the regular app's state:
 
@@ -112,7 +101,6 @@ AINC_SESSION_PATH="$PWD/.local/test-session.json" \
 ## Source and verification
 
 - [Native acceptance report and screenshots](docs/verification/STATUS.md)
-- [Workspace import and native flow evidence](docs/verification/IMPORT.md)
 - `src/routes.rs`, `src/ui_state.rs`: navigation and persisted UI state, independent of the UI.
 - `src/shell.rs`, `src/shell/`, `src/ui/`: GPUI shell and the app-owned native component set.
 - `src/input.rs`: native text input adapted from the official GPUI example.

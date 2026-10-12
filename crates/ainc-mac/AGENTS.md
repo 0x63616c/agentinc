@@ -2,7 +2,7 @@
 
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
-- Product ownership and daemon configuration: `../../docs/ownership.md`; native acceptance evidence: `docs/verification/PHASE3.md`. Native tests must use an isolated daemon discovery file; never import the regular Application Support profile.
+- Product ownership and daemon configuration: `../../docs/ownership.md`. Native tests must use an isolated daemon discovery file; never touch the regular Application Support profile.
 - From the workspace root, build the native bundle with `crates/ainc-mac/scripts/bundle.sh`; the pinned toolchain and lockfile are at the workspace root.
 - The opt-in driver setup, protocol, upstream seam and acceptance commands are in `docs/GPUI_PILOT.md`; normal bundles must keep `automation` off.
 - Keep GPUI `font-kit` enabled on macOS. Current upstream pin, native acceptance and the main-thread Metal regression command are documented in `docs/verification/GPUI_UPGRADE.md`; inspect saved full PNGs at logical resolution before diagnosing missing regions from inline previews.

@@ -13,10 +13,9 @@ correct app menu and Dock name. The app's About panel and sidebar read the compi
 version/channel; development shows `VERSION-dev` and its commit.
 
 Channel inventory: discovery file, owner token, daemon lock/log, managed Postgres
-directory, Temporal SQLite and helper lock all live below the channel's support
-directory. Session, Codex credentials and update preferences/cache live there too.
-The daemon, Postgres and Temporal choose free loopback ports independently; Temporal
-namespace and worker group have channel-specific names. The bundle identifier is
+directory and helper lock all live below the channel's support directory. Session and
+update preferences/cache live there too. The daemon and Postgres choose free loopback
+ports independently. The bundle identifier is
 also the GPUI window app ID, separating LaunchServices identity and preferences.
 Development does not check or install production updates. Explicit `AINC_*` profile
 overrides remain for isolated tests and external development stacks; they can connect
@@ -78,10 +77,8 @@ directory, and never passed as secret values on command lines. Required secrets:
 
 ## Personal runtime
 
-The Apple Silicon bundle (macOS 15 or later) includes portable Postgres 16.15, the Temporal CLI's persistent local server and the
-Codex executable. Postgres comes from the pinned Theseus 16.15.0 archive and SHA-256 in
-`crates/ainc-xtask/src/release/prepare.rs`. Temporal and Codex are taken from the build machine and
-recorded by hash in the handoff. Required portable libraries travel with Postgres;
+The Apple Silicon bundle (macOS 15 or later) includes portable Postgres 16.15. It comes from the pinned Theseus 16.15.0 archive and SHA-256 in
+`crates/ainc-xtask/src/release/prepare.rs`. Required portable libraries travel with Postgres;
 development headers and test executables are excluded. Every Mach-O is audited with
 `otool -L` before packaging: only system paths, `@loader_path` and `@rpath` are allowed.
 A fresh Mac does not need Homebrew, Docker, Tilt or a manual database setup.
@@ -90,11 +87,10 @@ The daemon discovery lock owns startup. Without a configured `DATABASE_URL`, `ai
 initializes its private runtime directory beside discovery, protected mode 0700.
 The app passes its `AINC_DATABASE_URL` override to the companion it starts as `DATABASE_URL`;
 without that override the companion inherits the app's `DATABASE_URL`.
-Postgres uses a random persisted password, SCRAM authentication and loopback only;
-Temporal uses a persistent SQLite file, a stable namespace/queue and no web UI.
+Postgres uses a random persisted password, SCRAM authentication and loopback only.
 An external configured database/runtime keeps its existing ownership model. A lifetime-pipe
-helper owns the bundled services: daemon exit or SIGKILL closes the pipe, then the helper
-flushes both stores. Its separate lock serializes immediate restart. PostgreSQL uses
+helper owns the bundled database: daemon exit or SIGKILL closes the pipe, then the helper
+flushes it. Its separate lock serializes immediate restart. PostgreSQL uses
 fast shutdown to disconnect residual pool sockets while safely rolling back and checkpointing.
 Companion startup diagnostics are retained in `daemon.log` beside discovery.
 Native process startup and pre-exec launch clear inherited signal masks and reset
@@ -103,8 +99,6 @@ SIGCHLD, so launching from a UI dispatch thread cannot disable child reaping.
 blocked and ignored, including drain/restart and crash recovery.
 
 This is a personal, single-machine runtime, not a hosted or multi-user deployment.
-Temporal's local server is explicitly a development server; this choice is limited
-to the accepted single-user scope. Its loopback API is accessible to local processes.
 Data stays outside the app bundle and survives replacement. Postgres major-version
 changes are refused until an explicit migration exists. Automatic down migrations
 are never run. Back up the profile with the daemon stopped for a consistent copy.
@@ -183,5 +177,4 @@ Acceptance output is recorded in
 [the verification evidence](../crates/ainc-mac/docs/verification/phase5/acceptance.txt).
 The signed code commit above precedes the final documentation-only evidence commit.
 
-Upstream references: [rcodesign](https://gregoryszorc.com/docs/apple-codesign/stable/apple_codesign_rcodesign.html),
-[Temporal local server](https://github.com/temporalio/documentation/blob/main/docs/cli/command-reference/server.mdx).
+Upstream reference: [rcodesign](https://gregoryszorc.com/docs/apple-codesign/stable/apple_codesign_rcodesign.html).

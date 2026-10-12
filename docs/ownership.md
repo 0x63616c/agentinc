@@ -1,39 +1,24 @@
 # Daemon ownership
 
-This is the phase-2 migration record. Current SDK execution, runtime configuration,
-Tickets and crash recovery are documented in [execution.md](execution.md).
+`aincd` owns product writes. The Mac app renders owned snapshots from the generated `ainc-client`; it never waits for SQL on the foreground.
 
-`aincd` owns product writes and Codex processes. The Mac app renders owned snapshots from the generated `ainc-client`; it has no SQLite dependency and never waits for SQL or a provider process on the foreground. The existing text-only Codex protocol, ephemeral threads, bounded replies, sign-in flow and retry context are preserved in `crates/ainc-daemon/src/codex.rs`.
+## Commands and receipts
 
-## Acknowledgement and execution
+`GET /v1/todos`, `GET /v1/calendar` and `GET /v1/workspaces` return whole snapshots for the selected Workspace. `POST /v1/<resource>/commands` accepts a UUID operation ID and a closed command enum. A transaction commits the product change and its receipt before returning. Repeating an operation ID returns the same record; changing its payload returns a conflict. Receipts are scoped per Workspace for Todos and Events. The app keeps an uncertain operation ID for reconciliation instead of silently issuing another mutation; a failed refresh cannot be mistaken for an empty successful read.
 
-`GET /v1/conversations` returns Conversations, ordered turns and typed connection preferences. Tickets use their own resource API. `POST /v1/conversations/commands` accepts a UUID operation ID and a closed command enum. A transaction commits the product change and receipt before returning its acknowledgement. Repeating an operation ID returns the same record; changing its payload returns a conflict. The app retains an uncertain operation ID for reconciliation instead of silently issuing another mutation. Pending UI changes are disabled and labelled; a failed refresh cannot be mistaken for an empty successful read.
+Only shell layout, navigation, theme and font remain app-local, in a versioned UI-state file. An unreadable or future-version file is displayed as unavailable and is not overwritten.
 
-Queued turns are Postgres records. The daemon claims and executes them independently of HTTP connections and native windows. One pending turn per Conversation is enforced in Postgres; different Conversations can progress concurrently. A session advisory lock prevents a second daemon from recovering a live runner's work. Completed results are retained and saved again on database failure without calling Codex again. Deleting a Conversation with accepted work is refused.
+## Local companion and configuration
 
-This phase preserves the current text runner. On daemon restart queued work resumes and an interrupted running turn becomes visibly retryable with an unknown-outcome message. It does not silently replay a provider call. SDK session orchestration, cancellation and stronger process-crash recovery remain phase 3; there are no new public SDK or Temporal concepts in this change.
-
-## Legacy import
-
-Before publishing readiness, the daemon runs the SQLx migrations and imports `assistant.sqlite3` and `session.json` from `AINC_LEGACY_DIR`. The installed default is `~/Library/Application Support/Agentinc OS/`. `cargo xtask dev` always overrides that with this worktree's `.local/dev/legacy`, and gives Codex `.local/dev/codex`. Development never imports the regular profile automatically.
-
-SQLite is opened read-only and read inside a consistent transaction, including committed WAL content. The destination transaction imports schema 0/1 single-chat history or schema 2 Conversations, turn IDs/order, the legacy `todos` table (imported as Tickets), assistant settings and the original session JSON. Interrupted turns become failed/retryable; import never dispatches a model call. A committed source receipt prevents reimport, including resurrection of later-deleted records. Future SQLite schemas, invalid session JSON and a populated destination without an import receipt are refused. Failure rolls back destination rows; source data is not migrated in place or deleted. Tests use disposable synthetic copies of the original schemas, never the regular Application Support directory.
-
-The import is the `legacy-import` cargo feature (on by default) and runs on the first start only: a `<done>` row in `legacy_imports` stops later starts from looking at the legacy directory. Remove the feature, `legacy.rs` and the `rusqlite` dependency after 2027-01-01.
-
-Only shell layout, navigation and font remain app-local. Their versioned UI-preference DTO preserves the saved `tasks`/`evee` route aliases (today's Tickets and Assistant) and older tab histories. An unreadable or future-version file is displayed as unavailable and is not overwritten. Product preferences (selected model and Conversation) are daemon-owned.
-
-## Local companion and remote configuration
-
-The bundle includes and signs `Contents/MacOS/aincd`. The app checks the discovered daemon on a background executor. If it is unavailable, the app starts that companion using `AINC_DATABASE_URL` (a Postgres URL); the child survives app quit. The daemon locks its discovery file, binds an ephemeral loopback port and atomically publishes the URL. It creates an owner-only `owner-token` next to that file. Postgres remains an independently managed dependency; this phase does not bundle a database server.
+The bundle includes and signs `Contents/MacOS/aincd`. The app checks the discovered daemon on a background executor. If it is unavailable, the app starts that companion; the child survives app quit. The daemon locks its discovery file, binds an ephemeral loopback port and atomically publishes the URL. It creates an owner-only `owner-token` next to that file. Without `DATABASE_URL` it starts the bundled Postgres ([distribution.md](distribution.md)).
 
 - `AINC_DISCOVERY_FILE`: URL discovery file; installed default is `…/Agentinc OS/daemon/api-url`.
 - `AINC_API_URL`: explicitly configured HTTP(S) URL; disables companion launch.
 - `AINC_TOKEN_FILE`: bearer credential file; defaults beside discovery.
-- `AINC_LEGACY_DIR`, `AINC_CODEX_HOME`, `AINC_CODEX_PATH`: daemon-side import/profile/provider overrides. The app does not access provider credentials.
-- `AINC_SESSION_PATH`: UI-only preferences; set it for every isolated app launch.
+- `DATABASE_URL`: an external Postgres for the daemon; `AINC_DATABASE_URL` on the app is passed to the companion as `DATABASE_URL`.
+- `AINC_SESSION_PATH`: UI-only state; set it for every isolated app launch.
 
-Product endpoints require the owner bearer credential. The generated CLI reads `AINC_TOKEN_FILE` or `.local/dev/owner-token`, with its existing `AINC_API_URL` override. The daemon still binds only loopback; remote exposure requires the private TLS/Tailscale deployment configuration from the architecture plan. Multi-user identity is phase 5.
+Product endpoints require the owner bearer credential. The generated CLI reads `AINC_TOKEN_FILE` or `.local/dev/owner-token`, with its `AINC_API_URL` override. The daemon binds only loopback.
 
 For development:
 
@@ -41,24 +26,9 @@ For development:
 cargo xtask dev
 # In another terminal, using the same worktree:
 AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" \
-  crates/ainc-mac/scripts/pilot.sh "$PWD/.local/phase2-pilot"
+  crates/ainc-mac/scripts/pilot.sh "$PWD/.local/pilot"
 ```
-
-The shared OverlayHost, Route/Page catalogue and design tokens were already imported. This phase preserves them and finishes the remaining persistence/unavailable-state work rather than rebuilding those components.
 
 ## Checks
 
-`crates/ainc-daemon/tests/product.rs` tests real Postgres command receipts, constraints, read authorization and atomic import. `tests/process.rs` starts the real daemon with a gated Codex protocol fixture, closes its HTTP client while a reply is pending and proves that the completed reply survives. `ainc-client/tests/round_trip.rs` checks the generated enum command and nullable snapshot over real HTTP.
-
-```sh
-cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets -- -D warnings
-# DATABASE_URL must point to a disposable Postgres admin database (SQLx creates test databases).
-cargo test --locked --workspace
-cargo xtask generate --check
-cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell
-AINC_DISCOVERY_FILE="$PWD/.local/dev/api-url" \
-  cargo test --locked -p ainc-mac --features automation --test pilot_acceptance -- --nocapture
-```
-
-Native acceptance is recorded in `crates/ainc-mac/docs/verification/OWNERSHIP.md`. Live subscription calls are opt-in; the default tests never use a real account or paid model.
+`crates/ainc-daemon/tests/api.rs` and the module tests cover real Postgres command receipts, Workspace scoping and authorization. `ainc-client/tests/round_trip.rs` and `ainc-cli/tests/round_trip.rs` check the generated clients over real HTTP. `just test` runs all of them.

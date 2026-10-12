@@ -1,5 +1,8 @@
 # Cohesion plan
 
+> Historical. Written before 2026-10-12, when Agents, Tickets, Automations, Conversations,
+> the terminal and Temporal were removed from the product. Items about them no longer apply.
+
 A complete, ordered plan to make the repo cohesive: one way to do each thing in the code, in the
 UI, in the tooling. It was produced by a full review on 2026-10-02 (four parallel audits over
 `crates/ainc-mac`, `crates/ainc-daemon` + `crates/turnkeel` + clients, build timings and tooling,

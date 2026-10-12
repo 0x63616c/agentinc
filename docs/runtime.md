@@ -15,8 +15,7 @@ that binding belongs to the caller's command transaction. `run_by_id` retrieves 
 without redispatch. Session IDs already support attachment across processes.
 
 `Run::cancel` and `Session::cancel` request cancellation. They do not undo external effects
-or establish an authorization fence; Ticket assignment generations and tool permission
-checks must enforce that product boundary. A pending external effect still needs an
+or establish an authorization fence; the product must enforce that boundary itself. A pending external effect still needs an
 idempotency receipt or explicit unknown-outcome reconciliation.
 
 The real-server checks live in `crates/turnkeel/tests/recovery.rs`:
@@ -29,7 +28,6 @@ The real-server checks live in `crates/turnkeel/tests/recovery.rs`:
 
 Run `cargo test --locked -p turnkeel -p turnkeel-macros` and
 `cargo clippy --locked -p turnkeel -p turnkeel-macros --all-targets -- -D warnings`.
-Tests use only scripted models, no subscription credentials. The activity-crash and live-event follow-up is documented in [provider.md](provider.md).
-This foundation does not claim durable product outbox dispatch, Ticket fencing,
-provider compatibility, bounded session history, or native UI acceptance; those remain
-phase 3 delivery gates.
+Tests use only scripted models, no subscription credentials.
+This foundation does not claim durable product outbox dispatch, provider compatibility,
+bounded session history, or native UI acceptance.

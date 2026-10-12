@@ -1,33 +1,26 @@
 # How to add things
 
-Recipes against the code as it is today. Each ends with a "Planned" line where
-[the cohesion plan](cohesion-plan.md) changes the shape; follow the plan once that
-work package has landed. Vocabulary is [CONTEXT.md](../CONTEXT.md).
+Recipes against the code as it is today. Vocabulary is [CONTEXT.md](../CONTEXT.md).
 
 ## Add an endpoint
 
 1. Put the handler in the daemon module that owns the resource (`crates/ainc-daemon/src/<resource>.rs`,
-   for example `tickets.rs`, `automations.rs`, `workspaces.rs`). Annotate it with
+   for example `todos.rs`, `calendar.rs`, `workspaces.rs`). Annotate it with
    `#[utoipa::path(...)]` carrying the method, path, `operation_id = "{resource}_{action}"`,
    request body and every response, each error status as `ErrorBody`.
 2. Return `Result<Json<T>, ApiError>`; errors are `ApiError::new(status, code, message)` from
-   `product.rs`. Write mutations as a command on `POST /v1/<resource>/commands` with a UUID
-   `operation_id` and a receipt table, like the existing resources, so replays return the
-   original receipt.
-3. Add `.route(...)` in the module's `router()` and the handler to the `paths(...)` list of the
-   `#[openapi]` derive in `lib.rs` (`product_router()` merges the module routers).
+   `api.rs`. Write mutations as a command on `POST /v1/<resource>/commands` with a UUID
+   `operation_id` and a receipt scope (`receipts.rs`), like the existing resources, so replays
+   return the original receipt.
+3. Add `.route(...)` in the module's `router()`, merge it in `api::routes()`, and add the handler
+   to the `paths(...)` list of the `#[openapi]` derive in `lib.rs`.
 4. Run `cargo xtask generate`: it rewrites `api/openapi-3.0.json`, `crates/ainc-client/src/generated.rs`
    and `crates/ainc-cli/src/generated.rs`. CI's `generated_api_and_clients_are_current` fails if
    you forget.
 5. Add a round trip to `crates/ainc-client/tests/round_trip.rs` using the generated client against
-   `ainc_daemon::product_router` under `#[sqlx::test(migrations = "../ainc-daemon/migrations")]`.
-6. Tool parity: anything a person can do in the UI an agent must be able to do. A new `TicketCommand`
-   variant reaches Evee automatically, because `conversations/tools.rs` derives the `ticket_command`
-   schema from the OpenAPI `TicketCommand` schema; a new resource needs its own `CommandFamily` impl there (the
-   `CommandTool` and `ReadTool` come with it), and a CLI group (see "Add a CLI command").
-
-The retired `/v1/state` and `/v1/commands` adapters are gone. Use the resource-specific
-`/v1/conversations` and `/v1/tickets` APIs and their command endpoints.
+   `ainc_daemon::app` under `#[sqlx::test(migrations = "../ainc-daemon/migrations")]`.
+6. Parity: anything a person can do in the UI must be possible through the API, so the CLI (see
+   "Add a CLI command") and any later agent tool reach it too.
 
 ## Add a page
 
@@ -35,14 +28,12 @@ The retired `/v1/state` and `/v1/commands` adapters are gone. Use the resource-s
    icon, `in_sidebar`) to `PAGES` in the same file. Sidebar order, `⌘1…` numbering and the ⌘K
    palette all read `PAGES`; bump the `PAGES.len()` assertion in its tests.
 2. Build the page as its own view in `crates/ainc-mac/src/<page>.rs` from `ui::` components
-   (see [design-system.md](design-system.md)); render inside `Page::document` or `Page::canvas`.
-3. Wire it in `shell.rs`: hold the view on `Shell`, construct it in `Shell::new`, and add the
-   `Route::<Page> => ...` arm to the content `match` in `render`.
+   (see [design-system.md](design-system.md)) implementing `page::Page`; render inside
+   `PageFrame::document`, `fill` or `canvas`.
+3. Wire it in `shell.rs`: add a `PageHandle` for it to the `pages` list in `Shell::new`.
 4. Add a `suite.capture("<page>", Route::<Page>, ...)` frame to `crates/ainc-mac/tests/rendered/runner.rs`
    and run `cargo test --locked -p ainc-mac --features rendered-tests --test rendered_shell`
    on macOS; `routes_and_history_use_shell_actions` in `shell.rs` covers navigation.
-
-Planned: a `Page` trait with `Page::title()` from `PAGES` (M3, S20); page dialogs leave the shell.
 
 ## Add a component
 
@@ -53,22 +44,12 @@ rejects color literals outside `ui/tokens.rs`.
 
 ## Add a tool
 
-1. In the SDK, a tool is an async fn with `#[tool]` (doc comment becomes the description) or a
-   type implementing `turnkeel::Tool`. Mark tools that must not repeat
-   `#[tool(idempotent = false)]`; the engine gives those one attempt. Use the `ToolCtx`
-   idempotency key to make external effects safe to retry. `Runtime::test()` calls every
-   idempotent tool twice and fails the run if results differ.
-2. In the daemon, Ticket agents get `CodingTool` per `coding::Permission` (`ReadFile`, `WriteFile`,
-   `Shell`, `Git`) plus `CommentTool`, assembled in `execution.rs`; Evee gets `list_tickets` and
-   `ticket_command` from `conversations/tools.rs`. A new coding capability is a `Permission`
-   variant and a `CodingTool` arm; a new Evee capability is a `Tool` impl calling the same
-   command handler the UI uses.
-3. Policy: `WorkspacePolicy` confines effects to `AINC_WORKSPACE_DIR`; `AINC_TOOL_ALLOW` lists the
-   permitted tool names and absent configuration allows none. Every effect first commits an
-   intent receipt and a Comment. Read [execution.md](execution.md) before adding an effectful
-   tool, and cover it with a scripted-model test (`turnkeel::testing`).
-
-Planned: `#[tool]` names move to `turnkeel.*` (S8); one shared daemon test fixture (S18).
+In the SDK, a tool is an async fn with `#[tool]` (doc comment becomes the description) or a
+type implementing `turnkeel::Tool`. Mark tools that must not repeat
+`#[tool(idempotent = false)]`; the engine gives those one attempt. Use the `ToolCtx`
+idempotency key to make external effects safe to retry. `Runtime::test()` calls every
+idempotent tool twice and fails the run if results differ. The product has no agent tools yet;
+when they return, a tool calls the same command handler the UI uses.
 
 ## Add a migration
 
@@ -79,38 +60,27 @@ Planned: `#[tool]` names move to `turnkeel.*` (S8); one shared daemon test fixtu
    drop or rename in a later release, inside the compatibility window ([distribution.md](distribution.md)).
 3. Naming: a lifecycle column is `status`, never `state`; times are epoch-second `bigint` columns
    named `*_at` (`created_at`, `updated_at`) with `extract(epoch FROM clock_timestamp())::bigint`
-   for event times; never format times in SQL. User-visible records use `bigint` IDs; execution
-   records use text UUIDs. Add a Postgres test that exercises the new shape through the command
-   handler, not raw SQL.
-
+   for event times; never format times in SQL. User-visible records use `bigint` IDs. Add a
+   Postgres test that exercises the new shape through the command handler, not raw SQL.
 4. Daemon SQL is `sqlx::query!`/`query_as!`/`query_scalar!`, checked against the migrations at
    compile time from `.sqlx/` (builds set `SQLX_OFFLINE`; no database needed). After changing a
    query or a migration, run `cargo xtask prepare-sqlx` (needs `DATABASE_URL` and
    `cargo install sqlx-cli --version 0.8.6 --locked --no-default-features --features rustls,postgres`)
    and commit `.sqlx/`. `cargo xtask check` and `test` fail on a stale `.sqlx/`, and `check`
-   rejects runtime `sqlx::query(` in production code. Postgres enums stored as `text` bind as
-   `.as_str()` or `value as _` and read with a `"col: Type"` override.
-5. A `state` column becomes `status` only in a migration that already touches its table. Expand:
-   add `status`, backfill it, and add a trigger that keeps the two equal whichever an older
-   daemon or a current one writes (`20261004010000_occurrence_status.sql` is the pattern); switch
-   readers and writers. Contract, in a later release inside the compatibility window: drop the
-   trigger, its function and `state`. `occurrences.state` is at the expand step (its API field
-   `OccurrenceView.state` renames with the contract).
+   rejects runtime `sqlx::query(` in production code.
 
 ## Add a CLI command
 
 The CLI is generated; you add an operation, not a command.
 
-1. Name the endpoint's `operation_id` `{resource}_{action}` (`tickets_command`, `automations_state`).
+1. Name the endpoint's `operation_id` `{resource}_{action}` (`todos_command`, `calendar_state`).
    `ainc` splits it at the first `_` into `ainc {resource} {action}`, mapping `state` to `list`;
    the few exceptions are the `operation_group` match in `crates/ainc-cli/src/main.rs`.
 2. For a `.../commands` endpoint whose body is a `kind`-tagged enum, add the resource to the
    `variants()` map in `main.rs` so each variant becomes a subcommand with schema-derived flags
-   (`ainc tickets create --title ...`); `--json-body FILE` always works.
+   (`ainc todos add --title ...`); `--json-body FILE` always works.
 3. Run `cargo xtask generate`, then extend `crates/ainc-cli/tests/round_trip.rs`, which runs the
    built `ainc` binary against a real daemon.
-
-Planned: operation IDs become an `OperationId` type shared with receipts (D1).
 
 ## Cut a release
 

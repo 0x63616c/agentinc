@@ -1,67 +1,19 @@
 # AgentInc
 
-A personal operating system where a human and agents work through the same constructs. Its first slice is a development environment where agents write code.
+A personal life OS: one native app for the Overview, the Smart Home, Todos and the Calendar, with a local daemon that owns the data. Agents will join later on the Turnkeel SDK and will use the same constructs a person does.
 
 ## Language
 
 **AgentInc**:
-The personal operating system where people and agents share the same constructs. Formerly named Agentinc OS.
+The personal operating system. Formerly named Agentinc OS.
 
 **Owner**:
-The human a Workspace belongs to; every Agent acts under the Owner's credentials and on the Owner's behalf.
+The human a Workspace belongs to.
 _Avoid_: principal, user (when the Owner is meant), admin
 
 **Workspace**:
-The container that scopes every record: Tickets, Agents, Automations, Conversations and Connections. An Owner can have several.
+The container that scopes every record: Todos and Events. An Owner can have several and switches between them.
 _Avoid_: project, tenant, organization
-
-**Agent**:
-A named worker with a model and instructions, created at runtime, that holds Conversations and can be assigned Tickets. Evee is one.
-_Avoid_: bot, worker, assistant (except as the Assistant page's name)
-
-**Evee**:
-The assistant the user talks to in AgentInc, and the single point of contact who turns requests into tracked work.
-_Avoid_: main agent, supervisor, orchestrator, firstmate
-
-**Conversation**:
-An ongoing, resumable exchange of messages between the user and an agent such as Evee.
-_Avoid_: chat, thread, session
-
-**Turn**:
-One exchange in a Conversation: a user message, the tool calls it leads to, and the Agent's reply.
-_Avoid_: round, step, request
-
-**Ticket**:
-A unit of tracked work, shared by humans and agents.
-_Avoid_: task, issue, job, backlog item
-
-**Comment**:
-A message posted on a Ticket by the user or an agent; comments are the Ticket's work log.
-_Avoid_: note, reply, update
-
-**Label**:
-A short text tag on a Ticket, at most ten per Ticket, drawn in a stable colour per name.
-_Avoid_: tag
-
-**Work**:
-One run of an Agent on an assigned Ticket, from assignment to its result Comment. Work has its own state (queued, running, completed, failed, cancelled), which is never a Ticket status.
-_Avoid_: run, job, execution, ticket run
-
-**Activity**:
-One recorded change in a Ticket's history: created, renamed, status, assigned, labels, links and Work lifecycle.
-_Avoid_: event, audit entry, history item
-
-**Environment**:
-Reserved for a place other than this Mac where an agent's work runs, such as a container or a remote machine. Nothing uses it yet.
-_Avoid_: box, sandbox, machine
-
-**Automation**:
-A saved rule that initiates agent work when its trigger fires.
-_Avoid_: cron job, background task
-
-**Occurrence**:
-One firing of an Automation, linked to the Ticket it creates.
-_Avoid_: run, job
 
 **Todo**:
 One item on the Owner's checklist in a Workspace: a title, done or not.
@@ -75,13 +27,13 @@ _Avoid_: schedule, agenda
 One entry on the Calendar: a title with a start and an end.
 _Avoid_: appointment, meeting, booking
 
-**Connection**:
-A user's link to an external account or provider that makes its capabilities available in AgentInc.
-_Avoid_: integration, account
+**Overview**:
+The first page: a greeting, the weather, the open Todos, the upcoming Events and the state of the house.
+_Avoid_: dashboard, home (that is the Smart Home)
 
-**Terminal**:
-A shell the daemon keeps running for a Workspace, which the Mac app attaches to and detaches from without ending it.
-_Avoid_: session, pty
+**Smart Home**:
+The page that controls the house: lights, fan, climate, Sonos rooms, alarms and Wi-Fi. Today it works on local state only.
+_Avoid_: home automation, devices page
 
 **Route**:
 A named destination in the AgentInc app's navigation.
@@ -97,7 +49,10 @@ The short bar attached to the bottom inside the main content card.
 ## Reserved words
 
 **Session**:
-Reserved for the SDK (Turnkeel): a conversation with an agent that outlives one turn. In the product, say Conversation. The Mac app's persisted UI state (route history, panes, font) is `UiState`, not a session.
+Reserved for the SDK (Turnkeel): a conversation with an agent that outlives one turn. The Mac app's persisted UI state (route history, panes, font) is `UiState`, not a session.
+
+**Agent**, **Conversation**, **Ticket**, **Automation**, **Connection**:
+Reserved for the agent features that will come back on the SDK. Nothing in the product uses them today.
 
 ## Avoid everywhere
 

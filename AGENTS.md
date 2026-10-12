@@ -1,7 +1,7 @@
 # AgentInc
 
 This repo holds Turnkeel (the SDK, `crates/turnkeel`) and AgentInc (the app and daemon,
-`crates/ainc-*`). The SDK comes first because every agent in the app runs on it.
+`crates/ainc-*`). The product has no agents today; when they return they run on the SDK.
 
 Turnkeel is a Rust SDK for building AI agents. You define an agent (model, instructions, tools),
 start a run, and get a result. Every run is durable: it survives crashes and restarts
@@ -22,7 +22,7 @@ is imported. Keep it that way.
 ## Commands
 
 Four things, from the repo root (`just` lists them): `just dev` runs the whole app (Postgres,
-Temporal, daemon and Mac app under Tilt, rebuilding on change), `just check` is the fast static
+daemon and Mac app under Tilt, rebuilding on change), `just check` is the fast static
 gate (fmt, clippy, native UI checks, the OpenAPI lint; the pre-commit hook runs it), `just test` is `check` plus every
 other CI check, `just release patch|minor|major` bumps the version and commits. Everything else
 (`cargo xtask`, `bundle.sh`) is plumbing those use. Any `just` recipe points git at the tracked
@@ -34,7 +34,7 @@ Daemon SQL is `sqlx::query!`-checked against `.sqlx/` (`cargo xtask prepare-sqlx
 Languages: Rust, with no Python. Tooling, checks, release steps and CI helpers are `cargo xtask`
 subcommands (`cargo xtask` with no arguments lists them), not scripts. Shell is only for thin
 wrappers around OS tools (`bundle.sh`, `codesign`). Swift and Objective-C only in
-`crates/ainc-mac/ghostty-bridge/`, `update_window.m` and the OS acceptance tests.
+`update_window.m` and the OS acceptance tests.
 
 ## How to build
 
@@ -48,7 +48,7 @@ No sleeps or timers in tests. Coordinate on state or explicit gates.
 ## Layout
 
 Flat: every crate lives directly under `crates/`. No nesting; related crates share a
-prefix instead (`crates/ainc-tickets`, never `crates/ainc-mac/tickets`).
+prefix instead (`crates/ainc-todos`, never `crates/ainc-mac/todos`).
 A module with children is `foo.rs` beside `foo/`, never `foo/mod.rs`; every Mac app file opens
 with a `//!` line. The product is spelled AgentInc (the legacy data dir `Application Support/Agentinc OS/` aside),
 product env vars are `AINC_*` and SDK ones `TURNKEEL_*`; `cargo xtask check-names` and
@@ -57,7 +57,6 @@ For the accepted product plan, see [docs/architecture.md](docs/architecture.md) 
 [docs/adr/](docs/adr/). Crate names below describe the current source.
 Adding an endpoint, page, component, tool, migration or CLI command, or cutting a release:
 follow the recipe in [docs/how-to.md](docs/how-to.md).
-Refactors in flight and the standards they enforce: [docs/cohesion-plan.md](docs/cohesion-plan.md).
 
 - `crates/turnkeel` — the SDK. Public modules at `src/*.rs`. The private engine at
   `src/engine/`. Test helpers at `src/testing/`.
@@ -65,7 +64,8 @@ Refactors in flight and the standards they enforce: [docs/cohesion-plan.md](docs
   never depend on it directly.
 - `crates/ainc-mac` — the native GPUI AgentInc app. Its Cargo package and binary are named
   `ainc-mac` and `AgentInc`. Build its bundle with `crates/ainc-mac/scripts/bundle.sh`; see its README.
-- `crates/ainc-daemon` — `aincd`, the daemon: HTTP API, Postgres state, agent execution.
+- `crates/ainc-daemon`: `aincd`, the daemon: HTTP API and Postgres state for Workspaces, Todos
+  and the Calendar. Every mutation is a command with a UUID operation id and a receipt.
 - `crates/ainc-client`, `crates/ainc-cli` — the API client generated from `api/` by
   `cargo xtask generate`, and the `ainc` CLI built on it.
 - `crates/ainc-release` — release identity, version compatibility, signed update manifests
@@ -85,26 +85,14 @@ needs to become its own crate.
 - **SDK** (`turnkeel`) runs *one agent* durably. Boundary test: does this make
   sense with a single agent and no UI? If yes, it belongs in the SDK.
 - **AgentInc** is a personal life-OS app; its native client is at `crates/ainc-mac`.
-  The daemon owns product state; migration, isolated profile overrides and local
-  companion setup are documented in `docs/ownership.md`; current runtime and tool policy
-  are in `docs/execution.md`; scheduled Ticket grants, overlap/catch-up policy and
-  phase-4 evidence are in `docs/automations.md`; the Ticket board
-  (statuses, order, relationships, history) is in `docs/tickets.md`, and
-  every Ticket writer takes the workspace board lock before any row lock. Rule: anything a human can do in
-  its UI, an agent can do through the same tools.
+  Pages: Overview, Smart Home (local state only for now), Todos, Calendar. The daemon owns
+  product state (Workspaces, Todos, Events); companion setup and the `AINC_*` configuration
+  are in `docs/ownership.md`. Rule: anything a human can do in its UI must be possible
+  through the same API, so the CLI and any later agent tool reach it too.
 
-There is no framework layer yet. Extract one from the OS later, once the generic parts
-are obvious. Do not start it early.
-
-OS constructs (settled, seven), named as in [CONTEXT.md](CONTEXT.md): Agents (created at
-runtime, with a model and instructions), Conversations (map to SDK sessions), Tickets (shared
-human/agent, assignable to an Agent; Comments are the work log; a run on a Ticket is Work),
-Automations (trigger + Agent + prompt; each firing is an Occurrence), Connections (external
-accounts contributing tools), and two planned and not yet in CONTEXT.md: Knowledge and Inbox
-(human view over an event stream). Vocabulary and avoid-words live in CONTEXT.md.
-
-OS MVP: tickets, a minimal agents registry, and one automation: "ticket assigned to an
-agent → run it".
+Agents, Tickets, Automations, Conversations and Connections were built once and removed on
+2026-10-12 (the ADRs describing them stay as history). When they return they are built on the
+SDK, additively. Vocabulary and avoid-words live in [CONTEXT.md](CONTEXT.md).
 
 ## How the engine works
 
@@ -144,11 +132,11 @@ wants. To wait for a session to finish a turn, read `session.events()` until
 Add a test for every behaviour change in the loop. The test should not mention Temporal;
 if it has to, the public API has leaked.
 
-Personal packaging, update signing and bundled runtime ownership: [docs/distribution.md](docs/distribution.md).
+Personal packaging, update signing and bundled Postgres ownership: [docs/distribution.md](docs/distribution.md).
 The production/development channel and isolation rule is also documented there;
 `ainc-identity` is its single code source.
 
-Stable runtime deployment and process-recovery checks: [docs/runtime.md](docs/runtime.md).
+SDK runtime deployment and process-recovery checks: [docs/runtime.md](docs/runtime.md).
 
 Verify with `just test`, which runs every CI check and should be clean.
 
