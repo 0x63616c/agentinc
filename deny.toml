@@ -10,6 +10,8 @@ ignore = [
   "RUSTSEC-2024-0436", # paste
   "RUSTSEC-2026-0192", # ttf-parser
   "RUSTSEC-2026-0206", # rustybuzz
+  # serde_yaml, pulled in only by progenitor inside the build-time API generator.
+  "RUSTSEC-2024-0449", # unsafe-libyaml
 ]
 
 [licenses]
