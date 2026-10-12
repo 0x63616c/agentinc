@@ -68,7 +68,7 @@ are dev-only. The direct Objective-C dependencies enable only the About panel's
 platform features. The app and the pinned GPUI resolve one AccessKit version
 (0.24.1 in the lockfile).
 
-Sidebar destinations and Search navigate the active tab. Each tab retains its own Back/Forward history. Open tabs with ⌘T or +, switch with ⇧⌘[ / ⇧⌘], and close with ⇧⌘W or the X revealed on hover. The tab strip scrolls horizontally when full; opening or selecting a tab brings it into view. Closing the final tab leaves a fresh Assistant tab.
+Sidebar destinations and Search navigate the active tab. Each tab retains its own Back/Forward history. Open tabs with ⌘T or +, switch with ⇧⌘[ / ⇧⌘], and close with ⌘W or the X revealed on hover. The tab strip scrolls horizontally when full; opening or selecting a tab brings it into view. Closing the final tab leaves a fresh Assistant tab.
 
 Ticket and Conversation details are part of that history: Back, Forward, tab
 switching and reopening the app restore the record itself. Detail tabs show its
@@ -81,7 +81,7 @@ title, truncating long titles while keeping the close button reachable.
 | ⌘[ | Back |
 | ⌘] | Forward |
 | ⌘T | New tab |
-| ⇧⌘W | Close tab |
+| ⌘W | Close tab |
 | ⇧⌘[ | Previous tab |
 | ⇧⌘] | Next tab |
 | ⇧⌘U | Check for Updates |

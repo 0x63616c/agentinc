@@ -67,11 +67,13 @@ fn tab_shortcuts_history_mouse_close_and_restore(cx: &mut TestAppContext) {
         assert_eq!(shell.ui_state.current(), Route::Agents);
     });
     assert_eq!(UiState::load(&path).current(), Route::Agents);
-    cx.simulate_keystrokes("cmd-shift-w");
+    // Closing the last tab leaves a fresh default tab in its place.
+    cx.simulate_keystrokes("cmd-w");
     shell.read_with(cx, |shell, _| {
         assert_eq!(shell.ui_state.tabs().len(), 1);
         assert_eq!(shell.ui_state.current(), Route::Assistant);
     });
+    assert_eq!(UiState::load(&path).current(), Route::Assistant);
     cx.simulate_keystrokes("cmd-k cmd-shift-u");
     shell.read_with(cx, |shell, _| {
         assert_eq!(shell.overlays.borrow().active(), None)

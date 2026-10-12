@@ -17,7 +17,6 @@ func appShortcutCommand(_ event: NSEvent, in pane: NSView, shown: Bool) -> Int32
     let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
     if event.modifierFlags.contains(.shift) {
         switch key {
-        case "w": return -6 // Close tab, distinct from closing a terminal pane.
         case "[", "{": return -7
         case "]", "}": return -8
         case "u": return -9 // Check for updates
@@ -26,6 +25,7 @@ func appShortcutCommand(_ event: NSEvent, in pane: NSView, shown: Bool) -> Int32
     }
     switch key {
     case "t": return -5
+    case "w": return -6 // Close tab
     case "k": return -1 // AgentInc Search
     case ",": return -2 // AgentInc Settings
     case "[": return -3 // AgentInc Back

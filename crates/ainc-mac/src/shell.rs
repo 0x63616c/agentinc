@@ -587,7 +587,12 @@ impl Shell {
                 window.focus(&self.focus, cx);
             }
             Control::CloseTab(index) => {
+                let last = self.ui_state.tabs().len() == 1;
                 self.ui_state.close_tab(index);
+                if last {
+                    // The replacement tab opens the default page afresh.
+                    self.page(self.ui_state.current()).refresh(cx);
+                }
                 self.tab_reveal = true;
                 self.overlays.borrow_mut().dismiss(window, cx);
                 window.focus(&self.focus, cx);

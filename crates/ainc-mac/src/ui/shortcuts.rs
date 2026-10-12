@@ -40,8 +40,8 @@ pub const NEW_TAB: Shortcut = Shortcut {
 };
 pub const CLOSE_TAB: Shortcut = Shortcut {
     action: "Close tab",
-    keystroke: "cmd-shift-w",
-    glyph: "⇧⌘W",
+    keystroke: "cmd-w",
+    glyph: "⌘W",
 };
 pub const PREVIOUS_TAB: Shortcut = Shortcut {
     action: "Previous tab",
