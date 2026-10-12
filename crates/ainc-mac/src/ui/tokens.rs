@@ -273,6 +273,13 @@ pub const HEADER_CONTROLS_INSET: f32 = 9.;
 pub const HEADER_LEFT_EXTRA: f32 = 60.;
 pub const HEADER_TRAFFIC_WIDTH: f32 = 80.;
 pub const TAB_CLOSE_SIZE: f32 = 24.;
+/// The close control's inset from the tab's edge, so its glyph sits as far
+/// in as the label's icon does on the left.
+pub const TAB_CLOSE_INSET: f32 = TAB_LABEL_INSET - (TAB_CLOSE_SIZE - TAB_ICON_SIZE) / 2.;
+/// How far a tab fades into the header at either end of a scrolled strip.
+pub const TAB_FADE_WIDTH: f32 = TAB_CONTOUR_SHOULDER * 2.;
+/// How long after the last trackpad scroll event the tab strip snaps to whole tabs.
+pub const TAB_SETTLE_MS: u64 = 120;
 /// The segmented track's inset around its segments and the gap between them.
 pub const SEGMENT_TRACK_INSET: f32 = 3.;
 pub const SEGMENT_GAP: f32 = 2.;

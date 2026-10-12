@@ -45,6 +45,32 @@ pub fn current_page_contour() -> impl IntoElement {
 }
 
 impl Shell {
+    /// Tabs cut by the strip's edge dissolve into the header instead of ending
+    /// at a wall. Each fade only shows while there is something beyond it.
+    fn tab_fades(&self) -> Vec<Div> {
+        let offset = self.tab_scroll.offset().x;
+        let extent = self.tab_scroll.max_offset().x;
+        [(false, offset < px(0.)), (true, offset > -extent)]
+            .into_iter()
+            .filter(|(_, shown)| *shown)
+            .map(|(trailing, _)| {
+                let (from, to) = (rgba(SHELL << 8), rgb(SHELL));
+                div()
+                    .absolute()
+                    .top_0()
+                    .when(trailing, |s| s.right_0())
+                    .when(!trailing, |s| s.left_0())
+                    .w(px(TAB_FADE_WIDTH))
+                    .h(px(TAB_SLOT_HEIGHT - TAB_SLOT_SINK))
+                    .bg(linear_gradient(
+                        if trailing { 90. } else { 270. },
+                        linear_color_stop(from, 0.),
+                        linear_color_stop(to, 1.),
+                    ))
+            })
+            .collect()
+    }
+
     fn header_left_width(&self, window: &Window) -> f32 {
         (self.sidebar_visible.min(self.sidebar_limit(window)) + HEADER_LEFT_EXTRA)
             .max(HEADER_TRAFFIC_WIDTH + HEADER_CONTROL * 3. + HEADER_CONTROLS_INSET)
@@ -107,7 +133,7 @@ impl Shell {
                             .size_full()
                             .pb(px(TAB_LABEL_LIFT))
                             .pl(px(TAB_LABEL_INSET))
-                            .pr(px(SPACE_1))
+                            .pr(px(TAB_CLOSE_INSET))
                             .gap(px(TAB_LABEL_GAP))
                             .text_size(type_size(LABEL_SIZE))
                             .text_color(rgb(if selected { TEXT } else { TEXT_SECONDARY }))
@@ -278,24 +304,35 @@ impl Shell {
             )
             .child(
                 row()
-                    .id("tabs.viewport")
-                    .debug_selector(|| "tabs.viewport".into())
                     .relative()
                     .mb(px(-TAB_SLOT_SINK))
                     .w(self.tab_viewport(ui.window))
-                    .min_w_0()
                     .flex_shrink_0()
                     .h(px(TAB_SLOT_HEIGHT))
-                    .overflow_x_scroll()
-                    .overflow_y_hidden()
-                    .track_scroll(&self.tab_scroll)
-                    .children(
-                        self.ui_state
-                            .tabs()
-                            .iter()
-                            .enumerate()
-                            .map(|(index, router)| self.tab(index, router.current(), ui)),
-                    ),
+                    .child(
+                        row()
+                            .id("tabs.viewport")
+                            .debug_selector(|| "tabs.viewport".into())
+                            .size_full()
+                            .min_w_0()
+                            .overflow_x_scroll()
+                            .overflow_y_hidden()
+                            .track_scroll(&self.tab_scroll)
+                            .on_scroll_wheel(ui.cx.listener(
+                                |this, event: &ScrollWheelEvent, _, cx| {
+                                    this.settle_tabs(event);
+                                    cx.notify();
+                                },
+                            ))
+                            .children(
+                                self.ui_state
+                                    .tabs()
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(index, router)| self.tab(index, router.current(), ui)),
+                            ),
+                    )
+                    .children(self.tab_fades()),
             )
             .child(
                 self.titlebar_space("titlebar-center-space", ui)

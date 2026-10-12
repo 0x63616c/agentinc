@@ -129,6 +129,22 @@ fn overflowing_tabs_scroll_reveal_and_stay_between_controls(cx: &mut TestAppCont
             )
         });
     }
+    // A wheel tick leaves the strip resting on a whole tab, never a sliced one.
+    cx.simulate_event(gpui::ScrollWheelEvent {
+        position: viewport.center(),
+        delta: gpui::ScrollDelta::Lines(point(0., 1.5)),
+        ..Default::default()
+    });
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    shell.read_with(cx, |shell, _| {
+        let x = f32::from(shell.tab_scroll.offset().x);
+        let extent = f32::from(shell.tab_scroll.max_offset().x);
+        assert!(x < 0. && x > -extent);
+        assert!(
+            (x / crate::ui::TAB_SLOT_WIDTH).fract().abs() < 0.01,
+            "offset {x} is not a whole tab"
+        );
+    });
     cx.simulate_keystrokes("cmd-shift-]");
     cx.update(|window, cx| window.draw(cx).clear(cx));
     shell.read_with(cx, |shell, _| assert_eq!(shell.ui_state.active_tab(), 0));

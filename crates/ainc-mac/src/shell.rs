@@ -35,7 +35,7 @@ use std::{
     path::PathBuf,
     rc::Rc,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 actions!(
     control,
@@ -110,6 +110,8 @@ pub struct Shell {
     tab_scroll: ScrollHandle,
     tab_reveal: bool,
     tab_viewport_width: Pixels,
+    /// A scroll gesture is settling; the strip snaps to whole tabs once it has.
+    tab_settle: Option<(Instant, TabSnap)>,
     _input_subscription: Subscription,
     _activation_subscription: Subscription,
     command_held: bool,
@@ -358,6 +360,7 @@ impl Shell {
             tab_scroll: ScrollHandle::new(),
             tab_reveal: true,
             tab_viewport_width: px(0.),
+            tab_settle: None,
             _input_subscription: subscription,
             _activation_subscription: cx.observe_window_activation(window, |this, window, cx| {
                 // Command can be released in another app, with no modifier event
@@ -685,6 +688,42 @@ impl Shell {
         self.save(cx);
         window.refresh();
     }
+    /// A discrete wheel tick moves one whole tab at once; a trackpad gesture
+    /// settles on the nearest tab once its momentum has been quiet for
+    /// `TAB_SETTLE_MS`, since macOS sends no end marker after momentum.
+    fn settle_tabs(&mut self, event: &ScrollWheelEvent) {
+        self.tab_settle = Some(match event.delta {
+            ScrollDelta::Lines(lines) => {
+                let along = if lines.x != 0. { lines.x } else { lines.y };
+                (
+                    Instant::now() - Duration::from_millis(TAB_SETTLE_MS),
+                    TabSnap::Toward(along > 0.),
+                )
+            }
+            ScrollDelta::Pixels(_) => (Instant::now(), TabSnap::Nearest),
+        });
+    }
+
+    /// Rest with a whole tab at the left edge, or the last tab flush right.
+    fn snap_tabs(&mut self, tab_width: Pixels, snap: TabSnap) {
+        let x = f32::from(self.tab_scroll.offset().x);
+        let tabs = self.ui_state.tabs().len();
+        let extent = (tabs as f32 * TAB_SLOT_WIDTH - f32::from(tab_width)).max(0.);
+        let rests = (0..=tabs)
+            .map(|k| -(k as f32) * TAB_SLOT_WIDTH)
+            .filter(|rest| *rest > -extent)
+            .chain([-extent]);
+        let snapped = match snap {
+            TabSnap::Nearest => rests.min_by(|a, b| (a - x).abs().total_cmp(&(b - x).abs())),
+            TabSnap::Toward(true) => rests.filter(|rest| *rest > x + 0.5).reduce(f32::min),
+            TabSnap::Toward(false) => rests.filter(|rest| *rest < x - 0.5).reduce(f32::max),
+        };
+        if let Some(snapped) = snapped {
+            self.tab_scroll
+                .set_offset(point(px(snapped.clamp(-extent, 0.)), px(0.)));
+        }
+    }
+
     pub(crate) fn set_command_held(&mut self, held: bool, cx: &mut Context<Self>) {
         if self.command_held != held {
             self.command_held = held;
@@ -714,6 +753,15 @@ impl Shell {
         }
     }
 }
+/// Where a scrolled tab strip comes to rest.
+#[derive(Clone, Copy)]
+enum TabSnap {
+    /// The nearest whole tab.
+    Nearest,
+    /// The next whole tab in the scroll's direction; `true` reveals earlier tabs.
+    Toward(bool),
+}
+
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.daemon.update_required() {
@@ -740,6 +788,14 @@ impl Render for Shell {
                 .set_offset(point(x.clamp(-extent, px(0.)), px(0.)));
             self.tab_reveal = false;
             self.tab_viewport_width = tab_width;
+        }
+        if let Some((settle, snap)) = self.tab_settle {
+            if settle.elapsed() >= Duration::from_millis(TAB_SETTLE_MS) {
+                self.snap_tabs(tab_width, snap);
+                self.tab_settle = None;
+            } else {
+                window.request_animation_frame();
+            }
         }
         if reduced_motion() {
             self.palette_transition = None;
