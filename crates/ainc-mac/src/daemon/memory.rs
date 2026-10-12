@@ -1,10 +1,9 @@
 //! An in-memory daemon for tests: the same [`Transport`] seam as HTTP, state
 //! you can edit directly, scripted failures, and a log of every request.
-use super::board;
 use super::transport::{DaemonError, Envelope, Reply, Request, Slice, Transport};
 use ainc_client::types::{
-    AutomationSnapshot, ConversationSnapshot, ErrorBody, ErrorCode, TicketActivity, TicketSnapshot,
-    Workspace, WorkspaceCommand, WorkspaceSnapshot,
+    CalendarCommand, CalendarEvent, CalendarSnapshot, ErrorBody, ErrorCode, Todo, TodoCommand,
+    TodoSnapshot, Workspace, WorkspaceCommand, WorkspaceSnapshot,
 };
 use std::{
     collections::VecDeque,
@@ -14,23 +13,15 @@ use std::{
 /// Everything the in-memory daemon knows.
 pub struct State {
     pub workspaces: WorkspaceSnapshot,
-    pub product: ConversationSnapshot,
-    pub tickets: TicketSnapshot,
-    pub automations: AutomationSnapshot,
-    pub activity: Vec<TicketActivity>,
+    pub todos: TodoSnapshot,
+    pub calendar: CalendarSnapshot,
 }
 impl Default for State {
     fn default() -> Self {
         Self {
             workspaces: super::default_workspaces(),
-            product: super::default_product(),
-            tickets: super::default_tickets(),
-            automations: AutomationSnapshot {
-                automations: vec![],
-                occurrences: vec![],
-                history: vec![],
-            },
-            activity: vec![],
+            todos: TodoSnapshot { todos: vec![] },
+            calendar: CalendarSnapshot { events: vec![] },
         }
     }
 }
@@ -64,11 +55,14 @@ impl MemoryTransport {
         self.requests.lock().expect("request log").clear();
     }
 }
-fn unsupported(what: &str) -> DaemonError {
+fn rejected(code: ErrorCode, message: &str) -> DaemonError {
     DaemonError::Rejected(ErrorBody {
-        code: ErrorCode::Unavailable,
-        message: format!("{what} require the daemon"),
+        code,
+        message: message.into(),
     })
+}
+fn next_id(ids: impl Iterator<Item = i64>) -> i64 {
+    ids.max().unwrap_or(0) + 1
 }
 impl Transport for MemoryTransport {
     fn call(&self, request: Request) -> Result<Reply, DaemonError> {
@@ -82,25 +76,81 @@ impl Transport for MemoryTransport {
         let mut state = self.state.lock().expect("memory daemon state");
         match request {
             Request::Fetch(Slice::Workspaces) => Ok(Reply::Workspaces(state.workspaces.clone())),
-            Request::Fetch(Slice::Product) => Ok(Reply::Product(state.product.clone())),
-            Request::Fetch(Slice::Tickets) => Ok(Reply::Tickets(state.tickets.clone())),
-            Request::Fetch(Slice::Automations) => Ok(Reply::Automations(state.automations.clone())),
-            Request::Fetch(Slice::Activity { id }) => Ok(Reply::Activity(
-                state
-                    .activity
-                    .iter()
-                    .filter(|a| a.ticket_id == id)
-                    .cloned()
-                    .collect(),
-            )),
-            Request::Fetch(Slice::Executions { .. }) => Err(unsupported("Workflow histories")),
-            Request::Command(Envelope::Ticket(request)) => {
-                let State {
-                    tickets, activity, ..
-                } = &mut *state;
-                board::apply(tickets, activity, crate::ui::time::now(), request.command)
-                    .map(Reply::Acknowledgement)
-                    .map_err(DaemonError::Rejected)
+            Request::Fetch(Slice::Todos) => Ok(Reply::Todos(state.todos.clone())),
+            Request::Fetch(Slice::Calendar) => Ok(Reply::Calendar(state.calendar.clone())),
+            Request::Command(Envelope::Todo(request)) => {
+                let todos = &mut state.todos.todos;
+                let id = match request.command {
+                    TodoCommand::Add { title } => {
+                        let title = title.trim().to_owned();
+                        if title.is_empty() {
+                            return Err(rejected(ErrorCode::Invalid, "A Todo needs a title."));
+                        }
+                        let id = next_id(todos.iter().map(|t| t.id));
+                        todos.push(Todo {
+                            id,
+                            title,
+                            completed: false,
+                        });
+                        id
+                    }
+                    TodoCommand::Complete { id, completed } => {
+                        let todo = todos
+                            .iter_mut()
+                            .find(|t| t.id == id)
+                            .ok_or_else(|| rejected(ErrorCode::NotFound, "Unknown Todo"))?;
+                        todo.completed = completed;
+                        id
+                    }
+                    TodoCommand::Delete { id } => {
+                        let before = todos.len();
+                        todos.retain(|t| t.id != id);
+                        if todos.len() == before {
+                            return Err(rejected(ErrorCode::NotFound, "Unknown Todo"));
+                        }
+                        id
+                    }
+                };
+                Ok(Reply::Acknowledgement(id))
+            }
+            Request::Command(Envelope::Calendar(request)) => {
+                let events = &mut state.calendar.events;
+                let id = match request.command {
+                    CalendarCommand::Create {
+                        title,
+                        starts_at,
+                        ends_at,
+                    } => {
+                        let title = title.trim().to_owned();
+                        if title.is_empty() {
+                            return Err(rejected(ErrorCode::Invalid, "An event needs a title."));
+                        }
+                        if ends_at < starts_at {
+                            return Err(rejected(
+                                ErrorCode::Invalid,
+                                "An event ends after it starts.",
+                            ));
+                        }
+                        let id = next_id(events.iter().map(|e| e.id));
+                        events.push(CalendarEvent {
+                            id,
+                            title,
+                            starts_at,
+                            ends_at,
+                        });
+                        events.sort_by_key(|e| (e.starts_at, e.id));
+                        id
+                    }
+                    CalendarCommand::Delete { id } => {
+                        let before = events.len();
+                        events.retain(|e| e.id != id);
+                        if events.len() == before {
+                            return Err(rejected(ErrorCode::NotFound, "Unknown event"));
+                        }
+                        id
+                    }
+                };
+                Ok(Reply::Acknowledgement(id))
             }
             Request::Command(Envelope::Workspace(request)) => {
                 let workspaces = &mut state.workspaces;
@@ -121,13 +171,13 @@ impl Transport for MemoryTransport {
                             .workspaces
                             .iter_mut()
                             .find(|item| item.id == id)
-                            .ok_or_else(|| unsupported("Unknown workspaces"))?;
+                            .ok_or_else(|| rejected(ErrorCode::NotFound, "Unknown workspace"))?;
                         workspace.name = name;
                         id
                     }
                     WorkspaceCommand::Switch { id } => {
                         if !workspaces.workspaces.iter().any(|item| item.id == id) {
-                            return Err(unsupported("Unknown workspaces"));
+                            return Err(rejected(ErrorCode::NotFound, "Unknown workspace"));
                         }
                         workspaces.current_id = id.clone();
                         id
@@ -135,15 +185,6 @@ impl Transport for MemoryTransport {
                 };
                 Ok(Reply::Receipt(id))
             }
-            Request::Command(Envelope::Product(request)) => match request.command {
-                ainc_client::types::ConversationCommand::SelectModel { model } => {
-                    state.product.settings.model = Some(model).filter(|model| !model.is_empty());
-                    Ok(Reply::Acknowledgement(None))
-                }
-                _ => Err(unsupported("Conversation commands")),
-            },
-            Request::Command(Envelope::Automation(_)) => Err(unsupported("Automation writes")),
-            Request::ConnectionStatus | Request::Connection(_) => Err(unsupported("Connections")),
         }
     }
 }

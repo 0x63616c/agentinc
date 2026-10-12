@@ -2,13 +2,12 @@
 //! the [`Daemon`] on one cadence, tells pages which slices changed, and holds
 //! the load state they used to each keep for themselves.
 //!
-//! Cadence: 2 s while idle, 250 ms while a Conversation turn or a Ticket run
-//! is active, and nothing while the window is not visible. The clock is
-//! injected so tests drive ticks without timers.
+//! Cadence: 2 s while the window is visible and nothing while it is not. The
+//! clock is injected so tests drive ticks without timers.
 use crate::{
     action::{Failure, Pending, Run},
     daemon::Daemon,
-    ui::{LoadState, is_active},
+    ui::LoadState,
 };
 use gpui::{BackgroundExecutor, Context, EventEmitter};
 use std::{pin::Pin, rc::Rc, sync::Arc, time::Duration, time::Instant};
@@ -17,15 +16,13 @@ use std::{pin::Pin, rc::Rc, sync::Arc, time::Duration, time::Instant};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SliceChanged {
     Workspaces,
-    Product,
-    Tickets,
-    Automations,
+    Todos,
+    Calendar,
 }
-const SLICES: [SliceChanged; 4] = [
+const SLICES: [SliceChanged; 3] = [
     SliceChanged::Workspaces,
-    SliceChanged::Product,
-    SliceChanged::Tickets,
-    SliceChanged::Automations,
+    SliceChanged::Todos,
+    SliceChanged::Calendar,
 ];
 
 /// How `Sync` waits between fetch sets.
@@ -71,39 +68,28 @@ mod manual {
 }
 
 const IDLE: Duration = Duration::from_secs(2);
-const ACTIVE: Duration = Duration::from_millis(250);
 
 /// What one fetch set learned, computed on the background executor.
 struct Fetched {
-    fingerprints: [String; 4],
-    active: bool,
+    fingerprints: [String; 3],
 }
 fn fetch(daemon: &Daemon) -> anyhow::Result<Fetched> {
     daemon.refresh()?;
-    let product = daemon.product();
-    let tickets = daemon.tickets();
-    let active = product.turns.iter().any(|t| is_active(&t.state))
-        || tickets.runs.iter().any(|r| is_active(&r.state));
     let fingerprints = [
         serde_json::to_string(&daemon.workspaces())?,
-        serde_json::to_string(&product)?,
-        serde_json::to_string(&tickets)?,
-        serde_json::to_string(&daemon.automations())?,
+        serde_json::to_string(&daemon.todos())?,
+        serde_json::to_string(&daemon.calendar())?,
     ];
-    Ok(Fetched {
-        fingerprints,
-        active,
-    })
+    Ok(Fetched { fingerprints })
 }
 
 pub struct Sync {
     daemon: Arc<Daemon>,
     clock: Rc<dyn Clock>,
     pending: Pending,
-    seen: [Option<String>; 4],
+    seen: [Option<String>; 3],
     /// A wake supersedes the wait that was already scheduled.
     generation: u64,
-    active: bool,
     paused: bool,
     /// The first fetch set has landed.
     pub loaded: bool,
@@ -122,7 +108,6 @@ impl Sync {
             pending: Pending::default(),
             seen: Default::default(),
             generation: 0,
-            active: false,
             paused: false,
             error: None,
             loading_started: Instant::now(),
@@ -166,13 +151,8 @@ impl Sync {
         self.generation += 1;
         self.step(cx);
     }
-    #[cfg(any(test, feature = "fixtures"))]
-    pub(crate) fn mark_loaded(&mut self, cx: &mut Context<Self>) {
-        self.loaded = true;
-        cx.notify();
-    }
     fn interval(&self) -> Duration {
-        if self.active { ACTIVE } else { IDLE }
+        IDLE
     }
 
     fn step(&mut self, cx: &mut Context<Self>) {
@@ -199,7 +179,6 @@ impl Sync {
             Ok(fetched) => {
                 self.loaded = true;
                 self.error = None;
-                self.active = fetched.active;
                 for (slot, (seen, fresh)) in SLICES
                     .into_iter()
                     .zip(self.seen.iter_mut().zip(fetched.fingerprints))
@@ -232,8 +211,7 @@ impl Sync {
 mod tests {
     use super::*;
     use crate::daemon::transport::{Request, Slice};
-    use crate::ui::WorkState;
-    use ainc_client::types::{TicketCommand, Turn};
+    use ainc_client::types::TodoCommand;
     use gpui::{AppContext, TestAppContext};
     use std::{cell::RefCell, rc::Rc};
 
@@ -247,7 +225,7 @@ mod tests {
                 _ => None,
             })
             .collect::<Vec<_>>()
-            .chunks(4)
+            .chunks(3)
             .map(<[Slice]>::to_vec)
             .collect()
     }
@@ -262,12 +240,7 @@ mod tests {
     #[gpui::test]
     fn each_tick_fetches_one_set_of_slices(cx: &mut TestAppContext) {
         let (daemon, clock, sync) = start(cx);
-        let one_set = vec![
-            Slice::Workspaces,
-            Slice::Automations,
-            Slice::Tickets,
-            Slice::Product,
-        ];
+        let one_set = vec![Slice::Workspaces, Slice::Todos, Slice::Calendar];
         assert_eq!(
             fetch_sets(&daemon),
             vec![one_set.clone()],
@@ -296,13 +269,13 @@ mod tests {
             })
         });
         daemon
-            .send(TicketCommand::Create {
+            .send(TodoCommand::Add {
                 title: "Pay rent".into(),
             })
             .unwrap();
         clock.tick();
         cx.run_until_parked();
-        assert_eq!(changed.borrow().as_slice(), &[SliceChanged::Tickets]);
+        assert_eq!(changed.borrow().as_slice(), &[SliceChanged::Todos]);
         clock.tick();
         cx.run_until_parked();
         assert_eq!(
@@ -310,24 +283,6 @@ mod tests {
             1,
             "an unchanged set announces nothing"
         );
-    }
-
-    #[gpui::test]
-    fn an_active_turn_shortens_the_cadence(cx: &mut TestAppContext) {
-        let (daemon, clock, _sync) = start(cx);
-        daemon.memory().edit(|state| {
-            state.product.turns.push(Turn {
-                conversation_id: 1,
-                id: 1,
-                prompt: "Hello".into(),
-                response: None,
-                error: None,
-                state: WorkState::Running.as_str().into(),
-            });
-        });
-        clock.tick();
-        cx.run_until_parked();
-        assert_eq!(clock.intervals(), vec![IDLE, ACTIVE]);
     }
 
     #[gpui::test]
@@ -360,7 +315,7 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(fetch_sets(&daemon).len(), 1);
         daemon
-            .send(TicketCommand::Create {
+            .send(TodoCommand::Add {
                 title: "Pay rent".into(),
             })
             .unwrap();

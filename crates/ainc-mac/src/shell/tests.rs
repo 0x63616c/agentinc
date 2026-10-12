@@ -45,18 +45,18 @@ fn tab_shortcuts_history_mouse_close_and_restore(cx: &mut TestAppContext) {
     let path = dir.path().join("tabs.json");
     cx.update(bind_keys);
     let (shell, cx) = cx.add_window_view(|window, cx| Shell::fixture(path.clone(), window, cx));
-    cx.simulate_keystrokes("cmd-1 cmd-t cmd-3 cmd-shift-[");
+    cx.simulate_keystrokes("cmd-2 cmd-t cmd-3 cmd-shift-[");
     shell.read_with(cx, |shell, _| {
         assert_eq!(shell.ui_state.tabs().len(), 2);
-        assert_eq!(shell.ui_state.current(), Route::Tickets);
+        assert_eq!(shell.ui_state.current(), Route::SmartHome);
     });
     cx.simulate_keystrokes("cmd-[");
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Assistant)
+        assert_eq!(shell.ui_state.current(), Route::Overview)
     });
     cx.simulate_keystrokes("cmd-shift-]");
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Agents)
+        assert_eq!(shell.ui_state.current(), Route::Todos)
     });
     cx.update(|window, cx| window.draw(cx).clear(cx));
     // Closing an inactive tab does not activate it, nor bubble into its parent.
@@ -64,16 +64,26 @@ fn tab_shortcuts_history_mouse_close_and_restore(cx: &mut TestAppContext) {
     cx.simulate_click(close, Modifiers::default());
     shell.read_with(cx, |shell, _| {
         assert_eq!(shell.ui_state.tabs().len(), 1);
-        assert_eq!(shell.ui_state.current(), Route::Agents);
+        assert_eq!(shell.ui_state.current(), Route::Todos);
     });
-    assert_eq!(UiState::load(&path).current(), Route::Agents);
+    assert_eq!(UiState::load(&path).current(), Route::Todos);
+    // Holding command shows the close shortcut where the close control sits.
+    cx.simulate_modifiers_change(Modifiers {
+        platform: true,
+        ..Modifiers::default()
+    });
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    assert!(cx.debug_bounds("tabs.0.close.hint").is_some());
+    cx.simulate_modifiers_change(Modifiers::default());
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    assert!(cx.debug_bounds("tabs.0.close.hint").is_none());
     // Closing the last tab leaves a fresh default tab in its place.
     cx.simulate_keystrokes("cmd-w");
     shell.read_with(cx, |shell, _| {
         assert_eq!(shell.ui_state.tabs().len(), 1);
-        assert_eq!(shell.ui_state.current(), Route::Assistant);
+        assert_eq!(shell.ui_state.current(), Route::Overview);
     });
-    assert_eq!(UiState::load(&path).current(), Route::Assistant);
+    assert_eq!(UiState::load(&path).current(), Route::Overview);
     cx.simulate_keystrokes("cmd-k cmd-shift-u");
     shell.read_with(cx, |shell, _| {
         assert_eq!(shell.overlays.borrow().active(), None)
@@ -178,210 +188,6 @@ fn restored_active_tab_is_visible_on_the_first_frame(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn detail_history_tabs_and_reopening_restore_the_record(cx: &mut TestAppContext) {
-    use super::Control;
-    use crate::{
-        daemon::Daemon, evee::AssistantPage, page::Page, routes::Destination, tickets::TicketsPage,
-    };
-    use ainc_client::types::{Conversation, TicketCommand};
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("details.json");
-    let daemon = std::sync::Arc::new(Daemon::in_memory());
-    for title in ["First ticket", "Second ticket"] {
-        daemon
-            .send(TicketCommand::Create {
-                title: title.into(),
-            })
-            .unwrap();
-    }
-    daemon.memory().edit(|state| {
-        state.product.conversations = [7, 8]
-            .map(|id| Conversation {
-                id,
-                title: format!("Conversation {id}"),
-                snippet: String::new(),
-                updated_at: 0,
-            })
-            .to_vec()
-    });
-    daemon.refresh().unwrap();
-    cx.update(bind_keys);
-    let (shell, vc) = cx.add_window_view(|window, cx| {
-        Shell::with_state(
-            path.clone(),
-            daemon.clone(),
-            crate::sync::Timers(cx.background_executor().clone()),
-            crate::profile::Profile {
-                name: "Test".into(),
-                photo: None,
-            },
-            window,
-            cx,
-        )
-    });
-    let navigate = |vc: &mut VisualTestContext, to| {
-        vc.update(|window, cx| {
-            shell.update(cx, |shell, cx| shell.dispatch(Control::Go(to), window, cx))
-        });
-        vc.update(|window, cx| window.draw(cx).clear(cx));
-    };
-    shell.update(vc, |shell, _| {
-        shell.launch_started = Some(std::time::Instant::now() - std::time::Duration::from_secs(1))
-    });
-    navigate(vc, Destination::Page(Route::Tickets));
-    let ticket = vc.debug_bounds("ticket.1").unwrap().center();
-    vc.simulate_click(ticket, Modifiers::default());
-    vc.update(|window, cx| window.draw(cx).clear(cx));
-    shell.read_with(vc, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Ticket(1))
-    });
-    navigate(vc, Destination::Ticket(2));
-    vc.simulate_keystrokes("cmd-[");
-    shell.read_with(vc, |shell, cx| {
-        assert_eq!(shell.ui_state.current(), Route::Ticket(1));
-        assert_eq!(
-            shell
-                .page_entity::<TicketsPage>()
-                .read(cx)
-                .drafts(cx)
-                .unwrap()
-                .get::<i64>("selected"),
-            Some(1)
-        );
-    });
-    vc.simulate_keystrokes("cmd-t");
-    navigate(vc, Destination::Conversation(7));
-    navigate(vc, Destination::Conversation(8));
-    vc.simulate_keystrokes("cmd-[ cmd-shift-[");
-    shell.read_with(vc, |shell, cx| {
-        assert_eq!(shell.ui_state.current(), Route::Ticket(1));
-        assert_eq!(
-            shell
-                .page_entity::<TicketsPage>()
-                .read(cx)
-                .drafts(cx)
-                .unwrap()
-                .get::<i64>("selected"),
-            Some(1)
-        );
-    });
-    vc.simulate_keystrokes("cmd-] cmd-shift-]");
-    shell.read_with(vc, |shell, cx| {
-        assert_eq!(shell.ui_state.current(), Route::Conversation(7));
-        assert_eq!(
-            shell
-                .page_entity::<AssistantPage>()
-                .read(cx)
-                .drafts(cx)
-                .unwrap()
-                .get::<i64>("conversation"),
-            Some(7)
-        );
-    });
-    let (reopened, vc) = cx.add_window_view(|window, cx| {
-        Shell::with_state(
-            path,
-            daemon,
-            crate::sync::Timers(cx.background_executor().clone()),
-            crate::profile::Profile {
-                name: "Test".into(),
-                photo: None,
-            },
-            window,
-            cx,
-        )
-    });
-    reopened.read_with(vc, |shell, cx| {
-        assert_eq!(shell.ui_state.current(), Route::Conversation(7));
-        assert_eq!(
-            shell
-                .page_entity::<AssistantPage>()
-                .read(cx)
-                .drafts(cx)
-                .unwrap()
-                .get::<i64>("conversation"),
-            Some(7)
-        );
-        assert_eq!(shell.ui_state.tabs()[0].current(), Route::Ticket(2));
-    });
-    vc.simulate_keystrokes("cmd-]");
-    reopened.read_with(vc, |shell, cx| {
-        assert_eq!(shell.ui_state.current(), Route::Conversation(8));
-        assert_eq!(
-            shell
-                .page_entity::<AssistantPage>()
-                .read(cx)
-                .drafts(cx)
-                .unwrap()
-                .get::<i64>("conversation"),
-            Some(8)
-        );
-    });
-}
-
-#[gpui::test]
-fn automation_agent_select_keeps_stable_ids_and_dismisses_before_dialog(cx: &mut TestAppContext) {
-    use crate::{automations::AutomationsPage, page::Page};
-    let dir = tempfile::tempdir().unwrap();
-    cx.update(bind_keys);
-    let (shell, cx) =
-        cx.add_window_view(|window, cx| Shell::fixture(dir.path().join("tabs.json"), window, cx));
-    shell.update(cx, |shell, cx| {
-        shell
-            .daemon
-            .send(ainc_client::types::TicketCommand::RegisterAgent {
-                name: "Test agent".into(),
-                instructions: "Test".into(),
-                model: "test".into(),
-            })
-            .unwrap();
-        shell
-            .page_entity::<AutomationsPage>()
-            .update(cx, |page, _| page.reload());
-        shell.fixture_navigate(Route::Automations, cx);
-    });
-    cx.update(|window, cx| window.draw(cx).clear(cx));
-    let create = cx
-        .debug_bounds("automations.create.empty")
-        .unwrap()
-        .center();
-    cx.simulate_click(create, Modifiers::default());
-    cx.update(|window, cx| window.draw(cx).clear(cx));
-    let trigger = cx.debug_bounds("automations.agent").unwrap().center();
-    cx.simulate_click(trigger, Modifiers::default());
-    cx.update(|window, cx| window.draw(cx).clear(cx));
-    assert!(cx.debug_bounds("automations.agent.agent-1").is_some());
-    cx.simulate_keystrokes("escape");
-    cx.update(|window, cx| window.draw(cx).clear(cx));
-    assert!(cx.debug_bounds("automations.agent.agent-1").is_none());
-    assert!(cx.debug_bounds("automations.agent").is_some());
-    shell.read_with(cx, |shell, _| {
-        assert_eq!(
-            shell.overlays.borrow().active(),
-            Some(Overlay::Dialog(Route::Automations))
-        )
-    });
-    cx.simulate_click(trigger, Modifiers::default());
-    cx.update(|window, cx| window.draw(cx).clear(cx));
-    let choice = cx
-        .debug_bounds("automations.agent.agent-1")
-        .unwrap()
-        .center();
-    cx.simulate_click(choice, Modifiers::default());
-    shell.read_with(cx, |shell, cx| {
-        let page = shell.page_entity::<AutomationsPage>();
-        assert_eq!(
-            page.read(cx)
-                .drafts(cx)
-                .unwrap()
-                .get::<String>("agent")
-                .as_deref(),
-            Some("agent-1")
-        );
-    });
-}
-
-#[gpui::test]
 fn compact_sidebar_centres_square_items_and_keeps_profile_access(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let (shell, cx) =
@@ -410,10 +216,10 @@ fn compact_sidebar_centres_square_items_and_keeps_profile_access(cx: &mut TestAp
     assert!(cx.debug_bounds("sidebar-profile-name").is_none());
     let main = cx.debug_bounds("main-pane").unwrap();
     assert_eq!(main.left(), px(crate::ui_state::SIDEBAR_COLLAPSED));
-    let ticket = cx.debug_bounds("sidebar-nav-1").unwrap().center();
-    cx.simulate_click(ticket, Modifiers::default());
+    let home = cx.debug_bounds("sidebar-nav-2").unwrap().center();
+    cx.simulate_click(home, Modifiers::default());
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Tickets)
+        assert_eq!(shell.ui_state.current(), Route::SmartHome)
     });
     cx.simulate_click(profile.center(), Modifiers::default());
     shell.read_with(cx, |shell, _| {
@@ -478,21 +284,21 @@ fn header_controls_do_not_zoom_but_empty_space_does(cx: &mut TestAppContext) {
     let (shell, cx) = cx
         .add_window_view(|window, cx| Shell::fixture(dir.path().join("session.json"), window, cx));
     shell.update(cx, |shell, cx| {
-        shell.ui_state.navigate(Route::Tickets);
-        shell.ui_state.navigate(Route::Agents);
+        shell.ui_state.navigate(Route::SmartHome);
+        shell.ui_state.navigate(Route::Todos);
         cx.notify();
     });
     cx.update(|window, cx| window.draw(cx).clear(cx));
     let back = cx.debug_bounds("back").unwrap().center();
     double_click(cx, back);
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Assistant);
+        assert_eq!(shell.ui_state.current(), Route::Overview);
         assert_eq!(zoom_requests(), 0);
     });
     let forward = cx.debug_bounds("forward").unwrap().center();
     double_click(cx, forward);
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Agents);
+        assert_eq!(shell.ui_state.current(), Route::Todos);
         assert_eq!(zoom_requests(), 0);
     });
     for id in ["sidebar", "shell.search"] {
@@ -560,7 +366,7 @@ fn sidebar_badges_align_and_text_stays_inside_at_minimum_and_default_widths(
             "search right edge at width {width}"
         );
         let mut badge_right: Option<f32> = None;
-        for index in 1..=5 {
+        for index in 1..=4 {
             let badge = cx
                 .debug_bounds(
                     [
@@ -568,7 +374,6 @@ fn sidebar_badges_align_and_text_stays_inside_at_minimum_and_default_widths(
                         "sidebar-badge-2",
                         "sidebar-badge-3",
                         "sidebar-badge-4",
-                        "sidebar-badge-5",
                     ][index - 1],
                 )
                 .unwrap();
@@ -579,7 +384,6 @@ fn sidebar_badges_align_and_text_stays_inside_at_minimum_and_default_widths(
                         "sidebar-label-2",
                         "sidebar-label-3",
                         "sidebar-label-4",
-                        "sidebar-label-5",
                     ][index - 1],
                 )
                 .unwrap();
@@ -616,7 +420,7 @@ fn sidebar_hints_follow_command_across_navigation_and_input_focus(cx: &mut TestA
         platform: true,
         ..Modifiers::default()
     };
-    for number in [2, 5, 1] {
+    for number in [2, 4, 1] {
         cx.simulate_modifiers_change(command);
         cx.simulate_keystrokes(&format!("cmd-{number}"));
         shell.read_with(cx, |shell, _| {
@@ -662,10 +466,10 @@ fn sidebar_hints_recover_from_a_missed_release_on_navigation_click(cx: &mut Test
     });
     assert_sidebar_hints(cx, true);
     // No release event: AppKit may have sent it to a different responder.
-    let agents = cx.debug_bounds("sidebar-nav-3").unwrap().center();
-    cx.simulate_click(agents, Modifiers::default());
+    let todos = cx.debug_bounds("sidebar-nav-3").unwrap().center();
+    cx.simulate_click(todos, Modifiers::default());
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Agents);
+        assert_eq!(shell.ui_state.current(), Route::Todos);
         assert!(!shell.command_held);
     });
     assert_sidebar_hints(cx, false);
@@ -791,7 +595,7 @@ fn routes_and_history_use_shell_actions(cx: &mut TestAppContext) {
     cx.update(bind_keys);
     let (shell, cx) = cx
         .add_window_view(|window, cx| Shell::fixture(dir.path().join("session.json"), window, cx));
-    for number in 1..=5 {
+    for number in 1..=4 {
         cx.simulate_keystrokes(&format!("cmd-{number}"));
         shell.read_with(cx, |shell, _| {
             assert_eq!(
@@ -802,11 +606,11 @@ fn routes_and_history_use_shell_actions(cx: &mut TestAppContext) {
     }
     cx.simulate_keystrokes("cmd-[");
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Automations)
+        assert_eq!(shell.ui_state.current(), Route::Todos)
     });
     cx.simulate_keystrokes("cmd-]");
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Terminal)
+        assert_eq!(shell.ui_state.current(), Route::Calendar)
     });
     cx.simulate_keystrokes("cmd-,");
     shell.read_with(cx, |shell, _| {
@@ -881,7 +685,7 @@ fn shortcuts_survive_clicking_a_control_that_disappears(cx: &mut TestAppContext)
     cx.update(|window, cx| window.draw(cx).clear(cx));
     cx.simulate_keystrokes("cmd-3");
     shell.read_with(cx, |shell, _| {
-        assert_eq!(shell.ui_state.current(), Route::Agents)
+        assert_eq!(shell.ui_state.current(), Route::Todos)
     });
 }
 
@@ -894,26 +698,16 @@ fn palette_groups_rank_prefixes_and_remember_recents(cx: &mut TestAppContext) {
         let all = shell.palette_results("");
         assert_eq!(all.groups[0].title.as_ref(), "Pages");
         assert!(all.groups.iter().any(|g| g.title.as_ref() == "Actions"));
-        let ranked = shell.palette_results("te");
+        let ranked = shell.palette_results("to");
         let pages = &ranked.groups[0];
         assert_eq!(pages.title.as_ref(), "Pages");
-        // Prefix matches (Terminal, Temporal) outrank the later subsequence in Tickets.
-        assert!(
-            pages.entries[0].label.starts_with("Te"),
-            "{}",
-            pages.entries[0].label
-        );
-        assert!(
-            pages.entries[1].label.starts_with("Te"),
-            "{}",
-            pages.entries[1].label
-        );
-        assert!(pages.entries.iter().any(|e| e.label.as_ref() == "Tickets"));
+        // The prefix match (Todos) outranks the later subsequence in Smart Home.
+        assert_eq!(pages.entries[0].label.as_ref(), "Todos");
         assert!(!pages.entries[0].positions.is_empty());
-        shell.ui_state.remember_command("page.agents");
+        shell.ui_state.remember_command("page.calendar");
         let recent = shell.palette_results("");
         assert_eq!(recent.groups[0].title.as_ref(), "Recent");
-        assert_eq!(recent.choices[0].0.as_ref(), "page.agents");
+        assert_eq!(recent.choices[0].0.as_ref(), "page.calendar");
         assert_eq!(shell.palette_results("zzzz").len(), 0);
     });
 }

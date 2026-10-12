@@ -57,19 +57,18 @@ impl ComponentsPage {
     pub fn new(overlays: Rc<RefCell<OverlayHost<Overlay>>>, cx: &mut Context<Self>) -> Self {
         let overlays = PageOverlays::new(overlays, Route::Components);
         let text =
-            cx.new(|cx| TextInput::field("Ticket title", false, cx).identified("components.text"));
+            cx.new(|cx| TextInput::field("Todo title", false, cx).identified("components.text"));
         let error_text = cx.new(|cx| {
             let mut input =
                 TextInput::field("Automation name", false, cx).identified("components.error");
             input.content = "Every 0 minutes".into();
             input
         });
-        let search = cx.new(|cx| {
-            TextInput::field("Search Tickets", false, cx).identified("components.search")
-        });
+        let search = cx
+            .new(|cx| TextInput::field("Search Todos", false, cx).identified("components.search"));
         let area = cx.new(|cx| {
             let mut input = TextInput::composer(cx).identified("components.area");
-            input.content = "Review the open Tickets, then plan the next agent run.".into();
+            input.content = "Review the open Todos, then plan the week.".into();
             input
         });
         let subscriptions = [&text, &error_text, &search, &area]
@@ -78,7 +77,7 @@ impl ComponentsPage {
             .collect();
         let mut toasts = Toasts::default();
         toasts.push(
-            "Ticket assigned to Evee",
+            "Todo added",
             Some("Reconcile weekly budget and receipts".into()),
             Tone::Success,
         );
@@ -134,7 +133,7 @@ impl ComponentsPage {
                 "Small for dense rows, regular everywhere else, large for the one action on an empty page.",
                 row().flex_wrap().items_center().gap(px(CONTROL_GAP))
                     .child(Button::new("components.small", "Small").secondary().small().icon(Icon::Plus).build(ui, noop))
-                    .child(Button::new("components.regular", "New Ticket").primary().icon(Icon::Plus).build(ui, noop))
+                    .child(Button::new("components.regular", "New Todo").primary().icon(Icon::Plus).build(ui, noop))
                     .child(Button::new("components.large", "Get Started").primary().large().build(ui, noop))
                     .child(Button::new("components.icon-ghost", "More").icon(Icon::More).icon_only().ghost().build(ui, noop))
                     .child(Button::new("components.icon-secondary", "Refresh").icon(Icon::Refresh).icon_only().secondary().build(ui, noop))
@@ -268,7 +267,7 @@ impl ComponentsPage {
                             .child(div().text_size(type_size(LABEL_SIZE)).child("Off")),
                     )
                     .child(
-                        Checkbox::new("components.checkbox", "Include done Tickets")
+                        Checkbox::new("components.checkbox", "Include done Todos")
                             .checked(self.checked)
                             .build(ui, |this, _, cx| {
                                 this.checked = !this.checked;
@@ -396,10 +395,10 @@ impl ComponentsPage {
                 "Empty and loading",
                 "Empty states offer the one next action. Skeletons hold the layout while data loads.",
                 column().gap(px(SPACE_4))
-                    .child(EmptyState::new(Icon::Tasks, "No Tickets yet.").description("Create a Ticket and assign it to an agent to start work.").action(Button::new("components.empty-action", "New Ticket").primary().icon(Icon::Plus).build(ui, |_, _, _| {})).build())
+                    .child(EmptyState::new(Icon::Todos, "No Todos yet.").description("Add a Todo to start the list.").action(Button::new("components.empty-action", "New Todo").primary().icon(Icon::Plus).build(ui, |_, _, _| {})).build())
                     .child(skeleton_rows("components.skeleton", SKELETON_ROWS))
-                    .child(row().gap(px(SPACE_6)).child(LoadingFrame::new(self.started, ui.window).inline("Evee is thinking…")))
-                    .child(LoadingFrame::new(self.started, ui.window).page("Loading Tickets…")),
+                    .child(row().gap(px(SPACE_6)).child(LoadingFrame::new(self.started, ui.window).inline("Thinking…")))
+                    .child(LoadingFrame::new(self.started, ui.window).page("Loading Todos…")),
             ))
     }
 
@@ -411,8 +410,8 @@ impl ComponentsPage {
                 "Dialog",
                 "Centered on a scrim with a title, body and right-aligned actions.",
                 row().justify_center().child(dialog_shell(
-                    copy::confirm_delete("Plan the week", "This Ticket, its Comments and its relationships").0,
-                    caption(copy::confirm_delete("Plan the week", "This Ticket, its Comments and its relationships").1),
+                    copy::confirm_delete("Plan the week", "This Todo").0,
+                    caption(copy::confirm_delete("Plan the week", "This Todo").1),
                     row_gap(CONTROL_GAP).justify_end()
                         .child(Button::new("components.dialog-cancel", "Cancel").secondary().build(ui, noop))
                         .child(Button::new("components.dialog-confirm", "Delete").destructive().build(ui, noop)),

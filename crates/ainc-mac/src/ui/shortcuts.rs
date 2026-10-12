@@ -60,9 +60,9 @@ pub const CHECK_UPDATES: Shortcut = Shortcut {
 };
 /// The sidebar pages, one digit each; `route(n)` gives one page's binding.
 pub const PAGES: Shortcut = Shortcut {
-    action: "Tickets, Assistant, Agents…",
-    keystroke: "cmd-1…cmd-6",
-    glyph: "⌘1–6",
+    action: "Overview, Smart Home, Todos…",
+    keystroke: "cmd-1…cmd-4",
+    glyph: "⌘1–4",
 };
 pub const SETTINGS: Shortcut = Shortcut {
     action: "Settings",

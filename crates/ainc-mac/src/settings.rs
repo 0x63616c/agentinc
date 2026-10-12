@@ -1,6 +1,6 @@
-//! Settings: appearance, theme, software updates, a pointer to Connections
-//! and the keyboard shortcuts. Appearance and theme changes are announced to
-//! the shell, which applies and saves them.
+//! Settings: appearance, theme, software updates and the keyboard shortcuts.
+//! Appearance and theme changes are announced to the shell, which applies
+//! and saves them.
 use crate::{
     overlay::Overlay,
     page::{Page, PageOverlays},
@@ -99,21 +99,6 @@ impl SettingsPage {
                 )),
         )
     }
-    fn connections_section(&self, ui: &mut Ui<Self>) -> Div {
-        settings_section(
-            "Connections",
-            settings_row(
-                "Connections",
-                "The ChatGPT account Evee replies through, and its model.",
-                Button::new("settings.connections", "Open Connections")
-                    .secondary()
-                    .trailing(icon(Icon::ArrowRight, ICON_SIZE_SM))
-                    .build(ui, |_: &mut Self, _, cx| {
-                        cx.emit(Destination::Page(Route::Connections))
-                    }),
-            ),
-        )
-    }
     fn shortcuts_section(&self) -> Div {
         let mut rows = column();
         for (index, shortcut) in shortcuts::ALL.iter().enumerate() {
@@ -172,7 +157,6 @@ impl Render for SettingsPage {
                             .update(ui.cx, |this, cx| this.settings(ui.window, cx)),
                     )
                 })
-                .child(self.connections_section(&mut ui))
                 .child(self.shortcuts_section()),
         )
         .build()
@@ -282,7 +266,7 @@ mod tests {
         assert_eq!(
             shortcuts::ALL.iter().map(|s| s.glyph).collect::<Vec<_>>(),
             [
-                "⌘K", "⌘[", "⌘]", "⌘T", "⌘W", "⇧⌘[", "⇧⌘]", "⇧⌘U", "⌘1–6", "⌘,", "⌘B", "⎋", "↵",
+                "⌘K", "⌘[", "⌘]", "⌘T", "⌘W", "⇧⌘[", "⇧⌘]", "⇧⌘U", "⌘1–4", "⌘,", "⌘B", "⎋", "↵",
                 "⇧↵"
             ]
         );

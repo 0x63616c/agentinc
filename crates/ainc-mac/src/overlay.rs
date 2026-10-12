@@ -32,9 +32,9 @@ mod tests {
     fn popovers_and_dialogs_are_distinct() {
         assert!(Overlay::UserMenu { support: true }.is_popover());
         assert!(!Overlay::UserMenu { support: false }.is_dialog());
-        assert!(Overlay::Dialog(Route::Tickets).is_dialog());
-        assert!(!Overlay::Dialog(Route::Tickets).is_popover());
-        assert!(Overlay::Popover(Route::Assistant).is_popover());
+        assert!(Overlay::Dialog(Route::Todos).is_dialog());
+        assert!(!Overlay::Dialog(Route::Todos).is_popover());
+        assert!(Overlay::Popover(Route::Overview).is_popover());
         assert!(!Overlay::GoTo.is_dialog());
     }
 }

@@ -15,11 +15,6 @@ impl Pending {
     pub fn busy(&self) -> bool {
         self.0.get()
     }
-    /// Rendered fixtures: stay busy so a page keeps showing its in-flight state.
-    #[cfg(any(test, feature = "fixtures"))]
-    pub(crate) fn hold(&self) {
-        self.0.set(true);
-    }
     fn claim(&self) -> Option<Claim> {
         if self.0.replace(true) {
             return None;

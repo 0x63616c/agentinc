@@ -85,7 +85,7 @@ title, truncating long titles while keeping the close button reachable.
 | ⇧⌘[ | Previous tab |
 | ⇧⌘] | Next tab |
 | ⇧⌘U | Check for Updates |
-| ⌘1–6 | Tickets, Assistant, Agents… |
+| ⌘1–4 | Overview, Smart Home, Todos… |
 | ⌘, | Settings |
 | ⌘B | Toggle sidebar |
 | ⎋ | Dismiss |
@@ -93,7 +93,7 @@ title, truncating long titles while keeping the close button reachable.
 | ⇧↵ | New line |
 <!-- /shortcuts -->
 
-Search (⌘K) fuzzy-matches pages, actions and Tickets, groups the results, remembers your recent choices, and supports ↑↓ and ↵ selection, pointer selection, bounded ⇥ and ⇧⇥ focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. Collapsing the sidebar leaves a compact icon rail. The profile menu offers updates, Settings and an adjacent Support menu (Help Center, Send Feedback, About). Available updates also appear in the sidebar. Settings holds persisted font family and size controls that update the whole app immediately. Transient notices appear as toasts above the status bar.
+Search (⌘K) fuzzy-matches pages and actions, groups the results, remembers your recent choices, and supports ↑↓ and ↵ selection, pointer selection, bounded ⇥ and ⇧⇥ focus and standard Mac text editing. Drag the sidebar divider to resize it; focus it and use Left/Right in 20-point steps or Home to reset its width. Collapsing the sidebar leaves a compact icon rail. The profile menu offers updates, Settings and an adjacent Support menu (Help Center, Send Feedback, About). Available updates also appear in the sidebar. Settings holds persisted font family and size controls that update the whole app immediately. Transient notices appear as toasts above the status bar.
 
 Terminal hosts a live Ghostty session in your home directory. It loads your Ghostty configuration, including font, keybinds and included files, then applies AgentInc's colors. The session and split panes stay alive when you visit another page; drag their dividers to resize them. With a Terminal pane focused, ⌘D splits right, ⇧⌘D splits below, ⌘W closes the focused pane when another exists, and ⇧⌘↵ or ⇧⌘= toggles a pane to fill the Terminal page. ⌘K opens Search without clearing the terminal; tab shortcuts, ⇧⌘U, ⌘, and ⌘1–6 retain their app actions. Other Ghostty bindings, including ⌃L, remain available.
 

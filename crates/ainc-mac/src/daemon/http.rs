@@ -1,6 +1,6 @@
 //! The real daemon over HTTP: find it (or start it), authenticate once, and
 //! keep that client until a transport failure says to connect again.
-use super::transport::{ConnectionAction, DaemonError, Envelope, Reply, Request, Slice, Transport};
+use super::transport::{DaemonError, Envelope, Reply, Request, Slice, Transport};
 use ainc_client::Client;
 use anyhow::{Context, Result};
 use std::{
@@ -143,49 +143,22 @@ async fn perform(client: &Client, request: Request) -> Result<Reply, DaemonError
                 .map_err(classify)?
                 .into_inner(),
         ),
-        Request::Fetch(Slice::Product) => Reply::Product(
+        Request::Fetch(Slice::Todos) => Reply::Todos(
             client
-                .conversations_state()
+                .todos_state()
                 .send()
                 .await
                 .map_err(classify)?
                 .into_inner(),
         ),
-        Request::Fetch(Slice::Tickets) => Reply::Tickets(
+        Request::Fetch(Slice::Calendar) => Reply::Calendar(
             client
-                .tickets_state()
+                .calendar_state()
                 .send()
                 .await
                 .map_err(classify)?
                 .into_inner(),
         ),
-        Request::Fetch(Slice::Automations) => Reply::Automations(
-            client
-                .automations_state()
-                .send()
-                .await
-                .map_err(classify)?
-                .into_inner(),
-        ),
-        Request::Fetch(Slice::Activity { id }) => Reply::Activity(
-            client
-                .tickets_activity()
-                .id(id)
-                .send()
-                .await
-                .map_err(classify)?
-                .into_inner(),
-        ),
-        Request::Fetch(Slice::Executions { status, page }) => {
-            let mut request = client.work_list();
-            if let Ok(status) = status.parse::<ainc_client::types::WorkStatus>() {
-                request = request.status(status);
-            }
-            if let Some(page) = page {
-                request = request.page(page);
-            }
-            Reply::Executions(request.send().await.map_err(classify)?.into_inner())
-        }
         Request::Command(Envelope::Workspace(body)) => Reply::Receipt(
             client
                 .workspaces_command()
@@ -196,9 +169,9 @@ async fn perform(client: &Client, request: Request) -> Result<Reply, DaemonError
                 .into_inner()
                 .result_id,
         ),
-        Request::Command(Envelope::Automation(body)) => Reply::Receipt(
+        Request::Command(Envelope::Todo(body)) => Reply::Acknowledgement(
             client
-                .automations_command()
+                .todos_command()
                 .body(body)
                 .send()
                 .await
@@ -206,9 +179,9 @@ async fn perform(client: &Client, request: Request) -> Result<Reply, DaemonError
                 .into_inner()
                 .result_id,
         ),
-        Request::Command(Envelope::Ticket(body)) => Reply::Acknowledgement(
+        Request::Command(Envelope::Calendar(body)) => Reply::Acknowledgement(
             client
-                .tickets_command()
+                .calendar_command()
                 .body(body)
                 .send()
                 .await
@@ -216,36 +189,6 @@ async fn perform(client: &Client, request: Request) -> Result<Reply, DaemonError
                 .into_inner()
                 .result_id,
         ),
-        Request::Command(Envelope::Product(body)) => Reply::Acknowledgement(
-            client
-                .conversations_command()
-                .body(body)
-                .send()
-                .await
-                .map_err(classify)?
-                .into_inner()
-                .result_id,
-        ),
-        Request::ConnectionStatus => Reply::ConnectionStatus(
-            client
-                .connection_status()
-                .send()
-                .await
-                .map_err(classify)?
-                .into_inner(),
-        ),
-        Request::Connection(ConnectionAction::Login) => {
-            client.connection_login().send().await.map_err(classify)?;
-            Reply::Done
-        }
-        Request::Connection(ConnectionAction::Cancel) => {
-            client.connection_cancel().send().await.map_err(classify)?;
-            Reply::Done
-        }
-        Request::Connection(ConnectionAction::Logout) => {
-            client.connection_logout().send().await.map_err(classify)?;
-            Reply::Done
-        }
     })
 }
 

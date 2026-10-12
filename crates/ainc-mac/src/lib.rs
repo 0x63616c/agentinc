@@ -1,26 +1,22 @@
 //! The AgentInc app: menus, the main window and the opt-in pilot host. `main.rs` only calls [`run`].
 pub mod about;
 pub mod action;
-pub mod agents;
-pub mod assistant;
-pub mod automations;
+pub mod calendar;
 pub mod components;
-pub mod connections;
 pub mod daemon;
-pub mod evee;
 pub mod input;
 pub mod native_update;
 pub mod overlay;
+pub mod overview;
 pub mod page;
 pub mod profile;
 pub mod routes;
 pub mod settings;
 pub mod shell;
+pub mod smart_home;
 pub mod sync;
-pub mod temporal;
-pub mod terminal;
 pub mod theme;
-pub mod tickets;
+pub mod todos;
 pub mod ui;
 pub mod ui_state;
 pub mod updates;
@@ -69,7 +65,7 @@ fn main_window_options(
 pub fn run() {
     native_update::restore_relaunch_environment().expect("restore update relaunch profile");
     ainc_release::process::reset_inherited_signals().expect("reset inherited process signals");
-    // TLS: reqwest links rustls without a provider; ring is the one Temporal already uses.
+    // TLS: reqwest links rustls without a provider; ring is the provider the daemon uses too.
     let _ = rustls::crypto::ring::default_provider().install_default();
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     #[cfg(all(feature = "automation", target_os = "macos"))]
@@ -91,8 +87,6 @@ pub fn run() {
             for name in [
                 "AINC_SESSION_PATH",
                 "AINC_DISCOVERY_FILE",
-                "AINC_LEGACY_DIR",
-                "AINC_CODEX_HOME",
                 "AINC_WINDOW_TITLE",
             ] {
                 let value = std::env::var_os(name)

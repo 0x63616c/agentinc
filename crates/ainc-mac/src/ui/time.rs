@@ -50,6 +50,49 @@ fn absolute_at(seconds: i64, now: i64) -> String {
     }
 }
 
+/// A local wall-clock time: `14:30`.
+pub fn clock(seconds: i64) -> String {
+    local(seconds).map_or_else(
+        || "Time unavailable".into(),
+        |t| t.format("%H:%M").to_string(),
+    )
+}
+
+/// A span of local times: `14:00 – 15:30`.
+pub fn span(start: i64, end: i64) -> String {
+    match (local(start), local(end)) {
+        (Some(start), Some(end)) => format!("{} – {}", start.format("%H:%M"), end.format("%H:%M")),
+        _ => "Time unavailable".into(),
+    }
+}
+
+/// A day relative to `now`: `Today`, `Tomorrow`, `Yesterday`, then the
+/// weekday and date (`Thursday, Oct 15`, with the year when it is not this year).
+pub fn day(seconds: i64, now: i64) -> String {
+    let (Some(day), Some(today)) = (local(seconds), local(now)) else {
+        return "Undated".into();
+    };
+    let days = day
+        .date_naive()
+        .signed_duration_since(today.date_naive())
+        .num_days();
+    match days {
+        0 => "Today".into(),
+        1 => "Tomorrow".into(),
+        -1 => "Yesterday".into(),
+        _ if day.year() == today.year() => day.format("%A, %b %-d").to_string(),
+        _ => day.format("%A, %b %-d, %Y").to_string(),
+    }
+}
+
+/// A full local date: `Monday, October 12`.
+pub fn long_date(seconds: i64) -> String {
+    local(seconds).map_or_else(
+        || "Time unavailable".into(),
+        |t| t.format("%A, %B %-d").to_string(),
+    )
+}
+
 /// An elapsed span: `45s`, `3m 05s`, `2h 14m`.
 pub fn duration(millis: i64) -> String {
     let seconds = millis.max(0) / 1000;
@@ -73,6 +116,21 @@ mod tests {
             .single()
             .unwrap()
             .timestamp()
+    }
+
+    #[test]
+    fn days_are_named_relative_to_today() {
+        let today = at(2026, 10, 12, 9, 0);
+        assert_eq!(day(today, today), "Today");
+        assert_eq!(day(today + DAY, today), "Tomorrow");
+        assert_eq!(day(today - DAY, today), "Yesterday");
+        assert_eq!(day(today + 3 * DAY, today), "Thursday, Oct 15");
+        assert_eq!(
+            span(at(2026, 10, 12, 14, 0), at(2026, 10, 12, 15, 30)),
+            "14:00 – 15:30"
+        );
+        assert_eq!(clock(at(2026, 10, 12, 14, 5)), "14:05");
+        assert_eq!(long_date(today), "Monday, October 12");
     }
 
     #[test]

@@ -84,27 +84,8 @@ impl Shell {
 
     fn tab(&self, index: usize, route: Route, ui: &mut Ui<Self>) -> Div {
         let selected = self.ui_state.active_tab() == index;
-        let label: SharedString = match route {
-            Route::Ticket(id) => self
-                .daemon
-                .tickets()
-                .tickets
-                .iter()
-                .find(|ticket| ticket.id == id)
-                .map(|ticket| ticket.title.clone())
-                .unwrap_or_else(|| format!("Ticket {id}"))
-                .into(),
-            Route::Conversation(id) => self
-                .daemon
-                .product()
-                .conversations
-                .iter()
-                .find(|conversation| conversation.id == id)
-                .map(|conversation| conversation.title.clone())
-                .unwrap_or_else(|| format!("Conversation {id}"))
-                .into(),
-            page => page.label().into(),
-        };
+        let label: SharedString = route.label().into();
+        let hint_close = selected && self.command_held;
         let group: SharedString = format!("tab-{index}").into();
         row()
             .relative()
@@ -158,10 +139,19 @@ impl Shell {
                                 .justify_center()
                                 .rounded(px(RADIUS_SM))
                                 .bg(rgba(theme().shell << 8))
-                                .opacity(0.)
+                                .opacity(if hint_close { 1. } else { 0. })
                                 .group_hover(group, |s| s.opacity(1.))
                                 .focus(|s| s.opacity(1.).shadow(focus_ring()))
-                                .child(icon(Icon::Close, TAB_ICON_SIZE)),
+                                .when(!hint_close, |s| s.child(icon(Icon::Close, TAB_ICON_SIZE)))
+                                .when(hint_close, |s| {
+                                    s.child(
+                                        div()
+                                            .debug_selector(move || {
+                                                format!("tabs.{index}.close.hint")
+                                            })
+                                            .child(kbd(shortcuts::CLOSE_TAB.glyph)),
+                                    )
+                                }),
                             ),
                     ),
             )
@@ -313,6 +303,12 @@ impl Shell {
                     .w(self.tab_viewport(ui.window))
                     .flex_shrink_0()
                     .h(px(TAB_SLOT_HEIGHT))
+                    // The empty strip drags the window like the rest of the title bar.
+                    .child(
+                        self.titlebar_space("titlebar-tabs-space", ui)
+                            .absolute()
+                            .inset_0(),
+                    )
                     .child(
                         row()
                             .id("tabs.viewport")

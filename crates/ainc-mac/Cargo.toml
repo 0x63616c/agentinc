@@ -51,10 +51,6 @@ rustls = { version = "0.23", default-features = false, features = [
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 uuid.workspace = true
 pulldown-cmark = "0.13"
-# Only tests/pilot_terminal_sessions.rs (requires `automation`) uses these.
-futures = { workspace = true, optional = true }
-tokio-tungstenite = { version = "0.29", optional = true }
-libc = { version = "0.2", optional = true }
 
 [build-dependencies]
 cc = "1"
@@ -78,9 +74,6 @@ tracing-oslog = "0.3"
 automation = [
   "fixtures",
   "dep:gpui-pilot",
-  "dep:futures",
-  "dep:tokio-tungstenite",
-  "dep:libc",
   "gpui/pilot",
   "gpui/test-support",
   "gpui_platform/test-support",
@@ -108,11 +101,6 @@ required-features = ["rendered-tests"]
 [[test]]
 name = "pilot_acceptance"
 path = "tests/pilot_acceptance.rs"
-required-features = ["automation"]
-
-[[test]]
-name = "pilot_terminal_sessions"
-path = "tests/pilot_terminal_sessions.rs"
 required-features = ["automation"]
 
 [[test]]

@@ -23,9 +23,8 @@ use crate::{
     daemon::Daemon,
     input::TextInput,
     overlay::Overlay,
-    page::{Drafts, Page, PageHandle},
+    page::{Drafts, PageHandle},
     routes::{Destination, PAGES, Route},
-    terminal::{Shortcut, TerminalCallbacks},
     ui::*,
     ui_state::{Appearance, UiState},
 };
@@ -200,39 +199,6 @@ impl Shell {
                 sync.update(cx, |sync, cx| sync.set_paused(!visibility.is_visible(), cx))
             }
         });
-        let shell = cx.weak_entity();
-        let terminal = TerminalCallbacks {
-            on_shortcut: Rc::new({
-                let shell = shell.clone();
-                move |shortcut, window, cx| {
-                    let control = match shortcut {
-                        Shortcut::GoTo => Control::GoTo,
-                        Shortcut::Settings => Control::Go(Destination::Page(Route::Settings)),
-                        Shortcut::Back => Control::Back,
-                        Shortcut::Forward => Control::Forward,
-                        Shortcut::NewTab => Control::NewTab,
-                        Shortcut::CloseTab => {
-                            let _ = shell.update(cx, |shell, cx| {
-                                shell.dispatch(
-                                    Control::CloseTab(shell.ui_state.active_tab()),
-                                    window,
-                                    cx,
-                                )
-                            });
-                            return;
-                        }
-                        Shortcut::PreviousTab => Control::StepTab(false),
-                        Shortcut::NextTab => Control::StepTab(true),
-                        Shortcut::CheckUpdates => Control::CheckForUpdates,
-                        Shortcut::Page(route) => Control::Go(Destination::Page(route)),
-                    };
-                    let _ = shell.update(cx, |shell, cx| shell.dispatch(control, window, cx));
-                }
-            }),
-            on_command_held: Rc::new(move |held, cx| {
-                let _ = shell.update(cx, |shell, cx| shell.set_command_held(held, cx));
-            }),
-        };
         let settings = cx.new(|cx| {
             crate::settings::SettingsPage::new(
                 appearance.clone(),
@@ -249,82 +215,41 @@ impl Shell {
             &settings,
             |this, _, event: &crate::settings::ThemeEvent, cx| this.apply_theme(*event, cx),
         );
+        let home = cx.new(crate::smart_home::SmartHomePage::new);
         let pages = vec![
             PageHandle::new(
                 cx.new(|cx| {
-                    crate::tickets::TicketsPage::new(
+                    crate::overview::OverviewPage::new(
+                        daemon.clone(),
+                        sync.clone(),
+                        home.clone(),
+                        cx,
+                    )
+                }),
+                cx,
+                queue,
+            ),
+            PageHandle::new(home, cx, queue),
+            PageHandle::new(
+                cx.new(|cx| {
+                    crate::todos::TodosPage::new(daemon.clone(), sync.clone(), overlays.clone(), cx)
+                }),
+                cx,
+                queue,
+            ),
+            PageHandle::new(
+                cx.new(|cx| {
+                    crate::calendar::CalendarPage::new(
                         daemon.clone(),
                         sync.clone(),
                         overlays.clone(),
                         cx,
                     )
-                }),
-                cx,
-                queue,
-            ),
-            PageHandle::new(
-                cx.new(|cx| {
-                    crate::evee::AssistantPage::new(
-                        daemon.clone(),
-                        sync.clone(),
-                        overlays.clone(),
-                        cx,
-                    )
-                }),
-                cx,
-                queue,
-            ),
-            PageHandle::new(
-                cx.new(|cx| {
-                    crate::agents::AgentsPage::new(
-                        daemon.clone(),
-                        sync.clone(),
-                        overlays.clone(),
-                        cx,
-                    )
-                }),
-                cx,
-                queue,
-            ),
-            PageHandle::new(
-                cx.new(|cx| {
-                    crate::automations::AutomationsPage::new(
-                        daemon.clone(),
-                        sync.clone(),
-                        overlays.clone(),
-                        cx,
-                    )
-                }),
-                cx,
-                queue,
-            ),
-            PageHandle::new(
-                cx.new(|cx| {
-                    crate::terminal::TerminalPage::new(
-                        daemon.clone(),
-                        overlays.clone(),
-                        terminal,
-                        cx,
-                    )
-                }),
-                cx,
-                queue,
-            ),
-            PageHandle::new(
-                cx.new(|cx| {
-                    crate::temporal::TemporalPage::new(daemon.clone(), appearance.clone(), cx)
                 }),
                 cx,
                 queue,
             ),
             PageHandle::new(settings, cx, queue),
-            PageHandle::new(
-                cx.new(|cx| {
-                    crate::connections::ConnectionsPage::new(daemon.clone(), overlays.clone(), cx)
-                }),
-                cx,
-                queue,
-            ),
             PageHandle::new(
                 cx.new(|cx| crate::components::ComponentsPage::new(overlays.clone(), cx)),
                 cx,
@@ -417,16 +342,13 @@ impl Shell {
             .find(|page| page.route() == route.page())
             .expect("every catalogued route has a page")
     }
-    /// A page by type, for the few places that drive one directly.
-    fn page_entity<P: Page>(&self) -> Entity<P> {
+    /// A page by type, for the fixtures that drive one directly.
+    #[cfg(any(test, feature = "fixtures"))]
+    fn page_entity<P: crate::page::Page>(&self) -> Entity<P> {
         self.page(P::ROUTE).entity::<P>()
     }
-    /// The local person: shown in the sidebar and the Tickets owner principal.
+    /// The local person, shown in the sidebar.
     fn set_profile(&mut self, profile: crate::profile::Profile, cx: &mut Context<Self>) {
-        self.page_entity::<crate::tickets::TicketsPage>()
-            .update(cx, |tickets, cx| {
-                tickets.set_owner(&profile.name, profile.photo.clone(), cx)
-            });
         self.profile = profile;
         cx.notify();
     }
@@ -577,11 +499,7 @@ impl Shell {
         self.ui_state.navigate(to.route());
         self.tab_reveal = true;
         window.focus(&self.focus, cx);
-        let to = if to == Destination::NewTicket {
-            to
-        } else {
-            to.route().destination()
-        };
+        let to = to.route().destination();
         for page in &self.pages {
             page.open(&to, window, cx);
         }

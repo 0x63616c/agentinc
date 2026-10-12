@@ -18,17 +18,6 @@ cp "target/$profile/AgentInc" "$bundle/Contents/MacOS/AgentInc"
 cp "target/$profile/aincd" "$bundle/Contents/MacOS/aincd"
 cp "target/$profile/ainc-update" "$bundle/Contents/MacOS/ainc-update"
 cp "target/$profile/ainc" "$bundle/Contents/MacOS/ainc"
-# Stage the Ghostty bridge only when its inputs changed since the last bundle of this profile.
-bridge=crates/ainc-mac/ghostty-bridge
-stamp="crates/ainc-mac/dist/.ghostty-stamp-$profile"
-inputs=$(find "$bridge/Package.swift" "$bridge/Package.resolved" "$bridge/Sources" "$bridge/licenses" "$bridge/ghostty-themes-1.3.1.tar.gz" crates/ainc-mac/scripts/stage-ghostty.sh crates/ainc-mac/scripts/check-ghostty-staging.sh -type f | LC_ALL=C sort | xargs shasum -a 256 | shasum -a 256 | cut -d ' ' -f 1)
-if [ -f "$bundle/Contents/Frameworks/libAgentIncGhosttyBridge.dylib" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$inputs" ]; then
-  echo 'Ghostty bridge unchanged; keeping the staged copy'
-else
-  rm -f "$stamp"
-  crates/ainc-mac/scripts/stage-ghostty.sh "$profile" "$bundle"
-  printf '%s\n' "$inputs" > "$stamp"
-fi
 codesign --force --sign - "$bundle/Contents/MacOS/aincd" "$bundle/Contents/MacOS/ainc"
 cp crates/ainc-mac/assets/AppIconDev.icns "$bundle/Contents/Resources/AppIcon.icns"
 # The product version is the one `[workspace.package]` line in the root Cargo.toml.

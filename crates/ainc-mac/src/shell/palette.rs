@@ -1,8 +1,7 @@
-//! The shell's command palette items: pages, actions and Tickets, fuzzy
-//! matched, grouped and remembered.
+//! The shell's command palette items: pages and actions, fuzzy matched,
+//! grouped and remembered.
 use super::*;
 use crate::ui_state::{Appearance, FontSize, UiState};
-use ainc_client::types::Ticket;
 
 /// Everything the palette can do, in its canonical order.
 pub(super) struct PaletteCandidate {
@@ -24,16 +23,11 @@ impl PaletteResults {
 }
 
 /// Everything the palette offers for this state, in canonical order.
-fn candidates(
-    ui_state: &UiState,
-    appearance: Appearance,
-    tickets: &[Ticket],
-) -> Vec<PaletteCandidate> {
+fn candidates(ui_state: &UiState, appearance: Appearance) -> Vec<PaletteCandidate> {
     let mut items = Vec::new();
     for (index, page) in PAGES.iter().enumerate() {
         let mut entry =
-            PaletteEntry::new(format!("page.{}", page.title.to_lowercase()), page.title)
-                .icon(page.icon);
+            PaletteEntry::new(format!("page.{}", page.route.key()), page.title).icon(page.icon);
         if page.in_sidebar {
             entry = entry.shortcut(shortcuts::route(index + 1).1);
         } else if page.route == Route::Settings {
@@ -59,11 +53,6 @@ fn candidates(
         .icon(Icon::Panel)
         .shortcut(shortcuts::TOGGLE_SIDEBAR.glyph),
         control: Control::Sidebar,
-    });
-    items.push(PaletteCandidate {
-        group: "Actions",
-        entry: PaletteEntry::new("action.new-ticket", "New Ticket").icon(Icon::Plus),
-        control: Control::Go(Destination::NewTicket),
     });
     items.push(PaletteCandidate {
         group: "Actions",
@@ -99,24 +88,6 @@ fn candidates(
         });
     }
 
-    for ticket in tickets {
-        let status = ticket.status;
-        items.push(PaletteCandidate {
-            group: "Tickets",
-            entry: PaletteEntry::new(
-                format!("goto-ticket.{}", ticket.id),
-                format!(
-                    "{} {}",
-                    crate::tickets::model::ticket_key(ticket.id),
-                    ticket.title
-                ),
-            )
-            .icon(crate::tickets::model::status_icon(status))
-            .icon_color(crate::tickets::model::status_color(status))
-            .detail(crate::tickets::model::status_name(status)),
-            control: Control::Go(Destination::Ticket(ticket.id)),
-        });
-    }
     items
 }
 
@@ -124,11 +95,7 @@ impl Shell {
     /// Groups matching `query`, with recent choices first when the query is empty.
     pub(super) fn palette_results(&self, query: &str) -> PaletteResults {
         let query = query.trim();
-        let candidates = candidates(
-            &self.ui_state,
-            self.appearance.get(),
-            &self.daemon.tickets().tickets,
-        );
+        let candidates = candidates(&self.ui_state, self.appearance.get());
         let mut groups: Vec<PaletteGroup> = Vec::new();
         let mut choices = Vec::new();
         if query.is_empty() {
@@ -147,15 +114,7 @@ impl Shell {
                 groups.push(PaletteGroup::new("recent", "Recent", entries));
             }
         }
-        for (key, group_name) in [
-            ("pages", "Pages"),
-            ("actions", "Actions"),
-            ("tickets", "Tickets"),
-        ] {
-            // Tickets are found by searching; an empty palette lists places and actions.
-            if key == "tickets" && query.is_empty() {
-                continue;
-            }
+        for (key, group_name) in [("pages", "Pages"), ("actions", "Actions")] {
             let mut matched: Vec<(i32, &PaletteCandidate, Vec<usize>)> = candidates
                 .iter()
                 .filter(|item| item.group == group_name)
@@ -212,8 +171,8 @@ impl Shell {
         )
         .icon(Icon::Search)
         .selected(self.selected)
-        .empty("Try a page, an action or a Ticket.")
-        .aria_label("Search pages, actions and Tickets")
+        .empty("Try a page or an action.")
+        .aria_label("Search pages and actions")
         .build(
             &mut Ui::new(window, cx),
             |this: &mut Self, index, window, cx| this.choose_palette(index, window, cx),
@@ -245,26 +204,6 @@ fn clone_entry(entry: &PaletteEntry, positions: Vec<usize>) -> PaletteEntry {
 mod tests {
     use super::{Control, candidates};
     use crate::ui_state::{Appearance, FontSize, UiState};
-    use ainc_client::types::{AssigneeKind, Ticket, TicketPriority, TicketStatus};
-
-    fn ticket(id: i64, title: &str) -> Ticket {
-        Ticket {
-            id,
-            title: title.into(),
-            description: String::new(),
-            status: TicketStatus::ToDo,
-            priority: TicketPriority::None,
-            labels: vec![],
-            assignee_kind: AssigneeKind::Human,
-            assignee_id: "owner".into(),
-            position: 0,
-            revision: 0,
-            generation: 0,
-            created_at: 0,
-            updated_at: 0,
-            conversation_id: None,
-        }
-    }
     fn ids(items: &[super::PaletteCandidate], group: &str) -> Vec<String> {
         items
             .iter()
@@ -274,24 +213,16 @@ mod tests {
     }
 
     #[test]
-    fn offers_pages_actions_and_one_entry_per_ticket() {
-        let items = candidates(
-            &UiState::default(),
-            Appearance::default(),
-            &[ticket(7, "Book dentist"), ticket(9, "Pay rent")],
-        );
-        assert!(ids(&items, "Pages").contains(&"page.tickets".to_owned()));
+    fn offers_pages_and_actions() {
+        let items = candidates(&UiState::default(), Appearance::default());
+        let pages = ids(&items, "Pages");
+        assert!(pages.contains(&"page.overview".to_owned()));
+        assert!(pages.contains(&"page.smart-home".to_owned()));
         let actions = ids(&items, "Actions");
-        for id in [
-            "action.toggle-sidebar",
-            "action.new-ticket",
-            "action.check-updates",
-        ] {
+        for id in ["action.toggle-sidebar", "action.check-updates"] {
             assert!(actions.iter().any(|a| a == id), "{id}");
         }
-        assert_eq!(ids(&items, "Tickets"), ["goto-ticket.7", "goto-ticket.9"]);
-        let first = items.iter().find(|i| i.group == "Tickets").unwrap();
-        assert!(first.entry.label.contains("Book dentist"));
+        let first = items.iter().find(|i| i.group == "Pages").unwrap();
         assert!(matches!(first.control, Control::Go(_)));
     }
 
@@ -299,14 +230,14 @@ mod tests {
     fn sidebar_entry_and_font_steps_follow_the_state() {
         let mut state = UiState::default();
         state.sidebar.open = false;
-        let items = candidates(&state, Appearance::default(), &[]);
+        let items = candidates(&state, Appearance::default());
         let toggle = items
             .iter()
             .find(|i| i.entry.id.as_ref() == "action.toggle-sidebar")
             .unwrap();
         assert_eq!(toggle.entry.label.as_ref(), "Show Sidebar");
         state.sidebar.open = true;
-        let items = candidates(&state, Appearance::default(), &[]);
+        let items = candidates(&state, Appearance::default());
         assert!(
             items
                 .iter()
@@ -321,7 +252,6 @@ mod tests {
                         font_size: size,
                         ..Appearance::default()
                     },
-                    &[],
                 ),
                 "Actions",
             )

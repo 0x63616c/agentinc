@@ -6,7 +6,6 @@ use crate::ui_state::{SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_M
 impl Shell {
     /// The content card: the current page over the status bar.
     pub(super) fn main_area(&self, content: AnyElement) -> Div {
-        let terminal = self.ui_state.current() == Route::Terminal;
         panel()
             .debug_selector(|| "main-pane".into())
             .flex_1()
@@ -14,14 +13,7 @@ impl Shell {
             .min_h_0()
             .h_full()
             .overflow_hidden()
-            .child(
-                column()
-                    .flex_1()
-                    .min_h_0()
-                    .min_w_0()
-                    .when(terminal, |pane| pane.p(px(SPACE_2)))
-                    .child(content),
-            )
+            .child(column().flex_1().min_h_0().min_w_0().child(content))
             .child(
                 status_bar().child(
                     div()

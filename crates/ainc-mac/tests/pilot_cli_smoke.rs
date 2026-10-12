@@ -86,8 +86,6 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
             std::env::var_os("AINC_DISCOVERY_FILE")
                 .context("run against an isolated cargo xtask dev stack")?,
         )
-        .env("AINC_LEGACY_DIR", state.join("legacy"))
-        .env("AINC_CODEX_HOME", state.join("codex"))
         .env("AINC_WINDOW_TITLE", TITLE)
         .stdout(log.try_clone()?)
         .stderr(log)
@@ -133,7 +131,7 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
     for _ in 0..100 {
         let snapshot = cli.run(&["snapshot"], None)?["snapshot"].take();
         let reference = node_reference(&snapshot, "search.input").context("search.input")?;
-        match cli.run(&["type", &reference, "--stdin"], Some("Tickets")) {
+        match cli.run(&["type", &reference, "--stdin"], Some("Todos")) {
             Ok(_) => {
                 typed = true;
                 break;
@@ -146,7 +144,7 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
     cli.run(
         &[
             "wait",
-            r#"{"kind":"value","author_id":"search.input","equals":"Tickets"}"#,
+            r#"{"kind":"value","author_id":"search.input","equals":"Todos"}"#,
             "3000",
         ],
         None,
@@ -155,7 +153,7 @@ fn run(root: &Path, app_binary: &Path) -> Result<()> {
     cli.run(
         &[
             "wait",
-            r#"{"kind":"present","author_id":"tickets.create"}"#,
+            r#"{"kind":"present","author_id":"todos.create"}"#,
             "3000",
         ],
         None,

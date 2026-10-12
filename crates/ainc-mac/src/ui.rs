@@ -52,8 +52,6 @@ mod toast;
 mod toggle;
 #[path = "ui/tokens.rs"]
 mod tokens;
-#[path = "ui/work_state.rs"]
-mod work_state;
 
 pub use avatar::*;
 pub use badge::*;
@@ -77,4 +75,3 @@ pub use table::*;
 pub use toast::*;
 pub use toggle::*;
 pub use tokens::*;
-pub use work_state::*;

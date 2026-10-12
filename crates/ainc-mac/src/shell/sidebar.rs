@@ -26,7 +26,6 @@ impl Shell {
         ))
         .h(px(CONTROL_HEIGHT))
         .flex_shrink_0()
-        .when(route == Route::Agents, |s| s.mt(px(SPACE_6)))
         // Expanded: icon on the icon column, label on the rail. Compact: a
         // square with the icon centred.
         .map(|s| {

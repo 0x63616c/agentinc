@@ -171,7 +171,7 @@ impl UiState {
             (self.active + self.tabs.len() - 1) % self.tabs.len()
         };
     }
-    /// Closing the last tab leaves a fresh Assistant tab, never an empty window.
+    /// Closing the last tab leaves a fresh Overview tab, never an empty window.
     pub fn close_tab(&mut self, index: usize) {
         if index >= self.tabs.len() {
             return;
@@ -288,7 +288,7 @@ impl UiState {
                     return Router::default();
                 }
                 let mut saved = saved.clone();
-                saved["current"] = serde_json::to_value(Route::Assistant).unwrap();
+                saved["current"] = serde_json::to_value(Route::Overview).unwrap();
                 restore_router(&saved).unwrap_or_default()
             });
         }
@@ -348,73 +348,54 @@ fn restore_router(value: &serde_json::Value) -> Option<Router> {
 mod tests {
     use super::*;
     #[test]
-    fn detail_routes_restore_each_tabs_back_and_forward_history() {
-        let mut state = UiState::default();
-        state.navigate(Route::Tickets);
-        state.navigate(Route::Ticket(42));
-        state.navigate(Route::Ticket(43));
-        state.go(false);
-        state.new_tab();
-        state.navigate(Route::Conversation(7));
-        let mut restored = UiState::from_json(&serde_json::to_string(&state).unwrap());
-        assert_eq!(restored.current(), Route::Conversation(7));
-        restored.select_tab(0);
-        assert_eq!(restored.current(), Route::Ticket(42));
-        restored.go(true);
-        assert_eq!(restored.current(), Route::Ticket(43));
-        restored.go(false);
-        restored.go(false);
-        assert_eq!(restored.current(), Route::Tickets);
-        assert_eq!(
-            UiState::from_json(r#"{"router":{"current":"tickets","back":["evee"]}}"#).current(),
-            Route::Tickets
-        );
-    }
-    #[test]
     fn tabs_keep_independent_history_and_round_trip() {
         let mut state = UiState::default();
-        state.navigate(Route::Tickets);
+        state.navigate(Route::Todos);
         state.navigate(Route::Settings);
         state.go(false);
         state.new_tab();
-        assert_eq!(state.current(), Route::Assistant);
+        assert_eq!(state.current(), Route::Overview);
         assert!(!state.can_go(false));
-        state.navigate(Route::Agents);
+        state.navigate(Route::Calendar);
         state.select_tab(0);
-        assert_eq!(state.current(), Route::Tickets);
+        assert_eq!(state.current(), Route::Todos);
         state.go(true);
         assert_eq!(state.current(), Route::Settings);
         state.new_tab();
         assert_eq!(state.active_tab(), 1);
-        assert_eq!(state.tabs()[2].current(), Route::Agents);
+        assert_eq!(state.tabs()[2].current(), Route::Calendar);
         assert_eq!(
             UiState::from_json(&serde_json::to_string(&state).unwrap()),
             state
+        );
+        assert_eq!(
+            UiState::from_json(r#"{"router":{"current":"todos","back":["smart_home"]}}"#).current(),
+            Route::Todos
         );
     }
 
     #[test]
     fn close_and_cycle_tabs_keep_a_valid_selection() {
         let mut state = UiState::default();
-        state.navigate(Route::Tickets);
+        state.navigate(Route::Todos);
         state.new_tab();
-        state.navigate(Route::Agents);
+        state.navigate(Route::Calendar);
         state.new_tab();
         state.navigate(Route::Settings);
         state.close_tab(0);
         assert_eq!(state.current(), Route::Settings);
         assert_eq!(state.active_tab(), 1);
         state.step_tab(true);
-        assert_eq!(state.current(), Route::Agents);
+        assert_eq!(state.current(), Route::Calendar);
         state.step_tab(false);
         assert_eq!(state.current(), Route::Settings);
         state.close_tab(1);
-        assert_eq!(state.current(), Route::Agents);
+        assert_eq!(state.current(), Route::Calendar);
         state.close_tab(9);
         state.select_tab(9);
-        assert_eq!(state.current(), Route::Agents);
+        assert_eq!(state.current(), Route::Calendar);
         state.close_tab(0);
-        assert_eq!(state.current(), Route::Assistant);
+        assert_eq!(state.current(), Route::Overview);
         assert_eq!(state.tabs().len(), 1);
         assert!(!state.can_go(false));
         state.step_tab(false);
@@ -424,16 +405,16 @@ mod tests {
     #[test]
     fn closing_first_middle_last_and_inactive_tabs_keeps_the_expected_page() {
         for (active, closed, expected) in [
-            (0, 0, Route::Agents),
+            (0, 0, Route::Calendar),
             (1, 1, Route::Settings),
-            (2, 2, Route::Agents),
-            (0, 2, Route::Tickets),
+            (2, 2, Route::Calendar),
+            (0, 2, Route::Todos),
             (2, 0, Route::Settings),
         ] {
             let mut state = UiState::default();
-            state.navigate(Route::Tickets);
+            state.navigate(Route::Todos);
             state.new_tab();
-            state.navigate(Route::Agents);
+            state.navigate(Route::Calendar);
             state.new_tab();
             state.navigate(Route::Settings);
             state.select_tab(active);
@@ -447,43 +428,43 @@ mod tests {
     fn restores_each_legacy_tab_and_survives_removed_or_malformed_entries() {
         let restored = UiState::from_json(
             r#"{
-            "tabs":["today","tickets","agents"], "active":2,
-            "history":[{}, {"entries":["evee","tickets","settings"],"cursor":1}]
+            "tabs":["today","todos","calendar"], "active":2,
+            "history":[{}, {"entries":["overview","todos","settings"],"cursor":1}]
         }"#,
         );
         assert_eq!(restored.tabs().len(), 2);
         assert_eq!(restored.active_tab(), 1);
-        assert_eq!(restored.current(), Route::Agents);
+        assert_eq!(restored.current(), Route::Calendar);
         let mut restored = restored;
         restored.select_tab(0);
         restored.go(true);
         assert_eq!(restored.current(), Route::Settings);
         restored.go(false);
         restored.go(false);
-        assert_eq!(restored.current(), Route::Assistant);
+        assert_eq!(restored.current(), Route::Overview);
         for json in [
             r#"{"tabs":[],"active":99}"#,
             r#"{"tabs":[null,{},"gone"],"active":99}"#,
             r#"{"router":"broken"}"#,
         ] {
             let state = UiState::from_json(json);
-            assert_eq!(state.current(), Route::Assistant);
+            assert_eq!(state.current(), Route::Overview);
             assert_eq!(state.active_tab(), 0);
         }
         let restored = UiState::from_json(
-            r#"{"tabs":[{"current":"tickets","back":["gone","agents"]},null,{"current":"evee"}],"active":99}"#,
+            r#"{"tabs":[{"current":"todos","back":["gone","calendar"]},null,{"current":"overview"}],"active":99}"#,
         );
         assert_eq!(restored.tabs().len(), 2);
         assert_eq!(restored.active_tab(), 1);
-        assert_eq!(restored.tabs()[0].back, [Route::Agents]);
+        assert_eq!(restored.tabs()[0].back, [Route::Calendar]);
     }
     #[test]
     fn history_round_trips() {
         let mut s = UiState::default();
-        s.navigate(Route::Tickets);
-        s.navigate(Route::Agents);
+        s.navigate(Route::Todos);
+        s.navigate(Route::Calendar);
         s.go(false);
-        assert_eq!(s.current(), Route::Tickets);
+        assert_eq!(s.current(), Route::Todos);
         assert_eq!(UiState::from_json(&serde_json::to_string(&s).unwrap()), s);
     }
     #[test]
@@ -491,31 +472,31 @@ mod tests {
         let s = UiState::from_json(
             r#"{"tabs":["today","evee","home"],"active":1,"sidebar":false,"font":"helvetica_neue","evee_width":390}"#,
         );
-        assert_eq!(s.current(), Route::Assistant);
+        assert_eq!(s.current(), Route::Overview);
         assert!(!s.sidebar.open);
         assert_eq!(s.font, FontChoice::HelveticaNeue);
         assert_eq!(
-            serde_json::to_string(&Route::Assistant).unwrap(),
-            "\"evee\""
+            serde_json::to_string(&Route::SmartHome).unwrap(),
+            "\"smart_home\""
         );
         let unknown =
             UiState::from_json(r#"{"tabs":["future"],"font":"helvetica_neue","sidebar":false}"#);
-        assert_eq!(unknown.current(), Route::Assistant);
+        assert_eq!(unknown.current(), Route::Overview);
         let removed = UiState::from_json(
-            r#"{"router":{"current":"today","back":["home"],"forward":[]},"panes":[{"open":false,"width":286},{"open":true,"width":390}]}"#,
+            r#"{"router":{"current":"tickets","back":["agents"],"forward":[]},"panes":[{"open":false,"width":286},{"open":true,"width":390}]}"#,
         );
-        assert_eq!(removed.current(), Route::Assistant);
+        assert_eq!(removed.current(), Route::Overview);
         assert_eq!(removed.sidebar.width, 286.);
         assert!(!removed.sidebar.open);
         let saved = serde_json::to_string(&removed).unwrap();
         assert!(!saved.contains("390"));
         assert!(saved.contains(r#""panes":[{"open":false,"width":286.0}]"#));
         let retained = UiState::from_json(
-            r#"{"router":{"current":"tickets","back":["today","evee"],"forward":["home","agents"]}}"#,
+            r#"{"router":{"current":"todos","back":["tickets","overview"],"forward":["evee","calendar"]}}"#,
         );
-        assert_eq!(retained.current(), Route::Tickets);
-        assert_eq!(retained.tabs[0].back, vec![Route::Assistant]);
-        assert_eq!(retained.tabs[0].forward, vec![Route::Agents]);
+        assert_eq!(retained.current(), Route::Todos);
+        assert_eq!(retained.tabs[0].back, vec![Route::Overview]);
+        assert_eq!(retained.tabs[0].forward, vec![Route::Calendar]);
         assert_eq!(unknown.font, FontChoice::HelveticaNeue);
         assert!(!unknown.sidebar.open);
     }
@@ -579,9 +560,9 @@ mod tests {
     fn recent_commands_dedupe_and_persist() {
         let mut state = UiState::default();
         for id in [
-            "page.tickets",
-            "page.agents",
-            "page.tickets",
+            "page.todos",
+            "page.calendar",
+            "page.todos",
             "a",
             "b",
             "c",
@@ -591,8 +572,8 @@ mod tests {
         }
         assert_eq!(state.recent_commands.len(), RECENT_COMMANDS);
         assert_eq!(state.recent_commands[0], "d");
-        assert_eq!(state.recent_commands.last().unwrap(), "page.tickets");
-        assert!(!state.recent_commands.contains(&"page.agents".to_owned()));
+        assert_eq!(state.recent_commands.last().unwrap(), "page.todos");
+        assert!(!state.recent_commands.contains(&"page.calendar".to_owned()));
         let restored = UiState::from_json(&serde_json::to_string(&state).unwrap());
         assert_eq!(restored.recent_commands, state.recent_commands);
         assert!(UiState::from_json("{}").recent_commands.is_empty());
@@ -602,7 +583,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("session.json");
         let mut s = UiState::default();
-        s.navigate(Route::Agents);
+        s.navigate(Route::Calendar);
         s.save(&path).unwrap();
         assert_eq!(UiState::load(&path), s);
         fs::remove_file(path).unwrap();

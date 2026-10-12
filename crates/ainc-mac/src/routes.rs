@@ -6,18 +6,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Route {
-    #[serde(alias = "tasks")]
-    Tickets,
-    Ticket(i64),
-    Agents,
-    Automations,
-    Terminal,
-    Temporal,
-    #[serde(rename = "evee", alias = "assistant")]
-    Assistant,
-    Conversation(i64),
+    Overview,
+    SmartHome,
+    Todos,
+    Calendar,
     Settings,
-    Connections,
     /// The living component gallery, reachable from the command palette.
     #[serde(alias = "design_system")]
     Components,
@@ -32,51 +25,33 @@ pub struct PageSpec {
 
 pub const PAGES: &[PageSpec] = &[
     PageSpec {
-        route: Route::Tickets,
-        title: "Tickets",
-        icon: Icon::Tasks,
+        route: Route::Overview,
+        title: "Overview",
+        icon: Icon::Home,
         in_sidebar: true,
     },
     PageSpec {
-        route: Route::Assistant,
-        title: "Assistant",
-        icon: Icon::EveeOutline,
+        route: Route::SmartHome,
+        title: "Smart Home",
+        icon: Icon::SmartHome,
         in_sidebar: true,
     },
     PageSpec {
-        route: Route::Agents,
-        title: "Agents",
-        icon: Icon::Agents,
+        route: Route::Todos,
+        title: "Todos",
+        icon: Icon::Todos,
         in_sidebar: true,
     },
     PageSpec {
-        route: Route::Automations,
-        title: "Automations",
-        icon: Icon::Repeat,
-        in_sidebar: true,
-    },
-    PageSpec {
-        route: Route::Terminal,
-        title: "Terminal",
-        icon: Icon::Terminal,
-        in_sidebar: true,
-    },
-    PageSpec {
-        route: Route::Temporal,
-        title: "Temporal",
-        icon: Icon::Temporal,
+        route: Route::Calendar,
+        title: "Calendar",
+        icon: Icon::Calendar,
         in_sidebar: true,
     },
     PageSpec {
         route: Route::Settings,
         title: "Settings",
         icon: Icon::Settings,
-        in_sidebar: false,
-    },
-    PageSpec {
-        route: Route::Connections,
-        title: "Connections",
-        icon: Icon::Link,
         in_sidebar: false,
     },
     PageSpec {
@@ -88,20 +63,12 @@ pub const PAGES: &[PageSpec] = &[
 ];
 
 impl Route {
-    /// The page that renders this route, including record details.
+    /// The page that renders this route.
     pub fn page(self) -> Self {
-        match self {
-            Self::Ticket(_) => Self::Tickets,
-            Self::Conversation(_) => Self::Assistant,
-            page => page,
-        }
+        self
     }
     pub fn destination(self) -> Destination {
-        match self {
-            Self::Ticket(id) => Destination::Ticket(id),
-            Self::Conversation(id) => Destination::Conversation(id),
-            page => Destination::Page(page),
-        }
+        Destination::Page(self)
     }
     pub fn from_shortcut(number: u8) -> Option<Self> {
         if !(1..=9).contains(&number) {
@@ -129,30 +96,20 @@ impl Route {
     }
     /// The stable lower-case name used in saved files and palette ids.
     pub fn key(self) -> String {
-        self.label().to_lowercase()
+        self.label().to_lowercase().replace(' ', "-")
     }
 }
 
 /// Where a page asks the shell to take the person. The shell navigates to
-/// [`Destination::route`] and hands the destination to every page, so the
-/// page that owns the record can select it.
+/// [`Destination::route`] and hands the destination to every page.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Destination {
     Page(Route),
-    /// A Ticket's detail.
-    Ticket(i64),
-    /// The create dialog on the Tickets page.
-    NewTicket,
-    /// A Conversation, open in the Assistant.
-    Conversation(i64),
 }
 impl Destination {
     pub fn route(&self) -> Route {
         match self {
             Self::Page(route) => *route,
-            Self::Ticket(id) => Route::Ticket(*id),
-            Self::NewTicket => Route::Tickets,
-            Self::Conversation(id) => Route::Conversation(*id),
         }
     }
 }
@@ -166,7 +123,7 @@ pub struct Router {
 impl Default for Router {
     fn default() -> Self {
         Self {
-            current: Route::Assistant,
+            current: Route::Overview,
             back: vec![],
             forward: vec![],
         }
@@ -208,29 +165,31 @@ mod tests {
     use super::*;
     #[test]
     fn catalogue_and_history() {
-        assert_eq!(PAGES.len(), 9);
+        assert_eq!(PAGES.len(), 6);
         for route in [
-            Route::Tickets,
-            Route::Agents,
-            Route::Automations,
-            Route::Terminal,
-            Route::Temporal,
-            Route::Assistant,
+            Route::Overview,
+            Route::SmartHome,
+            Route::Todos,
+            Route::Calendar,
             Route::Settings,
-            Route::Connections,
             Route::Components,
         ] {
             assert_eq!(route.spec().route, route);
         }
+        assert_eq!(Route::SmartHome.key(), "smart-home");
+        assert_eq!(
+            serde_json::to_string(&Route::SmartHome).unwrap(),
+            "\"smart_home\""
+        );
         let mut router = Router::default();
-        router.navigate(Route::Tickets);
-        router.navigate(Route::Agents);
+        assert_eq!(router.current(), Route::Overview);
+        router.navigate(Route::Todos);
+        router.navigate(Route::Calendar);
         router.go(false);
-        assert_eq!(router.current(), Route::Tickets);
-        router.navigate(Route::Automations);
+        assert_eq!(router.current(), Route::Todos);
+        router.navigate(Route::SmartHome);
         assert!(!router.can_go(true));
-        assert_eq!(Destination::Ticket(4).route(), Route::Ticket(4));
-        assert_eq!(Destination::Conversation(1).route(), Route::Conversation(1));
+        assert_eq!(Destination::Page(Route::Todos).route(), Route::Todos);
     }
     #[test]
     fn sidebar_shortcuts_follow_visual_order() {
@@ -242,20 +201,18 @@ mod tests {
         assert_eq!(
             sidebar,
             [
-                Route::Tickets,
-                Route::Assistant,
-                Route::Agents,
-                Route::Automations,
-                Route::Terminal,
-                Route::Temporal,
+                Route::Overview,
+                Route::SmartHome,
+                Route::Todos,
+                Route::Calendar,
             ]
         );
         for (index, route) in sidebar.into_iter().enumerate() {
             assert_eq!(Route::from_shortcut(((index + 1) % 10) as u8), Some(route));
         }
         assert_eq!(Route::from_shortcut(0), None);
-        assert_eq!(Route::from_shortcut(6), Some(Route::Temporal));
-        assert_eq!(Route::from_shortcut(7), None);
+        assert_eq!(Route::from_shortcut(4), Some(Route::Calendar));
+        assert_eq!(Route::from_shortcut(5), None);
         assert_eq!(Route::from_shortcut(10), None);
     }
 }

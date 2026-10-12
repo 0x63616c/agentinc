@@ -6,9 +6,6 @@
 //! id once on a transport failure, and lets go only when the daemon rejects it.
 //! While a family's slot is full, a *different* command in that family is
 //! refused until the pending one is retried.
-#[cfg(any(test, feature = "fixtures"))]
-#[path = "daemon/board.rs"]
-mod board;
 #[path = "daemon/http.rs"]
 mod http;
 #[cfg(any(test, feature = "fixtures"))]
@@ -20,14 +17,12 @@ pub mod transport;
 #[cfg(ainc_upgrade_test)]
 pub(crate) use http::connect as client;
 pub(crate) use http::{block_on, discovery_path};
-pub use transport::{ConnectionAction, DaemonError};
+pub use transport::DaemonError;
 use transport::{Envelope, Reply, Request, Slice, Transport};
 
 use ainc_client::types::{
-    Assignee, AssigneeKind, AutomationCommand, AutomationRequest, AutomationSnapshot,
-    ConnectionStatus, ConversationCommand, ConversationCommandRequest, ConversationSnapshot,
-    ErrorBody, ErrorCode, TicketActivity, TicketCommand, TicketCommandRequest, TicketSnapshot,
-    WorkPage, Workspace, WorkspaceCommand, WorkspaceRequest, WorkspaceSnapshot,
+    CalendarCommand, CalendarRequest, CalendarSnapshot, ErrorBody, ErrorCode, TodoCommand,
+    TodoRequest, TodoSnapshot, Workspace, WorkspaceCommand, WorkspaceRequest, WorkspaceSnapshot,
 };
 use std::sync::{
     Arc, Mutex,
@@ -38,23 +33,16 @@ use std::sync::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
     Workspace,
-    Automation,
-    Ticket,
-    Product,
+    Todo,
+    Calendar,
 }
 impl Family {
-    const ALL: [Family; 4] = [
-        Family::Workspace,
-        Family::Automation,
-        Family::Ticket,
-        Family::Product,
-    ];
+    const ALL: [Family; 3] = [Family::Workspace, Family::Todo, Family::Calendar];
     fn name(self) -> &'static str {
         match self {
             Family::Workspace => "Workspace",
-            Family::Automation => "Automation",
-            Family::Ticket => "Ticket",
-            Family::Product => "Conversation",
+            Family::Todo => "Todo",
+            Family::Calendar => "Calendar",
         }
     }
 }
@@ -66,13 +54,13 @@ pub trait Command: serde::Serialize + Clone {
     fn envelope(self, operation_id: String) -> Envelope;
     fn ack(reply: Reply) -> Option<Self::Ack>;
 }
-impl Command for TicketCommand {
-    type Ack = Option<i64>;
+impl Command for TodoCommand {
+    type Ack = i64;
     fn family() -> Family {
-        Family::Ticket
+        Family::Todo
     }
     fn envelope(self, operation_id: String) -> Envelope {
-        Envelope::Ticket(TicketCommandRequest {
+        Envelope::Todo(TodoRequest {
             command: self,
             operation_id,
         })
@@ -84,13 +72,13 @@ impl Command for TicketCommand {
         }
     }
 }
-impl Command for ConversationCommand {
-    type Ack = Option<i64>;
+impl Command for CalendarCommand {
+    type Ack = i64;
     fn family() -> Family {
-        Family::Product
+        Family::Calendar
     }
     fn envelope(self, operation_id: String) -> Envelope {
-        Envelope::Product(ConversationCommandRequest {
+        Envelope::Calendar(CalendarRequest {
             command: self,
             operation_id,
         })
@@ -98,24 +86,6 @@ impl Command for ConversationCommand {
     fn ack(reply: Reply) -> Option<Self::Ack> {
         match reply {
             Reply::Acknowledgement(id) => Some(id),
-            _ => None,
-        }
-    }
-}
-impl Command for AutomationCommand {
-    type Ack = String;
-    fn family() -> Family {
-        Family::Automation
-    }
-    fn envelope(self, operation_id: String) -> Envelope {
-        Envelope::Automation(AutomationRequest {
-            command: self,
-            operation_id,
-        })
-    }
-    fn ack(reply: Reply) -> Option<Self::Ack> {
-        match reply {
-            Reply::Receipt(id) => Some(id),
             _ => None,
         }
     }
@@ -146,20 +116,13 @@ pub trait Fetch {
     fn snapshot(reply: Reply) -> Option<Self::Snapshot>;
 }
 pub struct Workspaces;
-pub struct Product;
-pub struct Tickets;
-pub struct Automations;
-pub struct Activity(pub i64);
-pub struct Executions {
-    pub status: String,
-    pub page: Option<String>,
-}
+pub struct Todos;
+pub struct Calendar;
 macro_rules! fetch {
-    ($name:ty, $snapshot:ty, |$this:ident| $slice:expr, $reply:ident) => {
+    ($name:ty, $snapshot:ty, $slice:expr, $reply:ident) => {
         impl Fetch for $name {
             type Snapshot = $snapshot;
             fn slice(&self) -> Slice {
-                let $this = self;
                 $slice
             }
             fn snapshot(reply: Reply) -> Option<Self::Snapshot> {
@@ -171,35 +134,9 @@ macro_rules! fetch {
         }
     };
 }
-fetch!(
-    Workspaces,
-    WorkspaceSnapshot,
-    |_s| Slice::Workspaces,
-    Workspaces
-);
-fetch!(Product, ConversationSnapshot, |_s| Slice::Product, Product);
-fetch!(Tickets, TicketSnapshot, |_s| Slice::Tickets, Tickets);
-fetch!(
-    Automations,
-    AutomationSnapshot,
-    |_s| Slice::Automations,
-    Automations
-);
-fetch!(
-    Activity,
-    Vec<TicketActivity>,
-    |s| Slice::Activity { id: s.0 },
-    Activity
-);
-fetch!(
-    Executions,
-    WorkPage,
-    |s| Slice::Executions {
-        status: s.status.clone(),
-        page: s.page.clone(),
-    },
-    Executions
-);
+fetch!(Workspaces, WorkspaceSnapshot, Slice::Workspaces, Workspaces);
+fetch!(Todos, TodoSnapshot, Slice::Todos, Todos);
+fetch!(Calendar, CalendarSnapshot, Slice::Calendar, Calendar);
 
 pub(crate) fn default_workspaces() -> WorkspaceSnapshot {
     WorkspaceSnapshot {
@@ -209,26 +146,6 @@ pub(crate) fn default_workspaces() -> WorkspaceSnapshot {
             name: "World Wide Webb".into(),
             icon: None,
             color: None,
-        }],
-    }
-}
-fn default_product() -> ConversationSnapshot {
-    ConversationSnapshot {
-        conversations: vec![],
-        turns: vec![],
-        settings: Default::default(),
-    }
-}
-fn default_tickets() -> TicketSnapshot {
-    TicketSnapshot {
-        tickets: vec![],
-        comments: vec![],
-        runs: vec![],
-        links: vec![],
-        assignees: vec![Assignee {
-            id: "owner".into(),
-            name: "You".into(),
-            kind: AssigneeKind::Human,
         }],
     }
 }
@@ -243,11 +160,10 @@ pub struct Daemon {
     // Serialize mutations and refreshes so an older snapshot cannot replace a
     // newer acknowledgement. Never acquire this lock on the foreground.
     serial: Mutex<()>,
-    pending: [Mutex<Option<Pending>>; 4],
+    pending: [Mutex<Option<Pending>>; 3],
     workspaces: Mutex<WorkspaceSnapshot>,
-    product: Mutex<ConversationSnapshot>,
-    tickets: Mutex<Arc<TicketSnapshot>>,
-    automations: Mutex<AutomationSnapshot>,
+    todos: Mutex<Arc<TodoSnapshot>>,
+    calendar: Mutex<Arc<CalendarSnapshot>>,
     update_required: AtomicBool,
     #[cfg(any(test, feature = "fixtures"))]
     memory: Option<Arc<memory::MemoryTransport>>,
@@ -272,13 +188,8 @@ impl Daemon {
             serial: Mutex::new(()),
             pending: Default::default(),
             workspaces: Mutex::new(default_workspaces()),
-            product: Mutex::new(default_product()),
-            tickets: Mutex::new(Arc::new(default_tickets())),
-            automations: Mutex::new(AutomationSnapshot {
-                automations: vec![],
-                occurrences: vec![],
-                history: vec![],
-            }),
+            todos: Mutex::new(Arc::new(TodoSnapshot { todos: vec![] })),
+            calendar: Mutex::new(Arc::new(CalendarSnapshot { events: vec![] })),
             update_required: AtomicBool::new(false),
             #[cfg(any(test, feature = "fixtures"))]
             memory: None,
@@ -313,14 +224,11 @@ impl Daemon {
             Family::Workspace => {
                 *self.workspaces.lock().expect("Workspace snapshot") = self.fetch(Workspaces)?
             }
-            Family::Automation => {
-                *self.automations.lock().expect("Automation snapshot") = self.fetch(Automations)?
+            Family::Todo => {
+                *self.todos.lock().expect("Todo snapshot") = Arc::new(self.fetch(Todos)?)
             }
-            Family::Ticket => {
-                *self.tickets.lock().expect("Ticket snapshot") = Arc::new(self.fetch(Tickets)?)
-            }
-            Family::Product => {
-                *self.product.lock().expect("product snapshot") = self.fetch(Product)?
+            Family::Calendar => {
+                *self.calendar.lock().expect("Calendar snapshot") = Arc::new(self.fetch(Calendar)?)
             }
         }
         Ok(())
@@ -406,32 +314,15 @@ impl Daemon {
         Ok(reply)
     }
 
-    /// Daemon-owned Codex sign-in state.
-    pub fn connection_status(&self) -> Result<ConnectionStatus, DaemonError> {
-        match self.call(Request::ConnectionStatus)? {
-            Reply::ConnectionStatus(status) => Ok(status),
-            _ => Err(DaemonError::Unavailable("Unexpected daemon reply".into())),
-        }
-    }
-    pub fn connection(&self, action: ConnectionAction) -> Result<(), DaemonError> {
-        self.call(Request::Connection(action)).map(|_| ())
-    }
-
     pub fn workspaces(&self) -> WorkspaceSnapshot {
         self.workspaces.lock().expect("Workspace snapshot").clone()
     }
-    pub fn product(&self) -> ConversationSnapshot {
-        self.product.lock().expect("product snapshot").clone()
+    /// Shared, not copied: pages read it on every frame.
+    pub fn todos(&self) -> Arc<TodoSnapshot> {
+        self.todos.lock().expect("Todo snapshot").clone()
     }
-    /// Shared, not copied: the palette reads it on every keystroke.
-    pub fn tickets(&self) -> Arc<TicketSnapshot> {
-        self.tickets.lock().expect("Ticket snapshot").clone()
-    }
-    pub fn automations(&self) -> AutomationSnapshot {
-        self.automations
-            .lock()
-            .expect("Automation snapshot")
-            .clone()
+    pub fn calendar(&self) -> Arc<CalendarSnapshot> {
+        self.calendar.lock().expect("Calendar snapshot").clone()
     }
 }
 
@@ -439,8 +330,8 @@ impl Daemon {
 mod tests {
     use super::*;
 
-    fn create(title: &str) -> TicketCommand {
-        TicketCommand::Create {
+    fn add(title: &str) -> TodoCommand {
+        TodoCommand::Add {
             title: title.into(),
         }
     }
@@ -476,11 +367,59 @@ mod tests {
     #[test]
     fn a_command_is_one_request_and_one_fetch() {
         let daemon = Daemon::in_memory();
-        let id = daemon.send(create("Pay rent")).unwrap();
-        assert_eq!(id, Some(1));
+        let id = daemon.send(add("Pay rent")).unwrap();
+        assert_eq!(id, 1);
         assert_eq!(commands(&daemon).len(), 1);
-        assert_eq!(fetches(&daemon), vec![Slice::Tickets]);
-        assert_eq!(daemon.tickets().tickets[0].title, "Pay rent");
+        assert_eq!(fetches(&daemon), vec![Slice::Todos]);
+        assert_eq!(daemon.todos().todos[0].title, "Pay rent");
+    }
+
+    #[test]
+    fn todos_complete_and_delete_in_memory() {
+        let daemon = Daemon::in_memory();
+        let id = daemon.send(add("Pay rent")).unwrap();
+        daemon
+            .send(TodoCommand::Complete {
+                id,
+                completed: true,
+            })
+            .unwrap();
+        assert!(daemon.todos().todos[0].completed);
+        daemon.send(TodoCommand::Delete { id }).unwrap();
+        assert!(daemon.todos().todos.is_empty());
+        assert_eq!(
+            daemon.send(TodoCommand::Delete { id }),
+            Err(DaemonError::Rejected(ErrorBody {
+                code: ErrorCode::NotFound,
+                message: "Unknown Todo".into(),
+            }))
+        );
+    }
+
+    #[test]
+    fn calendar_events_sort_by_start() {
+        let daemon = Daemon::in_memory();
+        daemon
+            .send(CalendarCommand::Create {
+                title: "Lunch".into(),
+                starts_at: 200,
+                ends_at: 260,
+            })
+            .unwrap();
+        daemon
+            .send(CalendarCommand::Create {
+                title: "Standup".into(),
+                starts_at: 100,
+                ends_at: 115,
+            })
+            .unwrap();
+        let titles: Vec<_> = daemon
+            .calendar()
+            .events
+            .iter()
+            .map(|e| e.title.clone())
+            .collect();
+        assert_eq!(titles, ["Standup", "Lunch"]);
     }
 
     #[test]
@@ -489,11 +428,11 @@ mod tests {
         daemon
             .memory()
             .fail_next(DaemonError::Retryable("connection reset".into()));
-        daemon.send(create("Pay rent")).unwrap();
+        daemon.send(add("Pay rent")).unwrap();
         let sent = commands(&daemon);
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[0], sent[1]);
-        assert_eq!(daemon.tickets().tickets.len(), 1);
+        assert_eq!(daemon.todos().todos.len(), 1);
     }
 
     #[test]
@@ -501,10 +440,10 @@ mod tests {
         let daemon = Daemon::in_memory();
         daemon.memory().fail_next(refused(ErrorCode::Invalid));
         assert_eq!(
-            daemon.send(create("Pay rent")),
+            daemon.send(add("Pay rent")),
             Err(refused(ErrorCode::Invalid))
         );
-        daemon.send(create("Walk the dog")).unwrap();
+        daemon.send(add("Walk the dog")).unwrap();
         let sent = commands(&daemon);
         assert_eq!(sent.len(), 2);
         assert_ne!(sent[0], sent[1], "a refused operation is not reused");
@@ -517,15 +456,15 @@ mod tests {
             .memory()
             .fail_next(DaemonError::Unavailable("daemon down".into()));
         assert!(matches!(
-            daemon.send(create("Pay rent")),
+            daemon.send(add("Pay rent")),
             Err(DaemonError::Unavailable(_))
         ));
-        let blocked = daemon.send(create("Walk the dog"));
+        let blocked = daemon.send(add("Walk the dog"));
         assert!(
             matches!(&blocked, Err(DaemonError::Rejected(body)) if body.code == ErrorCode::Conflict),
             "{blocked:?}"
         );
-        daemon.send(create("Pay rent")).unwrap();
+        daemon.send(add("Pay rent")).unwrap();
         let sent = commands(&daemon);
         assert_eq!(
             sent.len(),
@@ -533,7 +472,7 @@ mod tests {
             "the blocked command never reached the daemon"
         );
         assert_eq!(sent[0], sent[1], "the retry reuses the operation id");
-        assert_eq!(daemon.tickets().tickets.len(), 1);
+        assert_eq!(daemon.todos().todos.len(), 1);
     }
 
     #[test]
@@ -542,15 +481,15 @@ mod tests {
         daemon
             .memory()
             .fail_next(DaemonError::Unavailable("daemon down".into()));
-        let _ = daemon.send(create("Pay rent"));
+        let _ = daemon.send(add("Pay rent"));
         daemon.memory().clear_requests();
         daemon.refresh().unwrap();
         assert_eq!(commands(&daemon).len(), 1);
-        assert_eq!(daemon.tickets().tickets.len(), 1);
+        assert_eq!(daemon.todos().todos.len(), 1);
         daemon.memory().clear_requests();
         daemon.refresh().unwrap();
         assert!(commands(&daemon).is_empty());
-        assert_eq!(fetches(&daemon).len(), 4);
+        assert_eq!(fetches(&daemon).len(), 3);
     }
 
     #[test]
@@ -558,12 +497,9 @@ mod tests {
         let daemon = Daemon::in_memory();
         assert!(!daemon.update_required());
         daemon.memory().fail_next(DaemonError::UpdateRequired);
-        assert_eq!(
-            daemon.fetch(Tickets).err(),
-            Some(DaemonError::UpdateRequired)
-        );
+        assert_eq!(daemon.fetch(Todos).err(), Some(DaemonError::UpdateRequired));
         assert!(daemon.update_required());
-        daemon.fetch(Tickets).unwrap();
+        daemon.fetch(Todos).unwrap();
         assert!(!daemon.update_required());
     }
 
@@ -573,7 +509,7 @@ mod tests {
         daemon
             .memory()
             .fail_next(DaemonError::Unavailable("daemon down".into()));
-        let _ = daemon.send(create("Pay rent"));
+        let _ = daemon.send(add("Pay rent"));
         let id = daemon
             .send(WorkspaceCommand::Create {
                 name: "Home".into(),

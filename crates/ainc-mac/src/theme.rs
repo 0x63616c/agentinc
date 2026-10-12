@@ -73,7 +73,13 @@ impl Themes {
             choice: String::new(),
             custom,
         };
-        themes.choose(choice);
+        themes.select(choice);
+        // The applied theme is process-wide. Under `cargo test` a fixture shell
+        // starting on the default preset would otherwise overwrite the theme a
+        // theme test, which holds the lock, has applied.
+        if !(cfg!(test) && themes.choice == themes::PRESETS[0].id) {
+            set_theme(themes.current());
+        }
         themes
     }
     /// The saved choice string.
@@ -101,12 +107,15 @@ impl Themes {
     }
     /// Selects and applies `choice`; an unknown choice falls back to the default preset.
     pub fn choose(&mut self, choice: &str) {
+        self.select(choice);
+        set_theme(self.current());
+    }
+    fn select(&mut self, choice: &str) {
         self.choice = if self.resolve(choice).is_some() {
             choice.to_owned()
         } else {
             themes::PRESETS[0].id.to_owned()
         };
-        set_theme(self.current());
     }
     /// The picker's rows: dark presets, light presets, then custom themes by name.
     pub fn entries(&self) -> Vec<ThemeEntry> {
