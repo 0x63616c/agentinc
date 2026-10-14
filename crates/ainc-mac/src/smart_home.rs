@@ -1,13 +1,11 @@
-//! Smart Home: the wall panel for the house. Lights, the fan, climate, the
-//! Sonos rooms, the weather, alarms and the Wi-Fi, with the recent activity
-//! beside them. Every control works on local state until the house is wired
-//! in; the shape of the page is the contract.
+//! Smart Home: the wall panel for the house. Lights, climate with the fan,
+//! and the Sonos rooms. Every control works on local state until the house
+//! is wired in; the shape of the page is the contract.
 use crate::{
     page::Page,
     routes::{Destination, Route},
     ui::*,
 };
-use chrono::{Local, Timelike};
 use gpui::{prelude::*, *};
 
 /// A lamp or light that is on or off.
@@ -26,18 +24,6 @@ pub struct Speaker {
     pub playing: bool,
     pub volume: u8,
 }
-#[derive(Clone, Debug)]
-pub struct Alarm {
-    pub label: &'static str,
-    pub time: &'static str,
-    pub days: &'static str,
-    pub on: bool,
-}
-#[derive(Clone, Debug)]
-pub struct Activity {
-    pub text: String,
-    pub at: i64,
-}
 /// The weather right now and for one coming hour.
 #[derive(Clone, Copy, Debug)]
 pub struct Weather {
@@ -48,7 +34,6 @@ pub struct Weather {
 
 const FAN_SPEEDS: [&str; 4] = ["Off", "Low", "Mid", "High"];
 const CLIMATE_MODES: [&str; 3] = ["Cool", "Heat", "Auto"];
-const MAX_ACTIVITY: usize = 8;
 
 /// One day's weather by hour, so the forecast is stable across frames.
 const DAY: [(Icon, i32, &str); 24] = [
@@ -86,16 +71,6 @@ pub fn weather_at(hour: u32) -> Weather {
         summary,
     }
 }
-/// The next twelve hours after `hour`, each with its label.
-pub fn next_hours(hour: u32) -> Vec<(String, Weather)> {
-    (1..=12)
-        .map(|offset| {
-            let h = (hour + offset) % 24;
-            (format!("{h:02}"), weather_at(h))
-        })
-        .collect()
-}
-
 pub struct SmartHomePage {
     lights: Vec<Light>,
     fan_speed: usize,
@@ -103,14 +78,11 @@ pub struct SmartHomePage {
     climate_target: i32,
     climate_mode: usize,
     speakers: Vec<Speaker>,
-    alarms: Vec<Alarm>,
-    activity: Vec<Activity>,
 }
 impl EventEmitter<Destination> for SmartHomePage {}
 
 impl Default for SmartHomePage {
     fn default() -> Self {
-        let now = time::now();
         Self {
             lights: vec![
                 Light {
@@ -166,44 +138,6 @@ impl Default for SmartHomePage {
                     volume: 15,
                 },
             ],
-            alarms: vec![
-                Alarm {
-                    label: "Wake up",
-                    time: "07:00",
-                    days: "Weekdays",
-                    on: true,
-                },
-                Alarm {
-                    label: "Gym",
-                    time: "06:30",
-                    days: "Tue, Thu",
-                    on: false,
-                },
-                Alarm {
-                    label: "Sleep",
-                    time: "23:00",
-                    days: "Every day",
-                    on: true,
-                },
-            ],
-            activity: vec![
-                Activity {
-                    text: "Kitchen started playing Nightcall".into(),
-                    at: now - 4 * 60,
-                },
-                Activity {
-                    text: "Hallway turned on".into(),
-                    at: now - 26 * 60,
-                },
-                Activity {
-                    text: "Climate set to 21°".into(),
-                    at: now - 2 * 3600,
-                },
-                Activity {
-                    text: "Wake up alarm rang".into(),
-                    at: now - 7 * 3600,
-                },
-            ],
         }
     }
 }
@@ -223,41 +157,19 @@ impl SmartHomePage {
     pub fn climate(&self) -> Option<i32> {
         self.climate_on.then_some(self.climate_target)
     }
-    /// The next alarm that is on.
-    pub fn next_alarm(&self) -> Option<&Alarm> {
-        self.alarms.iter().find(|a| a.on)
-    }
-    fn log(&mut self, text: String) {
-        self.activity.insert(
-            0,
-            Activity {
-                text,
-                at: time::now(),
-            },
-        );
-        self.activity.truncate(MAX_ACTIVITY);
-    }
     fn toggle_light(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(light) = self.lights.get_mut(index) else {
             return;
         };
         light.on = !light.on;
-        let text = format!(
-            "{} turned {}",
-            light.name,
-            if light.on { "on" } else { "off" }
-        );
-        self.log(text);
         cx.notify();
     }
     fn set_fan(&mut self, speed: usize, cx: &mut Context<Self>) {
         self.fan_speed = speed;
-        self.log(format!("Fan set to {}", FAN_SPEEDS[speed].to_lowercase()));
         cx.notify();
     }
     fn set_climate(&mut self, delta: i32, cx: &mut Context<Self>) {
         self.climate_target = (self.climate_target + delta).clamp(16, 30);
-        self.log(format!("Climate set to {}°", self.climate_target));
         cx.notify();
     }
     fn toggle_speaker(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -265,12 +177,6 @@ impl SmartHomePage {
             return;
         };
         speaker.playing = !speaker.playing;
-        let text = if speaker.playing {
-            format!("{} started playing {}", speaker.room, speaker.track)
-        } else {
-            format!("{} paused", speaker.room)
-        };
-        self.log(text);
         cx.notify();
     }
     fn set_volume(&mut self, index: usize, delta: i8, cx: &mut Context<Self>) {
@@ -335,7 +241,7 @@ impl SmartHomePage {
     fn controls(&self, ui: &mut Ui<Self>) -> Div {
         let on = self.lights_on();
         Self::section(
-            "Controls",
+            "Lights",
             Icon::Bulb,
             Some(
                 badge(
@@ -353,46 +259,45 @@ impl SmartHomePage {
                     .map(|(index, light)| self.device_tile(index, light, ui)),
             ),
         )
-        .child(divider())
-        .child(
-            row()
-                .items_center()
-                .gap(px(SPACE_3))
-                .min_h(px(LIST_ROW_HEIGHT))
-                .child(
-                    div()
-                        .size(px(CONTROL_HEIGHT))
-                        .rounded(px(RADIUS_MD))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .bg(rgb(if self.fan_speed > 0 {
-                            theme().status_blue_surface
+    }
+    fn fan_row(&self, ui: &mut Ui<Self>) -> Div {
+        row()
+            .items_center()
+            .gap(px(SPACE_3))
+            .min_h(px(LIST_ROW_HEIGHT))
+            .child(
+                div()
+                    .size(px(CONTROL_HEIGHT))
+                    .rounded(px(RADIUS_MD))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(rgb(if self.fan_speed > 0 {
+                        theme().status_blue_surface
+                    } else {
+                        theme().surface_control
+                    }))
+                    .child(
+                        icon(Icon::Fan, ICON_SIZE).text_color(rgb(if self.fan_speed > 0 {
+                            theme().status_blue
                         } else {
-                            theme().surface_control
-                        }))
-                        .child(
-                            icon(Icon::Fan, ICON_SIZE).text_color(rgb(if self.fan_speed > 0 {
-                                theme().status_blue
-                            } else {
-                                theme().text_tertiary
-                            })),
-                        ),
-                )
-                .child(
-                    column()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(SPACE_HALF))
-                        .child(div().text_size(type_size(BODY_SIZE)).child("Ceiling fan"))
-                        .child(caption("Living room")),
-                )
-                .child(
-                    Segmented::new("home.fan", FAN_SPEEDS)
-                        .selected(self.fan_speed)
-                        .build(ui, |this, index, _, cx| this.set_fan(index, cx)),
-                ),
-        )
+                            theme().text_tertiary
+                        })),
+                    ),
+            )
+            .child(
+                column()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(SPACE_HALF))
+                    .child(div().text_size(type_size(BODY_SIZE)).child("Ceiling fan"))
+                    .child(caption("Living room")),
+            )
+            .child(
+                Segmented::new("home.fan", FAN_SPEEDS)
+                    .selected(self.fan_speed)
+                    .build(ui, |this, index, _, cx| this.set_fan(index, cx)),
+            )
     }
     fn climate_card(&self, ui: &mut Ui<Self>) -> Div {
         let on = self.climate_on;
@@ -404,12 +309,6 @@ impl SmartHomePage {
                     .on(on)
                     .build(ui, |this, _, cx| {
                         this.climate_on = !this.climate_on;
-                        let text = if this.climate_on {
-                            "Climate turned on"
-                        } else {
-                            "Climate turned off"
-                        };
-                        this.log(text.into());
                         cx.notify();
                     })
                     .into_any_element(),
@@ -467,13 +366,11 @@ impl SmartHomePage {
                 .enabled(on)
                 .build(ui, |this, index, _, cx| {
                     this.climate_mode = index;
-                    this.log(format!(
-                        "Climate mode set to {}",
-                        CLIMATE_MODES[index].to_lowercase()
-                    ));
                     cx.notify();
                 }),
         )
+        .child(divider())
+        .child(self.fan_row(ui))
     }
     fn speaker_row(&self, index: usize, count: usize, speaker: &Speaker, ui: &mut Ui<Self>) -> Div {
         let playing = speaker.playing;
@@ -566,155 +463,6 @@ impl SmartHomePage {
             ),
         )
     }
-    fn weather(&self, hour: u32) -> Div {
-        let now = weather_at(hour);
-        let high = DAY.iter().map(|d| d.1).max().unwrap_or_default();
-        let low = DAY.iter().map(|d| d.1).min().unwrap_or_default();
-        Self::section("Weather", Icon::CloudSun, None)
-            .child(
-                row()
-                    .items_center()
-                    .gap(px(SPACE_4))
-                    .child(icon(now.icon, ICON_SIZE_LG * 2.).text_color(rgb(theme().text)))
-                    .child(
-                        column()
-                            .gap(px(SPACE_HALF))
-                            .child(
-                                div()
-                                    .text_size(px(DISPLAY_SIZE * 1.5))
-                                    .font_weight(FontWeight::LIGHT)
-                                    .child(format!("{}°", now.temperature)),
-                            )
-                            .child(caption(format!(
-                                "{} · High {high}° · Low {low}°",
-                                now.summary
-                            ))),
-                    ),
-            )
-            .child(divider())
-            .child(eyebrow("Next 12 hours"))
-            .child(
-                row()
-                    .justify_between()
-                    .children(next_hours(hour).into_iter().map(|(label, weather)| {
-                        column()
-                            .flex_1()
-                            .items_center()
-                            .gap(px(SPACE_1))
-                            .child(hint(label))
-                            .child(icon(weather.icon, ICON_SIZE))
-                            .child(
-                                div()
-                                    .text_size(type_size(LABEL_SIZE))
-                                    .child(format!("{}°", weather.temperature)),
-                            )
-                    })),
-            )
-    }
-    fn clock(&self, ui: &mut Ui<Self>) -> Div {
-        let now = time::now();
-        let count = self.alarms.len();
-        Self::section("Clock", Icon::Clock, None)
-            .child(
-                column()
-                    .gap(px(SPACE_HALF))
-                    .child(
-                        div()
-                            .text_size(px(DISPLAY_SIZE * 2.))
-                            .font_weight(FontWeight::LIGHT)
-                            .child(time::clock(now)),
-                    )
-                    .child(caption(time::long_date(now))),
-            )
-            .child(divider())
-            .child(eyebrow("Alarms"))
-            .child(
-                column().children(self.alarms.iter().enumerate().map(|(index, alarm)| {
-                    row()
-                        .items_center()
-                        .gap(px(SPACE_3))
-                        .min_h(px(LIST_ROW_HEIGHT))
-                        .when(index + 1 < count, |s| {
-                            s.border_b_1().border_color(rgb(theme().border_subtle))
-                        })
-                        .child(icon(Icon::Bell, ICON_SIZE_SM))
-                        .child(
-                            column()
-                                .flex_1()
-                                .min_w_0()
-                                .gap(px(SPACE_HALF))
-                                .child(
-                                    row()
-                                        .gap(px(SPACE_2))
-                                        .items_baseline()
-                                        .child(
-                                            div()
-                                                .text_size(type_size(HEADING_SIZE))
-                                                .child(alarm.time),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_size(type_size(BODY_SIZE))
-                                                .text_color(rgb(theme().text_secondary))
-                                                .child(alarm.label),
-                                        ),
-                                )
-                                .child(caption(alarm.days)),
-                        )
-                        .child(
-                            Toggle::new(
-                                SharedString::from(format!("home.alarm.{index}")),
-                                alarm.label,
-                            )
-                            .on(alarm.on)
-                            .build(ui, move |this, _, cx| {
-                                if let Some(alarm) = this.alarms.get_mut(index) {
-                                    alarm.on = !alarm.on;
-                                    cx.notify();
-                                }
-                            }),
-                        )
-                })),
-            )
-    }
-    fn activity_card(&self) -> Div {
-        let now = time::now();
-        let count = self.activity.len();
-        Self::section("Activity", Icon::History, None).child(column().children(
-            self.activity.iter().enumerate().map(|(index, entry)| {
-                row()
-                    .items_center()
-                    .gap(px(SPACE_3))
-                    .min_h(px(CONTROL_HEIGHT))
-                    .when(index + 1 < count, |s| {
-                        s.border_b_1().border_color(rgb(theme().border_subtle))
-                    })
-                    .child(status_dot(if index == 0 {
-                        Tone::Info
-                    } else {
-                        Tone::Neutral
-                    }))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .text_size(type_size(BODY_SIZE))
-                            .child(entry.text.clone()),
-                    )
-                    .child(hint(time::relative(entry.at, now)))
-            }),
-        ))
-    }
-    fn wifi(&self) -> Div {
-        Self::section(
-            "Wi-Fi",
-            Icon::Wifi,
-            Some(badge("Online", Tone::Success).into_any_element()),
-        )
-        .child(property_row("Network", div().child("World Wide Webb")))
-        .child(property_row("Guest", div().child("WWW Guest")))
-        .child(property_row("Password", div().child("ask-the-house")))
-    }
 }
 
 impl Page for SmartHomePage {
@@ -723,21 +471,9 @@ impl Page for SmartHomePage {
 
 impl Render for SmartHomePage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let hour = Local::now().hour();
-        let weather = weather_at(hour);
-        let mut parts = vec![format!(
-            "{} · {}°",
-            copy::pluralize(self.lights_on(), "light on", "lights on"),
-            weather.temperature
-        )];
-        if let Some(speaker) = self.playing() {
-            parts.push(format!("Playing in the {}", speaker.room.to_lowercase()));
-        }
         let ui = &mut Ui::new(window, cx);
         PageFrame::document(
-            PageHeader::new(self.title())
-                .description(parts.join(" · "))
-                .actions(badge("Everyone home", Tone::Info)),
+            PageHeader::new(self.title()).actions(badge("Everyone home", Tone::Info)),
         )
         .child(
             row()
@@ -748,19 +484,15 @@ impl Render for SmartHomePage {
                         .flex_1()
                         .min_w_0()
                         .gap(px(SPACE_4))
-                        .child(self.controls(ui))
-                        .child(self.climate_card(ui))
-                        .child(self.sound(ui)),
+                        .child(self.controls(ui)),
                 )
                 .child(
                     column()
                         .flex_1()
                         .min_w_0()
                         .gap(px(SPACE_4))
-                        .child(self.weather(hour))
-                        .child(self.clock(ui))
-                        .child(self.activity_card())
-                        .child(self.wifi()),
+                        .child(self.climate_card(ui))
+                        .child(self.sound(ui)),
                 ),
         )
         .build()
@@ -769,28 +501,18 @@ impl Render for SmartHomePage {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_ACTIVITY, SmartHomePage, next_hours, weather_at};
+    use super::{SmartHomePage, weather_at};
 
     #[test]
-    fn the_forecast_covers_twelve_hours_and_wraps_midnight() {
-        let hours = next_hours(20);
-        assert_eq!(hours.len(), 12);
-        assert_eq!(hours[0].0, "21");
-        assert_eq!(hours[11].0, "08");
+    fn the_day_wraps_midnight() {
         assert_eq!(weather_at(24).temperature, weather_at(0).temperature);
     }
 
     #[test]
-    fn toggling_a_light_logs_it_first() {
+    fn toggling_a_light_changes_the_count() {
         let mut home = SmartHomePage::default();
         let before = home.lights_on();
         home.lights[2].on = !home.lights[2].on;
-        home.log("Desk lamp turned on".into());
         assert_eq!(home.lights_on(), before + 1);
-        assert_eq!(home.activity[0].text, "Desk lamp turned on");
-        for _ in 0..MAX_ACTIVITY {
-            home.log("x".into());
-        }
-        assert_eq!(home.activity.len(), MAX_ACTIVITY);
     }
 }
