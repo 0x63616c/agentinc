@@ -1077,7 +1077,6 @@ fn capture_tab_matrix(suite: &mut Suite, temporary: &std::path::Path) -> Result<
                     .update_window(suite.window.into(), |_, window, cx| {
                         window.draw(cx).clear(cx)
                     })?;
-                suite.bounds("update-ready")?;
                 suite.click_selector("sidebar-profile")?;
                 suite
                     .cx

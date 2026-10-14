@@ -63,19 +63,6 @@ impl Shell {
 
     pub(super) fn sidebar(&self, ui: &mut Ui<Self>) -> impl IntoElement {
         let expanded = self.sidebar_labels();
-        let update_ready = ui
-            .cx
-            .try_global::<crate::updates::Updates>()
-            .is_some_and(|updates| updates.0.read(ui.cx).is_available());
-        let update_button = Button::new("update-ready", "Update")
-            .primary()
-            .icon(Icon::Download)
-            .full_width();
-        let update_button = if expanded {
-            update_button
-        } else {
-            update_button.icon_only()
-        };
         let mut nav = column().gap(px(2.)).when(!expanded, |s| s.items_center());
         for (index, page) in PAGES.iter().filter(|page| page.in_sidebar).enumerate() {
             nav = nav.child(self.sidebar_item(page.route, index + 1, ui));
@@ -140,18 +127,6 @@ impl Shell {
                     .overflow_y_scroll()
                     .child(nav),
             )
-            .when(update_ready, |s| {
-                s.child(
-                    update_button
-                        .build(ui, |this, window, cx| {
-                            this.dispatch(Control::InstallUpdate, window, cx)
-                        })
-                        .accessibility_id("updates.ready")
-                        .aria_label("Update available")
-                        .mb(px(SPACE_2))
-                        .flex_shrink_0(),
-                )
-            })
             .child(
                 // A flex column gives the floating menu the row's top-left as its origin.
                 column()
