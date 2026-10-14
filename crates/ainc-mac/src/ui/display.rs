@@ -7,10 +7,9 @@ use super::{
 use gpui::{prelude::*, *};
 use std::borrow::Cow;
 
-/// Shared heading for a page's title, short description, and title-row actions.
+/// Shared heading for a page's title and title-row actions.
 pub struct PageHeader {
     title: SharedString,
-    description: Option<SharedString>,
     actions: Option<AnyElement>,
     leading: Option<AnyElement>,
 }
@@ -19,7 +18,6 @@ impl PageHeader {
     pub fn new(title: impl Into<SharedString>) -> Self {
         Self {
             title: title.into(),
-            description: None,
             actions: None,
             leading: None,
         }
@@ -28,11 +26,6 @@ impl PageHeader {
     /// A small row above the title, such as a breadcrumb or a back link.
     pub fn leading(mut self, leading: impl IntoElement) -> Self {
         self.leading = Some(leading.into_any_element());
-        self
-    }
-
-    pub fn description(mut self, description: impl Into<SharedString>) -> Self {
-        self.description = Some(description.into());
         self
     }
 
@@ -74,14 +67,6 @@ impl PageHeader {
                     )
                     .when_some(self.actions, |s, actions| s.child(actions)),
             )
-            .when_some(self.description, |s, description| {
-                s.child(
-                    div()
-                        .text_size(type_size(LABEL_SIZE))
-                        .text_color(rgb(theme().text_secondary))
-                        .child(description),
-                )
-            })
     }
 }
 

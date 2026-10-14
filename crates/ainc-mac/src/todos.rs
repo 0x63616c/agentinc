@@ -228,14 +228,9 @@ impl Render for TodosPage {
         let open: Vec<&Todo> = todos.todos.iter().filter(|t| !t.completed).collect();
         let done: Vec<&Todo> = todos.todos.iter().filter(|t| t.completed).collect();
         let show_done = self.show_done;
-        let summary = if todos.todos.is_empty() {
-            "Nothing on the list yet.".to_owned()
-        } else {
-            format!("{} open, {} done.", open.len(), done.len())
-        };
         let ui = &mut Ui::new(window, cx);
         PageFrame::document(
-            PageHeader::new(self.title()).description(summary).actions(
+            PageHeader::new(self.title()).actions(
                 row_gap(CONTROL_GAP)
                     .child(
                         Button::new("todos.refresh", "Refresh")

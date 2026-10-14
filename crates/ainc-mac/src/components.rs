@@ -482,23 +482,21 @@ impl Render for ComponentsPage {
             2 => self.data(ui),
             _ => self.overlays(ui),
         };
-        PageFrame::document(PageHeader::new("Components").description(
-            "The AgentInc design system, rendered by the app itself. See docs/design-system.md.",
-        ))
-        .child(
-            column()
-                .id("components.page")
-                .gap(px(SECTION_GAP))
-                .child(
-                    Tabs::new("components.tabs", SECTIONS)
-                        .selected(self.section)
-                        .build(ui, |this, index, _, cx| {
-                            this.section = index;
-                            cx.notify();
-                        }),
-                )
-                .child(body),
-        )
-        .build()
+        PageFrame::document(PageHeader::new("Components"))
+            .child(
+                column()
+                    .id("components.page")
+                    .gap(px(SECTION_GAP))
+                    .child(
+                        Tabs::new("components.tabs", SECTIONS)
+                            .selected(self.section)
+                            .build(ui, |this, index, _, cx| {
+                                this.section = index;
+                                cx.notify();
+                            }),
+                    )
+                    .child(body),
+            )
+            .build()
     }
 }

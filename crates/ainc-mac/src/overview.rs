@@ -9,7 +9,7 @@ use crate::{
     ui::*,
 };
 use ainc_client::types::{CalendarEvent, CalendarSnapshot, Todo, TodoSnapshot};
-use chrono::{DateTime, Local, Timelike};
+use chrono::{Local, Timelike};
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 
@@ -82,6 +82,7 @@ impl OverviewPage {
                         "Open",
                     )
                     .icon(Icon::ArrowRight)
+                    .icon_only()
                     .ghost()
                     .small()
                     .build(ui, move |_, _, cx| cx.emit(Destination::Page(route))),
@@ -166,9 +167,6 @@ impl OverviewPage {
         let playing = home.playing().map_or("Nothing playing".to_owned(), |s| {
             format!("{} in the {}", s.track, s.room.to_lowercase())
         });
-        let alarm = home.next_alarm().map_or("No alarm set".to_owned(), |a| {
-            format!("{} alarm at {}", a.label, a.time)
-        });
         let stat = |name: Icon, text: String| {
             row()
                 .items_center()
@@ -181,8 +179,7 @@ impl OverviewPage {
                 .gap(px(SPACE_2))
                 .child(stat(Icon::Bulb, lights))
                 .child(stat(Icon::Thermometer, climate))
-                .child(stat(Icon::Music, playing))
-                .child(stat(Icon::Bell, alarm)),
+                .child(stat(Icon::Music, playing)),
         )
     }
 }
@@ -197,38 +194,18 @@ impl Render for OverviewPage {
         let today = Local::now();
         let now = time::now();
         let weather = weather_at(today.hour());
-        let open = self.todos.todos.iter().filter(|t| !t.completed).count();
-        let events_today = self
-            .calendar
-            .events
-            .iter()
-            .filter(|e| {
-                e.ends_at > now
-                    && DateTime::from_timestamp(e.starts_at, 0)
-                        .is_some_and(|t| t.with_timezone(&Local).date_naive() == today.date_naive())
-            })
-            .count();
-        let count = |n: usize, one: &str, many: &str| match n {
-            0 => format!("no {many}"),
-            _ => copy::pluralize(n, one, many),
-        };
-        let summary = format!(
-            "{}. {} and {} today.",
-            time::long_date(now),
-            count(open, "open Todo", "open Todos"),
-            count(events_today, "Event", "Events")
-        );
         let ui = &mut Ui::new(window, cx);
         PageFrame::document(
             PageHeader::new(match &self.name {
                 Some(name) => format!("{}, {name}", greeting(today.hour())),
                 None => greeting(today.hour()).to_owned(),
             })
-            .description(summary)
             .actions(
                 row()
                     .items_center()
                     .gap(px(SPACE_2))
+                    .child(caption(time::long_date(now)))
+                    .child(div().w(px(SPACE_2)))
                     .child(icon(weather.icon, ICON_SIZE_LG).text_color(rgb(theme().text)))
                     .child(
                         div()

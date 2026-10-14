@@ -141,25 +141,22 @@ impl Render for SettingsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let updates = cx.try_global::<crate::updates::Updates>().cloned();
         let mut ui = Ui::new(window, cx);
-        PageFrame::document(
-            PageHeader::new(self.title())
-                .description("Appearance, theme, updates, connections and shortcuts."),
-        )
-        .child(
-            column()
-                .gap(px(SECTION_GAP))
-                .child(self.appearance_section(&mut ui))
-                .child(self.theme_section(&mut ui))
-                .when_some(updates, |view, updates| {
-                    view.child(
-                        updates
-                            .0
-                            .update(ui.cx, |this, cx| this.settings(ui.window, cx)),
-                    )
-                })
-                .child(self.shortcuts_section()),
-        )
-        .build()
+        PageFrame::document(PageHeader::new(self.title()))
+            .child(
+                column()
+                    .gap(px(SECTION_GAP))
+                    .child(self.appearance_section(&mut ui))
+                    .child(self.theme_section(&mut ui))
+                    .when_some(updates, |view, updates| {
+                        view.child(
+                            updates
+                                .0
+                                .update(ui.cx, |this, cx| this.settings(ui.window, cx)),
+                        )
+                    })
+                    .child(self.shortcuts_section()),
+            )
+            .build()
     }
 }
 

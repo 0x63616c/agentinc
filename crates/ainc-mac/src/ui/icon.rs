@@ -56,6 +56,7 @@ pub enum Icon {
     Search,
     Settings,
     Spark,
+    Overview,
     Home,
     SmartHome,
     Todos,
@@ -85,7 +86,7 @@ pub enum Icon {
 
 impl Icon {
     /// Every icon, for the asset source's lookup by path.
-    pub const ALL: [Icon; 77] = [
+    pub const ALL: [Icon; 78] = [
         Icon::Refresh,
         Icon::Check,
         Icon::ChevronDown,
@@ -138,6 +139,7 @@ impl Icon {
         Icon::Search,
         Icon::Settings,
         Icon::Spark,
+        Icon::Overview,
         Icon::Home,
         Icon::SmartHome,
         Icon::Todos,
@@ -220,6 +222,7 @@ impl Icon {
             Icon::Search => "search.svg",
             Icon::Settings => "settings.svg",
             Icon::Spark => "spark.svg",
+            Icon::Overview => "overview.svg",
             Icon::Home => "home.svg",
             Icon::SmartHome => "smart-home.svg",
             Icon::Todos => "todos.svg",
@@ -303,6 +306,7 @@ impl Icon {
             Icon::Search => include_bytes!("../../assets/search.svg"),
             Icon::Settings => include_bytes!("../../assets/settings.svg"),
             Icon::Spark => include_bytes!("../../assets/spark.svg"),
+            Icon::Overview => include_bytes!("../../assets/icons/overview.svg"),
             Icon::Home => include_bytes!("../../assets/icons/home.svg"),
             Icon::SmartHome => include_bytes!("../../assets/icons/smart-home.svg"),
             Icon::Todos => include_bytes!("../../assets/icons/todos.svg"),

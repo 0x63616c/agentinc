@@ -331,18 +331,9 @@ impl Render for CalendarPage {
                 _ => days.push((label, vec![event])),
             }
         }
-        let upcoming = snapshot.events.iter().filter(|e| e.ends_at > now).count();
-        let summary = if upcoming == 0 {
-            "Nothing scheduled.".to_owned()
-        } else {
-            format!(
-                "{} coming up.",
-                copy::pluralize(upcoming, "Event", "Events")
-            )
-        };
         let ui = &mut Ui::new(window, cx);
         PageFrame::document(
-            PageHeader::new(self.title()).description(summary).actions(
+            PageHeader::new(self.title()).actions(
                 row_gap(CONTROL_GAP)
                     .child(
                         Button::new("calendar.refresh", "Refresh")

@@ -8,7 +8,9 @@ pub fn current_page_contour() -> impl IntoElement {
         |_, _, _| (),
         move |bounds, _, window, _| {
             let p = |x: f32, y: f32| bounds.origin + point(px(x), px(y));
-            let (w, h) = (TAB_CONTOUR_WIDTH, TAB_FACE_HEIGHT);
+            // The shoulders end half a pixel low so the stroke sits on the
+            // panel border's row instead of one row above it.
+            let (w, h) = (TAB_CONTOUR_WIDTH, TAB_FACE_HEIGHT + 0.5);
             let (s, r) = (TAB_CONTOUR_SHOULDER, TAB_RADIUS);
             // Bezier handles: a third of a shoulder, and the circle constant on the corner.
             let (third, k) = (s / 3., r * 0.4477);

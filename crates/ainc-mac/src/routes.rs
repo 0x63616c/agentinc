@@ -27,7 +27,7 @@ pub const PAGES: &[PageSpec] = &[
     PageSpec {
         route: Route::Overview,
         title: "Overview",
-        icon: Icon::Home,
+        icon: Icon::Overview,
         in_sidebar: true,
     },
     PageSpec {
