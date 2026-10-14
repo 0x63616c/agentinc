@@ -556,7 +556,7 @@ fn sidebar_hints_preserve_fresh_command_input_before_queued_activation(cx: &mut 
             window.activate_window();
         });
         if native_input {
-            // Ghostty's C callback updates Shell synchronously, without
+            // A native callback updates Shell synchronously, without
             // delivering a GPUI event or draining the foreground executor.
             shell.update(cx, |shell, cx| shell.set_command_held(true, cx));
         } else {

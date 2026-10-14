@@ -238,11 +238,6 @@ fn run(root: &Path, profile: &str, upload: bool) -> Result<()> {
         root.join("crates/ainc-mac/assets/AppIcon.icns"),
         resources.join("AppIcon.icns"),
     )?;
-    checked(
-        Command::new("sh")
-            .args(["crates/ainc-mac/scripts/stage-ghostty.sh", profile])
-            .arg(&bundle),
-    )?;
     super::sparkle::stage(&root, &bundle)?;
     let runtime = resources.join("runtime");
     fs::create_dir(&runtime)?;
