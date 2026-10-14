@@ -468,7 +468,8 @@ pub const TAB_ICON_SIZE: f32 = 14.;
 pub const HEADER_CONTROLS_INSET: f32 = 9.;
 /// How much wider than the sidebar the header's left controls run.
 pub const HEADER_LEFT_EXTRA: f32 = 60.;
-pub const HEADER_TRAFFIC_WIDTH: f32 = 80.;
+/// The traffic lights end 72 pt in; the extra keeps the sidebar toggle clear of them.
+pub const HEADER_TRAFFIC_WIDTH: f32 = 96.;
 pub const TAB_CLOSE_SIZE: f32 = 24.;
 /// The close control's inset from the tab's edge, so its glyph sits as far
 /// in as the label's icon does on the left.
