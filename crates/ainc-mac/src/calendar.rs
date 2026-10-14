@@ -1,4 +1,6 @@
-//! Calendar: upcoming Events grouped by day, and the dialog that creates one.
+//! Calendar: Events as a list, a week or a month, and the dialog that creates one.
+mod grid;
+
 use crate::{
     action::{Pending, Run},
     daemon::Daemon,
@@ -10,7 +12,7 @@ use crate::{
     ui::*,
 };
 use ainc_client::types::{CalendarCommand, CalendarEvent, CalendarSnapshot};
-use chrono::{Local, NaiveDateTime, TimeZone, Timelike};
+use chrono::{Datelike, Local, NaiveDate, NaiveDateTime, TimeZone, Timelike};
 use gpui::{prelude::*, *};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
@@ -22,11 +24,41 @@ enum Dialog {
     Add,
 }
 
+/// How the Events are laid out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum View {
+    List,
+    Week,
+    Month,
+}
+
+impl View {
+    const ALL: [View; 3] = [View::List, View::Week, View::Month];
+    fn label(self) -> &'static str {
+        match self {
+            View::List => "List",
+            View::Week => "Week",
+            View::Month => "Month",
+        }
+    }
+}
+
+/// How tall a week's day columns are before their Events need more.
+const WEEK_MIN_HEIGHT: f32 = 360.;
+/// A month cell's height; it shows this many Events and counts the rest.
+const MONTH_CELL_HEIGHT: f32 = 96.;
+const MONTH_CELL_EVENTS: usize = 3;
+/// The size of the disc behind today's number.
+const TODAY_DISC: f32 = 22.;
+
 pub struct CalendarPage {
     daemon: Arc<Daemon>,
     sync: Entity<Sync>,
     overlays: PageOverlays<Dialog>,
     state: Arc<CalendarSnapshot>,
+    view: View,
+    /// The day the week or month view is showing.
+    anchor: NaiveDate,
     title: Entity<TextInput>,
     starts_at: Entity<TextInput>,
     ends_at: Entity<TextInput>,
@@ -76,6 +108,8 @@ impl CalendarPage {
             daemon,
             sync,
             overlays: PageOverlays::new(overlays, Route::Calendar),
+            view: View::Week,
+            anchor: grid::today(),
             title,
             starts_at,
             ends_at,
@@ -245,6 +279,253 @@ impl CalendarPage {
     }
 }
 
+impl CalendarPage {
+    fn set_view(&mut self, view: View, cx: &mut Context<Self>) {
+        self.view = view;
+        cx.notify();
+    }
+    fn step(&mut self, delta: i32, cx: &mut Context<Self>) {
+        self.anchor = match self.view {
+            View::List => self.anchor,
+            View::Week => grid::step_week(self.anchor, delta),
+            View::Month => grid::step_month(self.anchor, delta),
+        };
+        cx.notify();
+    }
+    /// The view switcher and, for the week and month, where they are and how to move.
+    fn toolbar(&self, today: NaiveDate, ui: &mut Ui<Self>) -> Div {
+        let selected = View::ALL
+            .iter()
+            .position(|v| *v == self.view)
+            .unwrap_or_default();
+        let label = match self.view {
+            View::List => None,
+            View::Week => {
+                let week = grid::week_of(self.anchor);
+                Some(time::week_label(week[0], week[6]))
+            }
+            View::Month => Some(time::month_label(self.anchor)),
+        };
+        let at_today = match self.view {
+            View::List => true,
+            View::Week => grid::week_of(self.anchor).contains(&today),
+            View::Month => {
+                (self.anchor.year(), self.anchor.month()) == (today.year(), today.month())
+            }
+        };
+        row()
+            .items_center()
+            .gap(px(CONTROL_GAP))
+            .child(
+                Segmented::new("calendar.view", View::ALL.map(View::label))
+                    .selected(selected)
+                    .build(ui, |this, index, _, cx| this.set_view(View::ALL[index], cx)),
+            )
+            .child(div().flex_1())
+            .when_some(label, |s, label| {
+                s.child(
+                    Button::new("calendar.today", "Today")
+                        .secondary()
+                        .small()
+                        .enabled(!at_today)
+                        .build(ui, |this, _, cx| {
+                            this.anchor = grid::today();
+                            cx.notify();
+                        }),
+                )
+                .child(
+                    Button::new("calendar.previous", "Previous")
+                        .icon(Icon::ChevronLeft)
+                        .icon_only()
+                        .ghost()
+                        .small()
+                        .build(ui, |this, _, cx| this.step(-1, cx)),
+                )
+                .child(
+                    div()
+                        .debug_selector(|| "calendar.range".into())
+                        .min_w(px(WORK_STARTED_WIDTH))
+                        .text_align(TextAlign::Center)
+                        .text_size(type_size(BODY_SIZE))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(label),
+                )
+                .child(
+                    Button::new("calendar.next", "Next")
+                        .icon(Icon::ChevronRight)
+                        .icon_only()
+                        .ghost()
+                        .small()
+                        .build(ui, |this, _, cx| this.step(1, cx)),
+                )
+            })
+    }
+    /// A day's number, on a disc when it is today.
+    fn day_number(day: NaiveDate, today: NaiveDate, muted: bool) -> Div {
+        let is_today = day == today;
+        row()
+            .items_center()
+            .justify_center()
+            .size(px(TODAY_DISC))
+            .rounded_full()
+            .text_size(type_size(LABEL_SIZE))
+            .font_weight(FontWeight::MEDIUM)
+            .when(is_today, |s| {
+                s.bg(rgb(theme().primary))
+                    .text_color(rgb(theme().text_on_primary))
+            })
+            .when(!is_today && muted, |s| {
+                s.text_color(rgb(theme().text_tertiary))
+            })
+            .child(day.day().to_string())
+    }
+    /// An Event inside a day cell: its start and title on a soft tile.
+    fn chip(event: &CalendarEvent, now: i64, with_time: bool) -> Div {
+        let live = event.starts_at <= now && now < event.ends_at;
+        let past = event.ends_at <= now;
+        column()
+            .w_full()
+            .px(px(SPACE_2))
+            .py(px(SPACE_1))
+            .rounded(px(RADIUS_SM))
+            .bg(rgb(theme().surface_control))
+            .border_l_2()
+            .border_color(rgb(if live {
+                theme().primary
+            } else {
+                theme().border_strong
+            }))
+            .when(past, |s| s.opacity(0.6))
+            .when(with_time, |s| s.child(hint(time::clock(event.starts_at))))
+            .child(
+                div()
+                    .text_size(type_size(LABEL_SIZE))
+                    .truncate()
+                    .child(event.title.clone()),
+            )
+    }
+    fn week(&self, today: NaiveDate, now: i64) -> Div {
+        let week = grid::week_of(self.anchor);
+        let events = &self.state.events;
+        card()
+            .debug_selector(|| "calendar.week".into())
+            .p_0()
+            .gap_0()
+            .overflow_hidden()
+            .child(
+                row()
+                    .border_b_1()
+                    .border_color(rgb(theme().border_subtle))
+                    .children(week.iter().enumerate().map(|(index, day)| {
+                        column()
+                            .flex_1()
+                            .min_w_0()
+                            .items_center()
+                            .gap(px(SPACE_1))
+                            .py(px(SPACE_2))
+                            .when(index > 0, |s| {
+                                s.border_l_1().border_color(rgb(theme().border_subtle))
+                            })
+                            .child(eyebrow(time::weekday(*day)))
+                            .child(Self::day_number(*day, today, grid::is_weekend(*day)))
+                    })),
+            )
+            .child(row().items_stretch().min_h(px(WEEK_MIN_HEIGHT)).children(
+                week.iter().enumerate().map(|(index, day)| {
+                    column()
+                        .flex_1()
+                        .min_w_0()
+                        .p(px(SPACE_1))
+                        .gap(px(SPACE_1))
+                        .when(index > 0, |s| {
+                            s.border_l_1().border_color(rgb(theme().border_subtle))
+                        })
+                        .when(*day == today, |s| s.bg(rgb(theme().hover)))
+                        .children(
+                            grid::on_day(events, *day)
+                                .into_iter()
+                                .map(|event| Self::chip(event, now, true)),
+                        )
+                }),
+            ))
+    }
+    fn month(&self, today: NaiveDate, now: i64) -> Div {
+        let weeks = grid::month_of(self.anchor);
+        let month = self.anchor.month();
+        let events = &self.state.events;
+        card()
+            .debug_selector(|| "calendar.month".into())
+            .p_0()
+            .gap_0()
+            .overflow_hidden()
+            .child(
+                row()
+                    .border_b_1()
+                    .border_color(rgb(theme().border_subtle))
+                    .children(weeks[0].iter().map(|day| {
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .py(px(SPACE_2))
+                            .px(px(SPACE_2))
+                            .child(eyebrow(time::weekday(*day)))
+                    })),
+            )
+            .children(weeks.iter().enumerate().map(|(row_index, week)| {
+                row()
+                    .items_stretch()
+                    .when(row_index > 0, |s| {
+                        s.border_t_1().border_color(rgb(theme().border_subtle))
+                    })
+                    .children(week.iter().enumerate().map(|(index, day)| {
+                        let on_day = grid::on_day(events, *day);
+                        let more = on_day.len().saturating_sub(MONTH_CELL_EVENTS);
+                        let outside = day.month() != month;
+                        column()
+                            .flex_1()
+                            .min_w_0()
+                            .min_h(px(MONTH_CELL_HEIGHT))
+                            .p(px(SPACE_1))
+                            .gap(px(SPACE_HALF))
+                            .when(index > 0, |s| {
+                                s.border_l_1().border_color(rgb(theme().border_subtle))
+                            })
+                            .when(*day == today, |s| s.bg(rgb(theme().hover)))
+                            .when(outside, |s| s.opacity(0.5))
+                            .child(Self::day_number(
+                                *day,
+                                today,
+                                outside || grid::is_weekend(*day),
+                            ))
+                            .children(
+                                on_day
+                                    .into_iter()
+                                    .take(MONTH_CELL_EVENTS)
+                                    .map(|event| Self::chip(event, now, false)),
+                            )
+                            .when(more > 0, |s| {
+                                s.child(div().px(px(SPACE_2)).child(hint(format!("+{more} more"))))
+                            })
+                    }))
+            }))
+    }
+    fn list(&self, days: Vec<(String, Vec<&CalendarEvent>)>, now: i64, ui: &mut Ui<Self>) -> Div {
+        column()
+            .gap(px(SECTION_GAP))
+            .children(days.into_iter().map(|(label, events)| {
+                let count = events.len();
+                column().gap(px(SPACE_2)).child(eyebrow(label)).child(
+                    card().p(px(SPACE_1)).gap_0().children(
+                        events
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, event)| self.event_row(index, count, event, now, ui)),
+                    ),
+                )
+            }))
+    }
+}
+
 impl Page for CalendarPage {
     const ROUTE: Route = Route::Calendar;
     fn overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -318,6 +599,7 @@ impl Render for CalendarPage {
         let fetching = sync.fetching();
         let snapshot = self.state.clone();
         let now = time::now();
+        let today = grid::today();
         // Days in order, each with its Events (already sorted by start).
         let mut days: Vec<(String, Vec<&CalendarEvent>)> = Vec::new();
         for event in snapshot
@@ -354,8 +636,8 @@ impl Render for CalendarPage {
             SKELETON_ROWS,
             ui,
             |ui| {
-                if days.is_empty() {
-                    return match state.error {
+                let body = match self.view {
+                    View::List if days.is_empty() => match state.error {
                         Some(_) => div().into_any_element(),
                         None => EmptyState::new(Icon::Calendar, "Nothing coming up.")
                             .description("Add an Event and it shows here under its day.")
@@ -363,20 +645,15 @@ impl Render for CalendarPage {
                             .action(self.add_button("calendar.create.empty", true, ui))
                             .build()
                             .into_any_element(),
-                    };
-                }
+                    },
+                    View::List => self.list(days, now, ui).into_any_element(),
+                    View::Week => self.week(today, now).into_any_element(),
+                    View::Month => self.month(today, now).into_any_element(),
+                };
                 column()
-                    .gap(px(SECTION_GAP))
-                    .children(days.into_iter().map(|(label, events)| {
-                        let count = events.len();
-                        column().gap(px(SPACE_2)).child(eyebrow(label)).child(
-                            card().p(px(SPACE_1)).gap_0().children(
-                                events.into_iter().enumerate().map(|(index, event)| {
-                                    self.event_row(index, count, event, now, ui)
-                                }),
-                            ),
-                        )
-                    }))
+                    .gap(px(SPACE_4))
+                    .child(self.toolbar(today, ui))
+                    .child(body)
                     .into_any_element()
             },
         )))

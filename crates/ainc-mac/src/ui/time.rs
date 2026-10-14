@@ -1,7 +1,7 @@
 //! The one place the app turns clock values into words. Inputs are epoch
 //! seconds (the daemon's unit); `duration` takes milliseconds because that
 //! is what workflow executions carry. Output is local time.
-use chrono::{DateTime, Datelike, Local};
+use chrono::{DateTime, Datelike, Local, NaiveDate};
 
 const MINUTE: i64 = 60;
 const HOUR: i64 = 60 * MINUTE;
@@ -93,6 +93,30 @@ pub fn long_date(seconds: i64) -> String {
     )
 }
 
+/// A weekday's short name: `Mon`.
+pub fn weekday(day: NaiveDate) -> String {
+    day.format("%a").to_string()
+}
+
+/// A week by its ends: `Oct 12 – 18, 2026`, or `Sep 28 – Oct 4, 2026` across a month.
+pub fn week_label(start: NaiveDate, end: NaiveDate) -> String {
+    if start.month() == end.month() {
+        format!("{} – {}, {}", start.format("%b %-d"), end.day(), end.year())
+    } else {
+        format!(
+            "{} – {}, {}",
+            start.format("%b %-d"),
+            end.format("%b %-d"),
+            end.year()
+        )
+    }
+}
+
+/// A month by name: `October 2026`.
+pub fn month_label(day: NaiveDate) -> String {
+    day.format("%B %Y").to_string()
+}
+
 /// An elapsed span: `45s`, `3m 05s`, `2h 14m`.
 pub fn duration(millis: i64) -> String {
     let seconds = millis.max(0) / 1000;
@@ -131,6 +155,11 @@ mod tests {
         );
         assert_eq!(clock(at(2026, 10, 12, 14, 5)), "14:05");
         assert_eq!(long_date(today), "Monday, October 12");
+        let date = |m, d| NaiveDate::from_ymd_opt(2026, m, d).unwrap();
+        assert_eq!(weekday(date(10, 12)), "Mon");
+        assert_eq!(week_label(date(10, 12), date(10, 18)), "Oct 12 – 18, 2026");
+        assert_eq!(week_label(date(9, 28), date(10, 4)), "Sep 28 – Oct 4, 2026");
+        assert_eq!(month_label(date(10, 12)), "October 2026");
     }
 
     #[test]

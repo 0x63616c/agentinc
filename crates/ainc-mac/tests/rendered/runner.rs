@@ -260,7 +260,7 @@ impl Suite {
         }
         if name == "route-0-3" {
             self.check_button_icon_order("calendar.create", true)?;
-            self.check_button_icon_order("calendar.create.empty", true)?;
+            self.bounds("calendar.week")?;
         }
         if name == "components-buttons" {
             self.check_button_icon_order("components.small", true)?;
@@ -838,6 +838,15 @@ pub fn run() -> Result<()> {
     suite.capture("todos-done-shown", Route::Todos, None, false)?;
     suite.keys("cmd-4");
     suite.capture("calendar-populated", Route::Calendar, None, false)?;
+    suite.click_selector("calendar.view.2")?;
+    suite.capture("calendar-month", Route::Calendar, None, false)?;
+    suite.bounds("calendar.month")?;
+    suite.click_selector("calendar.next")?;
+    suite.click_selector("calendar.today")?;
+    suite.click_selector("calendar.view.0")?;
+    suite.capture("calendar-list", Route::Calendar, None, false)?;
+    suite.check_button_icon_order("calendar.create", true)?;
+    suite.click_selector("calendar.view.1")?;
     suite.click_selector("calendar.create")?;
     suite.capture(
         "calendar-add-dialog",
