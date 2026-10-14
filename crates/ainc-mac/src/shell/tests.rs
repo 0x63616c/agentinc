@@ -4,7 +4,7 @@ use crate::{
     input,
     overlay::Overlay,
     routes::Route,
-    ui::CONTROL_HEIGHT,
+    ui::{CONTROL_HEIGHT, TAB_LABEL_INSET},
     ui_state::{SIDEBAR_DEFAULT, SIDEBAR_MIN, UiState},
 };
 use gpui::{
@@ -73,7 +73,10 @@ fn tab_shortcuts_history_mouse_close_and_restore(cx: &mut TestAppContext) {
         ..Modifiers::default()
     });
     cx.update(|window, cx| window.draw(cx).clear(cx));
-    assert!(cx.debug_bounds("tabs.0.close.hint").is_some());
+    let hint = cx.debug_bounds("tabs.0.close.hint").unwrap();
+    let tab = cx.debug_bounds("tabs.0").unwrap();
+    // The hint ends as far in from the tab's edge as the label's icon starts.
+    assert!((f32::from(tab.right() - hint.right()) - TAB_LABEL_INSET).abs() < 0.5);
     cx.simulate_modifiers_change(Modifiers::default());
     cx.update(|window, cx| window.draw(cx).clear(cx));
     assert!(cx.debug_bounds("tabs.0.close.hint").is_none());

@@ -134,7 +134,11 @@ impl Shell {
                                 )
                                 .accessibility_id(format!("tabs.{index}.close"))
                                 .debug_selector(move || format!("tabs.{index}.close"))
-                                .size(px(TAB_CLOSE_SIZE))
+                                .h(px(TAB_CLOSE_SIZE))
+                                // The glyph box is square; the hint is wider and
+                                // ends where the glyph's visible edge would.
+                                .when(!hint_close, |s| s.w(px(TAB_CLOSE_SIZE)))
+                                .when(hint_close, |s| s.mr(px(TAB_LABEL_INSET - TAB_CLOSE_INSET)))
                                 .flex_shrink_0()
                                 .justify_center()
                                 .rounded(px(RADIUS_SM))

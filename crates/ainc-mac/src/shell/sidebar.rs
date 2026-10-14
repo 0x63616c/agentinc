@@ -170,7 +170,7 @@ impl Shell {
                                     // box, and keep the name on the navigation label rail.
                                     s.pl(px(SIDEBAR_PROFILE_INSET))
                                         .pr(px(SIDEBAR_PROFILE_INSET - CHEVRON_UP_DOWN_GLYPH_INSET))
-                                        .gap(px(SPACE_1))
+                                        .gap(px(SPACE_2))
                                 } else {
                                     s.justify_center()
                                 }
@@ -180,13 +180,13 @@ impl Shell {
                             .debug_selector(|| "sidebar-profile".into())
                             .child(
                                 div()
-                                    .size(px(AVATAR_SIZE))
+                                    .size(px(AVATAR_SIZE_SM))
                                     .flex_shrink_0()
                                     .debug_selector(|| "sidebar-profile-avatar".into())
                                     .child(avatar(
                                         &self.profile.name,
                                         self.profile.photo.clone(),
-                                        AVATAR_SIZE,
+                                        AVATAR_SIZE_SM,
                                     )),
                             )
                             .when(expanded, |s| {

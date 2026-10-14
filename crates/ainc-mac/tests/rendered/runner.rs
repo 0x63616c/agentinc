@@ -1,7 +1,7 @@
 use ainc_mac::ui;
 use ainc_mac::ui::{
-    CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, SETTINGS_INSET, SETTINGS_ROW_HEIGHT, SPACE_2, SPACE_3,
-    STATUS_BAR_HEIGHT, STATUS_BAR_X, TITLE_OPTICAL_LIFT,
+    AVATAR_SIZE_SM, CONTROL_HEIGHT, FIELD_LABEL_GAP, PAGE_X, SETTINGS_INSET, SETTINGS_ROW_HEIGHT,
+    SPACE_2, SPACE_3, STATUS_BAR_HEIGHT, STATUS_BAR_X, TITLE_OPTICAL_LIFT,
 };
 use ainc_mac::{
     input,
@@ -180,10 +180,10 @@ impl Suite {
             "profile avatar".into(),
             rect(Bounds {
                 origin: profile.origin + point(px(SPACE_2), px(0.)),
-                size: size(px(24.), profile.size.height),
+                size: size(px(AVATAR_SIZE_SM), profile.size.height),
             }),
             text,
-            30,
+            20,
         ));
         let main = self.bounds("main-pane")?;
         probes.push((
